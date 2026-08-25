@@ -1,0 +1,23 @@
+{
+  "source": "回南天",
+  "style": "realistic",
+  "lang": "zh",
+  "promptLang": "en",
+  "image": {
+    "model": "nanobanana2",
+    "asset": {
+      "resolution": "2K",
+      "aspectRatio": "16:9"
+    },
+    "frame": {
+      "resolution": "2K",
+      "aspectRatio": "9:16"
+    }
+  },
+  "video": {
+    "model": "MiniMax H3",
+    "aspectRatio": "9:16",
+    "resolution": "768p",
+    "variant": "managed"
+  }
+}

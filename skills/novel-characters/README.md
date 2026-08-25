@@ -6,9 +6,9 @@
 
 - **角色表** — 谁出场了，主角还是龙套，跨章节的不同称呼归并到同一个人
 - **人物画像** — 性别、年龄、身份、外貌、性情、动机、人物弧光、关系网，每条附**原文逐字引文**
-- **形象提示词** — 半写实厚涂路线，双语出图 prompt + negative prompt + 风格标签，直接喂 Midjourney / SD / GPT-Image
+- **形象提示词** — 半写实厚涂路线，双语出图 prompt + negative prompt + 风格标签，`negative_prompt` 是 lingying 的一等字段，原样填进去
 - **音色提示词** — 音色、音高、语速、口音、情绪，双语 voice-design prompt，直接喂 Qwen3-TTS / ElevenLabs Voice Design
-- **角色设定图** — **每个角色一张**：16:9 分三区，左侧约 34% 证件照式半身像（面部基准）、右上全身三视图、右下关键细节特写条。**画风可选**：默认半写实厚涂，也可以出吉卜力动画风。白底方便抠图，走 codex 内置出图（可选）
+- **角色设定图** — **每个角色一张**：16:9 分三区，左侧约 34% 证件照式半身像（面部基准）、右上全身三视图、右下关键细节特写条。**画风可选**：默认半写实厚涂，也可以出吉卜力动画风。白底方便抠图，走 lingying CLI 出图（可选）
 - **关系图谱** — 报告里的一个全景视图：谁跟谁有关系、是什么关系，一眼看完。悬停一个人亮出他的全部关系，点一下跳到那个人的详情
 
 产出 `cast.json` + Markdown + 一个双击就能开的 `report.html`。
@@ -36,9 +36,10 @@ node scripts/novel-characters.mjs ui-template fr   # 打印待翻译的骨架
 
 ## 上游
 
-管线里**大纲在角色的上游**：
+管线里**大纲在角色的上游**，技术参数再往上一层：
 
 ```
+novel-setup      → production.json （拿什么拍：模型、画幅、分辨率、画风）
 novel-outline    → outline.json （什么：结构与分集，谁进谁不进）
 novel-characters → cast.json    （谁：角色资产）
 ```
@@ -171,10 +172,10 @@ node scripts/novel-characters.mjs slug "胡二爷"                  # 安全文�
 
 - 单次上限 24 块（净覆盖约 93 万字符）。超了会明确报 `truncated`，**不静默截断**
 - 人类可读字段跟随 `--lang`；出图和 TTS 提示词**永远英文**，那些引擎吃英文最稳，跟报告语言无关
-- 默认取戏份最重的 30 位角色，**每位都出设定图**——一个角色一次调用，所以角色多的时候这步最花时间。想少出就直接给个数，或者说只要主要角色
+- 默认取戏份最重的 30 位角色，**每位都出设定图**。lingying 的任务是异步的，一批角色可以先全部提交再统一轮询，总耗时约等于最慢的那一张。想少出就直接给个数，或者说只要主要角色
 - **同一批角色的画风可能有差异**——各自独立出图。早期用「扁平矢量卡通」时漂得很厉害（同批出成动画感／半写实／水墨写实三种），换成明确的风格预设后好了很多，但不能保证完全一致。在意的话拿第一张当参考图压一压，见 `references/sheet.md`
 
-> ⚠️ **机器上装了多个 codex 要注意版本。** 旧版本会直接报 `requires a newer version of Codex` 而不是降级。skill 里带了自动挑最高版本的探测逻辑，整体太旧就 `npm i -g @openai/codex`。
+> ⚠️ **出图要 lingying 的凭证。** `~/.config/lingying/config.json` 里至少要有 `api_key`，挂参考图还要 `assethub_admin_token`。缺了会报「缺少 API_KEY」——如实转述，不要静默跳过：用户以为出了图而实际没出，比明说没出更坏。
 
 ## 文件
 
@@ -182,12 +183,12 @@ node scripts/novel-characters.mjs slug "胡二爷"                  # 安全文�
 SKILL.md                 给 agent 读的工作流
 scripts/
   novel-characters.mjs   chunk / merge / assemble / validate / render / slug
-  selftest.mjs           355 项断言，不调模型
+  selftest.mjs           368 项断言，不调模型
 references/
   roster-pass.md         第一趟：扫描角色
   profile-pass.md        第二趟：生成角色卡（8 条硬规则）
   schema.md              角色卡结构 + 字段语言归属
-  sheet.md               角色设定图出图的 codex 调用契约
+  sheet.md               角色设定图出图的 lingying 调用契约
   report-style.md        report.html 的设计约定
   style-presets.md       出图风格预设（realistic / ghibli）
 examples/
@@ -204,6 +205,6 @@ examples/
 node scripts/selftest.mjs
 ```
 
-355 项断言，覆盖分块 / 别名归并 / 合成 / 多语言 / 校验 / 渲染。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
+368 项断言，覆盖分块 / 别名归并 / 合成 / 多语言 / 校验 / 生产参数的两条检查 / 渲染。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
 
 **只在 macOS + Node 24 上实测过。** 代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但**没验过**。

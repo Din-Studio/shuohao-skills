@@ -9,21 +9,22 @@
 
 # shuohao-skills
 
-**Agent skills for AI short-drama production** — from a novel to shoot-ready material: character bibles, adaptation outlines, scene & prop bibles, screenplays, storyboards. Built for AI coding agents, **runs in both Claude Code and codex**.
+**Agent skills for AI short-drama production** — from a novel to shoot-ready material: production parameters, character bibles, adaptation outlines, scene & prop bibles, screenplays, storyboards. Built for AI coding agents, **runs in both Claude Code and codex**.
 
-Here is the whole pipeline — **the outline converges the structure; script, scenes and characters iterate together; the storyboard only outputs, it makes no new decisions**:
+Here is the whole pipeline — **the production parameters lock the aspect and the models first; the outline converges the structure; script, scenes and characters iterate together; the storyboard only outputs, it makes no new decisions**:
 
 <img src="assets/pipeline-en.webp" alt="AI short-drama production pipeline" width="680">
 
 | Skill | What it does |
 | --- | --- |
+| [**novel-setup**](skills/novel-setup/README.en.md) | Locks the production parameters: image model, asset and frame resolution tier and aspect, video model, video aspect_ratio and resolution, plus style and the two languages. Written once to `production.json` at the work-directory root; the four downstream skills walk up to it before generating images or placing video jobs. Resolution and aspect are lingying's own **enum values** (`2K`, `768p`, `16:9` …), passed into `--input_data` verbatim with no pixel conversion. 7 quality gates, the one that earns its keep being **frame aspect = video aspect** |
 | [**novel-outline**](skills/novel-outline/README.en.md) | Adapts a novel into a five-piece short-drama outline: adaptation notes, cast, beats, per-episode synopses, asset list (including a narrative-prop table). All 14 quality gates are script-checked; includes a checkup mode for existing outlines |
 | [**novel-characters**](skills/novel-characters/README.en.md) | Turns the cast the outline settled on into a character bible: profiles, design prompts, voice prompts, model sheets. Seeds the roster from outline.json; report language and image style are both configurable |
-| [**novel-art**](skills/novel-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; all 11 quality gates script-checked |
+| [**novel-art**](skills/novel-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; all 13 quality gates script-checked |
 | [**novel-script**](skills/novel-script/README.en.md) | Screenwriting for AI short drama: scenes + beat flow (action beats alternating with dialogue lines), per-episode duration deterministically estimated from reading speed, a gated cold-open hook in the first 3 beats, a per-character line book with voice prompts that feeds straight into TTS. All 10 quality gates script-checked |
-| [**novel-storyboard**](skills/novel-storyboard/README.en.md) | Storyboarding for AI short drama: segments (one generation, ≤15s) → cuts (2–5s hard gate) → keyframes (master pinned at 0.00s, sub-frames at their cut marks), with MiniMax H3 prompt alignment and cut times audited verbatim; frames actually generated with the design sheets as references, plus one-command H3 production packs. All 17 quality gates script-checked |
+| [**novel-storyboard**](skills/novel-storyboard/README.en.md) | Storyboarding for AI short drama: segments (one generation, ≤15s) → cuts (2–5s hard gate) → keyframes (master pinned at 0.00s, sub-frames at their cut marks), with MiniMax H3 prompt alignment and cut times audited verbatim; frames actually generated with the design sheets as references, one-command production packs that carry the video parameters, and an optional `lingying video create` ordering step. All 19 quality gates script-checked |
 
-**Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for a fully English report (data content stays as authored).
+**Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for a fully English report (data content stays as authored). The UI language can also be settled once in `production.json`.
 
 ## One page for the whole pipeline
 
@@ -35,7 +36,7 @@ node scripts/report.mjs --from <demo-dir> --out report.html
 
 `--from` discovers the five json files using the [working-directory convention](#repository-conventions); you can also point at each one directly (`--outline` `--cast` `--art` `--script` `--storyboard`). Ran only the character pass? You get one pane, no error.
 
-It is an **assembler, not a separate skill**: it imports no skill code, it shells out to each skill's own `render --html` and stitches the results. So the five skills stay untouched, still run standalone, and are still copyable on their own — and when a skill changes its rendering, this picks it up for free.
+It is an **assembler, not a separate skill**: it imports no skill code, it shells out to each skill's own `render --html` and stitches the results. So the five creative skills stay untouched, still run standalone, and are still copyable on their own — and when a skill changes its rendering, this picks it up for free.
 
 Merging solves three problems, **all of them inside the assembler, none inside the skills**:
 
@@ -99,8 +100,8 @@ ln -s "$PWD/skills/novel-characters" ~/.codex/skills/novel-characters
 | | Required? | Notes |
 | --- | --- | --- |
 | **Node** | Yes | ≥ 18. The skill scripts use only the standard library — **no npm dependencies, nothing to install** |
-| **Model quota** | Yes | Uses your current session's quota. **No API key needed** |
-| **codex CLI** | Optional | Only for image generation (via its built-in `$imagegen`). Without it, image steps are skipped and everything else still runs |
+| **Model quota** | Yes | The writing stages use your current session's quota. **No API key needed** |
+| **lingying CLI** | Optional | Needed for **image and video generation**. Put it on your PATH (or at `bin/lingying` in the work directory) and write the credentials into `~/.config/lingying/config.json` (`api_key`, plus `assethub_admin_token` for reference images). Without it, generation steps are skipped and everything else still runs |
 
 > **Note on output language.** These skills are Chinese-first. `novel-characters` produces Chinese character profiles even for an English source novel, and its validator actively rejects English in those fields. See that skill's README for what it would take to change.
 
@@ -119,6 +120,8 @@ skills/<skill-name>/
 ├── examples/         bundled samples that double as test fixtures
 └── assets/           screenshots
 ```
+
+One file lives outside that layout: **`production.json` sits at the work-directory root**, not inside any skill's output directory. It holds the technical parameters the whole drama shares, and the four downstream skills find it by walking **up to 5 levels up** from their own output directory. Put it in a subdirectory and the other skills stop finding it.
 
 Two hard requirements:
 

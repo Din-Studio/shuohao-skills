@@ -4,7 +4,8 @@
 // 证明它真的会拦，不是一个永远为真的假测试。
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -19,6 +20,9 @@ import {
   seedFromOutline,
   slug,
   validateScript,
+  PRODUCTION_DEPTH,
+  PRODUCTION_FILE,
+  findProduction,
 } from './novel-script.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -420,4 +424,19 @@ ok(html.includes('lang="zh"'), '默认报告 html lang 是 zh');
   ok(gateEn.includes('Episode duration within'), 'EN 报告的质量门标签翻译且阈值原样保留');
   ok(!gateEn.includes('每集时长在目标'), 'EN 报告不再出现中文门标签');
 }
+/* ---------------- 生产参数（只取界面语言） ---------------- */
+
+eq(PRODUCTION_FILE, 'production.json', '文件名与 novel-setup 一致');
+ok(PRODUCTION_DEPTH >= 3, '向上找的层数够穿过 <工作目录>/<段>/<子目录>');
+eq(findProduction(here, 0), null, '本目录没有就找不到（层数 0）');
+{
+  const root = mkdtempSync(join(tmpdir(), 'novel-prod-'));
+  const deep = join(root, 'work', 'stage');
+  mkdirSync(deep, { recursive: true });
+  writeFileSync(join(root, 'work', PRODUCTION_FILE), '{"lang":"en"}');
+  eq(findProduction(deep), join(root, 'work', PRODUCTION_FILE), '从段目录向上找得到工作目录根的参数');
+  eq(findProduction(root), null, '工作目录之上找不到——不越界往用户主目录爬');
+  rmSync(root, { recursive: true, force: true });
+}
+
 console.log(`✓ ${passed} 项自测全部通过`);

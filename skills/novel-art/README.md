@@ -24,9 +24,9 @@
 
 ![art-report.html](assets/report.webp)
 
-## 质量门：11 道，全是代码
+## 质量门：13 道，全是代码
 
-与仓库里另外两个 skill 同一主张：**checklist 交给模型自觉是靠不住的**。
+与仓库里另外五个 skill 同一主张：**checklist 交给模型自觉是靠不住的**。
 
 | 门 | 规则 |
 | --- | --- |
@@ -41,12 +41,15 @@
 | **道具尺度** | scale 枚举对应的英文短语必须出现在提示词里 |
 | **道具无手** | 反向提示词禁 hands/fingers |
 | **道具白底** | 设定图必须 pure white background |
+| **画风与生产参数一致** | 工作目录根有 `production.json`（`novel-setup` 的产出）就查：`style` 与它不一致直接拦。找不到那份文件**明说跳过** |
+| **设定图画幅与生产参数一致** | `image.sheet` 里的版面画幅必须是 `image.asset.aspectRatio`。**资产图和成片画幅是两件事**——成片竖屏，设定图仍然横构图，L 形版面靠横向铺开 |
 
 自测里每道门都有**击穿用例**——证明它真的会拦。
 
-## 跟另外两个 skill 的接力
+## 跟另外几个 skill 的接力
 
 ```
+novel-setup      → production.json （拿什么拍：模型、画幅、分辨率、画风）
 novel-outline    → outline.json （什么：结构与分集）
 novel-characters → cast.json    （谁：角色资产）
 novel-art        → art.json     （哪里 + 手里拿的：美术资产）
@@ -69,7 +72,7 @@ node scripts/novel-art.mjs styles                            # 看画风预设
 
 ## 出图（可选）
 
-走 codex 内置 `$imagegen`，零 API key。场景和道具各一张 16:9 设定图，版面都是**主视角大图 + 底部和右侧的 L 形细节边框**：场景细节格放锚点特写，道具细节格放锚点特写 + 其他状态 + 侧面。场景**无人**；道具另加**无手、纯白背景**。变体场景拿母场景成图当参考图。没有 codex 就只交提示词，其余照常。调用契约见 `references/sheet.md`。
+走 **lingying**（灵影网关）CLI。场景和道具各一张 16:9 设定图，版面都是**主视角大图 + 底部和右侧的 L 形细节边框**：场景细节格放锚点特写，道具细节格放锚点特写 + 其他状态 + 侧面。场景**无人**；道具另加**无手、纯白背景**。变体场景拿母场景成图当参考图（先 `lingying upload` 换成 URL）。没有 lingying 就只交提示词，其余照常。道具要真透明底就在白底成图之上再走一次 `birefnet` 抠图任务（免费）。调用契约见 `references/sheet.md`。
 
 ## 文件
 
@@ -82,7 +85,7 @@ references/
   schema.md              art.json 结构 + 硬规则
   scene-pass.md          怎么填场景设定（AI 短剧的思路）
   prop-pass.md           怎么选、怎么填叙事道具
-  sheet.md               设定图出图的 codex 调用契约
+  sheet.md               设定图出图的 lingying 调用契约
   report-style.md        报告的设计约定
 examples/
   渡口-art.json           《渡口》三场景 + 两件道具样例，全部质量门通过
@@ -96,6 +99,6 @@ assets/
 node scripts/selftest.mjs
 ```
 
-158 项断言，覆盖 seed / 画风预设 / 11 道门逐项击穿 / 渲染（中英界面）/ 导出。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
+185 项断言，覆盖 seed / 画风预设 / 13 道门逐项击穿 / 生产参数查找与继承 / 渲染（中英界面）/ 导出。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
 
 **只在 macOS + Node 24 上实测过。** 代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但**没验过**。

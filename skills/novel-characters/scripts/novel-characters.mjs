@@ -4,7 +4,7 @@
 // without an npm install. Node 18+ (stdlib only).
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /* ------------------------------------------------------------------ */
@@ -250,6 +250,71 @@ export const STYLE_PRESETS = {
 
 export const SUPPORTED_STYLES = Object.keys(STYLE_PRESETS);
 export const stylePreset = (id) => STYLE_PRESETS[id] ?? STYLE_PRESETS[DEFAULT_STYLE];
+
+/* ------------------------------------------------------------------ */
+/* 生产参数（production.json）                                          */
+/* ------------------------------------------------------------------ */
+/*
+ * novel-setup 产出的一份 JSON，住在**工作目录根**，锁死整部剧的技术参数。
+ * 这里只关心三样：画风（漂了合成没法看）、资产图比例（写死在 image.sheet
+ * 的版面指令里）、报告界面语言。
+ *
+ * 这十几行查找逻辑与 novel-setup 那边是**有意重复**的：本 skill 必须能整个
+ * 拷走单独跑，不 import 任何兄弟 skill 的代码。两边读的是同一份 JSON。
+ *
+ * 找不到不是错误——照旧用内置默认值，但校验输出里必须明说哪几道检查跳过了。
+ * 装作查过比没查更坏。
+ */
+
+export const PRODUCTION_FILE = 'production.json';
+export const PRODUCTION_DEPTH = 5;
+
+export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
+  let dir = resolve(fromDir);
+  for (let i = 0; i <= depth; i++) {
+    const hit = resolve(dir, PRODUCTION_FILE);
+    if (existsSync(hit)) return hit;
+    const up = dirname(dir);
+    if (up === dir) break; // 到根了
+    dir = up;
+  }
+  return null;
+}
+
+/** 设定图提示词里会出现的画幅写法——只认这几种，免得误伤别的数字。 */
+export const KNOWN_ASPECTS = ['16:9', '9:16', '4:3', '3:4', '1:1', '21:9', '2.39:1'];
+
+/** 整批错的检查逐条列会刷成一堵墙：前几条够定位，后面只报个数。 */
+export const brief = (list, n = 6) =>
+  list.length <= n ? list.join('；') : `${list.slice(0, n).join('；')}；……等 ${list.length} 处`;
+
+/**
+ * 生产参数带来的两条确定性检查——画风一致 + 设定图版面画幅一致。
+ * 两条都是「不一致就要整批重出图」那一类，所以是硬违规不是提示。
+ */
+export function productionProblems(characters, style, production) {
+  if (!production) return [];
+  const problems = [];
+  if (style && production.style && style !== production.style) {
+    problems.push(`cast.json 的 style「${style}」与生产参数的「${production.style}」不一致——画风漂了，合成时角色和场景不像同一部片`);
+  }
+  const aspect = production?.image?.asset?.aspectRatio ?? null;
+  if (aspect) {
+    const bad = [];
+    for (const c of characters ?? []) {
+      const name = c?.name ?? '(无名)';
+      const sheet = String(c?.image?.sheet ?? '');
+      const strays = KNOWN_ASPECTS.filter((a) => a !== aspect && sheet.includes(a));
+      if (!sheet.includes(aspect)) {
+        bad.push(strays.length ? `${name} 写着「${strays.join('、')}」` : `${name} 缺画幅「${aspect}」`);
+      } else if (strays.length) {
+        bad.push(`${name} 同时写着「${strays.join('、')}」和 ${aspect}`);
+      }
+    }
+    if (bad.length) problems.push(`设定图版面的画幅与生产参数（${aspect}）不一致：${brief(bad)}`);
+  }
+  return problems;
+}
 
 const STRINGS = {
   zh: {
@@ -1727,6 +1792,25 @@ function flag(rest, name, fallback = null) {
 }
 
 /** cast.json 可以是 {source, lang, summary, characters}，也可以是裸数组（旧格式）。 */
+/*
+ * 生产参数不用挂载，自己从产物所在目录向上找——它住在工作目录根。
+ * 找得到那两条检查就自动开，没有开关：画风和画幅改了都要整套重出图。
+ * --no-production 是给老项目临时绕过用的，用了会明说。
+ */
+function loadProduction(rest, fromDir) {
+  if (rest.includes('--no-production')) return { doc: null, path: null, off: true };
+  const path = flag(rest, '--production') ?? findProduction(fromDir);
+  return { doc: path ? readJson(path) : null, path, off: false };
+}
+
+/** 找到就报一声，找不到也报一声——静默是最坏的那种。 */
+function announceProduction(p) {
+  const which = '2 条检查（画风、设定图画幅）';
+  if (p.off) console.error(`⚠️ --no-production：生产参数的 ${which}跳过`);
+  else if (p.path) console.error(`↳ 生产参数：${p.path}`);
+  else console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，${which}跳过——跑 /novel-setup 生成一份可以打开它`);
+}
+
 function loadCast(path) {
   const raw = readJson(path);
   const characters = Array.isArray(raw) ? raw : raw.characters;
@@ -1880,11 +1964,14 @@ function main(argv) {
     const [castPath, bookPath] = rest;
     if (!castPath) throw new Error('用法：validate <cast.json> <book.txt>');
     const { characters, summary, lang: castLang, ui, style: castStyle } = loadCast(castPath);
+    const prod = loadProduction(rest, resolve(castPath, '..'));
+    announceProduction(prod);
     const lang = flag(rest, '--lang', castLang);
     const style = flag(rest, '--style', castStyle);
     const source = bookPath ? readFileSync(resolve(bookPath), 'utf8') : null;
     if (!bookPath) console.error('⚠️ 没给原文，跳过逐字引文校验');
     const problems = validateCast(characters, source, lang, style);
+    problems.unshift(...productionProblems(characters, style, prod.doc));
     if (!SUPPORTED_STYLES.includes(style)) {
       problems.unshift(`顶层 style=${style} 不是已知预设（${SUPPORTED_STYLES.join('/')}）`);
     }
@@ -1917,7 +2004,9 @@ function main(argv) {
     const sourceFlag = flag(rest, '--source');
 
     const { characters, source, summary, lang: castLang, ui, style } = loadCast(castPath);
-    const lang = flag(rest, '--lang', castLang);
+    // 界面语言走继承不设门：--lang > cast.json 顶层 lang > 生产参数 > 内置默认
+    const prod = loadProduction(rest, resolve(castPath, '..'));
+    const lang = flag(rest, '--lang', castLang === DEFAULT_LANG ? (prod.doc?.lang ?? castLang) : castLang);
     const title = sourceFlag ?? source ?? basename(castPath).replace(/\.[^.]+$/, '');
 
     // 图存在才挂上去；没有就渲染成占位，不影响其余内容。

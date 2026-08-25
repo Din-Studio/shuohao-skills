@@ -46,9 +46,10 @@
 - **质量门**面板 + 页眉徽章 + **导出 JSON**（下载的就是 `script.json` 原样，改完能直接喂回 `render` / `validate`）
 - 全部图形是内联 CSS/SVG，零外部依赖，离线双击能开
 
-## 跟另外三个 skill 的接力
+## 跟另外四个 skill 的接力
 
 ```
+novel-setup      → production.json （拿什么拍：模型、画幅、分辨率、画风）
 novel-outline    → outline.json （什么：结构与分集）
 novel-characters → cast.json    （谁：角色资产）
 novel-art        → art.json     （哪里 + 手里拿的：美术资产）
@@ -89,7 +90,7 @@ node scripts/novel-script.mjs slug "渡口"                         # 安全文�
 SKILL.md                 给 agent 读的工作流
 scripts/
   novel-script.mjs       seed / validate / checkup / render / slug
-  selftest.mjs           154 项断言，不调模型
+  selftest.mjs           159 项断言，不调模型
 references/
   schema.md              script.json 结构 + 时长折算规则
   script-pass.md         写戏：硬规则、手感规则、常见病
@@ -106,6 +107,6 @@ assets/
 node scripts/selftest.mjs
 ```
 
-154 项断言，覆盖时长引擎 / 统计 / 质量门逐项击穿 / seed / 渲染（含英文界面）/ 导出。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
+159 项断言，覆盖时长引擎 / 统计 / 质量门逐项击穿 / seed / 生产参数查找 / 渲染（含英文界面）/ 导出。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
 
 **只在 macOS + Node 24 上实测过。** 代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但**没验过**。

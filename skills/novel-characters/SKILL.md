@@ -1,12 +1,13 @@
 ---
 name: novel-characters
-version: 1.11.0
+version: 1.13.0
 description: |
   从小说或短故事里拆出角色表、人物画像、形象提示词、音色提示词，
   并给每个角色出角色设定图（左半身像 + 右全身三视图 + 细节条），产出 JSON + Markdown + 可交互的 report.html。
   报告语言可指定（--lang），默认中文，任意语言都支持；
   出图风格可指定（--style），默认半写实，也可以出吉卜力动画风。
-  零依赖、零 API key，用当前会话额度；出图走 codex 内置 $imagegen（可选）。
+  零依赖、零 npm；出图走 lingying（灵影网关）CLI（可选，要它的 api_key）。
+  跑过 novel-setup 的项目会自动读工作目录根的 production.json：画风与设定图画幅两条硬检查，出图模型与尺寸也从那里取。
   Use when asked to 拆小说角色、分析人物、生成角色卡、character sheets from a novel。
 allowed-tools:
   - Read
@@ -29,7 +30,7 @@ metadata:
     bins:
       - node          # >= 18，只用标准库，无 npm 依赖
     optional:
-      - codex         # 有才出三视图；没有就只交提示词，其余照常
+      - lingying      # 有才出三视图；没有就只交提示词，其余照常
   runtimes:
     - claude-code
     - codex
@@ -41,11 +42,25 @@ metadata:
 
 `{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/novel-characters.mjs`，零依赖，`node` 直接跑。
 
-**运行环境**：Claude Code 和 codex 都能跑。差别只在第 8 步出图——见 `references/sheet.md`。
+**运行环境**：Claude Code 和 codex 都能跑，两边一样。第 8 步出图要本机安装了 `lingying` CLI——见 `references/sheet.md`。
 
 ---
 
-### Step 0 — 确定报告语言
+### Step 0 — 读生产参数（有就必须遵循）
+
+`production.json`（`novel-setup` 的产出）住在工作目录根。**不用挂载，脚本自己找**：`validate` / `render` 会从 cast.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「2 条检查跳过」——不静默。
+
+找到了这三样以它为准：
+
+| 字段 | 管什么 |
+| --- | --- |
+| `style` | 画风。cast.json 的 style 与它不一致直接报错——画风漂了，角色和场景合成时不像同一部片 |
+| `image.asset.aspectRatio` | 设定图版面画幅，必须出现在每个角色的 `image.sheet` 里 |
+| `image.model` + `image.asset.resolution` | 第 8 步出图用的模型与分辨率档位（档位就是 lingying 收的 `resolution` 枚举值，原样填） |
+
+`lang` 也可以从它继承（优先级 `--lang` > cast.json 顶层 > production.json > 中文）。老项目没有这份文件照跑；临时绕过用 `--no-production`，用了会明说。
+
+### Step 0.1 — 确定报告语言
 
 用户可以指定语言，比如「用英文」「--lang en」「日本語で」。**没说就是中文（`zh`）。**
 
@@ -68,7 +83,7 @@ metadata:
 
 ### Step 0.5 — 确定画风
 
-用户可以指定出图风格：**默认 `realistic`**（半写实厚涂），想要动画质感就用 `ghibli`（吉卜力式手绘赛璐璐）。
+**有 `production.json` 就以它的 `style` 为准，这一步只是确认。**没有才问用户：**默认 `realistic`**（半写实厚涂），想要动画质感就用 `ghibli`（吉卜力式手绘赛璐璐）。
 
 ```bash
 node {baseDir}/scripts/novel-characters.mjs styles   # 打印预设的完整内容
@@ -78,7 +93,7 @@ node {baseDir}/scripts/novel-characters.mjs styles   # 打印预设的完整内�
 
 最容易搞反的是反向提示词：`realistic` 绝不能禁 `photorealistic`，`ghibli` 必须禁。`validate` 会拦这个。
 
-版面规则（16:9 三区、比例、细节让位）**不随风格变**，变的只有渲染质感。
+版面规则（三区、比例、细节让位）**不随风格变**，变的只有渲染质感。画幅由生产参数定，默认 16:9——**成片拍竖屏也不改**，三区版面靠横向铺开，竖过来三视图会被压扁。
 
 ### Step 1 — 定位输入
 
@@ -193,13 +208,13 @@ node {baseDir}/scripts/novel-characters.mjs assemble <workdir> \
 node {baseDir}/scripts/novel-characters.mjs validate <cast.json> <book.txt>
 ```
 
-记得带上 `--lang`（Step 0 定的）。检查：结构、`importance` 枚举、**引文逐字**、**出图提示词不含人名**、**语言分工**（人类字段跟随 `lang`、出图/TTS 提示词永远英文）、以及**非内置语言必须带 `ui`**。
+记得带上 `--lang`（Step 0.1 定的）。检查：结构、`importance` 枚举、**引文逐字**、**出图提示词不含人名**、**语言分工**（人类字段跟随 `lang`、出图/TTS 提示词永远英文）、**非内置语言必须带 `ui`**，以及生产参数的两条——**画风与 production.json 一致**、**设定图版面画幅与 production.json 一致**（找不到那份文件就明说跳过）。
 
 **有违规就按报错逐条修，改完重跑，直到通过。** 这四类错模型真的会犯——这套检查就是被真实输出打出来的。
 
 ### Step 8 — 出图（可选，每个角色都出）
 
-**每个角色一张**，用 `image.sheet`，落到 `./images/<slug>-sheet.png`。一张横构图内部左右分栏：
+**每个角色一张**，用 `image.sheet`，落到 `./images/<slug>-sheet.png`。**出图模型与档位从 `production.json` 取**：`image.model` 传 `--model`，`image.asset.resolution` 与 `image.asset.aspectRatio` 原样进 `--input_data` 的 `resolution` / `aspect_ratio`——**提示词里一个像素都不写**。一行拿到拼好的参数：`novel-setup resolve --for characters`。一张横构图内部左右分栏（画幅按 `image.asset.aspectRatio`，默认 16:9）：
 
 ```
 ┌──────────┬────────────────────────────┐
@@ -214,8 +229,8 @@ node {baseDir}/scripts/novel-characters.mjs validate <cast.json> <book.txt>
 
 读 `{baseDir}/references/sheet.md`，照它的调用契约做。要点：
 
-- **没有 codex 就整步跳过**，只交提示词，后面照常走
-- 跑在 codex 里就直接用 `$imagegen`；跑在别处就 shell 调 codex，先按那里的脚本探测版本最高的 binary（旧版会直接报错）
+- **没有 lingying 就整步跳过**，只交提示词，后面照常走
+- 调用是三步：`image create` 提交拿 task_id、`task get` 轮询到 success、`curl` 把产物 URL 落盘。**一批角色可以先全部提交再统一轮询**
 - **一个角色一次调用，绝不批量**
 - 单个失败就跳过，不阻断；最后汇总说明
 - **断点续跑**：`images/<slug>-sheet.png` 已存在就跳过，失败重来时只补缺的
@@ -230,7 +245,7 @@ node {baseDir}/scripts/novel-characters.mjs render <cast.json> --md   > <书名>
 node {baseDir}/scripts/novel-characters.mjs render <cast.json> --html > report.html
 ```
 
-语言取 `cast.json` 里的 `lang`，要临时覆盖就加 `--lang <code>`。
+语言取 `cast.json` 里的 `lang`（没写就跟 `production.json`），要临时覆盖就加 `--lang <code>`。
 
 `render` 会自动去 `images/<slug>-sheet.png` 找图。所以**先出图再 render**。
 
@@ -244,12 +259,12 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
 ├── <书名>-cast.md
 ├── report.html                    ← 双击就能开
 └── images/
-    └── <slug>-sheet.png           ← 有 codex 才有
+    └── <slug>-sheet.png           ← 有 lingying 才有
 ```
 
 ### Step 10 — 汇报
 
-一句话说清：角色数、出图数、报告路径。校验一次没过的话，说明修了什么。有角色出图失败、被截断、或因为没有 codex 而没出图，明确说清楚。
+一句话说清：角色数、出图数、报告路径。校验一次没过的话，说明修了什么。有角色出图失败、被截断、或因为没有 lingying 而没出图，明确说清楚。
 
 ---
 
@@ -258,7 +273,7 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
 - 单次上限 24 块（净覆盖约 93 万字符），超了会明确报 `truncated`，不静默截断
 - 人类可读字段跟随 `--lang`（默认中文）；出图和 TTS 提示词**永远英文**，那些引擎吃英文最稳
 - 设定图最容易出的两个问题：**一张图里两个长相**、**为了塞细节把人物压扁**。拿到图先扫一眼，见 `references/sheet.md`
-- 出图只走 codex built-in `$imagegen`。**不用它的 CLI fallback**（要 `OPENAI_API_KEY`）
+- 出图只走 lingying。它是异步任务制：`create` 只返回 task_id，结果一律用 `task get` 取，**轮询时必须读 `data.status`**——响应里的 `"message": "success"` 恒为 success，粗糙的匹配会假命中
 - 想要能实时编辑、边跑边看的交互界面，那是另一个东西，不在这个 skill 里
 
 ## 自测
@@ -267,7 +282,7 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-355 项断言，不调模型、不花额度，覆盖分块 / 归并 / 合成 / 多语言 / 校验 / 渲染的全部确定性逻辑。改完脚本先跑这个。
+368 项断言，不调模型、不花额度，覆盖分块 / 归并 / 合成 / 多语言 / 校验 / 生产参数 / 渲染的全部确定性逻辑。改完脚本先跑这个。
 
 ## 自带样例
 

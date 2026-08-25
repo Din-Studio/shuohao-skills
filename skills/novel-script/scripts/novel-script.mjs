@@ -3,8 +3,8 @@
 // Zero dependencies on purpose: the skill must work in any directory
 // without an npm install. Node 18+ (stdlib only).
 
-import { readFileSync, realpathSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /* ------------------------------------------------------------------ */
@@ -26,6 +26,37 @@ export const DEFAULT_PARAMS = {
   maxLineChars: 35,    // 单句台词上限——一口气说不完的台词也生成不了
   hookWindow: 3,       // 开场钩子必须在全集前几拍内兑现——短剧开场 3 秒定生死
 };
+
+
+/* ------------------------------------------------------------------ */
+/* 生产参数（production.json）                                          */
+/* ------------------------------------------------------------------ */
+/*
+ * novel-setup 产出的一份 JSON，住在**工作目录根**。本 skill 不出图，
+ * 只从里面取一样东西：报告界面语言。
+ *
+ * 语言走**继承不设门**——优先级 --lang > 本 JSON 顶层 lang > 生产参数 > zh。
+ * 改一次显示语言不该被拦，它不产生任何浪费；画风、画幅那种改了要整批重出图
+ * 的参数才设门，那两道在出图的三个 skill 里。
+ *
+ * 这十几行查找逻辑与 novel-setup 那边是**有意重复**的：本 skill 必须能整个
+ * 拷走单独跑，不 import 任何兄弟 skill 的代码。
+ */
+
+export const PRODUCTION_FILE = 'production.json';
+export const PRODUCTION_DEPTH = 5;
+
+export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
+  let dir = resolve(fromDir);
+  for (let i = 0; i <= depth; i++) {
+    const hit = resolve(dir, PRODUCTION_FILE);
+    if (existsSync(hit)) return hit;
+    const up = dirname(dir);
+    if (up === dir) break; // 到根了
+    dir = up;
+  }
+  return null;
+}
 
 export function paramsOf(doc) {
   return { ...DEFAULT_PARAMS, ...(doc?.params ?? {}) };
@@ -1051,8 +1082,17 @@ function main(argv) {
     if (!path) throw new Error('用法：render <script.json> [--html|--md] [--lang zh|en] [--outline o.json] [--art a.json]');
     const doc = readJson(path);
     const ctx = loadCtx(rest);
+    // 语言优先级：--lang > script.json 顶层 lang 字段 > 生产参数 > zh
     const lang = flag(rest, '--lang');
     if (lang) ctx.lang = lang;
+    else if (!doc?.lang) {
+      const hit = findProduction(resolve(path, '..'));
+      const inherited = hit ? readJson(hit)?.lang : null;
+      if (inherited) {
+        ctx.lang = inherited;
+        console.error(`↳ 报告界面语言 ${inherited} 继承自 ${hit}`);
+      }
+    }
     process.stdout.write((rest.includes('--html') ? renderHtml(doc, ctx) : renderMarkdown(doc, ctx)) + '\n');
     return;
   }

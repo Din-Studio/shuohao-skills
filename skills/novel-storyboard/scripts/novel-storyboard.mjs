@@ -4,7 +4,7 @@
 // without an npm install. Node 18+ (stdlib only).
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /* ------------------------------------------------------------------ */
@@ -34,6 +34,59 @@ export const DEFAULT_PARAMS = {
 export function paramsOf(doc) {
   return { ...DEFAULT_PARAMS, ...(doc?.params ?? {}) };
 }
+
+/* ------------------------------------------------------------------ */
+/* 生产参数（production.json）                                          */
+/* ------------------------------------------------------------------ */
+/*
+ * novel-setup 产出的一份 JSON，住在**工作目录根**，锁死整部剧的技术参数：
+ * 生图模型、分镜图分辨率与比例、生视频模型、视频 aspect_ratio 与
+ * resolution、画风、报告界面语言、提示词语言。
+ *
+ * 这十几行查找逻辑与 novel-setup 那边是**有意重复**的：本 skill 必须能整个
+ * 拷走单独跑，不 import 任何兄弟 skill 的代码。两边读的是同一份 JSON。
+ *
+ * 找不到不是错误——照旧用内置默认值，但校验输出里必须明说哪几道门跳过了。
+ * 装作查过比没查更坏。
+ */
+
+export const PRODUCTION_FILE = 'production.json';
+export const PRODUCTION_DEPTH = 5;
+
+export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
+  let dir = resolve(fromDir);
+  for (let i = 0; i <= depth; i++) {
+    const hit = resolve(dir, PRODUCTION_FILE);
+    if (existsSync(hit)) return hit;
+    const up = dirname(dir);
+    if (up === dir) break; // 到根了
+    dir = up;
+  }
+  return null;
+}
+
+/** 分镜图提示词里会出现的画幅写法——只认这几种，免得把台词时间戳当成比例。 */
+export const KNOWN_ASPECTS = ['16:9', '9:16', '4:3', '3:4', '1:1', '21:9', '2.39:1'];
+
+/*
+ * 跳过语提到模块级：英文报告要拿它当查表的键，写死在两处必然会漂。
+ */
+export const SKIP_PROD = `未找到 ${PRODUCTION_FILE}（向上 ${PRODUCTION_DEPTH} 层），本门跳过——跑 /novel-setup 生成一份可以打开它`;
+
+/*
+ * 画幅这类「错了就是整批错」的门，逐条列会把详情刷成一堵墙——
+ * 前几条足够定位，后面只报个数。修的时候本来就是整批一起改。
+ */
+export const brief = (list, n = 6) =>
+  list.length <= n ? list.join('；') : `${list.slice(0, n).join('；')}；……等 ${list.length} 处`;
+
+/** 画风：storyboard.json 没写就继承生产参数，两边都写了且不同才是违规。 */
+export const styleIdOf = (board, production = null) =>
+  board?.style ?? production?.style ?? DEFAULT_STYLE;
+
+/** 提示词语言同理：没写就继承，默认 en（H3 官方口径）。 */
+export const promptLangOf = (board, production = null) =>
+  board?.promptLang ?? production?.promptLang ?? 'en';
 
 /** 景别枚举：英文短语必须出现在该分镜的分镜图提示词里。 */
 export const SHOT_SIZES = {
@@ -426,16 +479,25 @@ export function gateReport(board, ctx = {}) {
   const bad = {
     coverage: [], segCap: [], cutLen: [], fit: [], duration: [], crowd: [],
     id: [], size: [], camera: [], english: [], names: [], refs: [],
-    h3s: [], h3d: [], h3e: [], style: [], recipe: [],
+    h3s: [], h3d: [], h3e: [], style: [], recipe: [], pstyle: [], aspect: [],
   };
   // 配方卡库是可选挂载：ctx.recipes 为空就整门跳过（不是「没有 cut 带 recipe」就跳过）
   const recipes = ctx.recipes ?? null;
   let recipeRefs = 0;
-  const styleId = board?.style ?? DEFAULT_STYLE;
+  // 生产参数：找得到就必须遵循（画风、分镜图画幅），找不到那两道门明说跳过
+  const production = ctx.production ?? null;
+  const styleId = styleIdOf(board, production);
   const style = STYLE_PRESETS[styleId];
   if (!style) bad.style.push(`style「${styleId}」不在预设里（${Object.keys(STYLE_PRESETS).join(' / ')}）`);
   // 提示词语言：默认英文——官方规范的口径（台词仍在 <d> 里保留原文）；'zh' 可切整条中文
-  const promptLang = board?.promptLang ?? 'en';
+  const promptLang = promptLangOf(board, production);
+
+  // 画风漂了 = 角色是吉卜力、场景是半写实，合成没法看，整套设定图白出
+  if (production && board?.style && board.style !== production.style) {
+    bad.pstyle.push(`storyboard.json 的 style「${board.style}」与生产参数的「${production.style}」不一致`);
+  }
+  // 分镜图是喂给视频模型的参考图，画幅差一点整批被裁或被拉
+  const frameAspect = production?.image?.frame?.aspectRatio ?? null;
 
   // 提示词禁人名：outline 的名字 + cast 的名字与别名
   const banned = [];
@@ -534,6 +596,19 @@ export function gateReport(board, ctx = {}) {
         if (CJK.test(frame)) bad.english.push(`${cid} 的分镜图提示词混入了非英文`);
         if (style && !frame.toLowerCase().includes(style.phrase)) {
           bad.style.push(`${cid} 的分镜图提示词缺风格短语「${style.phrase}」`);
+        }
+        // 一切只报一条：画幅错了是整批的事，34 个分镜各报两条只会把详情刷成一堵墙
+        if (frameAspect) {
+          const strays = KNOWN_ASPECTS.filter((a) => a !== frameAspect && frame.includes(a));
+          if (!frame.includes(frameAspect)) {
+            bad.aspect.push(
+              strays.length
+                ? `${cid} 写着「${strays.join('、')}」，成片是 ${frameAspect}`
+                : `${cid} 缺画幅「${frameAspect}」`,
+            );
+          } else if (strays.length) {
+            bad.aspect.push(`${cid} 同时写着「${strays.join('、')}」和 ${frameAspect}`);
+          }
         }
         for (const name of banned) {
           if (frame.includes(name)) bad.names.push(`${cid} 的分镜图提示词出现角色名「${name}」`);
@@ -664,6 +739,20 @@ export function gateReport(board, ctx = {}) {
   add('prompt-english', '分镜图提示词全英文且非空', bad.english.length === 0, bad.english.join('；'));
   add('prompt-no-names', '英文提示词不含角色名（分镜图提示词恒查；中文 H3 提示词放行）', bad.names.length === 0, banned.length ? bad.names.join('；') : SKIP_NAMES);
   add('refs', '场次／人物／道具对账剧本', bad.refs.length === 0, script ? bad.refs.join('；') : SKIP_SCRIPT);
+  // 生产参数的两道门：找得到 production.json 就自动开，没有开关——
+  // 画风与画幅改了都要整批重出图，这正是这份参数存在的理由
+  add(
+    'production-style',
+    `画风与生产参数一致（${production ? production.style : '未挂载'}）`,
+    bad.pstyle.length === 0,
+    production ? bad.pstyle.join('；') : SKIP_PROD,
+  );
+  add(
+    'frame-aspect',
+    `分镜图提示词的画幅与生产参数一致（${frameAspect ?? '未挂载'}）——分镜图是喂给视频模型的参考图`,
+    bad.aspect.length === 0,
+    frameAspect ? brief(bad.aspect) : SKIP_PROD,
+  );
   // 可选挂载的门放最后：没给 --shots 就跳过；给了但全篇没引用配方也算通过，但要明说，不静默
   add(
     'shot-recipe',
@@ -765,12 +854,19 @@ export function seedFromScript(script, epRange = null) {
  * （h3Prompt 原样），根部一份 manifest：按 Picture 序列出该段要挂的
  * 分镜图路径、秒数、缺图标注。提示词就躺在图旁边，整个文件夹拖给
  * H3 就是一次生成。纯函数返回文件清单，落盘在 CLI 层——可测性。
+ *
+ * 有生产参数就把视频模型、aspect_ratio、resolution 写进两处：manifest 顶层
+ * 和每段 prompt.md 的头部。下单时参数就在投产包里，不用回头翻配置。
  */
-export function exportPack(board, script, { imageExists = () => false, dir = '.' } = {}) {
+export function exportPack(board, script, { imageExists = () => false, dir = '.', production = null } = {}) {
   const prefix = dir === '.' ? '' : `${dir}/`;
   const files = [];
   const manifest = [];
   let missingTotal = 0;
+  const video = production?.video ?? null;
+  const videoLine = video
+    ? `生成参数：${video.model || '（未填模型）'} · aspect_ratio ${video.aspectRatio || '（未填）'} · resolution ${video.resolution || '（未填）'}${video.variant ? ` · variant ${video.variant}` : ''}\n\n`
+    : '';
   for (const ep of board?.episodes ?? []) {
     for (const seg of ep?.segments ?? []) {
       // prompt.md 头部先说清哪个文件是首帧、每张图钉在第几秒——
@@ -779,7 +875,7 @@ export function exportPack(board, script, { imageExists = () => false, dir = '.'
       const mapping = (seg.cuts ?? [])
         .map((_, i) => `- Picture ${i + 1} = f${i + 1}.png${i === 0 ? '（**首帧**，钉 0.00 秒）' : `（钉 ${starts[i].toFixed(2)} 秒）`}`)
         .join('\n');
-      const promptMd = `# ${seg.id} · H3 提示词\n\n首帧 = **f1.png**。图片按 Picture 序号挂载：\n\n${mapping}\n\n---\n\n${seg.h3Prompt ?? ''}\n`;
+      const promptMd = `# ${seg.id} · H3 提示词\n\n${videoLine}首帧 = **f1.png**。图片按 Picture 序号挂载：\n\n${mapping}\n\n---\n\n${seg.h3Prompt ?? ''}\n`;
       files.push({ path: `${prefix}${seg.id}/prompt.md`, content: promptMd });
       const pictures = (seg.cuts ?? []).map((_, i) => `${prefix}${seg.id}/f${i + 1}.png`);
       const missing = pictures.filter((rel) => !imageExists(rel));
@@ -795,7 +891,9 @@ export function exportPack(board, script, { imageExists = () => false, dir = '.'
       });
     }
   }
-  files.push({ path: `${prefix}manifest.json`, content: JSON.stringify(manifest, null, 2) + '\n' });
+  // manifest 是对象不是裸数组：顶层要放视频参数，下单脚本读一处就够
+  const doc = { source: board?.source ?? '', video, segments: manifest };
+  files.push({ path: `${prefix}manifest.json`, content: JSON.stringify(doc, null, 2) + '\n' });
   return { files, manifest, missingTotal };
 }
 
@@ -842,6 +940,8 @@ const GATE_LABELS_EN = {
   'prompt-no-names': 'English prompts carry no character names',
   'refs': 'Scenes / characters / props audited against the script',
   'shot-recipe': 'Referenced recipes exist, their must-phrases are in the frame prompt, multi-cut recipes run long enough',
+  'production-style': 'Style matches the production parameters — one drama, one look',
+  'frame-aspect': 'Frame-prompt aspect matches the production parameters — frames are what the video model is conditioned on',
 };
 const GATE_SKIPS_EN = {
     '未提供 outline.json，本门跳过（视为通过）': 'outline.json not provided — gate skipped (treated as passing)',
@@ -851,6 +951,7 @@ const GATE_SKIPS_EN = {
     '未提供 cast.json，本门跳过（视为通过）': 'cast.json not provided — gate skipped (treated as passing)',
     '未挂载配方卡库（--shots <卡片目录>），本门跳过（视为通过）': 'no recipe card library mounted (--shots <cards dir>) — gate skipped (treated as passing)',
     '本批分镜没有引用配方': 'no cut in this batch references a recipe',
+    [SKIP_PROD]: `no ${PRODUCTION_FILE} found (up to ${PRODUCTION_DEPTH} levels up) — gate skipped; run /novel-setup to open it`,
 };
 /** 报告里的门文案：英文界面取映射，未命中或中文界面回落原文。 */
 const gateText = (g, lang) => {
@@ -922,7 +1023,7 @@ const I18N = {
     fmtMin: (sec) => `${Math.floor(sec / 60)} 分 ${Math.round(sec % 60)} 秒`,
     unitSeg: '段',
     unitCut: '切',
-    colophon: '分镜由模型依据剧本切分：段 = 一次生成（≤15 秒），分镜 = 段内 2–5 秒的剪切，每个分镜一张关键帧图。对齐指令、切点时刻、台词、提示词纪律全部由脚本确定性对账。分镜图出图走 codex，环境与角色设定图当参考图。',
+    colophon: '分镜由模型依据剧本切分：段 = 一次生成（≤15 秒），分镜 = 段内 2–5 秒的剪切，每个分镜一张关键帧图。对齐指令、切点时刻、台词、提示词纪律全部由脚本确定性对账。分镜图出图走 lingying，环境与角色设定图当参考图。',
   },
   en: {
     langCode: 'en',
@@ -983,7 +1084,7 @@ const I18N = {
     fmtMin: (sec) => `${Math.floor(sec / 60)} min ${Math.round(sec % 60)} s`,
     unitSeg: 'seg',
     unitCut: 'cuts',
-    colophon: 'Cut by the model from the script: a segment = one generation call (≤15s), a cut = a 2–5s edit inside it, one keyframe per cut. Alignment lines, cut marks, dialogue and prompt discipline are all audited deterministically by the script. Frames are generated through codex with the scene and character sheets as references.',
+    colophon: 'Cut by the model from the script: a segment = one generation call (≤15s), a cut = a 2–5s edit inside it, one keyframe per cut. Alignment lines, cut marks, dialogue and prompt discipline are all audited deterministically by the script. Frames are generated through the lingying CLI with the scene and character sheets as references.',
   },
 };
 
@@ -991,6 +1092,12 @@ const tOf = (lang) => {
   if (lang && !I18N[lang]) throw new Error('报告界面语言目前内置 zh / en');
   return I18N[lang ?? 'zh'];
 };
+
+/*
+ * 界面语言走继承不设门：--lang > storyboard.json 顶层 lang > 生产参数的 lang > zh。
+ * 改一次显示语言不该被拦——它不产生任何浪费，跟画风、画幅那两道门不是一类东西。
+ */
+const langOf = (board, ctx = {}) => ctx.lang ?? board?.lang ?? ctx.production?.lang ?? 'zh';
 
 /* ------------------------------------------------------------------ */
 /* render 公共                                                          */
@@ -1044,7 +1151,7 @@ const mdRow = (cells) => `| ${cells.map((c) => String(c ?? '').replace(/\|/g, '\
 const mdHead = (cols) => [mdRow(cols), mdRow(cols.map(() => '---'))].join('\n');
 
 export function renderMarkdown(board, ctx = {}) {
-  const t = tOf(ctx.lang ?? board?.lang);
+  const t = tOf(langOf(board, ctx));
   const n = namer(ctx, t);
   const expanded = expandScript(ctx.script);
   const stats = computeStats(board, ctx.script);
@@ -1102,7 +1209,7 @@ function embedDoc(doc) {
 }
 
 export function renderHtml(board, ctx = {}) {
-  const lang = ctx.lang ?? board?.lang ?? 'zh';
+  const lang = langOf(board, ctx);
   const t = tOf(lang);
   const n = namer(ctx, t);
   const expanded = expandScript(ctx.script);
@@ -1645,16 +1752,41 @@ function loadShots(dir) {
   return cards;
 }
 
-function loadCtx(rest) {
+function loadCtx(rest, fromDir = '.') {
   const get = (name) => {
     const path = flag(rest, name);
     return path ? readJson(path) : null;
   };
   const shots = flag(rest, '--shots');
+
+  /*
+   * 生产参数不用挂载，自己从产物所在目录向上找——它住在工作目录根，
+   * 五个 skill 的输出目录都在它下面。找得到那两道门就自动开，没有开关：
+   * 画风和画幅改了都要整批重出图，这种东西不该留后门。
+   * --no-production 是给老项目临时绕过用的，用了会明说。
+   */
+  let production = null;
+  let productionPath = null;
+  if (!rest.includes('--no-production')) {
+    productionPath = flag(rest, '--production') ?? findProduction(fromDir);
+    if (productionPath) production = readJson(productionPath);
+  }
+
   return {
     script: get('--script'), outline: get('--outline'), cast: get('--cast'), art: get('--art'),
     recipes: shots ? loadShots(shots) : null,
+    production, productionPath,
   };
+}
+
+/** 找到就报一声，找不到也报一声——静默是最坏的那种。 */
+function announceProduction(ctx, rest) {
+  if (rest.includes('--no-production')) {
+    console.error(`⚠️ --no-production：生产参数的 2 道门（画风、分镜图画幅）跳过`);
+    return;
+  }
+  if (ctx.productionPath) console.error(`↳ 生产参数：${ctx.productionPath}`);
+  else console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，2 道门（画风、分镜图画幅）跳过——跑 /novel-setup 生成一份可以打开它`);
 }
 
 function main(argv) {
@@ -1683,9 +1815,10 @@ function main(argv) {
     const [path] = rest;
     if (!path) throw new Error(`用法：${cmd} <storyboard.json> --script <script.json> [--outline] [--cast]`);
     const board = readJson(path);
-    const ctx = loadCtx(rest);
+    const ctx = loadCtx(rest, resolve(path, '..'));
     if (!ctx.script) throw new Error('分镜离开剧本没有意义——必须给 --script <script.json>');
     if (!ctx.outline && !ctx.cast) console.error('⚠️ 没给 --outline / --cast，跳过提示词人名检查');
+    announceProduction(ctx, rest);
 
     // 门的结果追加到 .gates.jsonl——validate 与 checkup 都记，
     // 这样「跑过多少次」这个分母才是全的
@@ -1741,9 +1874,9 @@ function main(argv) {
     const [path] = rest;
     if (!path) throw new Error('用法：render <storyboard.json> --script <script.json> [--html|--md] [--lang zh|en] [--outline] [--art]');
     const board = readJson(path);
-    const ctx = loadCtx(rest);
+    const ctx = loadCtx(rest, resolve(path, '..'));
     if (!ctx.script) throw new Error('分镜离开剧本没有意义——必须给 --script <script.json>');
-    // 界面语言：--lang > JSON 顶层 lang 字段 > 'zh'（后两级在渲染器里兜底）
+    // 界面语言：--lang > JSON 顶层 lang 字段 > 生产参数的 lang > 'zh'（后三级在渲染器里兜底）
     const langFlag = flag(rest, '--lang');
     if (langFlag) ctx.lang = langFlag;
     ctx.imageExists = (rel) => existsSync(resolve(rel));
@@ -1755,10 +1888,15 @@ function main(argv) {
     const [path] = rest;
     if (!path) throw new Error('用法：export <storyboard.json> --script <script.json> [--out h3]');
     const board = readJson(path);
-    const ctx = loadCtx(rest);
+    const ctx = loadCtx(rest, resolve(path, '..'));
     if (!ctx.script) throw new Error('分镜离开剧本没有意义——必须给 --script <script.json>');
+    announceProduction(ctx, rest);
     const dir = flag(rest, '--out', '.');
-    const pack = exportPack(board, ctx.script, { imageExists: (rel) => existsSync(resolve(rel)), dir });
+    const pack = exportPack(board, ctx.script, {
+      imageExists: (rel) => existsSync(resolve(rel)),
+      dir,
+      production: ctx.production,
+    });
     for (const f of pack.files) {
       mkdirSync(resolve(f.path, '..'), { recursive: true });
       writeFileSync(resolve(f.path), f.content, 'utf8');

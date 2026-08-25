@@ -29,6 +29,12 @@ import {
   strings,
   uiTemplate,
   validateCast,
+  KNOWN_ASPECTS,
+  PRODUCTION_DEPTH,
+  PRODUCTION_FILE,
+  brief,
+  findProduction,
+  productionProblems,
 } from './novel-characters.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -352,6 +358,53 @@ ok(hits(bad, 'persona') > 0, '抓住缺失的 persona');
 
 // 没有原文时应该跳过逐字校验而不是全判失败
 eq(validateCast(CAST, null).length, 0, '不给原文时跳过引文校验');
+
+/* ---------------- 生产参数（production.json） ---------------- */
+
+// 样例《渡口》是横屏半写实，参数照它配才是全绿基线
+const PRODUCTION = {
+  source: '渡口',
+  style: 'realistic',
+  lang: 'zh',
+  promptLang: 'en',
+  image: {
+    model: 'nanobanana2',
+    asset: { resolution: '2K', aspectRatio: '16:9' },
+    frame: { resolution: '2K', aspectRatio: '16:9' },
+  },
+  video: { model: 'MiniMax H3', aspectRatio: '16:9', resolution: '768p', variant: 'managed' },
+};
+
+eq(PRODUCTION_FILE, 'production.json', '文件名与 novel-setup 一致');
+ok(PRODUCTION_DEPTH >= 3, '向上找的层数够穿过 <工作目录>/<段>/<子目录>');
+eq(findProduction(here, 0), null, '本目录没有就找不到（层数 0）');
+eq(productionProblems(CAST, 'realistic', PRODUCTION).length, 0, '样例挂上生产参数零违规');
+eq(productionProblems(CAST, 'realistic', null).length, 0, '没有生产参数就整体跳过，不是失败');
+
+// 画风一致：漂了合成没法看
+{
+  const probs = productionProblems(CAST, 'ghibli', PRODUCTION);
+  eq(probs.length, 1, '画风与生产参数不一致必须报出来');
+  ok(probs[0].includes('realistic') && probs[0].includes('ghibli'), '两边的值都点名');
+}
+
+// 设定图画幅一致：版面写死在 image.sheet 第一句里
+{
+  const portrait = { ...PRODUCTION, image: { ...PRODUCTION.image, asset: { resolution: '2K', aspectRatio: '9:16' } } };
+  const probs = productionProblems(CAST, 'realistic', portrait);
+  eq(probs.length, 1, '生产参数改成竖版资产图，而提示词还写 16:9——必须报');
+  ok(probs[0].includes('9:16') && probs[0].includes('16:9'), '两个画幅都点名');
+}
+{
+  const cast = JSON.parse(JSON.stringify(CAST));
+  cast[0].image.sheet = cast[0].image.sheet.replaceAll('16:9', ''); // 一条提示词里写了两处
+  ok(productionProblems(cast, 'realistic', PRODUCTION)[0].includes('缺画幅'), '漏掉画幅与写错画幅分开报');
+}
+ok(KNOWN_ASPECTS.includes('16:9') && KNOWN_ASPECTS.includes('9:16'), '画幅词表覆盖横竖两种主流');
+{
+  eq(brief(['a', 'b']), 'a；b', '没超阈值就原样列');
+  ok(brief(Array.from({ length: 20 }, (_, i) => `x${i}`)).endsWith('……等 20 处'), '超了只列前几条 + 总数');
+}
 
 /* ---------------- render ---------------- */
 

@@ -110,7 +110,7 @@ node {baseDir}/scripts/novel-script.mjs render <剧名>-script.json --md \
   --outline <outline.json> --art <art.json> > <剧名>-script.md
 node {baseDir}/scripts/novel-script.mjs render <剧名>-script.json --html \
   --outline <outline.json> --art <art.json> --cast <cast.json> > script-report.html
-# 英文界面：加 --lang en（默认中文，也可跟 script.json 顶层的 lang 字段）
+# 英文界面：加 --lang en（默认中文，也可跟 script.json 顶层的 lang 字段，或工作目录根的 production.json）
 ```
 
 报告含：KPI 带（含台词占比）、时长仪表（每集条形打在目标区间带上，超欠标红）、分集剧本（一排两集，场次信息超过 300px 渐隐截断、点开展开）、场次总表、**台词本**（一排两个，按角色聚合、列表六行高可滚动、整组复制；给了 `--cast` 每个角色组头带**音色提示词**按钮——台词和音色一页配齐直接跑 TTS）、质量门面板、导出 JSON（下载的就是 script.json 原样）。
@@ -128,9 +128,10 @@ node {baseDir}/scripts/novel-script.mjs render <剧名>-script.json --html \
 
 ---
 
-## 四个 skill 的接力
+## 五个 skill 的接力
 
 ```
+novel-setup      → production.json （拿什么拍：模型、画幅、分辨率、画风）
 novel-outline    → outline.json （什么：结构与分集）
 novel-characters → cast.json    （谁：角色资产）
 novel-art        → art.json     （哪里 + 手里拿的：美术资产）
@@ -141,7 +142,7 @@ seed 吃 outline.json；validate/render 的 `--outline` `--art` 负责对账和�
 
 ## 边界
 
-- 报告界面内置中英（`--lang`，默认中文、或跟 script.json 的 `lang` 字段）；台词语言跟剧走
+- 报告界面内置中英（`--lang`，默认中文、或跟 script.json 的 `lang` 字段、或跟 `production.json`）；台词语言跟剧走
 - 时长是**估算不是秒表**——容差 ±15% 就是为此留的；`params.charsPerSecond` 按配音语速可调
 - `VO` 是画外音统一记号，谁的心声写在 `delivery` 里；台词本里 VO 单独成组
 - 不设每集场次上限——AI 换景不要钱，换景次数只进 KPI 统计不设门
@@ -152,7 +153,7 @@ seed 吃 outline.json；validate/render 的 `--outline` `--art` 负责对账和�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-154 项断言，不调模型、不花额度。10 道质量门每一道都有击穿用例。改完脚本先跑这个。
+159 项断言，不调模型、不花额度。10 道质量门每一道都有击穿用例。改完脚本先跑这个。
 
 ## 自带样例
 

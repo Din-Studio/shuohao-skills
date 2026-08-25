@@ -36,6 +36,14 @@ import {
   segSeconds,
   slug,
   validateStoryboard,
+  KNOWN_ASPECTS,
+  PRODUCTION_DEPTH,
+  PRODUCTION_FILE,
+  SKIP_PROD,
+  brief,
+  findProduction,
+  promptLangOf,
+  styleIdOf,
 } from './novel-storyboard.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -57,6 +65,21 @@ function eq(actual, expected, label) {
 }
 const clone = (x) => structuredClone(x);
 const gate = (doc, id, ctx = CTX) => gateReport(doc, ctx).find((g) => g.id === id);
+
+// 生产参数夹具：样例《渡口》是横屏半写实，参数照它配才是全绿基线
+const PRODUCTION = {
+  source: '渡口',
+  style: 'realistic',
+  lang: 'zh',
+  promptLang: 'en',
+  image: {
+    model: 'nanobanana2',
+    asset: { resolution: '2K', aspectRatio: '16:9' },
+    frame: { resolution: '2K', aspectRatio: '16:9' },
+  },
+  video: { model: 'MiniMax H3', aspectRatio: '16:9', resolution: '768p', variant: 'managed' },
+};
+const CTX_P = { ...CTX, production: PRODUCTION };
 
 /* ---------------- expandScript ---------------- */
 
@@ -116,7 +139,7 @@ eq(paramsOf({ params: { maxCutSeconds: 4 } }).maxCutSeconds, 4, '分镜上限可
 /* ---------------- 质量门：全绿基线 ---------------- */
 
 ok(gateReport(FIXTURE, CTX).every((g) => g.ok), '样例带全部上游全部门通过');
-eq(gateReport(FIXTURE, CTX).length, 17, '十七道门');
+eq(gateReport(FIXTURE, CTX).length, 19, '十九道门');
 {
   const gates = gateReport(FIXTURE, {});
   ok(gates.every((g) => g.ok), '不带上游也通过（对账门跳过）');
@@ -538,6 +561,110 @@ eq(GATE_LOG, '.gates.jsonl', '日志文件名固定');
   ok(pack.files.some((f) => f.path === 'out/E01-01/prompt.md'), '段文件夹跟着 --out 走');
 }
 
+// 投产包带上视频参数：下单时不用回头翻配置
+{
+  const pack = exportPack(FIXTURE, SCRIPT, { imageExists: () => true, production: PRODUCTION });
+  const mf = JSON.parse(pack.files.find((f) => f.path === 'manifest.json').content);
+  eq(mf.video.model, 'MiniMax H3', 'manifest 顶层带生视频模型');
+  eq(mf.video.aspectRatio, '16:9', 'manifest 顶层带 aspect_ratio');
+  eq(mf.video.resolution, '768p', 'manifest 顶层带 resolution');
+  eq(mf.video.variant, 'managed', 'manifest 顶层带模型变体——H3 的 metadata.h3_variant 是必填字段');
+  eq(mf.segments.length, 10, '段清单挪到 segments 字段下，顶层腾给视频参数');
+  eq(mf.source, '渡口', 'manifest 带剧名');
+  const p01 = pack.files.find((f) => f.path === 'E01-01/prompt.md');
+  ok(p01.content.includes('生成参数：MiniMax H3 · aspect_ratio 16:9 · resolution 768p · variant managed'), 'prompt.md 头部也写一份——单独拖一个文件夹去下单也够用');
+  ok(p01.content.indexOf('生成参数') < p01.content.indexOf('首帧 ='), '视频参数在图片对照表之前');
+}
+{
+  const pack = exportPack(FIXTURE, SCRIPT, { imageExists: () => true });
+  const mf = JSON.parse(pack.files.find((f) => f.path === 'manifest.json').content);
+  eq(mf.video, null, '没有生产参数就是 null，不编一个假的');
+  ok(!pack.files.find((f) => f.path === 'E01-01/prompt.md').content.includes('生成参数'), '没有参数就不写那一行');
+}
+
+/* ---------------- 生产参数（production.json） ---------------- */
+
+// 查找规则：从产物目录向上，工作目录根上不再往外爬
+{
+  eq(PRODUCTION_FILE, 'production.json', '文件名与 novel-setup 一致');
+  ok(PRODUCTION_DEPTH >= 3, '向上找的层数够穿过 <工作目录>/<段>/<投产包>');
+  eq(findProduction(here, 0), null, '本目录没有就找不到（层数 0）');
+  ok(findProduction('/', 0) === null || typeof findProduction('/', 0) === 'string', '爬到文件系统根不崩');
+}
+
+// 继承：没写就跟生产参数，写了以自己为准
+{
+  eq(styleIdOf({}, PRODUCTION), 'realistic', 'storyboard.json 没写画风就继承生产参数');
+  eq(styleIdOf({ style: 'ghibli' }, PRODUCTION), 'ghibli', '自己写了画风以自己为准（一致性交给门去查）');
+  eq(styleIdOf({}, null), DEFAULT_STYLE, '两边都没有就退回内置默认');
+  eq(promptLangOf({}, { promptLang: 'zh' }), 'zh', '提示词语言同样可继承');
+  eq(promptLangOf({}, null), 'en', '提示词语言默认英文——H3 官方口径');
+}
+
+// 全绿基线：样例挂上对得上的生产参数，19 道门全过
+{
+  const gates = gateReport(FIXTURE, CTX_P);
+  ok(gates.every((g) => g.ok), '样例挂上生产参数仍然全绿');
+  eq(gates.find((g) => g.id === 'production-style').detail, '', '画风门没有抱怨');
+  eq(gates.find((g) => g.id === 'frame-aspect').detail, '', '画幅门没有抱怨');
+}
+
+// 没挂载就明说跳过，不静默、不装查过
+{
+  const gates = gateReport(FIXTURE, CTX);
+  ok(gates.find((g) => g.id === 'production-style').detail.includes('跳过'), '没有生产参数时画风门明说跳过');
+  ok(gates.find((g) => g.id === 'frame-aspect').detail.includes('novel-setup'), '跳过时指路 /novel-setup');
+  ok(gates.find((g) => g.id === 'production-style').ok, '跳过视为通过——老项目照跑');
+}
+
+// production-style 击穿：画风漂了，合成没法看
+{
+  const doc = clone(FIXTURE);
+  doc.style = 'ghibli';
+  ok(!gate(doc, 'production-style', CTX_P).ok, '画风与生产参数不一致击穿 production-style');
+  ok(gate(doc, 'production-style', CTX_P).detail.includes('realistic'), '点名生产参数定的是哪一档');
+}
+{
+  const doc = clone(FIXTURE);
+  delete doc.style;
+  ok(gate(doc, 'production-style', CTX_P).ok, '自己没写画风不算冲突——继承，不报错');
+}
+
+// frame-aspect 击穿：竖屏片子却出了一批横屏分镜图
+{
+  const vertical = { ...PRODUCTION, image: { ...PRODUCTION.image, frame: { resolution: '2K', aspectRatio: '9:16' } }, video: { ...PRODUCTION.video, aspectRatio: '9:16' } };
+  const g = gate(FIXTURE, 'frame-aspect', { ...CTX, production: vertical });
+  ok(!g.ok, '成片竖屏而分镜图提示词写着 16:9，整批白出——必须拦');
+  ok(g.detail.includes('9:16'), '点名成片画幅');
+  ok(g.detail.includes('16:9'), '点名提示词里写错的那个画幅');
+}
+{
+  const doc = clone(FIXTURE);
+  doc.episodes[0].segments[0].cuts[0].frame = doc.episodes[0].segments[0].cuts[0].frame.replace(', 16:9', '');
+  ok(!gate(doc, 'frame-aspect', CTX_P).ok, '分镜图提示词漏掉画幅也击穿');
+  ok(gate(doc, 'frame-aspect', CTX_P).detail.includes('缺画幅'), '漏掉与写错分开报');
+}
+ok(KNOWN_ASPECTS.includes('16:9') && KNOWN_ASPECTS.includes('9:16'), '画幅词表覆盖横竖两种主流');
+// 整批错的门不能把详情刷成一堵墙
+{
+  eq(brief(['a', 'b']), 'a；b', '没超阈值就原样列');
+  ok(brief(Array.from({ length: 34 }, (_, i) => `x${i}`)).endsWith('……等 34 处'), '超了只列前几条 + 总数');
+  const vertical = { ...PRODUCTION, image: { ...PRODUCTION.image, frame: { resolution: '2K', aspectRatio: '9:16' } }, video: { ...PRODUCTION.video, aspectRatio: '9:16' } };
+  const d = gate(FIXTURE, 'frame-aspect', { ...CTX, production: vertical }).detail;
+  ok(d.endsWith('……等 34 处'), '34 个分镜全错时详情收口，不刷屏');
+  ok(!/E01-10/.test(d), '后面的分镜不再逐条列');
+}
+// 跳过语是英文报告的查表键，写死两处必然会漂——所以它是导出常量，这里盯住
+{
+  const g = gateReport(FIXTURE, CTX).find((x) => x.id === 'frame-aspect');
+  eq(g.detail, SKIP_PROD, '跳过语用的就是那个导出常量');
+  const en = renderHtml(FIXTURE, { ...CTX, lang: 'en' });
+  ok(en.includes('no production.json found'), '英文报告把跳过语也翻译了，没漏成中文');
+  ok(en.includes('Frame-prompt aspect matches the production parameters'), '英文报告有画幅门的标签');
+  ok(en.includes('Style matches the production parameters'), '英文报告有画风门的标签');
+}
+ok(!KNOWN_ASPECTS.some((a) => /^\d{2}:\d{2}$/.test(a)), '画幅词表里没有 00:03 这种形状，免得把台词时间戳当画幅');
+
 /* ---------------- validateStoryboard 结构检查 ---------------- */
 
 eq(validateStoryboard(FIXTURE, CTX).length, 0, '样例零违规');
@@ -606,7 +733,7 @@ ok(html.includes('分镜节奏带'), '01 分镜节奏带');
 ok(html.includes('分集分镜表'), '02 分集分镜表');
 ok(html.includes('生成批次单'), '03 生成批次单');
 ok(html.includes('配音对齐单'), '04 配音对齐单');
-ok(html.includes('✓ 质量门 17 / 17'), '页眉徽章全绿');
+ok(html.includes('✓ 质量门 19 / 19'), '页眉徽章全绿');
 ok(html.includes('class="rseg"'), '节奏带按段分组（粗分隔）');
 ok(html.includes('#seg-E01-01'), '节奏带段可跳转');
 ok(html.includes('主分镜图 · #1 未生成'), '主分镜图缺图时显示占位不装有');
@@ -666,7 +793,7 @@ ok(html.includes('老周'), 'html 里 ID 换成名字');
   const en = renderHtml(FIXTURE, { ...CTX, lang: 'en' });
   ok(en.includes('<html lang="en">'), 'en 报告的 html lang 属性跟着语言走');
   ok(en.includes('Export JSON'), 'en 界面：导出按钮英文');
-  ok(en.includes('Quality gates 17 / 17'), 'en 界面：页眉徽章英文');
+  ok(en.includes('Quality gates 19 / 19'), 'en 界面：页眉徽章英文');
   ok(en.includes('Cut rhythm strip'), 'en 界面：节奏带节标题英文');
   ok(en.includes('Segment cards'), 'en 界面：分镜表节标题英文');
   ok(en.includes('Generation batches'), 'en 界面：批次节标题英文');

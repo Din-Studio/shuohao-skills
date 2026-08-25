@@ -21,6 +21,13 @@ import {
   slug,
   PROP_SCALES,
   validateArt,
+  KNOWN_ASPECTS,
+  PRODUCTION_DEPTH,
+  PRODUCTION_FILE,
+  brief,
+  findProduction,
+  langOf,
+  SKIP_PROD,
 } from './novel-art.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -119,7 +126,87 @@ ok(castNamesOf({ characters: [] }).length === 0, '空 cast 不炸');
 
 eq(validateArt(FIXTURE, NAMES).length, 0, '自带样例通过校验（含角色名检查）');
 ok(gateReport(FIXTURE, NAMES).every((g) => g.ok), '样例全部质量门通过');
-eq(gateReport(FIXTURE).length, 11, '质量门共 11 道（场景 7 + 道具 4）');
+eq(gateReport(FIXTURE).length, 13, '质量门共 13 道（场景 7 + 道具 4 + 生产参数 2）');
+
+/* ---------------- 生产参数（production.json） ---------------- */
+
+// 样例《渡口》是横屏半写实，参数照它配才是全绿基线
+const PRODUCTION = {
+  source: '渡口',
+  style: 'realistic',
+  lang: 'zh',
+  promptLang: 'en',
+  image: {
+    model: 'nanobanana2',
+    asset: { resolution: '2K', aspectRatio: '16:9' },
+    frame: { resolution: '2K', aspectRatio: '16:9' },
+  },
+  video: { model: 'MiniMax H3', aspectRatio: '16:9', resolution: '768p', variant: 'managed' },
+};
+const pgate = (d, id, prod = PRODUCTION) => gateReport(d, NAMES, prod).find((g) => g.id === id);
+
+eq(PRODUCTION_FILE, 'production.json', '文件名与 novel-setup 一致');
+ok(PRODUCTION_DEPTH >= 3, '向上找的层数够穿过 <工作目录>/<段>/<子目录>');
+eq(findProduction(here, 0), null, '本目录没有就找不到（层数 0）');
+ok(gateReport(FIXTURE, NAMES, PRODUCTION).every((g) => g.ok), '样例挂上生产参数仍然全绿');
+
+// 没挂载就明说跳过，不静默、不装查过
+{
+  const gates = gateReport(FIXTURE, NAMES);
+  ok(gates.find((g) => g.id === 'production-style').detail.includes('跳过'), '没有生产参数时画风门明说跳过');
+  ok(gates.find((g) => g.id === 'sheet-aspect').detail.includes('novel-setup'), '跳过时指路 /novel-setup');
+  ok(gates.find((g) => g.id === 'sheet-aspect').ok, '跳过视为通过——老项目照跑');
+}
+
+// production-style 击穿
+{
+  const d = clone();
+  d.style = 'ghibli';
+  ok(!pgate(d, 'production-style').ok, '画风与生产参数不一致击穿 production-style');
+  ok(pgate(d, 'production-style').detail.includes('realistic'), '点名生产参数定的是哪一档');
+}
+{
+  const d = clone();
+  delete d.style;
+  ok(pgate(d, 'production-style').ok, '自己没写画风不算冲突（结构门另有一道管必填）');
+}
+
+// sheet-aspect 击穿：资产图版面写死在 image.sheet 第一句里
+{
+  const portrait = { ...PRODUCTION, image: { ...PRODUCTION.image, asset: { resolution: '2K', aspectRatio: '9:16' } } };
+  const g = pgate(FIXTURE, 'sheet-aspect', portrait);
+  ok(!g.ok, '生产参数改成竖版资产图，而提示词还写 16:9——必须拦');
+  ok(g.detail.includes('9:16') && g.detail.includes('16:9'), '两个画幅都点名');
+}
+{
+  const d = clone();
+  d.scenes[0].image.sheet = d.scenes[0].image.sheet.replace('16:9', '');
+  ok(!pgate(d, 'sheet-aspect').ok, '设定图提示词漏掉画幅也击穿');
+  ok(pgate(d, 'sheet-aspect').detail.includes('缺画幅'), '漏掉与写错分开报');
+}
+ok(KNOWN_ASPECTS.includes('16:9') && KNOWN_ASPECTS.includes('9:16'), '画幅词表覆盖横竖两种主流');
+// 跳过语是英文报告的查表键，写死两处必然会漂——所以它是导出常量，这里盯住
+{
+  eq(gateReport(FIXTURE, NAMES).find((g) => g.id === 'sheet-aspect').detail, SKIP_PROD, '跳过语用的就是那个导出常量');
+  const en = renderHtml(FIXTURE, 'en');
+  ok(en.includes('no production.json found'), '英文报告把跳过语也翻译了，没漏成中文');
+  ok(en.includes('Sheet layout aspect matches the production parameters'), '英文报告有画幅门的标签');
+  ok(en.includes('Style matches the production parameters'), '英文报告有画风门的标签');
+}
+{
+  eq(brief(['a', 'b']), 'a；b', '没超阈值就原样列');
+  ok(brief(Array.from({ length: 20 }, (_, i) => `x${i}`)).endsWith('……等 20 处'), '超了只列前几条 + 总数');
+}
+
+// 界面语言走继承不设门——它不产生任何浪费
+{
+  eq(langOf({}, null, { lang: 'en' }), 'en', '自己没写就跟生产参数');
+  eq(langOf({ lang: 'zh' }, null, { lang: 'en' }), 'zh', 'art.json 顶层优先于生产参数');
+  eq(langOf({ lang: 'zh' }, 'en', { lang: 'zh' }), 'en', '显式参数优先于一切');
+  eq(langOf({}, null, null), 'zh', '都没有就默认中文');
+  ok(renderHtml(FIXTURE, null, { lang: 'en' }).includes('lang="en"'), '报告界面跟着生产参数走');
+  ok(renderMarkdown(FIXTURE, null, { lang: 'en' }).includes('## Scene list'), 'Markdown 同样继承');
+}
 
 /* ---------------- 质量门逐项击穿 ---------------- */
 // 每一道门都要证明它真的会拦——不然就是永远为真的假测试
@@ -304,7 +391,7 @@ ok(/e\.key === 'Escape'/.test(html), 'Esc 关闭弹层');
   ok(withImg.includes('class="zoom" data-src="images/x-sheet.png"'), '出图后图片可点，弹层拿到地址');
   ok(withImg.includes('cursor:zoom-in'), '鼠标提示可放大');
 }
-eq((html.match(/<li class="ok">/g) || []).length, 11, '11 道质量门全 ✓');
+eq((html.match(/<li class="ok">/g) || []).length, 13, '13 道质量门全 ✓');
 ok(html.includes('gatepill pass'), '页眉徽章通过态');
 ok(html.includes('未提供 cast.json'), '报告如实标注角色名检查被跳过');
 

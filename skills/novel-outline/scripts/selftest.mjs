@@ -4,7 +4,8 @@
 //   node scripts/selftest.mjs
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -24,6 +25,9 @@ import {
   renderMarkdown,
   slug,
   validateOutline,
+  PRODUCTION_DEPTH,
+  PRODUCTION_FILE,
+  findProduction,
 } from './novel-outline.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -690,5 +694,20 @@ ok(enMd.includes('**[Hook]**') && !enMd.includes('**【钩子】**'), 'EN MD 钩
 }
 
 eq(DEFAULT_PER_VOLUME, 15, '默认每卷 15 章');
+
+/* ---------------- 生产参数（只取界面语言） ---------------- */
+
+eq(PRODUCTION_FILE, 'production.json', '文件名与 novel-setup 一致');
+ok(PRODUCTION_DEPTH >= 3, '向上找的层数够穿过 <工作目录>/<段>/<子目录>');
+eq(findProduction(here, 0), null, '本目录没有就找不到（层数 0）');
+{
+  const root = mkdtempSync(join(tmpdir(), 'novel-prod-'));
+  const deep = join(root, 'work', 'stage');
+  mkdirSync(deep, { recursive: true });
+  writeFileSync(join(root, 'work', PRODUCTION_FILE), '{"lang":"en"}');
+  eq(findProduction(deep), join(root, 'work', PRODUCTION_FILE), '从段目录向上找得到工作目录根的参数');
+  eq(findProduction(root), null, '工作目录之上找不到——不越界往用户主目录爬');
+  rmSync(root, { recursive: true, force: true });
+}
 
 console.log(`✓ ${passed} 项自测全部通过`);

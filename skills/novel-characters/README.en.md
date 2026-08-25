@@ -6,9 +6,9 @@ Feed it a novel or a short story, and get a complete design bible for every char
 
 - **Cast list** — who appears, how central they are, with every name a character is called by folded into one person
 - **Profile** — gender, age, standing, appearance, temperament, motivation, arc, relationships, each backed by **verbatim quotes from the source**
-- **Design prompts** — semi-realistic painterly direction, bilingual image prompt + negative prompt + style tags, ready for Midjourney / SD / GPT-Image
+- **Design prompts** — semi-realistic painterly direction, bilingual image prompt + negative prompt + style tags; `negative_prompt` is a first-class lingying field, passed through verbatim
 - **Voice prompts** — timbre, pitch, pace, accent, emotion, plus a voice-design prompt for Qwen3-TTS / ElevenLabs Voice Design
-- **A character model sheet** — **one per character**: a 16:9 image in three zones: an ID-photo-style bust on the left (~34%, the reference for the face design), a full-body turnaround top-right, and a strip of key-detail close-ups bottom-right. White background for clean cut-out, generated through codex's built-in image tool (optional)
+- **A character model sheet** — **one per character**: a 16:9 image in three zones: an ID-photo-style bust on the left (~34%, the reference for the face design), a full-body turnaround top-right, and a strip of key-detail close-ups bottom-right. White background for clean cut-out, generated through the lingying CLI (optional)
 - **Relationship map** — a whole-cast view inside the report: who is tied to whom, and how. Hover a character to light up every link they are part of, click to jump to their profile
 
 Outputs `cast.json`, a Markdown report, and a self-contained `report.html` you can just double-click.
@@ -33,6 +33,7 @@ A character model sheet (Shen Zhiwei, from the bundled sample story):
 In the pipeline the **outline sits upstream of the character bible**:
 
 ```
+novel-setup      → production.json (what you shoot with: model, aspect, resolution, style)
 novel-outline    → outline.json (what: structure & episodes, who is in)
 novel-characters → cast.json    (who: character assets)
 ```
@@ -167,7 +168,7 @@ node scripts/novel-characters.mjs slug "胡二爷"                  # filesystem
 - The top 30 characters by prominence are profiled by default, and **every one of them gets a sheet** — one call per character, so this is the slowest step on a large cast. Ask for a smaller number, or for leads only, if you want it shorter
 - **Art style can still vary across a cast**, since each character is generated independently. It used to drift badly under the old "flat vector cartoon" wording — one run produced anime-ish, semi-realistic and ink-wash results side by side. The explicit style presets fixed most of that, but not all of it. Feeding the first sheet back as a reference helps; see `references/sheet.md`
 
-> ⚠️ **If you have more than one codex installed, mind the version.** An older one fails outright with `requires a newer version of Codex` instead of degrading. The skill probes for the highest version it can find; if yours is simply old, run `npm i -g @openai/codex`.
+> ⚠️ **Image generation needs lingying credentials.** `~/.config/lingying/config.json` must carry at least `api_key`, plus `assethub_admin_token` if you attach reference images. Missing ones surface as a "缺少 API_KEY" error — report it verbatim rather than skipping silently: believing images were generated when they were not is worse than being told they were not.
 
 ## Files
 
@@ -175,12 +176,12 @@ node scripts/novel-characters.mjs slug "胡二爷"                  # filesystem
 SKILL.md                 the workflow the agent reads
 scripts/
   novel-characters.mjs   chunk / merge / assemble / validate / render / slug
-  selftest.mjs           355 assertions, never calls a model
+  selftest.mjs           368 assertions, never calls a model
 references/
   roster-pass.md         pass 1: scanning for characters
   profile-pass.md        pass 2: building a character sheet (8 hard rules)
   schema.md              sheet structure and which language each field takes
-  sheet.md               the codex contract for model-sheet generation
+  sheet.md               the lingying call contract for model-sheet generation
   report-style.md        design conventions for report.html
   style-presets.md       image style presets (realistic / ghibli)
 examples/
@@ -197,6 +198,6 @@ In `examples/渡口.txt` the peddler is only ever referred to by a nickname and 
 node scripts/selftest.mjs
 ```
 
-355 assertions across chunking, alias merging, assembly, localization, validation, and rendering. No model calls, no quota, runs in about a second. Run it before anything else after touching the scripts.
+368 assertions across chunking, alias merging, assembly, localization, validation, the two production-parameter checks, and rendering. No model calls, no quota, runs in about a second. Run it before anything else after touching the scripts.
 
 **Only tested on macOS with Node 24.** There is no platform-specific code, so Linux and older Node releases should be fine, but that is **unverified**.

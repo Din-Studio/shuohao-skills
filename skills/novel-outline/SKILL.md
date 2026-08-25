@@ -126,7 +126,7 @@ node {baseDir}/scripts/novel-outline.mjs render <书名>-outline.json --md   > <
 node {baseDir}/scripts/novel-outline.mjs render <书名>-outline.json --html > outline-report.html
 ```
 
-报告界面默认中文；用户要英文界面就加 `--lang en`（或在 outline.json 顶层写 `lang` 字段，`--lang` 优先）。只翻译界面文案，数据内容（爽点类型、梗概、质量门文案）原样出。
+报告界面默认中文；用户要英文界面就加 `--lang en`（或在 outline.json 顶层写 `lang` 字段，也可以在工作目录根的 `production.json` 里一处定死；优先级 `--lang` > outline.json > production.json > 中文）。只翻译界面文案，数据内容（爽点类型、梗概、质量门文案）原样出。
 
 report 里自带：KPI 带、关键决策（拍板三件事，大爆点列表和角色位统计自动算）、爽点时间轴（空档标在轴上，超阈值变红）、每集调度矩阵、场景概览卡、资产量折算、质量门（✓/✗ 烘进页面，未过弹病灶横幅）、导出 JSON 按钮（下载的就是 outline.json 原样）。
 
@@ -162,7 +162,7 @@ node {baseDir}/scripts/novel-outline.mjs render <outline.json> --html > outline-
 
 - 单次上限 60 卷（每卷 15 章约 900 章）。超了明确报 `truncated`，不静默截断
 - 阈值是参数不是圣旨：平台不同就用 `params.thresholds` 覆盖，别改代码
-- 报告界面内置中英（`--lang`，默认中文、或跟 outline.json 的 `lang` 字段）：界面文案与质量门标签翻译，数据内容（爽点类型、梗概、人名）与门的失败详情保持原文
+- 报告界面内置中英（`--lang`，默认中文、或跟 outline.json 的 `lang` 字段、或跟 `production.json`）：界面文案与质量门标签翻译，数据内容（爽点类型、梗概、人名）与门的失败详情保持原文
 - 五件套的第五件（资产清单）永远是算出来的，模型手写必漏
 
 ## 自测
@@ -171,7 +171,7 @@ node {baseDir}/scripts/novel-outline.mjs render <outline.json> --html > outline-
 node {baseDir}/scripts/selftest.mjs
 ```
 
-249 项断言，不调模型、不花额度。14 道质量门每一道都有击穿用例——证明它真的会拦。改完脚本先跑这个。
+254 项断言，不调模型、不花额度。14 道质量门每一道都有击穿用例——证明它真的会拦。改完脚本先跑这个。
 
 ## 自带样例
 

@@ -3,8 +3,8 @@
 // Zero dependencies on purpose: the skill must work in any directory
 // without an npm install. Node 18+ (stdlib only).
 
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /* ------------------------------------------------------------------ */
@@ -58,6 +58,37 @@ export const DEFAULT_THRESHOLDS = {
  * 锚点：6 集微型剧 5 个；60 集 10 个；110 集以上封顶 15。
  * `params.thresholds.maxPrimaryScenes` 显式给了就用给的，动态值只是缺省。
  */
+
+/* ------------------------------------------------------------------ */
+/* 生产参数（production.json）                                          */
+/* ------------------------------------------------------------------ */
+/*
+ * novel-setup 产出的一份 JSON，住在**工作目录根**。本 skill 不出图，
+ * 只从里面取一样东西：报告界面语言。
+ *
+ * 语言走**继承不设门**——优先级 --lang > 本 JSON 顶层 lang > 生产参数 > zh。
+ * 改一次显示语言不该被拦，它不产生任何浪费；画风、画幅那种改了要整批重出图
+ * 的参数才设门，那两道在出图的三个 skill 里。
+ *
+ * 这十几行查找逻辑与 novel-setup 那边是**有意重复**的：本 skill 必须能整个
+ * 拷走单独跑，不 import 任何兄弟 skill 的代码。
+ */
+
+export const PRODUCTION_FILE = 'production.json';
+export const PRODUCTION_DEPTH = 5;
+
+export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
+  let dir = resolve(fromDir);
+  for (let i = 0; i <= depth; i++) {
+    const hit = resolve(dir, PRODUCTION_FILE);
+    if (existsSync(hit)) return hit;
+    const up = dirname(dir);
+    if (up === dir) break; // 到根了
+    dir = up;
+  }
+  return null;
+}
+
 export function primarySceneCap(episodes) {
   if (!Number.isInteger(episodes) || episodes < 1) return 8; // 没有集数信息给个居中值
   return Math.max(5, Math.min(15, 4 + Math.ceil(episodes / 10)));
@@ -1635,8 +1666,17 @@ function main(argv) {
     const [path] = rest;
     if (!path) throw new Error('用法：render <outline.json> [--html|--md] [--lang zh|en]');
     const outline = readJson(path);
-    // 语言优先级：--lang > outline.json 顶层 lang 字段 > zh（render 函数内解析）
-    const lang = flag(rest, '--lang', null);
+    // 语言优先级：--lang > outline.json 顶层 lang 字段 > 生产参数 > zh
+    const langFlag = flag(rest, '--lang', null);
+    let lang = langFlag ?? outline?.lang ?? null;
+    if (!lang) {
+      const hit = findProduction(resolve(path, '..'));
+      const inherited = hit ? readJson(hit)?.lang : null;
+      if (inherited) {
+        lang = inherited;
+        console.error(`↳ 报告界面语言 ${inherited} 继承自 ${hit}`);
+      }
+    }
     process.stdout.write((rest.includes('--html') ? renderHtml(outline, lang) : renderMarkdown(outline, lang)) + '\n');
     return;
   }

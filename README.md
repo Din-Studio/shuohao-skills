@@ -11,21 +11,22 @@
 
 # shuohao-skills
 
-**AI 短剧制作的 skill 集合**：从一本小说到直接喂生成管线的制作素材——拆角色、排大纲、出场景与道具设定、写剧本、切分镜。给 AI 编码 agent 用，**Claude Code 和 codex 都能跑**。
+**AI 短剧制作的 skill 集合**：从一本小说到直接喂生成管线的制作素材——定生产参数、拆角色、排大纲、出场景与道具设定、写剧本、切分镜。给 AI 编码 agent 用，**Claude Code 和 codex 都能跑**。
 
-整条管线长这样——**改编大纲收敛结构，剧本、场景、角色三者同步迭代，分镜只做输出不做新决定**：
+整条管线长这样——**生产参数先定死画幅与模型，改编大纲收敛结构，剧本、场景、角色三者同步迭代，分镜只做输出不做新决定**：
 
 <img src="assets/pipeline.webp" alt="AI 短剧制作流程图" width="680">
 
 | Skill | 做什么 |
 | --- | --- |
+| [**novel-setup**](skills/novel-setup) | 定生产参数：生图模型、资产图与分镜图的分辨率档位与比例、生视频模型、视频 aspect_ratio 与 resolution，外加画风与两种语言。一次落成工作目录根的 `production.json`，后面四个 skill 出图与下单前向上找到它照着做。分辨率与比例存的就是 lingying 的**枚举值**（`2K`、`768p`、`16:9`……），原样填进 `--input_data`，不折算像素；7 道质量门，最值钱的一道是「分镜图比例 = 视频比例」 |
 | [**novel-outline**](skills/novel-outline) | 把一本小说改编成短剧大纲五件套：改编说明、人物表、爽点表、分集梗概、资产清单（含叙事道具表）。14 道质量门全部脚本检查，支持已有大纲的体检模式 |
 | [**novel-characters**](skills/novel-characters) | 把大纲定下的角色做成角色设定集：人物画像、形象提示词、音色提示词、角色设定图。吃 outline.json 预填角色表，报告语言与出图风格可选 |
-| [**novel-art**](skills/novel-art) | 给 AI 短剧出美术设定集（场景 + 叙事道具）：一致性锚点、光照与状态变体、尺度参照、无人无手白底提示词。吃 outline.json 预填清单，11 道质量门全部脚本检查 |
+| [**novel-art**](skills/novel-art) | 给 AI 短剧出美术设定集（场景 + 叙事道具）：一致性锚点、光照与状态变体、尺度参照、无人无手白底提示词。吃 outline.json 预填清单，13 道质量门全部脚本检查 |
 | [**novel-script**](skills/novel-script) | 给 AI 短剧写剧本：场次 + 节拍流（动作与台词交替），逐集时长按语速确定性折算，钩子前 3 拍冷开场兑现是门，台词本按角色聚合带音色提示词直接对接 TTS。10 道质量门全部脚本检查 |
-| [**novel-storyboard**](skills/novel-storyboard) | 给 AI 短剧出分镜：段（一次生成 ≤15 秒）→ 分镜（2–5 秒硬门）→ 分镜图（主图钉 0.00 秒、子图钉各自切点），MiniMax H3 提示词的对齐指令与切点时刻逐字对账；分镜图拿设定图当参考图真出图，export 一键出投产包。17 道质量门全部脚本检查 |
+| [**novel-storyboard**](skills/novel-storyboard) | 给 AI 短剧出分镜：段（一次生成 ≤15 秒）→ 分镜（2–5 秒硬门）→ 分镜图（主图钉 0.00 秒、子图钉各自切点），MiniMax H3 提示词的对齐指令与切点时刻逐字对账；分镜图拿设定图当参考图真出图，export 一键出投产包（顶层带视频参数），再走 `lingying video create` 下单生视频。19 道质量门全部脚本检查 |
 
-**五个 skill 的报告都支持中英双语界面**：默认中文，`render --lang en` 出全英文报告（数据内容保持原文）。
+**五个创作 skill 的报告都支持中英双语界面**：默认中文，`render --lang en` 出全英文报告（数据内容保持原文）。界面语言也可以在 `production.json` 里一处定死。
 
 ## 合成一张单页
 
@@ -35,7 +36,7 @@
 node scripts/report.mjs --from <demo目录> --out report.html
 ```
 
-`--from` 按下面的[工作目录约定](#端到端-demo-工作目录约定)自动发现五份 json；也可以逐个指定（`--outline` `--cast` `--art` `--script` `--storyboard`）。只跑了角色那一段就只有一个面板，不报错。
+`--from` 按下面的[工作目录约定](#端到端-demo-工作目录约定)自动发现五份 json；也可以逐个指定（`--outline` `--cast` `--art` `--script` `--storyboard`）。只跑了角色那一段就只有一个面板，不报错。`production.json` 不参与合成——它是参数不是产物，`novel-setup show` 就够看。
 
 它是**组装器，不是独立 skill**：不 import 任何 skill 的代码，而是调各自的 `render --html` 拿产物再拼装。所以五个 skill 一行不改、各自仍然独立可跑、可以单独拷走；某个 skill 改了渲染，这边自动跟上。
 
@@ -51,7 +52,7 @@ node scripts/report.mjs --from <demo目录> --out report.html
 node scripts/report-selftest.mjs   # 92 项断言，不起浏览器
 ```
 
-丢一本小说进去，出这五套：
+丢一本小说进去，出这五套（技术参数由 `novel-setup` 先定死）：
 
 **novel-outline · 短剧改编大纲**
 
@@ -101,8 +102,8 @@ ln -s "$PWD/skills/novel-characters" ~/.codex/skills/novel-characters
 | | 必需？ | 说明 |
 | --- | --- | --- |
 | **Node** | 必需 | ≥ 18。skill 的脚本只用标准库，**没有 npm 依赖，不需要 install** |
-| **模型额度** | 必需 | 用你当前会话的额度，**不需要任何 API key** |
-| **codex CLI** | 可选 | 出图才用得上（走内置 `$imagegen`）。没有就跳过出图，其余产出照常 |
+| **模型额度** | 必需 | 写文本的部分用你当前会话的额度，**不需要任何 API key** |
+| **lingying CLI** | 可选 | **出图与生视频**才用得上。安装在 PATH 里（或放在工作目录的 `bin/lingying`），凭证写进 `~/.config/lingying/config.json`（`api_key`；挂参考图还要 `assethub_admin_token`）。没有就跳过出图与下单，其余产出照常 |
 
 ## 仓库约定
 
@@ -139,13 +140,14 @@ for f in skills/*/scripts/selftest.mjs; do node "$f"; done
 
 ```
 <demo>/
+├── production.json ← novel-setup 产出：生产参数，**住在根目录**，下游向上找它
 ├── outline/       ← novel-outline 产出：<剧>-outline.json / .md / -report.html
 ├── characters/    ← novel-characters 产出：<剧>-cast.json / .md / -report.html
 ├── art/           ← novel-art 产出：<剧>-art.json / .md / -report.html
 ├── script/        ← novel-script 产出：<剧>-script.json / .md / -report.html
 ├── storyboard/    ← novel-storyboard 产出：<剧>-storyboard.json / .md / -report.html
 │   ├── manifest.json  ← export 产出
-│   ├── E01-01/        ← export 的分镜投产包，每段一个文件夹（prompt.md + f1..fN.png）
+│   ├── E01-01/        ← export 的分镜投产包，每段一个文件夹（prompt.md + f1..fN.png + 下单后的 video.mp4）
 │   ├── E01-02/
 │   └── …
 ├── docs/          ← 自己写的使用说明、PR 草稿等（与机器产物解耦）
@@ -154,9 +156,10 @@ for f in skills/*/scripts/selftest.mjs; do node "$f"; done
 
 约定要点：
 
+- **`production.json` 住在根目录，不进子目录**——它是整部剧共用的技术参数，四个下游 skill 从自己的输出目录**向上最多 5 层**找它。放进某个子目录，别的 skill 就找不到了
 - **每个 skill 一个目录**，装它自己的 `json` / `md` / `html` 三件套，加新角色/场景只往对应目录放，不污染根目录
 - **分镜的 `manifest.json` 与 `E01-0x/` 投产包一起归 `storyboard/`**，就是 `export --out storyboard` 的原样产出。**段文件夹不要再往下收一层**（例如收进 `segments/`）：分镜报告里的图走相对路径 `<段号>/f<切序>.png`，报告 html 与段文件夹必须同级，多套一层目录，报告里的图会**静默**全变成「未生成」占位——实测把 10 个段文件夹移进 `segments/` 之后，内嵌图从 2 张变 0 张，报告不会报错
-- **报告 HTML 与生成的图/视频可由 `render` 重跑再生**——进版本控制时建议只提交 `json` / `md` / `docs` / `scripts`，报告 HTML 和分镜 `png` 用 `.gitignore` 排除，保持仓库轻量
+- **报告 HTML 可由 `render` 重跑再生，图与视频可按提示词重出**——进版本控制时建议只提交 `json` / `md` / `docs` / `scripts`，报告 HTML 和段文件夹里的 `png` / `mp4` 用 `.gitignore` 排除，保持仓库轻量
 - 用法类文档（如各报告的使用说明）放 `docs/`，与 skill 自动生成的产物分开，方便单独维护
 
 > 这套结构来自《渡口》端到端 demo 的实际归档经验，demo 的工作目录在本仓库之外，这里只固化约定。

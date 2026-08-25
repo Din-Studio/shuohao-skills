@@ -1,14 +1,15 @@
 ---
 name: novel-art
-version: 1.2.0
+version: 1.4.0
 description: |
   给 AI 短剧出美术设定集（场景 + 叙事道具）：场景的设计意图、一致性锚点、光照时段变体、
   空景提示词；道具的戏剧功能、状态变体、尺度参照、白底无手提示词。
   产出 art.json + Markdown + 单页评审报告（含导出 JSON）。
   为 AI 生成而设计，不是实拍——环境和道具都是生成资产，交付的是让它们跨集长一样的一致性方案；
-  11 道质量门全部由脚本确定性检查（锚点 3–5、无人无手、白底可抠、尺度短语、提示词英文……）。
-  有 novel-outline 的 outline.json 就用 seed 预填场景清单与出现集；出图走 codex 内置 $imagegen（可选）。
-  零依赖、零 API key，用当前会话额度。
+  13 道质量门全部由脚本确定性检查（锚点 3–5、无人无手、白底可抠、尺度短语、提示词英文……，
+  其中 2 道读工作目录根的 production.json：画风与设定图画幅，没有就明说跳过）。
+  有 novel-outline 的 outline.json 就用 seed 预填场景清单与出现集；出图走 lingying（灵影网关）CLI（可选）。
+  零依赖、零 npm；出图要 lingying 的 api_key。
   Use when asked to 场景设定、出场景、环境设定集、场景一致性、scene bibles for AI short drama。
 allowed-tools:
   - Read
@@ -32,7 +33,7 @@ metadata:
     bins:
       - node          # >= 18，只用标准库，无 npm 依赖
     optional:
-      - codex         # 有才出环境设定图；没有就只交提示词，其余照常
+      - lingying      # 有才出环境设定图；没有就只交提示词，其余照常
   runtimes:
     - claude-code
     - codex
@@ -70,6 +71,10 @@ metadata:
 
 有 cast.json（novel-characters 的产出）也带上——校验「提示词不含角色名」要用。
 
+**生产参数不用挂载，脚本自己找。** `production.json`（`novel-setup` 的产出）住在工作目录根，`validate` / `render` 都会从 art.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「2 道门跳过」——不静默。
+
+找到了画风就以它为准（上面那句「跟角色 skill 保持同一档」由脚本查了），设定图版面的画幅也必须与 `image.asset.aspectRatio` 一致。出图用 `image.model` + `image.asset.resolution`（**档位就是 lingying 收的 `resolution` 枚举值**，原样进 `--input_data`，不折算像素；一行拿到拼好的参数：`novel-setup resolve --for art`）。老项目没有这份文件照跑；临时绕过用 `--no-production`，用了会明说。
+
 ### Step 1 — seed 骨架（有 outline.json 才有这步）
 
 ```bash
@@ -99,15 +104,16 @@ node {baseDir}/scripts/novel-art.mjs seed <outline.json> > <workdir>/art.json
 node {baseDir}/scripts/novel-art.mjs validate <art.json> --cast <cast.json>
 ```
 
-11 道质量门全是代码。场景 + 共用 7 道：锚点 3–5、光照状态 ≥1、**无人**、提示词全英文、不含角色名（给了 --cast 才查）、变体引用完整、风格与反向词匹配。道具专属 4 道：**状态 ≥1**、**尺度短语写进提示词**、**反向词禁手**、**设定图纯白背景**。
+13 道质量门全是代码。场景 + 共用 7 道：锚点 3–5、光照状态 ≥1、**无人**、提示词全英文、不含角色名（给了 --cast 才查）、变体引用完整、风格与反向词匹配。道具专属 4 道：**状态 ≥1**、**尺度短语写进提示词**、**反向词禁手**、**设定图纯白背景**。生产参数 2 道：**画风与生产参数一致**、**设定图版面画幅与生产参数一致**（找不到 production.json 就明说跳过）。
 
 **有违规逐条修，改完重跑，直到通过。**
 
 ### Step 4 — 出图（可选）
 
-场景和道具各一张 16:9 设定图，版面都是**主视角大图 + 底部和右侧的 L 形细节边框**。场景：标准取景 + 第一个光照状态，细节格是锚点特写。道具：白底三四分之一主视角（主状态），细节格是锚点特写 + 其他状态 + 侧面。读 `{baseDir}/references/sheet.md` 照调用契约做，要点：
+场景和道具各一张设定图（版面画幅按 `production.json` 的 `image.asset.aspectRatio`，默认 16:9），版面都是**主视角大图 + 底部和右侧的 L 形细节边框**。场景：标准取景 + 第一个光照状态，细节格是锚点特写。道具：白底三四分之一主视角（主状态），细节格是锚点特写 + 其他状态 + 侧面。读 `{baseDir}/references/sheet.md` 照调用契约做，要点：
 
-- **没有 codex 就整步跳过**，只交提示词
+- **没有 lingying 就整步跳过**，只交提示词
+- **出图参数从 `production.json` 来**：`image.model` 传 `--model`，`image.asset.resolution` 与 `image.asset.aspectRatio` 原样进 `--input_data` 的 `resolution` / `aspect_ratio`——**提示词里一个像素都不写**。一行拿到拼好的参数：`novel-setup resolve --for art`
 - **全图无人**；道具图另加**无手**、**纯白背景**，出现人影或手就重生成
 - **变体场景拿母场景成图当参考图**（`-i` + stdin）——变体机制的意义就在这
 - 一个场景一次调用绝不批量；单个失败跳过不阻断
@@ -120,7 +126,7 @@ node {baseDir}/scripts/novel-art.mjs render <剧名>-art.json --md   > <剧名>-
 node {baseDir}/scripts/novel-art.mjs render <剧名>-art.json --html > art-report.html
 ```
 
-报告界面默认中文；用户要英文界面就加 `--lang en`（或在 art.json 顶层写 `"lang": "en"`，`--lang` 优先）。`render` 自动去 `images/<slug>-sheet.png` 找图（场景和道具都找），**先出图再 render**。报告含：KPI 带、场景清单、场景设定卡、道具清单、道具设定卡（锚点核对表 / 状态变体 / 提示词包全带复制按钮）、质量门面板、导出 JSON（下载的就是 art.json 原样）。
+报告界面默认中文；用户要英文界面就加 `--lang en`（或在 art.json 顶层写 `"lang": "en"`，也可以在 `production.json` 里一处定死；优先级 `--lang` > art.json > production.json > 中文）。`render` 自动去 `images/<slug>-sheet.png` 找图（场景和道具都找），**先出图再 render**。报告含：KPI 带、场景清单、场景设定卡、道具清单、道具设定卡（锚点核对表 / 状态变体 / 提示词包全带复制按钮）、质量门面板、导出 JSON（下载的就是 art.json 原样）。
 
 汇报一句话说清：几个场景（主场景/变体各几）、几件道具、锚点总数、出图数、报告路径；没过的门和没出的图明说。
 
@@ -132,14 +138,15 @@ node {baseDir}/scripts/novel-art.mjs render <剧名>-art.json --html > art-repor
 ├── <剧名>-art.md
 ├── art-report.html                ← 双击就能开
 └── images/
-    └── <slug>-sheet.png           ← 有 codex 才有
+    └── <slug>-sheet.png           ← 有 lingying 才有
 ```
 
 ---
 
-## 三个 skill 的接力
+## 四个 skill 的接力
 
 ```
+novel-setup      → production.json （拿什么拍：模型、画幅、分辨率、画风）
 novel-outline    → outline.json （什么：结构与分集）
 novel-characters → cast.json    （谁：角色资产）
 novel-art        → art.json     （哪里 + 手里拿的：美术资产）
@@ -151,7 +158,7 @@ seed 吃 outline.json 的场景与道具两块（大纲没有 `props` 时道具�
 
 - 报告界面内置中英（`--lang`，默认中文、或跟 art.json 的 `lang` 字段）；出图提示词永远英文
 - 画风要跟角色 skill 同档，别一半写实一半动画
-- 出图只走 codex built-in `$imagegen`，不碰要 API key 的 CLI fallback
+- 出图只走 lingying：`image create` 提交、`task get` 轮询、`curl` 落盘。**轮询必须读 `data.status`**，响应里的 `"message": "success"` 恒为 success
 - 场景数量不设硬上限——上限在 novel-outline 的主场景门那里管；这里管的是每个资产的质量
 - 道具只收叙事道具，3–8 件为宜——每多一件就多一份跨集一致性维护
 
@@ -161,7 +168,7 @@ seed 吃 outline.json 的场景与道具两块（大纲没有 `props` 时道具�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-158 项断言，不调模型、不花额度。11 道质量门每一道都有击穿用例。改完脚本先跑这个。
+185 项断言，不调模型、不花额度。13 道质量门每一道都有击穿用例。改完脚本先跑这个。
 
 ## 自带样例
 

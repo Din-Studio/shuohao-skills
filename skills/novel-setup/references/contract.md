@@ -1,0 +1,125 @@
+# 下游契约 · 五个 skill 怎么用这份参数
+
+这份文档定义 `production.json` 与下游的关系。**下游不 import 本 skill 的任何代码**——每个 skill 都要能整个拷走单独跑，所以查找逻辑各自实现（十几行），读到的是同一份 JSON。
+
+## 查找规则
+
+从**自己的输出目录**向上找 `production.json`，最多 5 层，找到第一份就用。
+
+```
+<工作目录>/
+├── production.json      ← 住在这里
+├── outline/
+├── characters/          ← 从这里向上 1 层找到
+├── art/
+├── script/
+└── storyboard/
+    └── E01-01/          ← 从这里向上 2 层也找得到
+```
+
+5 层是算过的：`<工作目录>/<段目录>/<投产包目录>` 最深两层，留三层余量，又不至于爬到用户主目录去。
+
+## 找不到怎么办
+
+**明说跳过，不静默降级。** 老项目、单跑某一段的场合都可能没有这份文件，那时下游照旧用自己的内置默认值，但必须在校验输出和汇报里说清哪几道门跳过了。
+
+> ⚠️ 未找到 production.json，2 道参数门跳过（画风一致、画幅一致）。跑 `/novel-setup` 生成一份可以打开这些门。
+
+装作查过比没查更坏。
+
+## 找到了就必须遵循
+
+分两类，界线是**改了要不要重出图**：
+
+### 会导致重出图的 —— 设门，不可绕过
+
+| 参数 | 谁查 | 查什么 |
+| --- | --- | --- |
+| `style` | novel-characters / novel-art / novel-storyboard | 产物 JSON 的 `style` 必须与参数一致。画风漂了 = 角色是吉卜力、场景是半写实，合成没法看，整套设定图白出 |
+| `image.frame.aspectRatio` | novel-storyboard | 每条分镜图提示词里的比例短语必须是这个值。写死 `16:9` 却要拍竖屏 = 一集三四十格全白出 |
+| `image.asset.aspectRatio` | novel-characters / novel-art | 设定图版面的画幅短语必须是这个值 |
+| `image.asset.resolution` / `image.frame.resolution` | 出图那一步 | 出图调用的 `--input_data` 必须带这个档位。它就是 lingying 的 `resolution` 枚举值，原样填，不折算 |
+
+这几道门在下游是**自动开的**：只要找得到 `production.json` 就查，没有开关。
+
+### 只影响阅读的 —— 继承，不设门
+
+`lang`（报告界面语言）走继承，优先级：
+
+```
+--lang 命令行参数  >  产物 JSON 顶层的 lang 字段  >  production.json 的 lang  >  内置默认 zh
+```
+
+`promptLang` 同理（novel-storyboard 用）。改一次显示语言不该被拦下来——它不产生任何浪费。
+
+## 每个 skill 读哪几个字段
+
+| skill | 读 | 用在哪 |
+| --- | --- | --- |
+| **novel-outline** | `lang` | `render` 的界面语言缺省值 |
+| **novel-characters** | `style`、`lang`、`image.model`、`image.asset.*` | 校验画风与版面画幅一致；出角色设定图时的模型与档位 |
+| **novel-art** | `style`、`lang`、`image.model`、`image.asset.*` | 校验画风与版面画幅一致；出场景与道具设定图时的模型与档位 |
+| **novel-script** | `lang` | `render` 的界面语言缺省值 |
+| **novel-storyboard** | 全部 | 校验画风一致、分镜图比例一致；出分镜图时的模型与档位；`export` 把视频参数写进投产包 |
+
+`resolve` 命令把每个阶段要的东西一次给全：
+
+```bash
+node {baseDir}/scripts/novel-setup.mjs resolve --for storyboard
+```
+
+```json
+{
+  "stage": "storyboard",
+  "what": "分镜图",
+  "style": "realistic",
+  "lang": "zh",
+  "cli": "lingying",
+  "model": "nanobanana2",
+  "resolution": "2K",
+  "aspectRatio": "9:16",
+  "inputData": { "aspect_ratio": "9:16", "resolution": "2K" },
+  "command": "lingying image create --model \"nanobanana2\" --input_data '<JSON>' --json"
+}
+```
+
+`resolution` 与 `aspectRatio` 是原样的真源；**`inputData` 是拼好的 lingying 参数**——补一个 `prompt`（要参考图再补 `images`）就能提交。省得每个 skill 各拼各的，拼法一漂就又是一处不一致。
+
+## 出图调用怎么带上参数
+
+**档位与比例是 lingying 的结构化字段，不是提示词的一部分。**直接把 `resolve` 给的 `inputData` 展开进 `--input_data`，补上 `prompt`：
+
+```json
+{
+  "prompt": "<纯粹的图像描述，不写像素、不写调用指令>",
+  "aspect_ratio": "9:16",
+  "resolution": "2K",
+  "negative_prompt": "<反向提示词，独立字段>",
+  "images": ["<参考图 URL，由 lingying upload 换来>"]
+}
+```
+
+三件事值得单独记住：
+
+- **提示词里一个像素都不写。**以前档位要折成像素、再拼一句 `Render at 1152x2048 (9:16).` 塞进提示词末尾——那一层整个没有了，也就没有了「拼法漂了」这类问题。
+- **反向提示词是一等字段**（`negative_prompt`），不要再塞回正向提示词。
+- **参考图只收 URL**：本地设定图先 `lingying upload <路径>` 换成 URL。它按内容去重，同一张图整集复用同一个 URL。
+
+档位或比例不在该模型的枚举里，网关会在提交那一刻拒绝（`input validation failed`）。所以 `novel-setup` 把这件事提前到定参数时查——`model-caps` 门。
+
+## 视频参数怎么落地
+
+`novel-storyboard` 的 `export` 把整个 `video` 对象（`model` / `aspectRatio` / `resolution` / `variant`）写进两处：
+
+- `manifest.json` 的顶层 `video` 字段
+- 每段 `prompt.md` 的头部对照表
+
+下单时参数就在投产包里，不用再回头翻配置。**`variant` 一起带上**——`MiniMax H3` 的 `metadata.h3_variant` 是必填字段，少了它整集提交不出去。
+
+段时长要折成整数秒再下单（模型收的是区间内的整数）：
+
+```bash
+node {baseDir}/scripts/novel-setup.mjs duration 12.5 --model "MiniMax H3"
+```
+
+下单的完整契约见 `novel-storyboard/references/video-order.md`。

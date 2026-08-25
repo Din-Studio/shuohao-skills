@@ -14,11 +14,12 @@ Outputs `art.json`, a Markdown report, and a self-contained `art-report.html`. R
 
 ## The quality gates are code
 
-Same stance as the other two skills: **a checklist the model grades itself on is worthless.** Eleven deterministic gates — anchors 3–5 (scenes and props alike), lighting states ≥1 per scene, people banned in negatives everywhere, all prompts English, no character names (checked with `--cast`, explicitly reported as skipped without it), variant references complete, style matching its negative prompt, plus four prop-specific gates: **states ≥1**, **scale phrase present in prompts**, **hands banned in negatives**, **pure white background in the sheet**. The selftest defeats every gate on purpose.
+Same stance as the other five skills: **a checklist the model grades itself on is worthless.** Thirteen deterministic gates — anchors 3–5 (scenes and props alike), lighting states ≥1 per scene, people banned in negatives everywhere, all prompts English, no character names (checked with `--cast`, explicitly reported as skipped without it), variant references complete, style matching its negative prompt, plus four prop-specific gates: **states ≥1**, **scale phrase present in prompts**, **hands banned in negatives**, **pure white background in the sheet**, plus two that read the `production.json` at the work-directory root (`novel-setup`'s output): **style matches the production parameters** and **sheet layout aspect matches the production parameters** — both explicitly reported as skipped when that file is absent. The selftest defeats every gate on purpose.
 
-## The three-skill relay
+## The relay
 
 ```
+novel-setup      → production.json (what you shoot with: model, aspect, resolution, style)
 novel-outline    → outline.json (what: structure & episodes)
 novel-characters → cast.json    (who: character assets)
 novel-art        → art.json     (where & what they hold: art assets)
@@ -39,7 +40,7 @@ node scripts/novel-art.mjs styles
 
 ## Image generation (optional)
 
-Via codex's built-in `$imagegen`, zero API keys. One 16:9 sheet per scene and per prop, both using the **master-view + L-shaped detail border** layout (bottom and right edges). Scene details = anchor close-ups; prop details = anchor close-ups + other states + a side profile. Scenes are empty of people; props additionally ban hands and sit on pure white for clean cut-out. Variants generate against the parent's sheet. No codex → prompts only.
+Via the **lingying** gateway CLI. One 16:9 sheet per scene and per prop, both using the **master-view + L-shaped detail border** layout (bottom and right edges). Scene details = anchor close-ups; prop details = anchor close-ups + other states + a side profile. Scenes are empty of people; props additionally ban hands and sit on pure white for clean cut-out. Variants generate against the parent's sheet (uploaded to a URL first). No lingying → prompts only. For a genuinely transparent prop cut-out, run the white-background sheet through the free `birefnet` task afterwards.
 
 ## Selftest
 
@@ -47,6 +48,6 @@ Via codex's built-in `$imagegen`, zero API keys. One 16:9 sheet per scene and pe
 node scripts/selftest.mjs
 ```
 
-158 assertions — seeding, style presets, gate-defeating cases for all 11 gates, rendering (zh/en report UI), export. No model calls, runs in about a second.
+185 assertions — seeding, style presets, gate-defeating cases for all 13 gates, production-parameter lookup and inheritance, rendering (zh/en report UI), export. No model calls, runs in about a second.
 
 **Only tested on macOS + Node 24.**

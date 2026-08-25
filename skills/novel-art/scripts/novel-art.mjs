@@ -4,7 +4,7 @@
 // without an npm install. Node 18+ (stdlib only).
 
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /* ------------------------------------------------------------------ */
@@ -49,6 +49,49 @@ export const SCENE_STYLE_PRESETS = {
 
 export const SUPPORTED_STYLES = Object.keys(SCENE_STYLE_PRESETS);
 export const scenePreset = (id) => SCENE_STYLE_PRESETS[id] ?? SCENE_STYLE_PRESETS[DEFAULT_STYLE];
+
+/* ------------------------------------------------------------------ */
+/* 生产参数（production.json）                                          */
+/* ------------------------------------------------------------------ */
+/*
+ * novel-setup 产出的一份 JSON，住在**工作目录根**，锁死整部剧的技术参数。
+ * 这里只关心三样：画风（漂了合成没法看）、资产图比例（写死在 image.sheet
+ * 的版面指令里）、报告界面语言。
+ *
+ * 这十几行查找逻辑与 novel-setup 那边是**有意重复**的：本 skill 必须能整个
+ * 拷走单独跑，不 import 任何兄弟 skill 的代码。两边读的是同一份 JSON。
+ *
+ * 找不到不是错误——照旧用内置默认值，但校验输出里必须明说哪几道门跳过了。
+ * 装作查过比没查更坏。
+ */
+
+export const PRODUCTION_FILE = 'production.json';
+export const PRODUCTION_DEPTH = 5;
+
+export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
+  let dir = resolve(fromDir);
+  for (let i = 0; i <= depth; i++) {
+    const hit = resolve(dir, PRODUCTION_FILE);
+    if (existsSync(hit)) return hit;
+    const up = dirname(dir);
+    if (up === dir) break; // 到根了
+    dir = up;
+  }
+  return null;
+}
+
+/** 设定图提示词里会出现的画幅写法——只认这几种，免得误伤别的数字。 */
+export const KNOWN_ASPECTS = ['16:9', '9:16', '4:3', '3:4', '1:1', '21:9', '2.39:1'];
+
+export const SKIP_PROD = `未找到 ${PRODUCTION_FILE}（向上 ${PRODUCTION_DEPTH} 层），本门跳过——跑 /novel-setup 生成一份可以打开它`;
+
+/** 整批错的门逐条列会刷成一堵墙：前几条够定位，后面只报个数。 */
+export const brief = (list, n = 6) =>
+  list.length <= n ? list.join('；') : `${list.slice(0, n).join('；')}；……等 ${list.length} 处`;
+
+/** 界面语言走继承不设门：显式参数 > art.json 顶层 lang > 生产参数 > zh。 */
+export const langOf = (doc, lang = null, production = null) =>
+  lang ?? doc?.lang ?? production?.lang ?? 'zh';
 
 /* ------------------------------------------------------------------ */
 /* slug                                                                */
@@ -150,18 +193,25 @@ export const PROP_SCALES = {
 /** 道具参考图不许有手——拿着道具的手是最常见的污染。 */
 const HANDS_BAN = /hand|finger/i;
 
-export function gateReport(doc, castNames = null) {
+export function gateReport(doc, castNames = null, production = null) {
   const gates = [];
   const add = (id, label, ok, detail = '') => gates.push({ id, label, ok, detail });
   const scenes = Array.isArray(doc?.scenes) ? doc.scenes : [];
   const props = Array.isArray(doc?.props) ? doc.props : [];
   const bad = {
     anchors: [], lighting: [], people: [], english: [], names: [], variant: [], style: [],
-    states: [], scale: [], hands: [], whitebg: [],
+    states: [], scale: [], hands: [], whitebg: [], pstyle: [], aspect: [],
   };
   const ids = new Set(scenes.map((s) => s?.id));
   const style = doc?.style ?? DEFAULT_STYLE;
   const preset = scenePreset(style);
+
+  // 画风漂了 = 角色是吉卜力、场景是半写实，合成没法看，整套设定图白出
+  if (production && doc?.style && doc.style !== production.style) {
+    bad.pstyle.push(`art.json 的 style「${doc.style}」与生产参数的「${production.style}」不一致`);
+  }
+  // 设定图的版面比例写死在 image.sheet 的第一句里，改了参数不改提示词等于没改
+  const assetAspect = production?.image?.asset?.aspectRatio ?? null;
 
   // 场景与道具共用的门：锚点 / 空景 / 英文 / 角色名 / 风格匹配
   for (const s of [...scenes, ...props]) {
@@ -177,6 +227,21 @@ export function gateReport(doc, castNames = null) {
     // 空景：反向提示词必须禁人
     const neg = s?.image?.negativePrompt ?? '';
     if (!PEOPLE_BAN.test(neg)) bad.people.push(label);
+
+    // 设定图版面的画幅：一条只报一次，整批错的时候不刷屏
+    if (assetAspect) {
+      const sheet = String(s?.image?.sheet ?? '');
+      const strays = KNOWN_ASPECTS.filter((a) => a !== assetAspect && sheet.includes(a));
+      if (!sheet.includes(assetAspect)) {
+        bad.aspect.push(
+          strays.length
+            ? `${label} 写着「${strays.join('、')}」，生产参数是 ${assetAspect}`
+            : `${label} 缺画幅「${assetAspect}」`,
+        );
+      } else if (strays.length) {
+        bad.aspect.push(`${label} 同时写着「${strays.join('、')}」和 ${assetAspect}`);
+      }
+    }
 
     // 机器字段永远英文（场景的光照 + 道具的状态一起扫）
     const machine = [
@@ -253,6 +318,20 @@ export function gateReport(doc, castNames = null) {
   add('prop-scale', '道具尺度参照写进提示词', props.length === 0 || bad.scale.length === 0, bad.scale.join('；'));
   add('prop-hands', '道具参考图无手：反向提示词禁手', props.length === 0 || bad.hands.length === 0, bad.hands.join('；'));
   add('prop-white', '道具设定图纯白背景可抠', props.length === 0 || bad.whitebg.length === 0, bad.whitebg.join('；'));
+  // 生产参数的两道门：找得到 production.json 就自动开，没有开关——
+  // 画风与画幅改了都要整套重出图，这正是这份参数存在的理由
+  add(
+    'production-style',
+    `画风与生产参数一致（${production ? production.style : '未挂载'}）`,
+    bad.pstyle.length === 0,
+    production ? bad.pstyle.join('；') : SKIP_PROD,
+  );
+  add(
+    'sheet-aspect',
+    `设定图版面的画幅与生产参数一致（${assetAspect ?? '未挂载'}）`,
+    bad.aspect.length === 0,
+    assetAspect ? brief(bad.aspect) : SKIP_PROD,
+  );
 
   return gates;
 }
@@ -261,7 +340,7 @@ export function gateReport(doc, castNames = null) {
 /* validate                                                            */
 /* ------------------------------------------------------------------ */
 
-export function validateArt(doc, castNames = null) {
+export function validateArt(doc, castNames = null, production = null) {
   const problems = [];
   const p = (msg) => problems.push(msg);
   if (!doc || typeof doc !== 'object') return ['art.json 不是对象'];
@@ -348,7 +427,7 @@ export function validateArt(doc, castNames = null) {
   }
 
   // 质量门失败并入违规列表
-  for (const g of gateReport(doc, castNames)) {
+  for (const g of gateReport(doc, castNames, production)) {
     if (!g.ok) p(`质量门未过：${g.label}${g.detail ? `（${g.detail}）` : ''}`);
   }
 
@@ -389,6 +468,8 @@ const GATE_LABELS_EN = {
   'prop-scale': 'Prop scale reference written into the prompt',
   'prop-hands': 'No hands in prop plates: negatives ban hands',
   'prop-white': 'Prop sheets on pure white background, cut-out ready',
+  'production-style': 'Style matches the production parameters — one drama, one look',
+  'sheet-aspect': 'Sheet layout aspect matches the production parameters',
 };
 const GATE_SKIPS_EN = {
     '未提供 outline.json，本门跳过（视为通过）': 'outline.json not provided — gate skipped (treated as passing)',
@@ -396,6 +477,7 @@ const GATE_SKIPS_EN = {
     '未提供 script.json，本门跳过（视为通过）': 'script.json not provided — gate skipped (treated as passing)',
     '未提供 outline/cast，本门跳过（视为通过）': 'outline/cast not provided — gate skipped (treated as passing)',
     '未提供 cast.json，本门跳过（视为通过）': 'cast.json not provided — gate skipped (treated as passing)',
+    [SKIP_PROD]: `no ${PRODUCTION_FILE} found (up to ${PRODUCTION_DEPTH} levels up) — gate skipped; run /novel-setup to open it`,
 };
 /** 报告里的门文案：英文界面取映射，未命中或中文界面回落原文。 */
 const gateText = (g, lang) => {
@@ -533,8 +615,8 @@ const esc = (s) =>
 const mdRow = (cells) => `| ${cells.map((c) => String(c ?? '').replace(/\|/g, '\\|')).join(' | ')} |`;
 const mdHead = (cols) => [mdRow(cols), mdRow(cols.map(() => '---'))].join('\n');
 
-export function renderMarkdown(doc, lang = null) {
-  const t = tOf(lang ?? doc?.lang);
+export function renderMarkdown(doc, lang = null, production = null) {
+  const t = tOf(langOf(doc, lang, production));
   const props = doc.props ?? [];
   const out = [`# ${t.docTitle(doc.source)}`, '', `> ${t.styleLine(doc.style)}`, ''];
 
@@ -605,10 +687,10 @@ function embedDoc(doc) {
   return JSON.stringify(doc).replace(/</g, '\\u003c');
 }
 
-export function renderHtml(doc, lang = null) {
-  const code = lang ?? doc?.lang ?? 'zh';
+export function renderHtml(doc, lang = null, production = null) {
+  const code = langOf(doc, lang, production);
   const t = tOf(code);
-  const gates = gateReport(doc);
+  const gates = gateReport(doc, null, production);
   const failed = gates.filter((g) => !g.ok);
   const scenes = doc.scenes;
   const props = doc.props ?? [];
@@ -725,7 +807,10 @@ export function renderHtml(doc, lang = null) {
   ${gates
     .map(
       (g) => `<li class="${g.ok ? 'ok' : 'bad'}"><span class="m">${g.ok ? '✓' : '✗'}</span><span>${esc(gateText(g, t.langCode).label)}${
-        !g.ok && g.detail ? `<small>${esc(g.detail)}</small>` : g.id === 'no-names' && g.detail ? `<small>${esc(g.detail)}</small>` : ''
+        // 失败详情要显示；跳过语也要显示——「跳过」不写出来就成了静默通过
+        g.detail && (!g.ok || g.id === 'no-names' || g.detail === SKIP_PROD)
+          ? `<small>${esc(gateText(g, t.langCode).detail)}</small>`
+          : ''
       }</span></li>`,
     )
     .join('\n  ')}
@@ -1010,6 +1095,25 @@ function flag(rest, name, fallback = null) {
   return i >= 0 && rest[i + 1] ? rest[i + 1] : fallback;
 }
 
+/*
+ * 生产参数不用挂载，自己从产物所在目录向上找——它住在工作目录根。
+ * 找得到那两道门就自动开，没有开关：画风和画幅改了都要整套重出图。
+ * --no-production 是给老项目临时绕过用的，用了会明说。
+ */
+function loadProduction(rest, fromDir) {
+  if (rest.includes('--no-production')) return { doc: null, path: null, off: true };
+  const path = flag(rest, '--production') ?? findProduction(fromDir);
+  return { doc: path ? readJson(path) : null, path, off: false };
+}
+
+/** 找到就报一声，找不到也报一声——静默是最坏的那种。 */
+function announceProduction(p) {
+  const which = '2 道门（画风、设定图画幅）';
+  if (p.off) console.error(`⚠️ --no-production：生产参数的 ${which}跳过`);
+  else if (p.path) console.error(`↳ 生产参数：${p.path}`);
+  else console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，${which}跳过——跑 /novel-setup 生成一份可以打开它`);
+}
+
 function main(argv) {
   const [cmd, ...rest] = argv;
 
@@ -1032,9 +1136,11 @@ function main(argv) {
     const castPath = flag(rest, '--cast');
     const names = castPath ? castNamesOf(readJson(castPath)) : null;
     if (!castPath) console.error('⚠️ 没给 --cast，跳过「提示词不含角色名」检查');
+    const prod = loadProduction(rest, resolve(path, '..'));
+    announceProduction(prod);
 
     if (cmd === 'checkup') {
-      const gates = gateReport(doc, names);
+      const gates = gateReport(doc, names, prod.doc);
       for (const g of gates) console.log(`${g.ok ? '✓' : '✗'} ${g.label}${!g.ok && g.detail ? ` — ${g.detail}` : ''}`);
       const failedN = gates.filter((g) => !g.ok).length;
       console.log(failedN ? `\n✗ ${failedN} 项未过` : '\n✓ 全部通过');
@@ -1042,7 +1148,7 @@ function main(argv) {
       return;
     }
 
-    const problems = validateArt(doc, names);
+    const problems = validateArt(doc, names, prod.doc);
     if (problems.length) {
       console.error(`✗ ${problems.length} 处违规：\n`);
       for (const x of problems) console.error('  ' + x);
@@ -1057,13 +1163,14 @@ function main(argv) {
     if (!path) throw new Error('用法：render <art.json> [--html|--md] [--lang zh|en]');
     const doc = readJson(path);
     const lang = flag(rest, '--lang');
+    const prod = loadProduction(rest, resolve(path, '..'));
     // 图存在才挂上去；没有就渲染成占位，不影响其余内容
     const outDir = resolve(path, '..');
     for (const item of [...doc.scenes, ...(doc.props ?? [])]) {
       const rel = `images/${slug(item.name)}-sheet.png`;
       if (existsSync(resolve(outDir, rel))) item.sheetImage = rel;
     }
-    process.stdout.write((rest.includes('--html') ? renderHtml(doc, lang) : renderMarkdown(doc, lang)) + '\n');
+    process.stdout.write((rest.includes('--html') ? renderHtml(doc, lang, prod.doc) : renderMarkdown(doc, lang, prod.doc)) + '\n');
     return;
   }
 

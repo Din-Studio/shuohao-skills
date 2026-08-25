@@ -1,127 +1,121 @@
-# 角色设定图出图 · codex `$imagegen`
+# 角色设定图出图 · lingying
 
-出图走 codex 内置的 `$imagegen` 系统 skill。**这条路不需要任何 API key**——用的是本机 codex 登录态（订阅额度）。
+出图走 **lingying**（灵影网关）CLI：`image create` 提交任务，`task get` 轮询，产物是一个 URL，自己 `curl` 落盘。
 
-**没有 codex 就跳过整个第 8 步**，只交提示词，其余产出照常。这是可选能力，不是硬依赖。
+**没有 lingying 就跳过整个第 8 步**，只交提示词，其余产出照常。这是可选能力，不是硬依赖。
 
-## 每个角色一张图
+## 前置：CLI 与凭证
 
-一张横构图，内部左右分栏：
-
-```
-┌──────────┬────────────────────────────┐
-│          │   正视    侧视    背视       │
-│  半身像   │                            │
-│ （证件照） ├────────────────────────────┤
-│  面部基准  │  细节 · 细节 · 细节 · 细节   │
-│   ~34%   │                            │
-└──────────┴────────────────────────────┘
-                    16:9
-```
-
-提示词字段 `image.sheet`，落到 `./images/<slug>-sheet.png`。
-
-左栏的半身像是**面部设计的基准**，右栏三视图的脸照着它画。提示词里要明确要求两边一致，否则一张图里会出现两个长相。
-
----
-
-## 情况 A：本 skill 正跑在 codex 里
-
-直接用 `$imagegen`，**不要再 shell 出去调 `codex exec`**——那是自己套自己。
-
-把 `image.sheet` 的内容作为图像规格交给 `$imagegen`，生成后把选定的 PNG 复制到 `<输出目录>/images/<slug>-sheet.png`。
-
-## 情况 B：跑在 Claude Code 或其他环境里
-
-shell 调用本机 codex。
-
-### 先找对 binary ⚠️
-
-机器上可能装了多个 codex，**版本不够新的会直接报错**「requires a newer version of Codex」。取版本最高的那个：
+| 要什么 | 说明 |
+| --- | --- |
+| `lingying` 可执行文件 | 安装在 PATH 里，或放在工作目录的 `bin/lingying` |
+| `~/.config/lingying/config.json` | 至少要有 `api_key`；挂参考图还要 `assethub_admin_token` |
 
 ```bash
-find_codex() {
-  local best="" best_n=0 c v n
+find_lingying() {
+  local c
   # command -v 放第一个：尊重用户的 PATH；后面几个是常见安装位置兜底
-  for c in "$(command -v codex 2>/dev/null)" \
-           "$HOME/.npm-global/bin/codex" \
-           "$HOME/.local/bin/codex" \
-           "$(npm prefix -g 2>/dev/null)/bin/codex" \
-           /opt/homebrew/bin/codex \
-           /usr/local/bin/codex; do
-    [ -n "$c" ] && [ -x "$c" ] || continue
-    v=$("$c" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-    [ -n "$v" ] || continue
-    n=$(echo "$v" | awk -F. '{printf "%d%03d%03d", $1, $2, $3}')
-    [ "$n" -gt "$best_n" ] && { best_n=$n; best=$c; }
+  for c in "$(command -v lingying 2>/dev/null)" \
+           ./bin/lingying \
+           "$HOME/.local/bin/lingying" \
+           /opt/homebrew/bin/lingying \
+           /usr/local/bin/lingying; do
+    [ -n "$c" ] && [ -x "$c" ] && { echo "$c"; return; }
   done
-  [ -n "$best" ] && echo "$best"
 }
-CODEX=$(find_codex)
+LY=$(find_lingying)
 ```
 
-`$CODEX` 为空就跳过出图。
+`$LY` 为空就跳过出图。凭证缺失时 `lingying` 报的是「缺少 API_KEY」，如实转述，**不要静默跳过**——用户以为出了图而实际没出，比明说没出更坏。
 
-### 调用
+## 出图参数从 production.json 来 ⚠️
 
-**一个角色一次调用，绝不批量。** built-in 通路会把 PNG 字节写进 rollout，批量会把上下文撑爆——这是官方 `hatch-pet` skill 踩出来的经验。
+出图之前先读工作目录根的 `production.json`（`novel-setup` 的产出，从输出目录**向上最多 5 层**找）：`image.model` 定模型，`image.asset.resolution` 定分辨率**档位**，`image.asset.aspectRatio` 定版面画幅。
+
+**这三个值原样填进 `--input_data`，不折算像素、提示词里也不写像素。**lingying 的 `resolution` 与 `aspect_ratio` 就是 input_schema 里的枚举值（`1K` / `2K` / `4K`、`16:9` / `9:16` / …），是结构化字段，不是提示词的一部分。
+
+一行拿到拼好的参数：
+
+```bash
+node <novel-setup>/scripts/novel-setup.mjs resolve --for characters
+```
+
+它给出 `inputData`（形如 `{"aspect_ratio":"16:9","resolution":"2K"}`）——补一个 `prompt` 就能提交。
+
+找不到 `production.json` 就按 `nanobanana2` + `2K` + `16:9` 出，并在汇报里说清没有找到。
+
+## 调用三步
+
+### 1 提交
 
 ```bash
 cd <输出目录> && mkdir -p images
-env -u NODE_OPTIONS "$CODEX" exec --skip-git-repo-check --sandbox workspace-write \
-  'Use $imagegen to generate this character model sheet, then copy the final selected PNG to ./images/<slug>-sheet.png in the current working directory. Reply with only the file path — no base64, no markdown image preview.
 
-<image.sheet 的内容>' < /dev/null
+# P = image.sheet 的内容，原样，不要加任何「copy to …」之类的指令
+INPUT=$(node -e '
+  const [p, a, r, n] = process.argv.slice(1);
+  console.log(JSON.stringify({ prompt: p, aspect_ratio: a, resolution: r, negative_prompt: n }));
+' "$P" "$ASPECT" "$RES" "$NEG")
+
+TASK=$("$LY" image create --model "$MODEL" --json --input_data "$INPUT" \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).data.task_id))')
 ```
 
-想让一批角色画风统一，就拿第一个角色出好的图当参考图喂给后面几个——**用 `-i` 时 prompt 必须走 stdin**，见下面「变长参数」。
+**JSON 一律用工具拼，不要手写字符串拼接**——提示词里有引号、换行和中文，手拼必崩。提示词长的时候也可以写成文件再 `--input_data ./input.json`（以 `{` 开头才按内联 JSON 解析，否则按文件路径读）。
 
-三个参数都是必需的，缺一个就挂：
+### 2 轮询
 
-| 参数 | 为什么 |
-| --- | --- |
-| `--skip-git-repo-check` | 输出目录不是 git 仓库时，codex 会拒绝运行 |
-| `--sandbox workspace-write` | 不给就没法往 cwd 写文件 |
-| `< /dev/null` | 不关 stdin，codex 会一直等输入 |
+```bash
+while :; do
+  OUT=$("$LY" task get "$TASK" --json) || { echo "任务失败"; break; }   # 退出码 1 = 任务失败
+  ST=$(printf '%s' "$OUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).data.status))')
+  case "$ST" in success|failed) break;; esac
+  sleep 3
+done
+```
 
----
+⚠️ **必须读 `data.status`，不能在整段 JSON 里搜 `success`**——响应里 `"message": "success"` 恒为 success，粗糙的匹配第一次轮询就会假命中，拿到一个还没有 `result.url` 的任务。
+
+⚠️ **未完成时退出码仍是 0**，只看退出码判断不了结束。
+
+单张图大约 20~40 秒。
+
+### 3 落盘
+
+```bash
+URL=$(printf '%s' "$OUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).data.result.url))')
+curl -fsSL -o "./images/<slug>-sheet.png" "$URL"
+```
+
+产物 URL 是网关的临时地址，**必须落到项目里**——只留 URL 等于没有资产。
+
+## 一批角色可以并发
+
+lingying 的任务是异步的：**先把这一批角色全部 `image create` 提交，拿到一串 task_id，再统一轮询**。10 个角色串行是 10 × 30 秒，并发提交后总耗时约等于最慢的那一个。
+
+轮询时逐个 `task get`，谁 success 就立刻落盘，不用等齐。
+
+## 反向提示词是独立字段
+
+`negative_prompt` 是 input_schema 里的一等字段，`cast.json` 里的反向提示词**原样填进去**，不要再往正向提示词里塞「no …」。两个生图模型都收这个字段。
 
 ## 画风一致性 ⚠️ 已知短板
 
 同一批角色各自独立出图，**画风可能有差异**。早期用「扁平矢量卡通」时漂得很厉害——同一批出成动画感／半写实／水墨写实三种，摆在一起不像同一部片子。换成明确的风格预设（见 `style-presets.md`）后好了很多，但不能保证完全一致。
 
-想压住的话，把**第一个角色的成图当风格参考**喂给后面几个（codex 的 `-i/--image` 就是干这个的）：
-
-**用 `-i` 时 prompt 必须走 stdin**（见下面「变长参数」）：
+想压住的话，把**第一个角色的成图当风格参考**喂给后面几个：
 
 ```bash
-printf '%s' "$PROMPT
-Match the art style, line weight, shading and colour treatment of the reference
-image exactly — these characters must belong to the same production." \
-| "$CODEX" exec --skip-git-repo-check --sandbox workspace-write \
-    -i ./images/<第一个角色>-sheet.png
+# 本地文件先换成 URL——生成接口只收 URL，不收本地路径
+REF=$("$LY" upload ./images/<第一个角色>-sheet.png)
+# 然后把 REF 放进 images 数组，提示词里补一句
+#   Match the art style, line weight, shading and colour treatment of the
+#   reference image exactly — these characters must belong to the same production.
 ```
+
+`upload` 按内容去重，同一张参考图传第二次不重复传输，**URL 存下来整批复用**即可。
 
 代价是第一张的画风就定了全片基调，出得不好就得重来。用户在意统一性就上参考图，只是要几张草图就不必。
-
-## ⚠️ 先清掉 NODE_OPTIONS
-
-codex 自己也是个 Node CLI，**会继承父进程的 `NODE_OPTIONS`**。如果调用方环境里设了 `--require` 之类的预加载，而那个文件不在了（临时目录被清理是常见情况），codex 会在启动阶段就崩掉，报的是 `Cannot find module .../restore-node-options.cjs`，跟出图毫无关系，很难联想。
-
-所有 codex 调用都套一层 `env -u NODE_OPTIONS`：
-
-```bash
-env -u NODE_OPTIONS "$CODEX" exec --skip-git-repo-check --sandbox workspace-write ...
-```
-
-## ⚠️ 变长参数会吞掉 prompt
-
-`--disallowed-tools <tools...>` 和 `-i/--image <FILE>...` 都是变长的，**后面跟的位置参数会被它们当成自己的值吃掉**，报错是莫名其妙的 `No prompt provided via stdin`。
-
-两条规矩：
-
-- 只要用了任何变长参数，**prompt 一律用 `printf '%s' "$P" | codex exec ...` 走 stdin**
-- 不用变长参数时才可以把 prompt 当位置参数传，并且要 `< /dev/null` 关掉 stdin
 
 ## 背景：白底
 
@@ -145,24 +139,22 @@ env -u NODE_OPTIONS "$CODEX" exec --skip-git-repo-check --sandbox workspace-writ
 
 ### 想要真透明背景
 
-`$imagegen` 的 built-in 通路（`gpt-image-2`）**不支持** `background=transparent`。官方给的路子是：提示词里要一块平整的 chroma-key 底色，生成后用本地脚本抠掉：
+lingying 的两个生图模型都不出透明底，但网关上有现成的抠图模型，**再走一次任务就行**：
 
 ```bash
-python3 "$CODEX_HOME/skills/.system/imagegen/scripts/remove_chroma_key.py" <in.png> <out.png>
+URL=$("$LY" upload ./images/<slug>-sheet.png)
+TASK=$("$LY" image create --model "birefnet" --input_data "{\"images\":[\"$URL\"]}" --json | …取 task_id)
+# 轮询同上，落盘成 <slug>-sheet-cutout.png
 ```
 
-真·原生透明只有 CLI fallback 的 `gpt-image-1.5 --background transparent` 能做，**那条路要 `OPENAI_API_KEY`**，本 skill 不走。用户明确要透明就告诉他这个取舍，别自己决定。
-
-## 必须显式指定目标路径
-
-`$imagegen` 默认把图落在 `$CODEX_HOME/generated_images/<session>/`。官方规则明确要求：**项目资产不能只留在默认路径**。所以提示词里一定要写「copy to ./images/xxx.png」，让 codex 自己搬过来。
+`birefnet` 免费，`抠图` 是 0.06 元一张的另一档。**白底出图 + 抠图**这条路比让生图模型直接出透明底稳，也不用本地装 Python。用户明确要透明就多跑这一步，别自己决定改动主产物——**抠完的图另存一个文件名**，`render` 找的仍然是 `<slug>-sheet.png`。
 
 ## 其他约束
 
-- worker **只回文件路径**，不要 base64、不要 markdown 图片预览
+- **提示词里不写调用指令**。`image.sheet` 是纯粹的图像描述，「copy to …」「reply with only the file path」这类给 agent 看的话一句都不要进去——落盘是 `curl` 的事
 - **不要逐张打开** 生成的 PNG 看——只看最终 report.html
-- **不碰 CLI fallback**（`scripts/image_gen.py`，要 `OPENAI_API_KEY`）。built-in 不可用就如实报告，不要静默降级
-- 出图失败**不阻断**整个流程：跳过这个角色，最后汇总说明哪些没出成
+- 出图失败**不阻断**整个流程：跳过这个角色，最后汇总说明哪些没出成、为什么
+- 网关报的错如实转述（`input validation failed` 多半是档位或比例不在该模型的枚举里，跑 `novel-setup caps --model <名>` 对一眼）
 
 ## 文件名
 

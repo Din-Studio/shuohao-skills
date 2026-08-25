@@ -1,5 +1,211 @@
 # Changelog
 
+## 出图与生视频全面改走 lingying — 2026-08-25
+
+**novel-setup 1.1.0 · novel-characters 1.13.0 · novel-art 1.4.0 · novel-storyboard 1.5.0**
+
+出图从 codex 内置 `$imagegen` 换成 **lingying（灵影网关）CLI**；生视频从「只出提示词包、
+下单交给人」变成**可选的最后一步**——`lingying video create` 直接下单，产出到每段一个 mp4。
+
+### 为什么换
+
+codex 那条路的三个约束一次性都没了：
+
+| codex `$imagegen` | lingying |
+| --- | --- |
+| 只有 `gpt-image-2` 一个模型 | `nanobanana2` / `image-2` 两个生图模型，`MiniMax H3` 与 seedance 全系五个视频模型 |
+| 出图要折算像素，还要把 `Render at 2048x1152 (16:9).` 塞进提示词末尾 | `resolution` / `aspect_ratio` 是 `input_schema` 里的**枚举字段**，原样填 `--input_data`，**提示词里一个像素都不写** |
+| 参考图走 `-i`，一次一张绝不批量（PNG 字节会撑爆 rollout） | 参考图 `upload` 换 URL（按内容去重，整集复用），任务异步，**整段整集可以并发提交再统一轮询** |
+| 反向提示词只能塞进正向提示词 | `negative_prompt` 是一等字段 |
+| 透明底要 chroma-key + 本地 Python 脚本 | 白底成图之上再走一次 `birefnet` 抠图任务（免费） |
+| **视频只能出提示词包，下单是人的事** | `video create` 直接下单，H3 就在网关上 |
+
+代价是**出图不再是零 API key**：要 `~/.config/lingying/config.json` 里的 `api_key`，
+挂参考图还要 `assethub_admin_token`。写文本的部分照旧用当前会话额度。
+
+### novel-setup：能力表从「有意留空」变成「有据可查」
+
+视频模型能力表以前是**故意空着**的，理由写在代码注释里：「各家 `resolution` 口径不同、
+版本之间还会变，凭记忆编一张比不查更坏」。改走 lingying 之后依据有了——`lingying model get <UUID>`
+本机就能把 `input_schema` 打出来。所以两张表都填上了，但**出处不许省**：每条都带
+`source`（取数命令）与 `modelId`（UUID），过期了重跑一次就能对账，自测里有断言盯着这两个字段。
+
+```bash
+node scripts/novel-setup.mjs caps
+```
+
+```
+生图：
+  nanobanana2    档位 1K / 2K / 4K　比例 1:1 / 2:3 / 3:2 / 9:16 / 16:9
+  image-2        档位 1K / 2K / 4K　比例 1:1 / 3:2 / 2:3 / 4:3 / 3:4 / 16:9 / 9:16
+                 ↳ 4K 下只收 16:9 / 9:16
+生视频：
+  MiniMax H3 · managed  档位 768p / 2K　比例 16:9 / 21:9 / 4:3 / 1:1 / 3:4 / 9:16 / adaptive
+                        ↳ duration 5~15 秒整数
+```
+
+**多出来的第 7 道门 `model-caps`**：档位与比例都是枚举值，能在定参数时查死。它拦得住的是
+这类事——想拍 `4:3` 就不能选 `nanobanana2`（它不收）；`image-2` 出 `4K` 时只剩 `16:9` / `9:16`
+两个比例（8.29MP 像素上限）；`MiniMax H3` 的 `managed` 变体档位是 `768p` / `2K`，
+**不是随手会写的 `720p` / `1080p`**。以前这些都要等到提交那一刻被网关拒绝才知道，
+那时整集分镜图已经出完了。
+
+**第 6 道门 `video-model` 也从「只查非空」升级成查枚举**，并新增 `video.variant` 字段——
+`MiniMax H3` 的 `resolution` 与 `aspect_ratio` 是**条件枚举**，由 `metadata.h3_variant` 决定。
+少填这个字段整集提交不出去。
+
+**删掉的东西**：`sizes` 命令、`pixelHint` / `renderInstruction` / `legalSizes` /
+`nearestLegalSize` / `sizeProblems` / `RESOLUTION_TIERS` 整套像素折算机制。lingying 收的就是
+档位本身，这一层不存在了，也就没有了「拼法漂了」这类问题。
+新增 `caps`（看模型收什么）与 `duration`（把段秒数折成模型能收的整数秒）两个命令。
+
+### novel-storyboard：多了下单这一步
+
+`export` 的投产包本来就是下单的全部材料，现在多了一份 `references/video-order.md` 把这一步写死：
+
+- 参数全在 `manifest.json` 顶层的 `video` 里（`model` / `aspectRatio` / `resolution` / `variant`）
+- `prompt` 取 `prompt.md` 分隔线以下的原文，一个字不改；`images` 按 Picture 序挂 `f1..fN.png`
+- **`duration` 要折算**：模型收的是区间内的整数秒（H3 是 5~15），段秒数不一定是——
+  `novel-setup duration <秒> --model <名>` 向上取整、夹进区间，动过就说清
+- 按秒计费，**提交前把整集总秒数与预估花费报给用户**；同一段连着失败两次就停下来问，不烧钱重试
+
+边界也跟着改了：以前写「不做视频生成与剪辑合成」，现在是「**不做剪辑合成**；视频生成是可选的
+最后一步，产出到每段一个 mp4 为止」。拼接、转场、配乐、贴 TTS 音频仍然不在这里。
+
+### 一处轮询陷阱 ⚠️
+
+`task get --json` 的响应里 `"message": "success"` **恒为 success**（那是 HTTP 层的 message）。
+在整段 JSON 里搜 `success` 会在第一次轮询就假命中，拿到一个还没有 `result.url` 的任务。
+**必须读 `data.status`**（`pending` / `running` / `success` / `failed`），而且未完成时
+退出码仍然是 0——只看退出码判断不了结束。三份出图契约和下单契约里都把这条标了 ⚠️。
+
+### 实测
+
+- 文生图 `nanobanana2` 1K 16:9：22 秒出图，产物 `.png`
+- 图生图（挂参考图 + `negative_prompt`）：28 秒，`feature_type` 回 `image_to_image`；
+  同一张图第二次 `upload` 命中内容去重，返回同一个 URL
+- `MiniMax H3 · managed` 5 秒任务（两张参考图 + 完整 H3 对齐提示词 + `metadata.h3_variant`）：
+  **196 秒出片**，`feature_type` 回 `image_to_video`，产物 `.mp4` 1344×768（`768p` 档的 16:9）、
+  5.17 秒、带音轨——视频比出图慢一个量级，所以轮询间隔写的是 10 秒不是 3 秒
+
+### 改到的文件
+
+- `skills/novel-setup/`：`scripts/novel-setup.mjs`（能力层重写）、`scripts/selftest.mjs`（195 项）、
+  `references/schema.md`、`references/contract.md`、`SKILL.md`、两份 README、两份 examples
+- `skills/novel-characters/references/sheet.md`、`skills/novel-art/references/sheet.md`、
+  `skills/novel-storyboard/references/frame.md`：三份出图契约全部重写
+- `skills/novel-storyboard/references/video-order.md`：**新增**，下单生视频的调用契约
+- 三个 skill 的 `SKILL.md` / README（中英）、根 README（中英）的前置条件表
+- 三个 skill 自测里的 `production.json` 夹具统一换成 `nanobanana2` + `MiniMax H3 · managed`
+
+全部自测通过：195 / 368 / 185 / 254 / 159 / 297 + 报告组装器 92。
+
+## novel-setup 1.0.0 · 四个下游跟着改 — 2026-08-25
+
+**新增 `skills/novel-setup`：技术参数一处定死，下游出图前照着做**
+
+`/novel-setup` 产出工作目录根的一份 `production.json`，收八个技术参数外加三个
+必须跨 skill 一致的口径：
+
+```json
+{
+  "style": "realistic", "lang": "zh", "promptLang": "en",
+  "image": {
+    "model": "gpt-image-2",
+    "asset": { "resolution": "2K", "aspectRatio": "16:9" },
+    "frame": { "resolution": "2K", "aspectRatio": "9:16" }
+  },
+  "video": { "model": "MiniMax-Hailuo", "aspectRatio": "9:16", "resolution": "720p" }
+}
+```
+
+**`resolution` 是档位不是像素。**折成多少像素由使用方的转换 CLI 决定——各家生图与
+生视频接口的口径不一样，skill 层面只统一字段名与写法。
+
+**为什么要有这个东西**：技术参数散在每一次出图调用里就必然会漂。今天出的角色
+设定图是 16:9，明天出的分镜图还是 16:9，可片子要拍竖屏——这件事要等到把分镜图
+喂给视频模型、被裁掉两边才发现，那时一集三四十格已经出完了。
+
+### 两个比例是两件事 ⚠️
+
+设计上最关键的一处切分，也是这个 skill 存在的主要理由：
+
+- **资产图**（角色、场景、道具的设定图）是给参考图与人眼看的设定表。三区版面与
+  L 形版面都靠横向铺开，竖过来三视图会被压扁。所以资产图默认 `16:9`，
+  **成片拍竖屏也不改**
+- **分镜图**是喂给视频模型的关键帧，**它就是成片的一格**。比例和视频
+  `aspect_ratio` 差一点，参考图就被裁切或拉伸，一整批白出
+
+两道门分别管这两件事，不会互相牵连。
+
+### 档位、参考像素，与转换 CLI 的分工
+
+档位是真源，像素由转换 CLI 算——但 skill 内置一张参考表，回答「这个档位配这个
+比例，在这个模型上该取哪个像素」。答案出现在 `show` 的参数表、`checkup` 的门详情、
+`resolve` 的 `pixelHint` 字段里，**是参考不是规定**。
+
+它值钱的地方在于**会暴露对不齐的档位**：
+
+```bash
+node scripts/novel-setup.mjs sizes 16:9 --tier 1080p
+# → 档位 1080p 的参考像素：1792x1008 —— 长边对不齐 1920，这是最近的合法尺寸
+```
+
+`gpt-image-2` 要求两边都是 16 的倍数，而 `1080 ÷ 16 = 67.5`——所以竖屏最顺手的
+`1080x1920` 它根本出不来。四条约束（长边 ≤ 3840、两边都是 16 的倍数、长短边比
+≤ 3:1、总像素 655,360–8,294,400）抄自 codex 自带 `imagegen` skill 的
+`references/image-api.md`，一个字没改。
+
+**分辨率档位只查非空，不拦人**：凭一张猜来的换算表去拦，拦错的比拦对的多。档位或
+模型不在表里就明说给不出参考像素，不装算过。**视频模型能力表有意留空**——各家
+`resolution` 口径不同且版本之间会变，凭记忆编一张比不查更坏。
+
+**成片画幅没有默认值**，`init` 不给 `--aspect` 直接报错。竖屏和横屏是两条不同的
+片子，猜错了后果是整批产物重出——这是唯一一个宁可让用户多打一个参数也不能默认的
+参数。
+
+### 下游怎么接：界线是「改了要不要重出图」
+
+**下游不 import 本 skill 的代码**（每个 skill 都要能整个拷走单独跑），各自实现
+十几行的向上查找：从自己的输出目录向上最多 5 层找 `production.json`。找不到
+**明说跳过**，照旧用内置默认值——装作查过比没查更坏。
+
+找到了就必须遵循，分两类：
+
+- **会导致重出图的设门，不可绕过**——novel-storyboard 加了 `production-style`
+  与 `frame-aspect`（17 → **19 道门**），novel-art 加了 `production-style` 与
+  `sheet-aspect`（11 → **13 道门**），novel-characters 加了同样两条确定性检查。
+  这三个 skill 的出图步骤也改成从 `image.model` + 对应的 `resolution` 档位取参数，
+  提示词末尾固定加一句 `renderInstruction`（`resolve` 拼好，形如
+  `Render at 1152x2048 (9:16).`）
+- **只影响阅读的走继承，不设门**——报告界面语言的优先级变成
+  `--lang` > 产物 JSON 顶层 > `production.json` > 中文。五个 skill 都吃这条，
+  改一次显示语言不该被拦下来，它不产生任何浪费
+
+`--no-production` 是给老项目临时绕过用的，用了会明说。
+
+### export 带上视频参数
+
+`novel-storyboard export` 把 `video.model` / `aspectRatio` / `resolution` 写进两处：
+`manifest.json` 的顶层 `video` 字段，以及每段 `prompt.md` 的头部。下单给视频模型
+时参数就在投产包里，不用回头翻配置。
+
+**manifest.json 由裸数组变成对象**（`{ source, video, segments }`）——顶层要放
+视频参数，段清单挪进 `segments`。每次 `export` 都重新生成，不影响已有产物。
+
+### 详情收口
+
+画幅这类「错了就是整批错」的门，34 个分镜逐条列会把详情刷成一堵墙。新门统一
+走 `brief()`：前 6 条足够定位，后面只报个数（`……等 34 处`）。修的时候本来就是
+整批一起改。
+
+### 自测
+
+novel-setup 146 项（6 道门每道都有击穿用例，含合法尺寸枚举、档位换算与对齐判定）；
+novel-storyboard 254 → 296；novel-art 158 → 185；novel-characters 355 → 368；
+novel-outline 249 → 254；novel-script 154 → 159。全部不调模型、不花额度。
+
+
 ## 五段报告合成一张单页 — 2026-08-19
 
 **新增 `scripts/report.mjs`：左侧导航，有哪几段就出哪几个面板**
