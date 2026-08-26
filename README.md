@@ -82,11 +82,12 @@ cd shuohao-skills
 ./scripts/install.sh
 ```
 
-自动检测本机装了 Claude Code 还是 codex，把所有 skill **软链**过去——`git pull` 之后立刻生效，不用重装。
+自动检测本机装了 pi、Claude Code 还是 codex，把所有 skill **软链**过去——`git pull` 之后立刻生效，不用重装。
 
 ```bash
-./scripts/install.sh novel-characters   # 只装某一个
-./scripts/install.sh --codex            # 只装到 codex
+./scripts/install.sh novel-characters   # 只安装某一个
+./scripts/install.sh --codex            # 只安装到 codex
+./scripts/install.sh --pi               # 只安装到 pi
 ./scripts/install.sh --uninstall        # 取消软链
 ```
 
@@ -95,6 +96,7 @@ cd shuohao-skills
 ```bash
 ln -s "$PWD/skills/novel-characters" ~/.claude/skills/novel-characters
 ln -s "$PWD/skills/novel-characters" ~/.codex/skills/novel-characters
+ln -s "$PWD/skills/novel-characters" ~/.pi/agent/skills/novel-characters
 ```
 
 ## 前置条件

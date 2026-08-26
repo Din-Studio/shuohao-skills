@@ -80,11 +80,12 @@ cd shuohao-skills
 ./scripts/install.sh
 ```
 
-It detects whether you have Claude Code or codex installed and **symlinks** every skill into place — so `git pull` takes effect immediately, with no reinstall.
+It detects whether you have pi, Claude Code, or codex installed and **symlinks** every skill into place — so `git pull` takes effect immediately, with no reinstall.
 
 ```bash
 ./scripts/install.sh novel-characters   # just one skill
 ./scripts/install.sh --codex            # only into codex
+./scripts/install.sh --pi               # only into pi
 ./scripts/install.sh --uninstall        # remove the symlinks
 ```
 
@@ -93,6 +94,7 @@ Prefer to do it by hand:
 ```bash
 ln -s "$PWD/skills/novel-characters" ~/.claude/skills/novel-characters
 ln -s "$PWD/skills/novel-characters" ~/.codex/skills/novel-characters
+ln -s "$PWD/skills/novel-characters" ~/.pi/agent/skills/novel-characters
 ```
 
 ## Requirements

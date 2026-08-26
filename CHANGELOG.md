@@ -1,5 +1,18 @@
 # Changelog
 
+## 安装脚本支持 pi — 2026-08-25
+
+`scripts/install.sh` 增加 `--pi`，自动检测里也加上 `~/.pi/agent`——本机安装了 pi 就把六个 skill
+软链到 `~/.pi/agent/skills/`。两份 README 的安装章节与手工软链示例同步。
+
+pi（`@earendil-works/pi-coding-agent`）遵循 [Agent Skills 标准](https://agentskills.io/specification)，
+SKILL.md 原样可读，不用改任何一个 skill；它的目录扫描对软链显式做 `statSync` 解析，所以和
+Claude Code、codex 一样走软链，`git pull` 之后立刻生效。用 pi 自己的 `loadSkillsFromDir` 验证过：
+六个 skill 全部发现，零诊断告警。
+
+顺带修掉自动检测里的一处 `set -e` 隐患：三行 `[ -d ... ] && targets+=(...)` 中最后一行失配时，
+整个脚本会静默退出，「没找到 ~/.claude、~/.codex 或 ~/.pi」那句提示永远打不出来。
+
 ## 出图与生视频全面改走 lingying — 2026-08-25
 
 **novel-setup 1.1.0 · novel-characters 1.13.0 · novel-art 1.4.0 · novel-storyboard 1.5.0**
