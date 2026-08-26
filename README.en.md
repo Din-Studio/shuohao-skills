@@ -9,7 +9,7 @@
 
 # shuohao-skills
 
-**Agent skills for AI short-drama production** — from a novel to shoot-ready material: production parameters, character bibles, adaptation outlines, scene & prop bibles, screenplays, storyboards. Built for AI coding agents, **runs in pi, Claude Code, and codex**.
+**Agent skills for AI short-drama production** — from a novel to shoot-ready material: production parameters, character bibles, adaptation outlines, scene & prop bibles, screenplays, storyboards, and reference-sheet-to-video ordering. Built for AI coding agents, **runs in pi, Claude Code, and codex**.
 
 Here is the whole pipeline — **the production parameters lock the aspect and the models first; the outline converges the structure; script, scenes and characters iterate together; the storyboard only outputs, it makes no new decisions**:
 
@@ -23,6 +23,7 @@ Here is the whole pipeline — **the production parameters lock the aspect and t
 | [**novel-art**](skills/novel-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; all 13 quality gates script-checked |
 | [**novel-script**](skills/novel-script/README.en.md) | Screenwriting for AI short drama: scenes + beat flow (action beats alternating with dialogue lines), per-episode duration deterministically estimated from reading speed, a gated cold-open hook in the first 3 beats, a per-character line book with voice prompts that feeds straight into TTS. All 10 quality gates script-checked |
 | [**novel-storyboard**](skills/novel-storyboard/README.en.md) | Storyboarding for AI short drama: segments (one generation, ≤15s) → cuts (2–5s hard gate) → keyframes (master pinned at 0.00s, sub-frames at their cut marks), with MiniMax H3 prompt alignment and cut times audited verbatim; frames actually generated with the design sheets as references, one-command production packs that carry the video parameters, and an optional `lingying video create` ordering step. All 19 quality gates script-checked |
+| [**novel-creation**](skills/novel-creation/README.en.md) | A sibling production line to `novel-storyboard`: segments (one generation, ≤15s) → cuts (2–5s hard gate), **with no frame-image layer** — segments mount existing `novel-characters`/`novel-art` sheets directly as references and carry one model-agnostic video prompt (not an H3-specific structure), with zero new image-generation calls from seed through ordering. Use storyboard for precise shot control, this one for speed and cost. All 16 quality gates script-checked |
 
 **Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for a fully English report (data content stays as authored). The UI language can also be settled once in `production.json`.
 
@@ -97,7 +98,7 @@ ln -s "$PWD/skills/novel-characters" ~/.codex/skills/novel-characters
 ln -s "$PWD/skills/novel-characters" ~/.pi/agent/skills/novel-characters
 ```
 
-**pi has a second route**: install the whole repository as a pi package and all six skills come in at once, with `git pull` still taking effect immediately:
+**pi has a second route**: install the whole repository as a pi package and all seven skills come in at once, with `git pull` still taking effect immediately:
 
 ```bash
 pi install /path/to/shuohao-skills                        # local directory
@@ -176,6 +177,9 @@ Running a novel through all five stages produces a pile of `*.json` / `*.md` / `
 │   ├── E01-01/        ← one folder per segment (prompt.md + f1..fN.png + video.mp4 once ordered)
 │   ├── E01-02/
 │   └── …
+├── creation/      ← novel-creation (a sibling to storyboard/, not a 6th stage stacked on top): <drama>-creation.json / .md / creation-report.html
+│   ├── manifest.json  ← from `export` (each segment's mounted reference list, no sheet files copied)
+│   └── E01-01/…       ← one folder per segment (prompt.md + video.mp4 once ordered, no frame images)
 ├── docs/          ← notes you write yourself, kept apart from generated output
 └── scripts/       ← helper scripts for running the pipeline
 ```
@@ -186,6 +190,7 @@ Key points:
 - **One directory per skill.** New characters or scenes go into the matching stage directory; the root stays clean.
 - **The storyboard's `manifest.json` and `E01-0x/` packs belong in `storyboard/`**, exactly as `export --out .` writes them. **Do not tuck the segment folders one level deeper** (say, into `segments/`): the report links its frames by the relative path `<segment>/f<n>.png`, so the HTML and the segment folders must be siblings. Nest them and every embedded frame **silently** turns into a "not generated" placeholder — no error.
 - **Every skill checks its own landing spot.** When `validate` finds `production.json` it also compares where the artifact sits, and names the right directory if it is wrong. A misplaced file costs no re-rendering, so this is a notice rather than a gate — but staying silent would be worse, since `--from` discovery finds nothing when the files are flattened. With no `production.json` there is no way to tell where the work-directory root is, and the check says so instead of guessing.
+- **`novel-creation` is a sibling production line to `novel-storyboard`, not a sixth stage stacked onto the five above.** Both start from `script.json` and land in their own directory (`storyboard/` vs. `creation/`); pick one per occasion, or split an episode across both. `novel-creation` checks its own landing spot the same way, but it is not wired into `scripts/report.mjs`'s five-stage merged report — it ships its own `render --html`.
 - **Report HTML can always be re-rendered** and images re-generated from the prompts — commit `json` / `md` / `docs` / `scripts` and gitignore the report HTML plus the `png` / `mp4` inside the segment folders.
 
 

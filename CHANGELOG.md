@@ -1,5 +1,61 @@
 # Changelog
 
+## 新增 novel-creation — 参考图直出视频
+
+**novel-creation 1.0.0**
+
+唯一能把剧本变成视频的 skill 一直是 `novel-storyboard`：段 → 分镜 → 分镜图，每个分镜先出一张
+关键帧图（MiniMax H3 的 I2VA 多图对齐模式），再连同专用提示词一起下单生视频。这条链路适合要
+精确控镜的正式产出，但也意味着每一集要先出三四十张分镜图才能下单——多一道生成、多一次画风
+对不上的风险、多一份等待和花费。用户往往已经有 `novel-characters` / `novel-art` 出好的角色、
+场景、道具设定图，有些场合不需要分镜图这一层中间产物，想直接拿这些设定图当参考图、配一条
+提示词就下单。
+
+`novel-creation` 是新增的**并列产线**，不是替代：复制 `novel-storyboard` 的段/分镜数据模型与
+质量门方法论（节拍认领 + 秒数硬门 + 提示词逐字对账，这套方法已经被 19 道门验证过），砍掉分镜
+图这一整层，把参考图挂载点从「每个分镜一张新生成的关键帧」改成「每段直接引用 `cast.json` /
+`art.json` 已经生成的设定图」。
+
+### 两处没有跟着 novel-storyboard 现状走
+
+1. **视频下单不抄 `novel-storyboard` 现在还停留的 bash 文档，直接用代码编排。** `novel-art` /
+   `novel-characters` 已经把出图调用从「模型现场拼 bash」搬进了 `scripts/lib/lingying.mjs`
+   （见上一节）；`novel-creation` 是全新代码，没有历史包袱，照最新验证过的模式起步：一条
+   `videos` 命令，提交/轮询/落盘/断点续传全在代码里，参考图整批去重上传（视频任务之间没有
+   互相依赖，去掉了出图那份的「母子波次」），超时与退避按视频比出图慢一个量级调大
+   （15 分钟超时、轮询起步 10 秒）。
+2. **提示词不沿用 H3 的 I2VA 多图对齐结构。** `<Picture k> aligns with the 0.00-second mark…`、
+   `<d>` 标签是 H3 私有语法，专为「每个分镜都有一张精确钉住秒数的关键帧图」设计——没有关键帧图
+   就没有对齐指令可写。现场查证（`lingying model get`）：`MiniMax H3` 与 `seedance2.5` /
+   `seedance2.0` 的 `input_schema` 都在顶层暴露通用的 `images: string[]` 字段，「参考图 + 提示词
+   → 视频」是跨模型的能力，不是 H3 独有。`novel-creation` 改用一条通用、任何视频模型都吃得下的
+   自然语言提示词（`references/creation-prompt.md`）：开头逐张交代参考图身份、`[Shot k]` 逐镜
+   描述带景别/运镜短语、认领台词打引号原文引用，不绑定任何一个模型。
+
+### 16 道质量门（比 novel-storyboard 少 3、多 2）
+
+去掉 H3 结构对齐、风格短语、分镜图画幅、分镜图英文卫生四道——没有分镜图这个产物，这些门无从
+查起；`h3-dialogue` 改名 `dialogue-verbatim`（纯文本子串匹配，不要求 `<d>` 标签）；`h3-lang`
+改名 `prompt-lang`（逻辑不变）。新增两道盯参考图：`refimage-coverage`（段内出现的每个人物/
+场景/道具都要能从 `outline`/`art` 解出名字、拼出 `../characters|art/images/<slug>-sheet.png`，
+文件不存在点名缺哪张 + 期望路径——这是 AC3 的硬要求，缺图不能等到下单提交失败才发现）、
+`refimage-labeled`（提示词开头的身份说明句数量必须与 `images` 数组长度一致）。
+
+### 原创样例，不借用《渡口》
+
+`CLAUDE.md` 明确要求每个 skill 的样例数据是它自己的、且必须先有故事再有分镜。`novel-creation`
+的样例是《收书人》：深夜旧书店老板陈叙靠翻开每一本卖来的旧书扉页寻找失散多年的妹妹，这一夜青年
+周亦卖掉的一本诗集里，她认出了妹妹的笔迹，不动声色买下书，独自认出书里夹着的字条。1 集 4 段
+9 切，30 秒，全部质量门通过，样例目录里带 4 张真实占位设定图（非纯 mock），`refimage-coverage`
+门与 `export`/`videos --dry-run` 有真实文件可读。
+
+### 边界
+
+不改 `novel-storyboard` 一个字，两个 skill 并列存在、互不依赖。不接入 `scripts/report.mjs` 的
+五段合并报告——`novel-creation` 有自己的 `render --html`。不新增 `.gates.jsonl` + `stats` 门
+失败累积——那套机制目前只在 `novel-storyboard` 上试验，`CLAUDE.md` 明确要求先验证过再决定要不
+要推广。
+
 ## 出图调用收进代码 — novel-art / novel-characters
 
 **novel-art 1.7.0 · novel-characters 1.16.0**
