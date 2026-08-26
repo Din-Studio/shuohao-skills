@@ -1,6 +1,6 @@
 ---
 name: novel-outline
-version: 1.3.0
+version: 1.4.0
 description: |
   把一本小说改编成短剧大纲五件套：改编说明、人物表、爽点表、分集梗概、资产清单，
   产出 outline.json + Markdown + 单页评审报告（KPI 带、关键决策、爽点时间轴、调度矩阵、场景概览、质量门）。
@@ -8,12 +8,8 @@ description: |
   支持体检模式：贴一份现成大纲进来，只跑质量门给诊断。
   零依赖、零 API key，用当前会话额度。
   Use when asked to 改编大纲、短剧大纲、拆大纲、小说转短剧、adaptation outline。
-allowed-tools:
-  - Read
-  - Write
-  - Bash
-  - Task
-  - Glob
+# 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
+allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
 triggers:
   - novel-outline
   - 改编大纲
@@ -28,6 +24,7 @@ metadata:
     bins:
       - node          # >= 18，只用标准库，无 npm 依赖
   runtimes:
+    - pi            # 没有子代理：并发步骤在当前会话串行做，产出一致
     - claude-code
     - codex
 ---
@@ -37,6 +34,8 @@ metadata:
 输入一本小说 + 目标参数，输出短剧改编大纲五件套。**四件模型写、一件脚本算**（资产清单从分集数据自动汇总）。
 
 `{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/novel-outline.mjs`，零依赖，`node` 直接跑。
+
+**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。
 
 **边界（不做的事）**：不写剧本台词、不做分镜、不出图像/TTS 提示词。梗概是叙述体，出现引号对白就是越界——`validate` 会拦。想从小说拆角色设定（画像/形象提示词/设定图），那是 `novel-characters` 的活。
 
@@ -92,7 +91,7 @@ node {baseDir}/scripts/novel-outline.mjs chunk <book.txt> <段目录>/.work
 
 按章节标题分卷（默认每卷 15 章，`--per-volume` 可调），识别不出章节就按字数切。打印 `{"volumes": N, ...}`；`truncated: true` 就明确告诉用户尾部没扫到，别闷着。
 
-每卷一个子代理（支持并发就**同一条消息里全部发出**）：读 `{baseDir}/references/volume-pass.md`，读 `<段目录>/.work/vol-NN.txt`，把卷摘要写到 `<段目录>/.work/summary-NN.json`，只回一句「done NN」。
+每卷一份任务：读 `{baseDir}/references/volume-pass.md`，读 `<段目录>/.work/vol-NN.txt`，把卷摘要写到 `<段目录>/.work/summary-NN.json`，只回一句「done NN」。**有子代理就每卷一个、所有调用放在同一条消息里**（Claude Code 的 Task、codex 的 subagent）；**pi 默认不带子代理**，就在当前会话里一卷一卷顺着做，产出一致。
 
 ### Step 3 — 快版骨架 → 用户拍板 ⛔
 
@@ -110,7 +109,7 @@ node {baseDir}/scripts/novel-outline.mjs validate <段目录>/<书名>-outline.j
 
 ### Step 5 — 分集梗概（分批）
 
-**每批 ≤ 10 集**，能并发就并发。每个子代理拿到：拍板后的骨架四块、自己负责的集数区间、区间内的爽点，读 `{baseDir}/references/episode-pass.md` 照着写，产出写到 `<段目录>/.work/eps-NN.json`。
+**每批 ≤ 10 集**，有子代理就并发、没有（例如 pi）就在当前会话串行做。每份任务拿到：拍板后的骨架四块、自己负责的集数区间、区间内的爽点，读 `{baseDir}/references/episode-pass.md` 照着写，产出写到 `<段目录>/.work/eps-NN.json`。
 
 合并时按 ep 排序拼进 `<段目录>/<书名>-outline.json` 的 `episodes`。
 

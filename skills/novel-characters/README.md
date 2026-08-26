@@ -61,10 +61,13 @@ node scripts/novel-characters.mjs seed outline.json > seed.json
 安装见[仓库根 README](../../README.md)。装好后：
 
 ```
-/novel-characters ./你的小说.txt
+/novel-characters ./你的小说.txt          # Claude Code、codex
+/skill:novel-characters ./你的小说.txt    # pi（skill 命令带 skill: 前缀，参数写法一样）
 ```
 
-或者直接说「帮我拆一下这本书的角色」并给出路径。
+或者直接说「帮我拆一下这本书的角色」并给出路径，三家都一样。
+
+**pi 没有子代理**：两趟扫描（分块抽角色、逐角色出卡）在 pi 里是当前会话串行做，慢几倍，产出一个字不差。
 
 ### 报告语言
 

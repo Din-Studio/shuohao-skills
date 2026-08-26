@@ -1,6 +1,6 @@
 ---
 name: novel-art
-version: 1.5.0
+version: 1.6.0
 description: |
   给 AI 短剧出美术设定集（场景 + 叙事道具）：场景的设计意图、一致性锚点、光照时段变体、
   空景提示词；道具的戏剧功能、状态变体、尺度参照、白底无手提示词。
@@ -11,12 +11,8 @@ description: |
   有 novel-outline 的 outline.json 就用 seed 预填场景清单与出现集；出图走 lingying（灵影网关）CLI（可选）。
   零依赖、零 npm；出图要 lingying 的 api_key。
   Use when asked to 场景设定、出场景、环境设定集、场景一致性、scene bibles for AI short drama。
-allowed-tools:
-  - Read
-  - Write
-  - Bash
-  - Task
-  - Glob
+# 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
+allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
 triggers:
   - novel-art
   - 美术设定
@@ -35,6 +31,7 @@ metadata:
     optional:
       - lingying      # 有才出环境设定图；没有就只交提示词，其余照常
   runtimes:
+    - pi            # 没有子代理：并发步骤在当前会话串行做，产出一致
     - claude-code
     - codex
 ---
@@ -54,6 +51,8 @@ metadata:
 | 道具白底无手 | 道具图要被贴进各种镜头，必须可抠；拿着道具的手是最常见污染 |
 
 `{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/novel-art.mjs`，零依赖，`node` 直接跑。
+
+**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。Step 4 出设定图要本机安装了 `lingying` CLI——见 `references/sheet.md`。
 
 **边界（不做的事）**：不做分镜、不写剧本、不管角色（`novel-characters` 的活）、不排大纲（`novel-outline` 的活）。**道具只收叙事道具**（有特写、跨集、承载剧情的，通常 3–8 件）——场景陈设归场景锚点，一次性手部道具镜头级提示词解决，都不单独建资产。
 
@@ -92,7 +91,7 @@ node {baseDir}/scripts/novel-art.mjs seed <outline.json> > <段目录>/<剧名>-
 
 ### Step 2 — 逐场景填设定 + 提取叙事道具
 
-每个场景一份，能并发就并发。每份任务拿到：
+每个场景一份，有子代理就并发、没有（例如 pi）就在当前会话串行做，产出一致。每份任务拿到：
 
 - `{baseDir}/references/scene-pass.md` 和 `{baseDir}/references/schema.md`（读它们，照着做）
 - 该场景的骨架 + 原文/大纲里关于这个空间的全部信息

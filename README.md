@@ -11,7 +11,7 @@
 
 # shuohao-skills
 
-**AI 短剧制作的 skill 集合**：从一本小说到直接喂生成管线的制作素材——定生产参数、拆角色、排大纲、出场景与道具设定、写剧本、切分镜。给 AI 编码 agent 用，**Claude Code 和 codex 都能跑**。
+**AI 短剧制作的 skill 集合**：从一本小说到直接喂生成管线的制作素材——定生产参数、拆角色、排大纲、出场景与道具设定、写剧本、切分镜。给 AI 编码 agent 用，**pi、Claude Code、codex 都能跑**。
 
 整条管线长这样——**生产参数先定死画幅与模型，改编大纲收敛结构，剧本、场景、角色三者同步迭代，分镜只做输出不做新决定**：
 
@@ -98,6 +98,28 @@ ln -s "$PWD/skills/novel-characters" ~/.claude/skills/novel-characters
 ln -s "$PWD/skills/novel-characters" ~/.codex/skills/novel-characters
 ln -s "$PWD/skills/novel-characters" ~/.pi/agent/skills/novel-characters
 ```
+
+**pi 还有第二条路**：把整个仓库当成 pi 包安装，六个 skill 一次全进来，`git pull` 同样立刻生效：
+
+```bash
+pi install /path/to/shuohao-skills                        # 本地目录
+pi install git:github.com/eternityspring/shuohao-skills   # 直接从 GitHub
+```
+
+仓库根的 `skills/` 就是 pi 的约定目录，**不需要 `package.json`**。安装完 `pi config` 里可以逐个开关。
+
+## 三个 agent 的差别
+
+工作流、脚本、产出三家完全一样，不同的只有两处——**都不影响结果，只影响怎么打命令和跑多快**：
+
+| | pi | Claude Code | codex |
+| --- | --- | --- | --- |
+| skill 命令 | `/skill:novel-outline` | `/novel-outline` | `/novel-outline` |
+| 子代理并发 | **没有**——内核不带子代理，也没有内置待办与后台 bash | Task | subagent |
+
+直接用中文说「帮我拆一下这本书的角色」并给出路径，三家都能唤起，与打命令等价。
+
+SKILL.md 里凡是写着「有子代理就并发」的步骤，在 pi 里就是当前会话顺着做一遍：80 万字的小说拆角色会慢好几倍，但归并、质量门、报告一个字都不差。**出图与生视频那种「并发提交」跟子代理无关**——那是提交完不等待、拿一串 task_id 统一轮询，pi 照样这么做。
 
 ## 前置条件
 

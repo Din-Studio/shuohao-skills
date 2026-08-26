@@ -1,6 +1,6 @@
 ---
 name: novel-script
-version: 1.3.0
+version: 1.4.0
 description: |
   给 AI 短剧写剧本：把 novel-outline 的分集梗概落成结构化的场次 + 节拍流（动作节拍与台词行交替），
   台词逐句带说话人与语气，时长逐集按语速确定性折算。产出 script.json + Markdown + 单页评审报告
@@ -12,12 +12,8 @@ description: |
   有 outline.json 就用 seed 预填每集骨架；给 --art 连光照状态一起对账。
   零依赖、零 API key，用当前会话额度。
   Use when asked to 写剧本、出剧本、台词、场次、写戏、screenwriting for AI short drama。
-allowed-tools:
-  - Read
-  - Write
-  - Bash
-  - Task
-  - Glob
+# 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
+allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
 triggers:
   - novel-script
   - 剧本
@@ -34,6 +30,7 @@ metadata:
     bins:
       - node          # >= 18，只用标准库，无 npm 依赖
   runtimes:
+    - pi            # 没有子代理：并发步骤在当前会话串行做，产出一致
     - claude-code
     - codex
 ---
@@ -54,6 +51,8 @@ metadata:
 | 上游对账 | 场景/光照/道具对 art.json、角色对 outline.json，写了美术没登记的光照状态当场报 |
 
 `{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/novel-script.mjs`，零依赖，`node` 直接跑。
+
+**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。
 
 **边界（不做的事）**：不分镜头、无镜号、不写画面生成提示词、不出图、不配乐——分镜层的活一件不碰。不改大纲结构（砍线合人是 `novel-outline` 的活）；不做角色和场景设定（`novel-characters` / `novel-art` 的活）。
 
@@ -85,7 +84,7 @@ node {baseDir}/scripts/novel-script.mjs seed <outline.json> --eps 1-3 > <段目�
 
 ### Step 2 — 逐集写戏
 
-每集一份任务，能并发就并发。每份任务拿到：
+每集一份任务，有子代理就并发、没有（例如 pi）就在当前会话串行做，产出一致。每份任务拿到：
 
 - `{baseDir}/references/script-pass.md` 和 `{baseDir}/references/schema.md`（读它们，照着做）
 - 该集的 seed 骨架 + 大纲里这一集的梗概/爽点/人群方案

@@ -1,6 +1,6 @@
 ---
 name: novel-characters
-version: 1.14.0
+version: 1.15.0
 description: |
   从小说或短故事里拆出角色表、人物画像、形象提示词、音色提示词，
   并给每个角色出角色设定图（左半身像 + 右全身三视图 + 细节条），产出 JSON + Markdown + 可交互的 report.html。
@@ -9,12 +9,8 @@ description: |
   零依赖、零 npm；出图走 lingying（灵影网关）CLI（可选，要它的 api_key）。
   跑过 novel-setup 的项目会自动读工作目录根的 production.json：画风与设定图画幅两条硬检查，出图模型与尺寸也从那里取。
   Use when asked to 拆小说角色、分析人物、生成角色卡、character sheets from a novel。
-allowed-tools:
-  - Read
-  - Write
-  - Bash
-  - Task
-  - Glob
+# 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
+allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
 triggers:
   - novel-characters
   - 拆角色
@@ -32,6 +28,7 @@ metadata:
     optional:
       - lingying      # 有才出三视图；没有就只交提示词，其余照常
   runtimes:
+    - pi            # 没有子代理：并发步骤在当前会话串行做，产出一致
     - claude-code
     - codex
 ---
@@ -42,7 +39,7 @@ metadata:
 
 `{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/novel-characters.mjs`，零依赖，`node` 直接跑。
 
-**运行环境**：Claude Code 和 codex 都能跑，两边一样。第 8 步出图要本机安装了 `lingying` CLI——见 `references/sheet.md`。
+**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。第 8 步出图要本机安装了 `lingying` CLI——见 `references/sheet.md`。
 
 ---
 
@@ -145,7 +142,7 @@ node {baseDir}/scripts/novel-characters.mjs chunk <book.txt> <workdir>
 
 ### Step 3 — 第一趟扫描（仅 N > 1）
 
-**当前环境支持子代理就并发**（Claude Code 的 Task、codex 的 subagent）：每块一个子代理，**所有调用放在同一条消息里**才是真并发。不支持就一块一块串行读，结果一样，只是慢。
+**有子代理就并发，没有就串行**：Claude Code 用 Task、codex 用 subagent，每块一个子代理，**所有调用放在同一条消息里**才是真并发；**pi 默认不带子代理**，就在当前会话里一块一块顺着读。两条路结果一样，串行只是慢。
 
 每个子代理的任务：
 1. 读 `{baseDir}/references/roster-pass.md`，照它执行
@@ -183,7 +180,7 @@ node {baseDir}/scripts/novel-characters.mjs merge <workdir> --apply merges.json 
 
 ### Step 6 — 第二趟出卡
 
-每个角色一份，同样能并发就并发。
+每个角色一份，同样是有子代理就并发、没有（例如 pi）就在当前会话串行做。
 
 每份任务拿到：
 - `{baseDir}/references/profile-pass.md` 和 `{baseDir}/references/schema.md`（读它们，照着做）

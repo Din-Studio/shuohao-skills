@@ -104,6 +104,8 @@ curl -fsSL -o "<段号>/f<切序>.png" "$URL"
 
 参考图的 `upload` 也一样——先把这一集要用到的设定图全部传完拿到 URL 表，再开始批量提交。
 
+**这里的「并发」是提交不等待，跟有没有子代理无关**——pi 这种不带子代理的运行环境照样这么做。
+
 ## 其他约定
 
 - 提示词末尾固定加：`No text, no watermark, no borders — a single clean full-bleed frame.`（分镜图是干净的一帧，不是设定图，不要格子边框）

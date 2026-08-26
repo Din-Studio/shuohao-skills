@@ -9,7 +9,7 @@
 
 # shuohao-skills
 
-**Agent skills for AI short-drama production** — from a novel to shoot-ready material: production parameters, character bibles, adaptation outlines, scene & prop bibles, screenplays, storyboards. Built for AI coding agents, **runs in both Claude Code and codex**.
+**Agent skills for AI short-drama production** — from a novel to shoot-ready material: production parameters, character bibles, adaptation outlines, scene & prop bibles, screenplays, storyboards. Built for AI coding agents, **runs in pi, Claude Code, and codex**.
 
 Here is the whole pipeline — **the production parameters lock the aspect and the models first; the outline converges the structure; script, scenes and characters iterate together; the storyboard only outputs, it makes no new decisions**:
 
@@ -96,6 +96,28 @@ ln -s "$PWD/skills/novel-characters" ~/.claude/skills/novel-characters
 ln -s "$PWD/skills/novel-characters" ~/.codex/skills/novel-characters
 ln -s "$PWD/skills/novel-characters" ~/.pi/agent/skills/novel-characters
 ```
+
+**pi has a second route**: install the whole repository as a pi package and all six skills come in at once, with `git pull` still taking effect immediately:
+
+```bash
+pi install /path/to/shuohao-skills                        # local directory
+pi install git:github.com/eternityspring/shuohao-skills   # straight from GitHub
+```
+
+The repository's root `skills/` directory is pi's convention directory — **no `package.json` required**. Once installed, `pi config` toggles them individually.
+
+## What differs between the three agents
+
+The workflow, the scripts and the artifacts are identical across all three. Only two things differ — **neither changes the result, only how you type the command and how fast it runs**:
+
+| | pi | Claude Code | codex |
+| --- | --- | --- | --- |
+| Skill command | `/skill:novel-outline` | `/novel-outline` | `/novel-outline` |
+| Sub-agent concurrency | **None** — the core ships without sub-agents, built-in todos or background bash | Task | subagent |
+
+Asking in plain words ("break this book down into characters", plus the path) works on all three and is equivalent to typing the command.
+
+Every step in a SKILL.md that says "fan out to sub-agents if you have them" simply runs in sequence inside the current session on pi: breaking down an 800k-character novel takes several times longer, but the merge, the quality gates and the report come out word for word the same. **The "submit concurrently" in image and video generation has nothing to do with sub-agents** — that means firing off the requests without waiting and polling a list of task ids, which pi does exactly the same way.
 
 ## Requirements
 

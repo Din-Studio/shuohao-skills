@@ -55,10 +55,13 @@ What comes across is what the outline already decided (character id, name, tier,
 For installation see the [repository README](../../README.en.md). Then:
 
 ```
-/novel-characters ./your-novel.txt
+/novel-characters ./your-novel.txt          # Claude Code, codex
+/skill:novel-characters ./your-novel.txt    # pi (skill commands take a skill: prefix; arguments are identical)
 ```
 
-Or just say "break this book down into characters" and give it the path.
+Or just say "break this book down into characters" and give it the path — same on all three.
+
+**pi has no sub-agents**: both passes (chunked roster extraction, then one card per character) run in sequence inside the current session there. Several times slower, byte-for-byte the same output.
 
 ### Report language
 

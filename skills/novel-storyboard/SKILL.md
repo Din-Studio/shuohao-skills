@@ -1,6 +1,6 @@
 ---
 name: novel-storyboard
-version: 1.6.0
+version: 1.7.0
 description: |
   给 AI 短剧出分镜：三层结构——段（一次视频生成，≤15 秒）→ 分镜（段内 2–5 秒的剪切，认领剧本节拍）
   → 分镜图（每切一张关键帧：主分镜图钉 0.00 秒，子分镜图钉各自切点）。
@@ -13,12 +13,8 @@ description: |
   第 19 道 shot-recipe 可选：挂上 shot-recipes 卡库才查，不挂就明说跳过）；
   export 一键导出投产包（每段提示词 + 按 Picture 序的分镜图清单），再走 lingying 下单生视频（可选）。零依赖、零 npm。
   Use when asked to 分镜、出分镜、镜头表、切镜、storyboard for AI short drama。
-allowed-tools:
-  - Read
-  - Write
-  - Bash
-  - Task
-  - Glob
+# 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
+allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
 triggers:
   - novel-storyboard
   - 分镜
@@ -36,6 +32,7 @@ metadata:
     optional:
       - lingying      # 有才出首帧图、才能下单生视频；没有就只交提示词与投产包，其余照常
   runtimes:
+    - pi            # 没有子代理：并发步骤在当前会话串行做，产出一致
     - claude-code
     - codex
 ---
@@ -57,6 +54,8 @@ metadata:
 | 配音对齐单 | 每句台词对到镜号——TTS 音频贴到哪一段视频，脚本自动汇总 |
 
 `{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/novel-storyboard.mjs`，零依赖，`node` 直接跑。
+
+**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。Step 4 出分镜图、Step 6 下单生视频要本机安装了 `lingying` CLI——见 `references/frame.md` 与 `references/video-order.md`。
 
 **边界（不做的事）**：不写戏不改台词（`novel-script` 的活）、不出场景/角色/道具设定图（`novel-art` / `novel-characters` 的活）、**不做剪辑合成**（拼接、转场、配乐、贴 TTS 音频都不在这里）。视频生成本身是可选的最后一步——走 lingying 下单，产出到每段一个 mp4 为止。口型/唇形同步暂不管——那是生成管线的事。
 
@@ -98,7 +97,7 @@ node {baseDir}/scripts/novel-storyboard.mjs seed <script.json> --eps 1-3 > <段�
 
 ### Step 2 — 逐集分段切镜
 
-每集一份任务，能并发就并发。每份任务拿到：
+每集一份任务，有子代理就并发、没有（例如 pi）就在当前会话串行做，产出一致。每份任务拿到：
 
 - `{baseDir}/references/storyboard-pass.md` 和 `{baseDir}/references/schema.md`（读它们，照着做）
 - 该集的 seedScenes 底稿 + 场景卡（art.json 的锚点与光照提示词）+ 角色卡（cast.json 的形象要点）

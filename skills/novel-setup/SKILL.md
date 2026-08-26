@@ -1,6 +1,6 @@
 ---
 name: novel-setup
-version: 1.2.0
+version: 1.3.0
 description: |
   给 AI 短剧定生产参数：生图模型、资产图与分镜图的分辨率档位与比例、生视频模型与变体、
   视频 aspect_ratio 与 resolution，外加三个必须跨 skill 一致的口径（画风、报告界面语言、
@@ -13,11 +13,8 @@ description: |
   成片画幅**没有默认值**，必须显式指定——猜错了后果是整批产物重出。
   零依赖、零 npm；本 skill 自己不调模型，出图与生视频由下游 skill 拿 lingying 下单。
   Use when asked to 定参数、配置画幅、竖屏还是横屏、出图分辨率、视频参数、production setup for AI short drama。
-allowed-tools:
-  - Read
-  - Write
-  - Bash
-  - Glob
+# 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
+allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep
 triggers:
   - novel-setup
   - 生产参数
@@ -35,6 +32,7 @@ metadata:
     bins:
       - node          # >= 18，只用标准库，无 npm 依赖
   runtimes:
+    - pi            # 本 skill 没有并发步骤，三家跑起来完全一样
     - claude-code
     - codex
 ---
@@ -55,6 +53,8 @@ metadata:
 | 画风与语言也收进来 | 画风漂了角色是吉卜力、场景是实拍，合成没法看 |
 
 `{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/novel-setup.mjs`，零依赖，`node` 直接跑。
+
+**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。本 skill 没有并发步骤、不出图也不下单，只要 `node`。
 
 **边界（不做的事）**：不写故事、不出图、不下单给视频模型。它只管技术参数——出图是 `novel-characters` / `novel-art` / `novel-storyboard` 的事，下单是 `novel-storyboard` 的事，创作参数（多少集、多长、什么题材）是 `novel-outline` 的活。
 

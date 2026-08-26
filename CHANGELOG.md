@@ -1,5 +1,56 @@
 # Changelog
 
+## 六个 skill 适配 pi — 2026-08-26
+
+**novel-setup 1.3.0 · novel-outline 1.4.0 · novel-characters 1.15.0 · novel-art 1.6.0 · novel-script 1.4.0 · novel-storyboard 1.7.0**
+
+上一次「安装脚本支持 pi」只解决了软链，SKILL.md 一个字没动——所以 pi 里读到的
+仍然是一份写给 Claude Code 和 codex 的工作流：工具名是大写的 `Read` / `Write` / `Glob`，
+并发那几步指着 Task 和 subagent，`runtimes` 里根本没有 pi。**跑得起来不等于说得对**，
+这次把平台相关的三样东西全部对上。
+
+### pi 没有子代理，这是最要紧的一条
+
+pi 的内核[有意不带](https://mariozechner.at/posts/2025-11-30-pi-coding-agent/)子代理、
+待办和后台 bash。原文这么写：
+
+> 「当前环境支持子代理就并发（Claude Code 的 Task、codex 的 subagent）」
+
+在 pi 里读起来像是在让它去调一个不存在的东西，而另外四个 skill 更省事，直接写
+「每集一份任务，能并发就并发」——没有子代理时该怎么办，一句话都没有。现在六处全部
+改成同一句式，**串行那条路写在明面上**：
+
+> 「每集一份任务，有子代理就并发、没有（例如 pi）就在当前会话串行做，产出一致。」
+
+六个 SKILL.md 的开头都补了一行**运行环境**，说清三家的差别与串行的代价：慢，但归并、
+质量门、报告一个字都不差。
+
+### 「并发提交」不是并发子代理
+
+出图与生视频那四处「一批角色可以并发」「一整段可以并发」「整集并发提交」说的是
+**提交完不等待、拿一串 task_id 统一轮询**，跟有没有子代理毫无关系。同一个词两种意思，
+在一个没有子代理的运行环境里最容易被读成「这步做不了，跳过」。四份 reference
+各加一句挑明，pi 照样这么做。
+
+### frontmatter 三处
+
+| 字段 | 改法 |
+| --- | --- |
+| `allowed-tools` | YAML 数组改成 [Agent Skills 标准](https://agentskills.io/specification)的空格分隔字符串，**两套工具名都列**：pi 认小写（`read` / `write` / `edit` / `bash` / `grep` / `find` / `ls`），Claude Code 认大写。pi 里没有 `Glob`，对应的是 `find` |
+| `metadata.runtimes` | 加 `pi`，排在最前面，并注明它没有子代理 |
+| `version` | 六个各升一个 minor |
+
+用 pi 自己的 `loadSkillsFromDir` 复验：六个 skill 全部发现，**零诊断告警**，
+description 最长的 novel-storyboard 是 612 字符，离 1024 上限还有余量。
+
+### 两份 README 与安装脚本
+
+- 新增一节「三个 agent 的差别」：skill 命令 pi 是 `/skill:novel-outline`、另外两家是
+  `/novel-outline`；子代理 pi 没有。**用中文直接说也一样能唤起，三家等价**
+- pi 多一条安装路径：`pi install <本地目录>` 或 `pi install git:github.com/...`，
+  仓库根的 `skills/` 就是 pi 的约定目录，**不需要 `package.json`**
+- `install.sh` 的帮助、自动检测顺序、找不到时的提示，都把 pi 排到前面
+
 ## 产物落点固定到段目录 — 2026-08-26
 
 **novel-setup 1.2.0 · novel-outline 1.3.0 · novel-characters 1.14.0 · novel-art 1.5.0 · novel-script 1.3.0 · novel-storyboard 1.6.0**
