@@ -4,7 +4,8 @@
 //   node scripts/selftest.mjs
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -37,7 +38,23 @@ import {
   productionProblems,
   STAGE_DIR,
   stageDirNote,
+  imageJobsFrom,
+  STYLE_REF_LINE,
 } from './novel-characters.mjs';
+import {
+  BACKOFF_MS,
+  CLI_NAME,
+  CUTOUT_MODEL,
+  DEFAULT_ASPECT,
+  DEFAULT_IMAGE_MODEL,
+  DEFAULT_RESOLUTION,
+  LEDGER_FILE,
+  backoffAt,
+  cutout,
+  pickData,
+  preflight,
+  runBatch,
+} from './lib/lingying.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const examples = join(here, '..', 'examples');
@@ -363,7 +380,7 @@ eq(validateCast(CAST, null).length, 0, '不给原文时跳过引文校验');
 
 /* ---------------- 生产参数（production.json） ---------------- */
 
-// 样例《渡口》是横屏半写实，参数照它配才是全绿基线
+// 样例《渡口》是横屏真人实拍，参数照它配才是全绿基线
 const PRODUCTION = {
   source: '渡口',
   style: 'realistic',
@@ -805,7 +822,7 @@ eq(validateCast(CAST, SOURCE, 'zh', 'realistic').length, 0, '样例四个角色�
 }
 {
   const ws = clone();
-  ws[0].image.style = '  半写实厚涂插画，冷调低饱和民国配色，晨雾柔光  ';
+  ws[0].image.style = '  真人实拍，冷调低饱和民国配色，晨雾柔光  ';
   eq(validateCast(ws, SOURCE, 'zh', 'realistic').length, 0, 'image.style 仅空白差异不算不一致');
 }
 
@@ -875,9 +892,18 @@ ok(
   '不再用扁平矢量卡通',
 );
 ok(
-  CAST.every((c) => /Semi-realistic character illustration, painterly rendering/.test(c.image.sheet)),
-  '画风统一到半写实厚涂',
+  CAST.every((c) => /Photorealistic portrait of a real human actor/.test(c.image.sheet)),
+  '画风统一到真人演员实拍',
 );
+{
+  // sheet 有渲染句、prompt 没有——只查 sheet 的话这种两张皮会整批漏过去
+  const noRender = clone();
+  noRender[0].image.prompt = '一句不带渲染句的提示词';
+  ok(
+    validateCast(noRender, SOURCE, 'zh', 'realistic').some((x) => x.includes('image.prompt')),
+    'prompt 缺渲染句被拦',
+  );
+}
 // 真实感来自不完美
 for (const [k, label] of [
   [/visible pores/i, '可见毛孔'],
@@ -948,5 +974,294 @@ eq(STAGE_DIR, 'characters', '段目录名与端到端工作目录约定一致');
   eq(stageDirNote('/w/渡口-cast.json', null), null, '没有 production.json 就无从判断，不猜');
   eq(stageDirNote(null, prod), null, '没有产物路径也不猜');
 }
+
+/* ---------------- 出图任务：从文档搬运 ---------------- */
+
+{
+  const { model, inputBase, jobs, problems } = imageJobsFrom(CAST);
+  eq(problems.length, 0, '自带样例能直接排出出图任务');
+  eq(model, DEFAULT_IMAGE_MODEL, '没有生产参数就用兜底模型');
+  eq(inputBase.aspect_ratio, DEFAULT_ASPECT, '没有生产参数就用兜底画幅');
+  eq(inputBase.resolution, DEFAULT_RESOLUTION, '没有生产参数就用兜底档位');
+  eq(jobs.length, CAST.length, '每个角色一张，不按 importance 筛');
+  eq(jobs[0].prompt, CAST[0].image.sheet, '提示词取 image.sheet，不是 image.prompt');
+  eq(jobs[0].negativePrompt, CAST[0].image.negativePrompt, '反向词单独带上');
+  eq(jobs[0].file, `images/${slug(CAST[0].name)}-sheet.png`, '产物路径与 render 找图的路径同一个算法');
+  eq(jobs.every((j) => !j.refFrom), true, '默认不挂风格参考——只要几张草图的场合不该被绑住');
+}
+
+// --images 换目录，产物与 render 两边跟着走
+{
+  const { jobs } = imageJobsFrom(CAST, null, { imagesDir: 'pics' });
+  ok(jobs[0].file.startsWith('pics/'), 'images 目录可换，产物路径跟着换');
+}
+
+// 生产参数在就以它为准——三个值原样进 input_data，不折算像素
+{
+  const prod = { style: 'realistic', image: { model: 'seedream4', asset: { resolution: '4K', aspectRatio: '4:3' } } };
+  const { model, inputBase } = imageJobsFrom(CAST, prod);
+  eq(model, 'seedream4', '模型取 production.json 的 image.model');
+  eq(inputBase.resolution, '4K', '档位是枚举值，原样带上');
+  eq(inputBase.aspect_ratio, '4:3', '画幅是枚举值，原样带上');
+}
+
+// 风格参考：基准角色先出，其余挂它并补一句风格匹配
+{
+  const { jobs } = imageJobsFrom(CAST, null, { styleRef: 'auto' });
+  eq(jobs[0].refFrom, null, 'auto 拿第一个角色当基准，它自己不挂参考');
+  eq(jobs.slice(1).every((j) => j.refFrom === jobs[0].key), true, '其余角色都挂基准的成图');
+  ok(jobs[1].prompt.includes(STYLE_REF_LINE), '挂了参考图就要补一句风格匹配，否则模型不知道拿它做什么');
+  ok(!jobs[0].prompt.includes(STYLE_REF_LINE), '基准角色的提示词不动');
+
+  const named = imageJobsFrom(CAST, null, { styleRef: CAST[1].name });
+  eq(named.jobs[1].refFrom, null, '指名谁谁就是基准');
+  eq(named.jobs[0].refFrom, CAST[1].name, '其余角色挂指名的那个');
+
+  const bad = imageJobsFrom(CAST, null, { styleRef: '不存在的人' });
+  ok(bad.problems.some((x) => x.includes('不存在的人')), '--style-ref 指错了提交之前就报');
+}
+
+// 提交之前就要拦下的两类问题
+{
+  const cs = JSON.parse(JSON.stringify(CAST));
+  cs[0].image.sheet = '';
+  ok(imageJobsFrom(cs).problems.some((x) => x.includes('image.sheet')), '提示词空着不许提交——白花钱');
+
+  const cs2 = JSON.parse(JSON.stringify(CAST));
+  cs2[1].name = cs2[0].name;
+  ok(imageJobsFrom(cs2).problems.some((x) => x.includes('同一个文件名')), '重名会让后出的盖掉先出的');
+}
+
+/* ---------------- 出图任务：调用封装 ---------------- */
+
+const TMP = mkdtempSync(join(tmpdir(), 'novel-characters-selftest-'));
+
+/** 假 CLI：收 (bin, args) 数组，永远不经过 shell——被测的正是这一点。 */
+function fakeCli(script) {
+  const calls = [];
+  const exec = async (bin, args) => {
+    calls.push({ bin, args });
+    return script(args, calls);
+  };
+  return { exec, calls };
+}
+/** 假时钟：sleep 直接推进，超时用例不用真等 5 分钟。 */
+function fakeClock() {
+  let t = 0;
+  return { now: () => t, sleep: async (ms) => { t += ms; } };
+}
+const fakeFetch = async (url) => ({
+  ok: true,
+  arrayBuffer: async () => new TextEncoder().encode(`PNG-BYTES:${url}`).buffer,
+});
+const created = (calls) => calls.filter((c) => c.args[0] === 'image' && c.args[1] === 'create');
+const inputOf = (call) => JSON.parse(call.args[call.args.indexOf('--input_data') + 1]);
+
+// 提示词里塞满历来把 bash 拼崩的字符：双引号、单引号、换行、$、反引号、中文
+const NASTY = `He said "stop" — don't $PATH \`rm -rf\` 里面还有中文
+换行之后继续`;
+const jobOf = (over = {}) => ({
+  key: '老周', kind: 'character', name: '老周', file: 'images/老周-sheet.png',
+  cutoutFile: 'images/老周-sheet-cutout.png',
+  prompt: NASTY, negativePrompt: 'photorealistic, young face', refFrom: null, ...over,
+});
+
+// 参数不经过 shell：提示词原样抵达，JSON 能完整 parse 回来
+{
+  const dir = join(TMP, 'shell');
+  const { exec, calls } = fakeCli((args) =>
+    args[0] === 'image'
+      ? JSON.stringify({ message: 'success', data: { task_id: 'T1' } })
+      : JSON.stringify({ message: 'success', data: { status: 'success', result: { url: 'https://x/1.png' } } }));
+  const clock = fakeClock();
+  const { summary } = await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'nanobanana2', inputBase: { resolution: '2K', aspect_ratio: '16:9' },
+    outDir: dir, exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch,
+  });
+  eq(summary.ok, 1, '一张图跑通');
+  const input = inputOf(created(calls)[0]);
+  eq(input.prompt, NASTY, '引号换行美元符反引号中文全部原样抵达——参数不经过 shell');
+  eq(input.negative_prompt, 'photorealistic, young face', 'negative_prompt 是独立字段，不塞回正向提示词');
+  ok(existsSync(join(dir, 'images', '老周-sheet.png')), '图落到 render 找得到的路径');
+  ok(!existsSync(join(dir, 'images', '老周-sheet.png.part')), '.part 中间文件已改名，不会被当成成品');
+}
+
+// 只读 data.status：响应里的 message: success 恒为 success，粗糙匹配会假命中
+{
+  const dir = join(TMP, 'status');
+  let polls = 0;
+  const { exec } = fakeCli((args) => {
+    if (args[0] === 'image') return JSON.stringify({ message: 'success', data: { task_id: 'T2' } });
+    polls += 1;
+    return polls < 3
+      ? JSON.stringify({ message: 'success', data: { status: 'running' } })
+      : JSON.stringify({ message: 'success', data: { status: 'success', result: { url: 'https://x/2.png' } } });
+  });
+  const clock = fakeClock();
+  const { summary } = await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'm', outDir: dir, exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch,
+  });
+  eq(polls, 3, '前两次 running 没有被 message: success 骗过去');
+  eq(summary.ok, 1, '真的 success 之后才落盘');
+}
+
+// data.status 缺失是硬错误，不当成「还没好」一直轮询到超时
+{
+  let threw = false;
+  try { pickData(JSON.stringify({ message: 'success', data: {} }), ['data', 'status'], '轮询'); } catch { threw = true; }
+  ok(threw, '响应里没有 data.status 就报错，不猜、不兜底');
+}
+
+// 超时有硬上限：到点标记 timeout，任务留在台账里等下次接着轮
+{
+  const dir = join(TMP, 'timeout');
+  const { exec } = fakeCli((args) =>
+    args[0] === 'image' ? JSON.stringify({ data: { task_id: 'T3' } }) : JSON.stringify({ data: { status: 'running' } }));
+  const clock = fakeClock();
+  const { summary, results } = await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'm', outDir: dir, ledgerDir: join(dir, 'images'),
+    exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch, timeoutMs: 30_000,
+  });
+  eq(summary.timeout, 1, '到点收工，不是无限 while 循环');
+  ok(results[0].detail.includes('重跑'), '超时的说法要指向下一步动作，不是一句失败');
+  const ledger = JSON.parse(readFileSync(join(dir, 'images', LEDGER_FILE), 'utf8'));
+  eq(ledger['老周'].taskId, 'T3', '超时的 task_id 留在台账里——任务多半还在网关那边跑');
+  ok(!existsSync(join(dir, LEDGER_FILE)), '台账跟产物住同一格，段目录根不留点文件');
+}
+
+// 断点续传：重跑接着轮询上次的任务，不重复提交也不重复花钱
+{
+  const dir = join(TMP, 'resume');
+  const clock = fakeClock();
+  const stall = fakeCli((args) =>
+    args[0] === 'image' ? JSON.stringify({ data: { task_id: 'T4' } }) : JSON.stringify({ data: { status: 'running' } }));
+  await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'm', outDir: dir, exec: stall.exec, sleep: clock.sleep, now: clock.now,
+    fetchImpl: fakeFetch, timeoutMs: 20_000,
+  });
+  eq(created(stall.calls).length, 1, '第一轮提交了一次');
+
+  const again = fakeCli((args) =>
+    args[0] === 'image'
+      ? JSON.stringify({ data: { task_id: 'T4-NEW' } })
+      : JSON.stringify({ data: { status: 'success', result: { url: 'https://x/4.png' } } }));
+  const { summary } = await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'm', outDir: dir, exec: again.exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch,
+  });
+  eq(created(again.calls).length, 0, '重跑没有重新提交——接着轮上次那个 task_id');
+  eq(again.calls[0].args[2], 'T4', '轮的正是台账里那个任务');
+  eq(summary.ok, 1, '这次拿到了图');
+}
+
+// 已有产物就跳过：一次 CLI 调用都不发。30 个角色重来一次只补缺的
+{
+  const dir = join(TMP, 'skip');
+  mkdirSync(join(dir, 'images'), { recursive: true });
+  writeFileSync(join(dir, 'images', '老周-sheet.png'), 'EXISTING');
+  const { exec, calls } = fakeCli(() => { throw new Error('不该被调用'); });
+  const clock = fakeClock();
+  const { summary } = await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'm', outDir: dir, exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch,
+  });
+  eq(summary.skipped, 1, '已有产物默认跳过');
+  eq(calls.length, 0, '跳过就是一次都不提交——重跑不该重复花钱');
+}
+
+// 风格参考分波次：基准角色先落盘，再 upload 成 URL 挂给其余角色
+{
+  const dir = join(TMP, 'styleref');
+  const { exec, calls } = fakeCli((args) => {
+    if (args[0] === 'upload') return 'https://assets/anchor.png';
+    if (args[0] === 'image') return JSON.stringify({ data: { task_id: 'T-x' } });
+    return JSON.stringify({ data: { status: 'success', result: { url: 'https://x/v.png' } } });
+  });
+  const clock = fakeClock();
+  const jobs = [
+    jobOf({ key: '胡二爷', name: '胡二爷', file: 'images/胡二爷-sheet.png', refFrom: '沈知微' }),
+    jobOf({ key: '沈知微', name: '沈知微', file: 'images/沈知微-sheet.png' }),
+  ];
+  const { summary } = await runBatch(jobs, {
+    bin: '/x/lingying', model: 'm', outDir: dir, exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch,
+  });
+  eq(summary.ok, 2, '基准与跟随的都出来了');
+  const upIdx = calls.findIndex((c) => c.args[0] === 'upload');
+  ok(upIdx > 0, '先出基准角色再 upload——次序由代码保证，不靠模型记着');
+  const withRef = inputOf(created(calls).find((c) => inputOf(c).images));
+  eq(withRef.images[0], 'https://assets/anchor.png', '跟随的角色挂上了基准的成图');
+}
+
+// 一张失败不阻断整批；枚举错的提交失败要指向 caps
+{
+  const dir = join(TMP, 'partial');
+  const { exec } = fakeCli((args, calls) => {
+    if (args[0] === 'image') {
+      if (created(calls).length === 1) throw new Error('input validation failed: resolution');
+      return JSON.stringify({ data: { task_id: 'T7' } });
+    }
+    return JSON.stringify({ data: { status: 'success', result: { url: 'https://x/7.png' } } });
+  });
+  const clock = fakeClock();
+  const jobs = [jobOf(), jobOf({ key: '沈知微', name: '沈知微', file: 'images/沈知微-sheet.png' })];
+  const { summary, results } = await runBatch(jobs, {
+    bin: '/x/lingying', model: 'nanobanana2', outDir: dir, exec, sleep: clock.sleep, now: clock.now,
+    fetchImpl: fakeFetch, concurrency: 1,
+  });
+  eq(summary.failed, 1, '一张失败');
+  eq(summary.ok, 1, '另一张照常出——批次内不阻断');
+  ok(results.find((r) => r.status === 'failed').detail.includes('caps'), '枚举错要指向 novel-setup caps，别让人去猜');
+}
+
+// dry-run：不提交，把将要发的参数摆出来
+{
+  const dir = join(TMP, 'dry');
+  const { exec, calls } = fakeCli(() => { throw new Error('不该被调用'); });
+  const { summary, results } = await runBatch([jobOf({ refFrom: '沈知微' })], {
+    bin: '/x/lingying', model: 'm', inputBase: { resolution: '2K' }, outDir: dir, exec, dryRun: true,
+  });
+  eq(calls.length, 0, 'dry-run 一次都不提交');
+  eq(summary.dryRun, 1, 'dry-run 单独计数');
+  eq(results[0].inputData.prompt, NASTY, '要发什么参数一眼看得见');
+  ok(results[0].detail.includes('沈知微'), '风格参考在 dry-run 阶段就标出来');
+}
+
+// 凭证问题在提交之前一次说完
+{
+  eq(preflight({ bin: null }).ok, false, '没装 CLI 就整步跳过，不假装能出图');
+  const home = join(TMP, 'home');
+  mkdirSync(join(home, '.config', CLI_NAME), { recursive: true });
+  writeFileSync(join(home, '.config', CLI_NAME, 'config.json'), JSON.stringify({}));
+  eq(preflight({ bin: '/x/lingying', home }).ok, false, '没有 api_key 提交必然 401——提交前就说');
+  writeFileSync(join(home, '.config', CLI_NAME, 'config.json'), JSON.stringify({ api_key: 'k' }));
+  eq(preflight({ bin: '/x/lingying', home }).ok, true, '有 api_key 就能出图');
+  eq(preflight({ bin: '/x/lingying', home, needUpload: true }).ok, false, '挂风格参考与抠图另要 assethub_admin_token');
+}
+
+// 白底转透明：走抠图模型，另存文件名
+{
+  const dir = join(TMP, 'cutout');
+  mkdirSync(join(dir, 'images'), { recursive: true });
+  writeFileSync(join(dir, 'images', '老周-sheet.png'), 'WHITE-BG');
+  const { exec, calls } = fakeCli((args) => {
+    if (args[0] === 'upload') return 'https://assets/c.png';
+    if (args[0] === 'image') return JSON.stringify({ data: { task_id: 'C1' } });
+    return JSON.stringify({ data: { status: 'success', result: { url: 'https://x/cut.png' } } });
+  });
+  const clock = fakeClock();
+  const out = await cutout(
+    [{ key: '老周', name: '老周', file: 'images/老周-sheet.png', cutoutFile: 'images/老周-sheet-cutout.png' }],
+    { bin: '/x/lingying', outDir: dir, exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch },
+  );
+  eq(out[0].status, 'ok', '抠图跑通');
+  eq(created(calls)[0].args[3], CUTOUT_MODEL, '抠图走的是抠图模型，不是生图模型');
+  ok(existsSync(join(dir, 'images', '老周-sheet-cutout.png')), '抠图另存，render 找的仍然是原来的白底图');
+}
+
+// 退避是拉开的，不是固定 3 秒空转
+{
+  ok(backoffAt(0) < backoffAt(3), '轮询间隔逐步拉开');
+  eq(backoffAt(99), BACKOFF_MS[BACKOFF_MS.length - 1], '封顶，不会越等越久');
+}
+
+rmSync(TMP, { recursive: true, force: true });
 
 console.log(`✓ ${passed} 项自测全部通过`);

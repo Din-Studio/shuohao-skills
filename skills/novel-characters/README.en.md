@@ -6,9 +6,9 @@ Feed it a novel or a short story, and get a complete design bible for every char
 
 - **Cast list** — who appears, how central they are, with every name a character is called by folded into one person
 - **Profile** — gender, age, standing, appearance, temperament, motivation, arc, relationships, each backed by **verbatim quotes from the source**
-- **Design prompts** — semi-realistic painterly direction, bilingual image prompt + negative prompt + style tags; `negative_prompt` is a first-class lingying field, passed through verbatim
+- **Design prompts** — photorealistic live-action direction, bilingual image prompt + negative prompt + style tags; `negative_prompt` is a first-class lingying field, passed through verbatim
 - **Voice prompts** — timbre, pitch, pace, accent, emotion, plus a voice-design prompt for Qwen3-TTS / ElevenLabs Voice Design
-- **A character model sheet** — **one per character**: a 16:9 image in three zones: an ID-photo-style bust on the left (~34%, the reference for the face design), a full-body turnaround top-right, and a strip of key-detail close-ups bottom-right. White background for clean cut-out, generated through the lingying CLI (optional)
+- **A character model sheet** — **one per character**: a 16:9 image in three zones: an ID-photo-style bust on the left (~34%, the reference for the face design), a full-body turnaround top-right, and a strip of key-detail close-ups bottom-right. White background for clean cut-out; generation is a single `images` command (optional, via lingying)
 - **Relationship map** — a whole-cast view inside the report: who is tied to whom, and how. Hover a character to light up every link they are part of, click to jump to their profile
 
 Outputs `cast.json`, a Markdown report, and a self-contained `report.html` you can just double-click.
@@ -78,7 +78,7 @@ Two things never follow the language: **image and TTS prompts stay English** (th
 
 ### Image style
 
-`realistic` by default (semi-realistic painterly). For an animation look:
+`realistic` by default (photorealistic live-action). For an animation look:
 
 ```
 /novel-characters ./book.txt --style ghibli
@@ -86,7 +86,7 @@ Two things never follow the language: **image and TTS prompts stay English** (th
 
 | id | What it is |
 | --- | --- |
-| `realistic` | Semi-realistic painterly — skin with pores and texture, fabric with weave and wear. Default |
+| `realistic` | Photorealistic live-action — skin with pores and texture, fabric with weave and wear. Default |
 | `ghibli` | Ghibli-like hand-painted cel — even ink linework, a single soft shadow tone, flat colour |
 
 They combine: `--lang ja --style ghibli`.
@@ -160,6 +160,9 @@ node scripts/novel-characters.mjs merge /tmp/wk                 # merge roster-*
 node scripts/novel-characters.mjs merge /tmp/wk --apply m.json   # apply reviewed merges
 node scripts/novel-characters.mjs assemble /tmp/wk --source Book # combine card-*.json into cast.json, prominence-ordered
 node scripts/novel-characters.mjs validate cast.json book.txt   # validate
+node scripts/novel-characters.mjs images cast.json               # generate sheets: submit / poll / save, all in the script
+node scripts/novel-characters.mjs images cast.json --dry-run     # print what would be submitted
+node scripts/novel-characters.mjs images cast.json --style-ref auto  # pin the style to the first sheet
 node scripts/novel-characters.mjs render cast.json --html       # build report.html
 node scripts/novel-characters.mjs slug "胡二爷"                  # filesystem-safe name
 ```
@@ -168,8 +171,8 @@ node scripts/novel-characters.mjs slug "胡二爷"                  # filesystem
 
 - Caps at 24 chunks (~930k characters net of overlap) per run. Beyond that it reports `truncated` explicitly — it does **not** silently drop the tail
 - Human-readable fields follow `--lang`; image and TTS prompts are **always English**, since those engines work best that way regardless of report language
-- The top 30 characters by prominence are profiled by default, and **every one of them gets a sheet** — one call per character, so this is the slowest step on a large cast. Ask for a smaller number, or for leads only, if you want it shorter
-- **Art style can still vary across a cast**, since each character is generated independently. It used to drift badly under the old "flat vector cartoon" wording — one run produced anime-ish, semi-realistic and ink-wash results side by side. The explicit style presets fixed most of that, but not all of it. Feeding the first sheet back as a reference helps; see `references/sheet.md`
+- The top 30 characters by prominence are profiled by default, and **every one of them gets a sheet** — one call per character, so this is the slowest step on a large cast. The whole batch is submitted before polling starts, so wall-clock is roughly the slowest single sheet — that orchestration lives in the script, not in prompt-assembled bash. Use `--only`, or ask for leads only, if you want it shorter
+- **Art style can still vary across a cast**, since each character is generated independently. It used to drift badly under the old "flat vector cartoon" wording — one run produced anime-ish, semi-realistic and ink-wash results side by side. The explicit style presets fixed most of that, but not all of it. Passing `--style-ref auto` feeds the first sheet back as a reference for the rest, which helps; see `references/sheet.md`
 
 > ⚠️ **Image generation needs lingying credentials.** `~/.config/lingying/config.json` must carry at least `api_key`, plus `assethub_admin_token` if you attach reference images. Missing ones surface as a "缺少 API_KEY" error — report it verbatim rather than skipping silently: believing images were generated when they were not is worse than being told they were not.
 
@@ -178,13 +181,14 @@ node scripts/novel-characters.mjs slug "胡二爷"                  # filesystem
 ```
 SKILL.md                 the workflow the agent reads
 scripts/
-  novel-characters.mjs   chunk / merge / assemble / validate / render / slug
-  selftest.mjs           368 assertions, never calls a model
+  novel-characters.mjs   chunk / merge / assemble / validate / images / render / slug
+  lib/lingying.mjs       image generation: submit / poll / save / resume
+  selftest.mjs           435 assertions, never calls a model or the network
 references/
   roster-pass.md         pass 1: scanning for characters
   profile-pass.md        pass 2: building a character sheet (8 hard rules)
   schema.md              sheet structure and which language each field takes
-  sheet.md               the lingying call contract for model-sheet generation
+  sheet.md               model-sheet layout and prompt rules (the call itself is the images subcommand)
   report-style.md        design conventions for report.html
   style-presets.md       image style presets (realistic / ghibli)
 examples/
@@ -201,6 +205,6 @@ In `examples/渡口.txt` the peddler is only ever referred to by a nickname and 
 node scripts/selftest.mjs
 ```
 
-368 assertions across chunking, alias merging, assembly, localization, validation, the two production-parameter checks, and rendering. No model calls, no quota, runs in about a second. Run it before anything else after touching the scripts.
+435 assertions across chunking, alias merging, assembly, localization, validation, the two production-parameter checks, rendering, and the full image-generation flow (submit, poll, timeout, resume, style-reference ordering, cut-out) against an injected fake CLI and clock. No model calls, no requests, no quota, runs in about a second. Run it before anything else after touching the scripts.
 
 **Only tested on macOS with Node 24.** There is no platform-specific code, so Linux and older Node releases should be fine, but that is **unverified**.

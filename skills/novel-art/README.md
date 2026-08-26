@@ -72,20 +72,29 @@ node scripts/novel-art.mjs styles                            # 看画风预设
 
 ## 出图（可选）
 
-走 **lingying**（灵影网关）CLI。场景和道具各一张 16:9 设定图，版面都是**主视角大图 + 底部和右侧的 L 形细节边框**：场景细节格放锚点特写，道具细节格放锚点特写 + 其他状态 + 侧面。场景**无人**；道具另加**无手、纯白背景**。变体场景拿母场景成图当参考图（先 `lingying upload` 换成 URL）。没有 lingying 就只交提示词，其余照常。道具要真透明底就在白底成图之上再走一次 `birefnet` 抠图任务（免费）。调用契约见 `references/sheet.md`。
+```bash
+node scripts/novel-art.mjs images art.json              # 提交 / 轮询 / 落盘全在脚本里
+node scripts/novel-art.mjs images art.json --dry-run    # 只看要提交什么
+node scripts/novel-art.mjs images art.json --cutout     # 道具再走一次抠图
+```
+
+走 **lingying**（灵影网关）。场景和道具各一张设定图，版面都是**主视角大图 + 底部和右侧的 L 形细节边框**：场景细节格放锚点特写，道具细节格放锚点特写 + 其他状态 + 侧面。场景**无人**；道具另加**无手、纯白背景**。没有 lingying 就只交提示词，其余照常。
+
+**调用是代码不是文档。** 参数不经过 shell（`execFile` 收数组，提示词里的引号换行原样抵达）、只读 `data.status`（响应里的 `message: success` 恒为 success）、单张超时 300 秒就跳过、已有产物跳过、提交过的任务写进 `images/.tasks.json` 断点续传、变体等母场景落盘后自动挂参考图。版面与提示词怎么写见 `references/sheet.md`。
 
 ## 文件
 
 ```
 SKILL.md                 给 agent 读的工作流
 scripts/
-  novel-art.mjs          seed / validate / checkup / render / styles / slug
-  selftest.mjs           158 项断言，不调模型
+  novel-art.mjs          seed / validate / checkup / images / render / styles / slug
+  lib/lingying.mjs       出图调用：提交 / 轮询 / 落盘 / 断点续传
+  selftest.mjs           255 项断言，不调模型、不发请求
 references/
   schema.md              art.json 结构 + 硬规则
   scene-pass.md          怎么填场景设定（AI 短剧的思路）
   prop-pass.md           怎么选、怎么填叙事道具
-  sheet.md               设定图出图的 lingying 调用契约
+  sheet.md               设定图的版面与提示词（调用由 images 子命令负责）
   report-style.md        报告的设计约定
 examples/
   渡口-art.json           《渡口》三场景 + 两件道具样例，全部质量门通过

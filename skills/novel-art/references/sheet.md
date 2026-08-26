@@ -1,45 +1,75 @@
-# 设定图出图（场景 + 道具）· lingying
+# 设定图出图（场景 + 道具）· 版面与提示词
 
-出图走 **lingying**（灵影网关）CLI：`image create` 提交，`task get` 轮询，产物是 URL，自己 `curl` 落盘。**没有 lingying 就整步跳过**，只交提示词，其余产出照常。
-
-## 前置：CLI 与凭证
-
-`lingying` 安装在 PATH 里（或放在工作目录的 `bin/lingying`），`~/.config/lingying/config.json` 里有 `api_key`；挂参考图还要 `assethub_admin_token`。
+出图走 **lingying**（灵影网关）。**调用不用你写**——提交、轮询、落盘、续传全在
+`scripts/lib/lingying.mjs` 里，一条命令跑完：
 
 ```bash
-find_lingying() {
-  local c
-  for c in "$(command -v lingying 2>/dev/null)" ./bin/lingying \
-           "$HOME/.local/bin/lingying" /opt/homebrew/bin/lingying /usr/local/bin/lingying; do
-    [ -n "$c" ] && [ -x "$c" ] && { echo "$c"; return; }
-  done
-}
-LY=$(find_lingying)
+cd <段目录>            # <段目录> = <工作目录>/art/
+node <baseDir>/scripts/novel-art.mjs images <剧名>-art.json
 ```
 
-`$LY` 为空就跳过出图。凭证缺失时如实转述报错，**不要静默跳过**。
+| 选项 | 作用 |
+| --- | --- |
+| `--dry-run` | 只打印将要提交的参数，不提交。参数存疑先跑这个 |
+| `--only S01,P01` | 只出这几个（变体的母场景会自动跟着出，否则参考图挂不上） |
+| `--force` | 已有产物也重出。默认跳过已经出好的 |
+| `--cutout` | 道具白底图再走一次抠图，另存 `-cutout.png` |
+| `--timeout <秒>` | 单张总超时，默认 300 秒 |
+| `--concurrency <n>` | 同时在跑的任务数，默认 4 |
 
-## 出图参数从 production.json 来 ⚠️
+**这一步以前是一段可以复制的 bash，那是错的分工。** 写提示词是模型的活，把提示词
+提交给网关、等它跑完、把图存下来是代码的活——判据是「换个模型跑会不会得到不同
+结果」。会，交给模型；不会，交给代码。
 
-出图之前先读工作目录根的 `production.json`（`novel-setup` 的产出，从输出目录**向上最多 5 层**找）：`image.model` 定模型，`image.asset.resolution` 定分辨率**档位**，`image.asset.aspectRatio` 定版面画幅。
+## 命令替你保证的七件事
 
-**这三个值原样进 `--input_data`，不折算像素、提示词里也不写像素**——lingying 的 `resolution` 与 `aspect_ratio` 是 input_schema 里的枚举字段。一行拿到拼好的参数：
+以前这七件靠模型每次重新拼一遍 bash，于是同一个接口有无数种拼错的方式：
 
-```bash
-node <novel-setup>/scripts/novel-setup.mjs resolve --for art
-```
+1. **参数不经过 shell**——`execFile` 收数组，提示词里的引号、换行、`$`、反引号、
+   中文原样抵达。`--input_data` 由 `JSON.stringify` 生成，手拼字符串炸掉的那一类
+   故障不存在了
+2. **只读 `data.status`**——响应里的 `"message": "success"` 恒为 success，在整段
+   JSON 里搜 `success` 第一次轮询就假命中。读不到 `data.status` 直接报错，不猜
+3. **超时是有限的**——单张到点标记 timeout 继续下一张，不阻断整批；退避从 3 秒
+   逐步拉开到 15 秒封顶，不是固定空转
+4. **产物即状态**——已有非空产物就跳过，先写 `.part` 再改名，半截文件不会被当成
+   成品。重跑不重复花钱
+5. **断点续传**——提交成功立刻把 task_id 写进 `images/.tasks.json`，中断后重跑接着
+   轮询那些任务，不重复提交。图落地这条就消掉，产物本身才是完成的凭据
+6. **先母后子**——变体场景等母场景落盘、`upload` 成 URL 再提交，次序由代码保证
+7. **提交之前失败**——提示词空着、变体指向不存在的母场景、两个名字算出同一个
+   文件名、凭证缺失，全部在花钱之前一次说完
 
-它给出 `inputData`（形如 `{"aspect_ratio":"16:9","resolution":"2K"}`），补一个 `prompt` 就能提交。
+失败不阻断批次，但**最后有失败就 exit 1**——重跑会跳过已有产物，成本很低。
+stdout 是一行 JSON 汇总（`summary` + 逐条 `results`），进度与错误走 stderr。
 
-**资产图的画幅和成片画幅是两件事**：成片拍竖屏，设定图仍然是横构图——L 形版面靠横向铺开，竖过来细节格会被压扁。`novel-setup` 有一道门专门盯着这条。
+没装 lingying 就整步跳过，只交提示词，其余产出照常——命令会明说跳过原因。
 
-找不到 `production.json` 就按 `nanobanana2` + `2K` + `16:9` 出，并在汇报里说清没有找到。
+## 出图参数从 production.json 来
+
+命令自己从段目录**向上最多 5 层**找 `production.json`（`novel-setup` 的产出）：
+`image.model` 定模型，`image.asset.resolution` 定分辨率**档位**，`image.asset.aspectRatio`
+定版面画幅。这三个值原样进 `--input_data`，**不折算像素、提示词里也不写像素**——
+它们是 lingying `input_schema` 里的枚举字段，而且已经被 `novel-setup` 的能力表校验
+过一遍，这里不维护第二份枚举表。
+
+**资产图的画幅与成片画幅是两件事**：成片拍竖屏，设定图仍然是横构图——L 形版面靠
+横向铺开，竖过来细节格会被压扁。`novel-setup` 有一道门专门盯着这条。
+
+找不到 `production.json` 就按 `nanobanana2` + `2K` + `16:9` 出，命令会警告，汇报里
+要说清。提交报 `input validation failed` 时错误信息会指向 `novel-setup caps --model <名>`。
+
+---
+
+以下是**你要写的部分**：版面与提示词。它们落在 `art.json` 的 `image.sheet`
+（设定图版面指令）与 `image.negativePrompt`（反向词）里，命令直接拿去提交。
 
 ## 每个场景、每件道具各一张图
 
 ### 场景
 
-一张横构图（画幅按生产参数，默认 16:9），主视角大图 + **底部和右侧的 L 形细节边框**，细线分隔：
+一张横构图（画幅按生产参数，默认 16:9），主视角大图 + **底部和右侧的 L 形细节边框**，
+细线分隔：
 
 ```
 ┌─────────────────────────────┬───────┐
@@ -52,78 +82,48 @@ node <novel-setup>/scripts/novel-setup.mjs resolve --for art
 └─────────┴─────────┴─────────┴───────┘
 ```
 
-- **主区（左上，约 72% 宽 × 70% 高）**：主视角 = 这个场景的标准取景 + 第一个光照状态，这就是「这个场景长什么样」的唯一标准答案
-- **右列 + 底行**：全部是**细节特写**——一致性锚点和关键材质的近景，右列 2 格、底行 3 格左右
-- 每个细节格都必须是主视角那个空间的裁切放大，**不许出现主视角里没有的东西**——提示词里写死 `nothing invented that is not present in the master view`
+- **主区（左上，约 72% 宽 × 70% 高）**：主视角 = 这个场景的标准取景 + 第一个光照
+  状态，这就是「这个场景长什么样」的唯一标准答案
+- **右列 + 底行**：全部是**细节特写**——一致性锚点和关键材质的近景，右列 2 格、
+  底行 3 格左右
+- 每个细节格都必须是主视角那个空间的裁切放大，**不许出现主视角里没有的东西**——
+  提示词里写死 `nothing invented that is not present in the master view`
 
 ### 道具
 
-同一套 L 形版面，差别三处：**纯白背景**（每个面板都是，要抠图）、主视角是主状态的四分之三角度、底行放**其他状态 + 侧面正交视图**。全图**无人且无手**——拿着道具的手是最常见污染，出现就重生成。尺度短语（handheld scale 等）必须在提示词里，否则皮箱会被画成衣柜。
+同一套 L 形版面，差别三处：**纯白背景**（每个面板都是，要抠图）、主视角是主状态的
+四分之三角度、底行放**其他状态 + 侧面正交视图**。全图**无人且无手**——拿着道具的手
+是最常见污染，出现就重生成。尺度短语（`handheld scale` 等）必须在提示词里，否则
+皮箱会被画成衣柜。
 
-提示词字段 `image.sheet`，场景和道具都落到 `./images/<slug>-sheet.png`（`slug` 命令生成安全文件名）。
+场景和道具的产物都落到 `./images/<slug>-sheet.png`（`slug` 命令生成安全文件名），
+`render` 按同一个算法找图。
 
 ## 三条硬要求
 
-1. **全图空景无人。**提示词里 `Absolutely no people anywhere` 必须在，反向提示词禁人必须在。生成图里出现一个人影就重生成——环境资产里的人洗不掉。
-2. **一张图里只能有一个空间。**角色设定图最容易出「一张图两个长相」，环境图的对应崩法是**面板之间空间对不上**（左边六排坐板、右上变成四排）。提示词里写死 `THE SPACE MUST BE IDENTICAL ACROSS ALL PANELS`。拿到图先核对锚点：每个锚点在主视角里找得到吗？
-3. **透视要稳。**环境图最常见的废图是几何融化、透视歪斜。反向提示词里 `warped perspective, melted geometry` 必须在（预设自带）。
+1. **全图空景无人。**提示词里 `Absolutely no people anywhere` 必须在，反向提示词
+   禁人必须在。生成图里出现一个人影就重生成——环境资产里的人洗不掉。
+2. **一张图里只能有一个空间。**角色设定图最容易出「一张图两个长相」，环境图的对应
+   崩法是**面板之间空间对不上**（左边六排坐板、右上变成四排）。提示词里写死
+   `THE SPACE MUST BE IDENTICAL ACROSS ALL PANELS`。拿到图先核对锚点：每个锚点在
+   主视角里找得到吗？
+3. **透视要稳。**环境图最常见的废图是几何融化、透视歪斜。反向提示词里
+   `warped perspective, melted geometry` 必须在（预设自带）。
 
-## 调用三步（与 novel-characters 相同）
+## 变体场景的提示词
 
-```bash
-cd <输出目录> && mkdir -p images
+`variantOf` 的场景由命令自动拿母场景的成图当参考图，**你只管写提示词**：
+母场景主视角 + `changes` 的改动描述 + 一句
+`keep the structure, materials and wear identical to the reference image`。
+这比从零生成一致得多——变体机制的意义就在这。
 
-# 1 提交 —— JSON 一律用工具拼，提示词里有引号换行中文，手拼必崩
-TASK=$("$LY" image create --model "$MODEL" --json --input_data "$INPUT_JSON" \
-  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).data.task_id))')
+## 道具的透明底
 
-# 2 轮询 —— 必须读 data.status
-while :; do
-  OUT=$("$LY" task get "$TASK" --json) || { echo "任务失败"; break; }
-  ST=$(printf '%s' "$OUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).data.status))')
-  case "$ST" in success|failed) break;; esac
-  sleep 3
-done
-
-# 3 落盘
-URL=$(printf '%s' "$OUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).data.result.url))')
-curl -fsSL -o "./images/<slug>-sheet.png" "$URL"
-```
-
-⚠️ **必须读 `data.status`，不能在整段 JSON 里搜 `success`**——响应里 `"message": "success"` 恒为 success，粗糙的匹配第一次轮询就假命中。未完成时退出码也仍然是 0。
-
-其余约定：
-
-- **一批场景、一批道具可以并发提交**，拿到一串 task_id 再统一轮询，总耗时约等于最慢的那一张
-- `negative_prompt` 是独立字段，`art.json` 里的反向提示词原样填进去，不要塞回正向提示词
-- **提示词里不写调用指令**，落盘是 `curl` 的事
-- 单个失败跳过不阻断，最后汇总说明哪些没出成、为什么
-- `input validation failed` 多半是档位或比例不在该模型的枚举里，跑 `novel-setup caps --model <名>` 对一眼
-
-## 变体场景的出图
-
-`variantOf` 的场景**拿母场景的成图当参考图**：
-
-```bash
-REF=$("$LY" upload ./images/<母场景>-sheet.png)   # 生成接口只收 URL，不收本地路径
-# 把 REF 放进 --input_data 的 images 数组
-```
-
-提示词 = 母场景主视角 + `changes` 的改动描述 + 一句 `keep the structure, materials and wear identical to the reference image`。这比从零生成一致得多——变体机制的意义就在这。
-
-`upload` 按内容去重，同一张母场景图传第二次不重复传输，**URL 存下来整批复用**。
-
-## 道具要真透明底
-
-白底出图之后再走一次抠图任务，比让生图模型直接出透明底稳：
-
-```bash
-URL=$("$LY" upload ./images/<slug>-sheet.png)
-"$LY" image create --model "birefnet" --input_data "{\"images\":[\"$URL\"]}" --json   # 免费；另一档是「抠图」0.06 元一张
-```
-
-轮询与落盘同上，**抠完的图另存一个文件名**——`render` 找的仍然是 `<slug>-sheet.png`。
+白底出图之后再走一次抠图，比让生图模型直接出透明底稳。加 `--cutout` 就行，
+抠完另存 `-cutout.png`——`render` 找的仍然是 `<slug>-sheet.png`。
 
 ## 画风一致性
 
-同一部剧的所有场景应该像同一个美术组画的。压不住的话，拿第一个主场景的成图 `upload` 成 URL，当风格参考喂给后面的场景。代价与角色 skill 相同：第一张定基调，出得不好就得重来。
+同一部剧的所有场景应该像同一个美术组画的。压不住的话，把第一个主场景的成图当风格
+参考喂给后面的场景（提示词里引一句它的渲染特征）。代价与角色 skill 相同：第一张
+定基调，出得不好就得重来。

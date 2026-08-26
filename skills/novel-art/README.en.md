@@ -40,7 +40,15 @@ node scripts/novel-art.mjs styles
 
 ## Image generation (optional)
 
-Via the **lingying** gateway CLI. One 16:9 sheet per scene and per prop, both using the **master-view + L-shaped detail border** layout (bottom and right edges). Scene details = anchor close-ups; prop details = anchor close-ups + other states + a side profile. Scenes are empty of people; props additionally ban hands and sit on pure white for clean cut-out. Variants generate against the parent's sheet (uploaded to a URL first). No lingying → prompts only. For a genuinely transparent prop cut-out, run the white-background sheet through the free `birefnet` task afterwards.
+```bash
+node scripts/novel-art.mjs images art.json              # submit / poll / save, all in the script
+node scripts/novel-art.mjs images art.json --dry-run    # print what would be submitted
+node scripts/novel-art.mjs images art.json --cutout     # transparent cut-out for props
+```
+
+Via the **lingying** gateway. One sheet per scene and per prop, both using the **master-view + L-shaped detail border** layout (bottom and right edges). Scene details = anchor close-ups; prop details = anchor close-ups + other states + a side profile. Scenes are empty of people; props additionally ban hands and sit on pure white for clean cut-out. No lingying → prompts only.
+
+**The call is code, not documentation.** Arguments never go through a shell (`execFile` takes an array, so quotes and newlines inside prompts arrive intact), only `data.status` is read (the envelope's `message: success` is always success), each sheet times out after 300s instead of looping forever, existing files are skipped, submitted task ids land in `images/.tasks.json` for resume, and variants automatically attach the parent sheet once it is on disk. Layout and prompt rules live in `references/sheet.md`.
 
 ## Selftest
 
@@ -48,6 +56,6 @@ Via the **lingying** gateway CLI. One 16:9 sheet per scene and per prop, both us
 node scripts/selftest.mjs
 ```
 
-185 assertions — seeding, style presets, gate-defeating cases for all 13 gates, production-parameter lookup and inheritance, rendering (zh/en report UI), export. No model calls, runs in about a second.
+255 assertions — seeding, style presets, gate-defeating cases for all 13 gates, production-parameter lookup and inheritance, rendering (zh/en report UI), export, and the full image-generation flow (submit, poll, timeout, resume, variant ordering, cut-out) against an injected fake CLI and clock. No model calls, no requests, runs in about a second.
 
 **Only tested on macOS + Node 24.**

@@ -1,5 +1,77 @@
 # Changelog
 
+## 出图调用收进代码 — novel-art / novel-characters
+
+**novel-art 1.7.0 · novel-characters 1.16.0**
+
+出图这一步以前是 `references/sheet.md` 里一段可以复制的 bash：`image create` 提交、
+`node -e` 从管道里抠 task_id、`while` 循环 `sleep 3` 轮询、`curl` 落盘。模型每跑一次
+就重新拼一遍，于是同一个接口有无数种拼错的方式——提示词里的引号把 `--input_data`
+拆成两半、内层单引号跟外层 shell 打架、轮询在整段 JSON 里搜 `success` 撞上恒为
+success 的 `message`、`while` 循环没有出口所以一张卡住的图能等到天荒地老。
+
+**这些不是模型能力问题，是职责放错了层。** 判据很简单：换个模型跑会不会得到不同
+结果？会，交给模型；不会，交给代码。提交一个任务、等它跑完、把文件存下来，换谁做
+都该一模一样。
+
+### 一条命令
+
+```bash
+node scripts/novel-art.mjs images <剧名>-art.json [--dry-run] [--only S01] [--force] [--cutout]
+```
+
+新增 `scripts/lib/lingying.mjs`，七件事从此由代码保证：
+
+| 保证 | 以前的崩法 |
+| --- | --- |
+| 参数不经过 shell（`execFile` 收数组，`JSON.stringify` 拼 input_data） | 提示词里的引号换行把命令行拆散 |
+| 只读 `data.status`，读不到就报错 | 搜整段 JSON 撞上恒为 success 的 `message`，第一次轮询就假命中 |
+| 单张超时 300 秒，退避 3→15 秒 | `while` 循环固定 `sleep 3`，没有出口 |
+| 产物即状态：非空文件跳过，先写 `.part` 再改名 | 半截文件被当成成品，永远跳过那张坏图 |
+| 断点续传：task_id 落 `images/.tasks.json` | 超时就等于白花钱，重跑从头再来 |
+| 先母后子：变体等母场景落盘再挂参考图 | 次序靠模型记着 |
+| 提交之前失败：提示词空、变体指错、文件名撞车、凭证缺失 | 提交到第七张才发现 api_key 过期 |
+
+失败不阻断批次，但**有失败就 exit 1**——重跑跳过已有产物、接着轮询超时的任务。
+stdout 是一行 JSON 汇总，agent 直接拿去汇报，不用自己数。
+
+### 文档改成提示词契约
+
+`references/sheet.md` 里的 bash 片段全部删掉，只留版面与提示词——**文档里存在可
+复制的 bash，模型就一定会去改写它**。调用那一节缩成一条命令加选项表。
+
+### 自测 193 → 255 项
+
+出图编排用注入的假 CLI 与假时钟跑完全部路径（提交、轮询、超时、续传、变体波次、
+抠图、凭证前置检查），**不 spawn 进程、不发一个请求**。三次突变验证确认用例真的
+会拦：把轮询改回搜整段 `success`、去掉波次分层、去掉超时判断，各自都会红。
+
+### novel-characters 跟上，多一件事：风格参考
+
+角色 skill 的已知短板是**同一批角色各自独立出图，画风会漂**。以前压住的办法写在
+文档里——「拿第一张成图 `upload` 成 URL 喂给后面几个」——同样是让模型每次重拼一遍
+的编排。现在是一个开关：
+
+```bash
+node scripts/novel-characters.mjs images cast.json --style-ref auto
+```
+
+命令先出第一个角色，等它落盘后 upload 成 URL，把这张图挂给其余角色当参考图，并在
+提示词后追加那句 `Match the art style, line weight, shading and colour treatment…`。
+用的是与变体场景同一套「先母后子」波次机制。**默认不开**——只要几张草图的场合不该
+被「第一张定全片基调」绑住；指名某个角色当基准也行（`--style-ref 沈知微`）。
+
+`--only` 认角色名，选中的角色如果挂着风格参考，基准角色会自动跟着出——否则参考图
+挂不上。自测 376 → 435 项。
+
+### novel-storyboard 这次不动
+
+分镜图与生视频下单**先不碰**——先在真实项目里跑一段时间，确认这套封装扛得住再说。
+自包含的代价是复制一份代码而不是 import：`novel-art` 与 `novel-characters` 各带一份
+逐字相同的 `lib/lingying.mjs`。但复制一份**有 selftest 守着的代码**，比复制一份只有
+模型临场发挥守着的 **bash 文档**安全得多。
+
+
 ## 六个 skill 适配 pi — 2026-08-26
 
 **novel-setup 1.3.0 · novel-outline 1.4.0 · novel-characters 1.15.0 · novel-art 1.6.0 · novel-script 1.4.0 · novel-storyboard 1.7.0**
@@ -91,7 +163,7 @@ description 最长的 novel-storyboard 是 612 字符，离 1024 上限还有余
 
 为什么是提示不是门：契约里那条界线是**改了要不要重出图**。落点写错一个 `mv` 就好，
 不该按整批重出图的规格设门。但也不能不说——`scripts/report.mjs --from` 就是按段目录名
-找那五份 JSON 的，平铺在根目录它一份也找不到。
+找那五份 JSON 的，平铺在根目录它一份也找不到，而且不报错。
 
 没有 `production.json` 就无从判断工作目录根在哪，那时明说跳过，不猜。三个原本就
 播报生产参数的 skill 把这句折进原来那行，`novel-outline` / `novel-script` 各加一行。

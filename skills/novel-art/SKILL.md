@@ -1,6 +1,6 @@
 ---
 name: novel-art
-version: 1.6.0
+version: 1.7.0
 description: |
   给 AI 短剧出美术设定集（场景 + 叙事道具）：场景的设计意图、一致性锚点、光照时段变体、
   空景提示词；道具的戏剧功能、状态变体、尺度参照、白底无手提示词。
@@ -8,7 +8,8 @@ description: |
   为 AI 生成而设计，不是实拍——环境和道具都是生成资产，交付的是让它们跨集长一样的一致性方案；
   13 道质量门全部由脚本确定性检查（锚点 3–5、无人无手、白底可抠、尺度短语、提示词英文……，
   其中 2 道读工作目录根的 production.json：画风与设定图画幅，没有就明说跳过）。
-  有 novel-outline 的 outline.json 就用 seed 预填场景清单与出现集；出图走 lingying（灵影网关）CLI（可选）。
+  有 novel-outline 的 outline.json 就用 seed 预填场景清单与出现集；出图是一条命令（可选，走 lingying 灵影网关）——
+  提交、轮询、落盘、断点续传全在脚本里，不靠模型现拼 bash。
   零依赖、零 npm；出图要 lingying 的 api_key。
   Use when asked to 场景设定、出场景、环境设定集、场景一致性、scene bibles for AI short drama。
 # 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
@@ -66,7 +67,7 @@ metadata:
 2. 小说原文——自己归纳场景清单（主舞台优先，参考 novel-outline 的主场景上限思路：别贪多）
 3. 用户手写的场景清单
 
-画风：**默认 `realistic`**（半写实厚涂），动画质感用 `ghibli`。**跟角色 skill 保持同一档**——角色是吉卜力、场景是半写实，合成的时候没法看。跑 `node {baseDir}/scripts/novel-art.mjs styles` 看预设全文，整块取用不混搭。
+画风：**默认 `realistic`**（真人实拍），动画质感用 `ghibli`。**跟角色 skill 保持同一档**——角色是吉卜力、场景是真人实拍，一半动画一半实拍没法看。跑 `node {baseDir}/scripts/novel-art.mjs styles` 看预设全文，整块取用不混搭。
 
 有 cast.json（novel-characters 的产出）也带上——校验「提示词不含角色名」要用。
 
@@ -76,7 +77,7 @@ metadata:
 
 **生产参数不用挂载，脚本自己找。** `production.json`（`novel-setup` 的产出）住在工作目录根，`validate` / `render` 都会从 art.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「2 道门跳过」——不静默。
 
-找到了画风就以它为准（上面那句「跟角色 skill 保持同一档」由脚本查了），设定图版面的画幅也必须与 `image.asset.aspectRatio` 一致。出图用 `image.model` + `image.asset.resolution`（**档位就是 lingying 收的 `resolution` 枚举值**，原样进 `--input_data`，不折算像素；一行拿到拼好的参数：`novel-setup resolve --for art`）。老项目没有这份文件照跑；临时绕过用 `--no-production`，用了会明说。
+找到了画风就以它为准（上面那句「跟角色 skill 保持同一档」由脚本查了），设定图版面的画幅也必须与 `image.asset.aspectRatio` 一致。出图用 `image.model` + `image.asset.resolution`（**档位就是 lingying 收的 `resolution` 枚举值**，原样进 `--input_data`，不折算像素）——**这三个值 `images` 子命令自己读，不用手动挂载**。老项目没有这份文件照跑；临时绕过用 `--no-production`，用了会明说。
 
 ### Step 1 — seed 骨架（有 outline.json 才有这步）
 
@@ -114,13 +115,19 @@ node {baseDir}/scripts/novel-art.mjs validate <art.json> --cast <cast.json>
 
 ### Step 4 — 出图（可选）
 
-场景和道具各一张设定图（版面画幅按 `production.json` 的 `image.asset.aspectRatio`，默认 16:9），版面都是**主视角大图 + 底部和右侧的 L 形细节边框**。场景：标准取景 + 第一个光照状态，细节格是锚点特写。道具：白底三四分之一主视角（主状态），细节格是锚点特写 + 其他状态 + 侧面。读 `{baseDir}/references/sheet.md` 照调用契约做，要点：
+```bash
+cd <段目录>
+node {baseDir}/scripts/novel-art.mjs images <剧名>-art.json
+```
 
-- **没有 lingying 就整步跳过**，只交提示词
-- **出图参数从 `production.json` 来**：`image.model` 传 `--model`，`image.asset.resolution` 与 `image.asset.aspectRatio` 原样进 `--input_data` 的 `resolution` / `aspect_ratio`——**提示词里一个像素都不写**。一行拿到拼好的参数：`novel-setup resolve --for art`
-- **全图无人**；道具图另加**无手**、**纯白背景**，出现人影或手就重生成
-- **变体场景拿母场景成图当参考图**（`-i` + stdin）——变体机制的意义就在这
-- 一个场景一次调用绝不批量；单个失败跳过不阻断
+**调用不用你写。** 场景和道具各一张设定图，提交、轮询、落盘、断点续传、变体的「先母后子」全在脚本里：参数不经过 shell（提示词里的引号换行中文原样抵达）、只读 `data.status`（响应里的 `"message": "success"` 恒为 success）、单张超时 300 秒到点就跳过继续下一张。出图参数自己从 `production.json` 取，**没有 lingying 就整步跳过**，只交提示词。
+
+- 参数存疑先 `--dry-run` 看一眼要提交什么；`--only S01,P01` 只出几个；`--force` 重出已有的
+- 道具要透明底加 `--cutout`，抠完另存 `-cutout.png`（`render` 找的仍然是白底那张）
+- **失败不阻断批次，但有失败就 exit 1**——重跑跳过已有产物、接着轮询超时的任务，成本很低
+- 拿到图先核对锚点：**全图无人**，道具图另加**无手**、**纯白背景**，出现人影或手就 `--force` 重出
+
+版面与提示词怎么写在 `{baseDir}/references/sheet.md`——**那才是这一步属于你的部分**。
 
 ### Step 5 — 输出与汇报
 
@@ -144,7 +151,8 @@ node {baseDir}/scripts/novel-art.mjs render <剧名>-art.json --html > art-repor
     ├── <剧名>-art.md
     ├── art-report.html            ← 双击就能开
     └── images/
-        └── <slug>-sheet.png       ← 有 lingying 才有
+        ├── <slug>-sheet.png       ← 有 lingying 才有
+        └── .tasks.json            ← 提交了还没落盘的任务；图到齐就空了，可以删
 ```
 
 ---
@@ -164,7 +172,7 @@ seed 吃 outline.json 的场景与道具两块（大纲没有 `props` 时道具�
 
 - 报告界面内置中英（`--lang`，默认中文、或跟 art.json 的 `lang` 字段）；出图提示词永远英文
 - 画风要跟角色 skill 同档，别一半写实一半动画
-- 出图只走 lingying：`image create` 提交、`task get` 轮询、`curl` 落盘。**轮询必须读 `data.status`**，响应里的 `"message": "success"` 恒为 success
+- 出图只走 `images` 子命令——提交、轮询、落盘不再有第二份手写实现。以前那段 bash 拼错的方式比拼对的多：提示词里的引号把 `--input_data` 拆两半、轮询在整段 JSON 里搜 `success` 撞上恒为 success 的 `message`、`while` 循环没有出口
 - 场景数量不设硬上限——上限在 novel-outline 的主场景门那里管；这里管的是每个资产的质量
 - 道具只收叙事道具，3–8 件为宜——每多一件就多一份跨集一致性维护
 
@@ -174,7 +182,7 @@ seed 吃 outline.json 的场景与道具两块（大纲没有 `props` 时道具�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-193 项断言，不调模型、不花额度。13 道质量门每一道都有击穿用例。改完脚本先跑这个。
+255 项断言，不调模型、不花额度。13 道质量门每一道都有击穿用例；出图编排用注入的假 CLI 与假时钟跑完全部路径（提交、轮询、超时、续传、变体波次、抠图），**不 spawn 进程、不发一个请求**。改完脚本先跑这个。
 
 ## 自带样例
 

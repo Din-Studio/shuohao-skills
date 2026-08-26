@@ -4,7 +4,8 @@
 //   node scripts/selftest.mjs
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -30,7 +31,22 @@ import {
   SKIP_PROD,
   STAGE_DIR,
   stageDirNote,
+  imageJobsFrom,
 } from './novel-art.mjs';
+import {
+  BACKOFF_MS,
+  CLI_NAME,
+  CUTOUT_MODEL,
+  DEFAULT_ASPECT,
+  DEFAULT_IMAGE_MODEL,
+  DEFAULT_RESOLUTION,
+  LEDGER_FILE,
+  backoffAt,
+  cutout,
+  pickData,
+  preflight,
+  runBatch,
+} from './lib/lingying.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(join(here, '..', 'examples', '渡口-art.json'), 'utf8'));
@@ -55,7 +71,7 @@ const gate = (d, id, names = null) => gateReport(d, names).find((g) => g.id === 
 
 /* ---------------- 画风预设 ---------------- */
 
-eq(DEFAULT_STYLE, 'realistic', '默认半写实');
+eq(DEFAULT_STYLE, 'realistic', '默认真人实拍');
 eq(SUPPORTED_STYLES.join(','), 'realistic,ghibli', '两档画风与 novel-characters 同名对齐');
 ok(!/photorealistic/.test(SCENE_STYLE_PRESETS.realistic.negative), 'realistic 不禁 photorealistic');
 ok(/photorealistic/.test(SCENE_STYLE_PRESETS.ghibli.negative), 'ghibli 必须禁 photorealistic');
@@ -132,7 +148,7 @@ eq(gateReport(FIXTURE).length, 13, '质量门共 13 道（场景 7 + 道具 4 + 
 
 /* ---------------- 生产参数（production.json） ---------------- */
 
-// 样例《渡口》是横屏半写实，参数照它配才是全绿基线
+// 样例《渡口》是横屏真人实拍，参数照它配才是全绿基线
 const PRODUCTION = {
   source: '渡口',
   style: 'realistic',
@@ -300,6 +316,11 @@ eq(ANCHOR_RANGE.join('-'), '3-5', '锚点范围 3–5');
   const d = clone();
   d.scenes[0].image.sheet = 'ONE 16:9 landscape canvas, three zones, no people';
   ok(!gate(d, 'style-match').ok, 'sheet 缺渲染句被拦——画风会飘');
+}
+{
+  const d = clone();
+  d.scenes[0].image.prompt = 'Interior of an old wooden ferry cabin, empty scene with no people';
+  ok(!gate(d, 'style-match').ok, 'prompt 缺渲染句被拦——设定表实拍、单张插画的两张皮');
 }
 
 /* ---------------- validate 结构检查 ---------------- */
@@ -578,5 +599,346 @@ eq(STAGE_DIR, 'art', '段目录名与端到端工作目录约定一致');
   eq(stageDirNote('/w/渡口-art.json', null), null, '没有 production.json 就无从判断，不猜');
   eq(stageDirNote(null, prod), null, '没有产物路径也不猜');
 }
+
+/* ---------------- 出图任务：从文档搬运 ---------------- */
+
+{
+  const { model, inputBase, jobs, problems } = imageJobsFrom(FIXTURE);
+  eq(problems.length, 0, '自带样例能直接排出出图任务');
+  eq(model, DEFAULT_IMAGE_MODEL, '没有生产参数就用兜底模型');
+  eq(inputBase.aspect_ratio, DEFAULT_ASPECT, '没有生产参数就用兜底画幅');
+  eq(inputBase.resolution, DEFAULT_RESOLUTION, '没有生产参数就用兜底档位');
+  eq(jobs.length, FIXTURE.scenes.length + FIXTURE.props.length, '场景与道具各一张图');
+  eq(jobs[0].prompt, FIXTURE.scenes[0].image.sheet, '提示词取 image.sheet，不是 image.prompt');
+  eq(jobs[0].negativePrompt, FIXTURE.scenes[0].image.negativePrompt, '反向词单独带上');
+  eq(jobs[0].file, `images/${slug(FIXTURE.scenes[0].name)}-sheet.png`, '产物路径与 render 找图的路径同一个算法');
+
+  const variant = jobs.find((j) => j.key === 'S03');
+  eq(variant.refFrom, 'S02', '变体认出母场景——参考图挂谁不该让模型每次重想');
+  const prop = jobs.find((j) => j.kind === 'prop');
+  ok(prop.cutoutFile.endsWith('-cutout.png'), '道具带抠图产物路径，跟白底图分开存');
+}
+
+// 生产参数在就以它为准——三个值原样进 input_data，不折算像素
+{
+  const prod = { style: 'realistic', image: { model: 'seedream4', asset: { resolution: '4K', aspectRatio: '4:3' } } };
+  const { model, inputBase } = imageJobsFrom(FIXTURE, prod);
+  eq(model, 'seedream4', '模型取 production.json 的 image.model');
+  eq(inputBase.resolution, '4K', '档位是枚举值，原样带上');
+  eq(inputBase.aspect_ratio, '4:3', '画幅是枚举值，原样带上');
+}
+
+// 提交之前就要拦下的三类问题
+{
+  const d = clone();
+  d.scenes[0].image.sheet = '';
+  ok(imageJobsFrom(d).problems.some((x) => x.includes('image.sheet')), '提示词空着不许提交——白花钱');
+
+  const d2 = clone();
+  d2.scenes[0].variantOf = 'S99';
+  ok(imageJobsFrom(d2).problems.some((x) => x.includes('S99')), '变体指向不存在的母场景，提交前就报');
+
+  const d3 = clone();
+  d3.scenes[1].name = d3.scenes[0].name;
+  ok(imageJobsFrom(d3).problems.some((x) => x.includes('同一个文件名')), '两个名字算出同一个文件名，后出的会盖掉先出的');
+}
+
+/* ---------------- 出图任务：调用封装 ---------------- */
+
+const TMP = mkdtempSync(join(tmpdir(), 'novel-art-selftest-'));
+
+/** 假 CLI：收 (bin, args) 数组，永远不经过 shell——被测的正是这一点。 */
+function fakeCli(script) {
+  const calls = [];
+  const exec = async (bin, args) => {
+    calls.push({ bin, args });
+    return script(args, calls);
+  };
+  return { exec, calls };
+}
+/** 假时钟：sleep 直接推进，超时用例不用真等 5 分钟。 */
+function fakeClock() {
+  let t = 0;
+  return { now: () => t, sleep: async (ms) => { t += ms; } };
+}
+const fakeFetch = async (url) => ({
+  ok: true,
+  arrayBuffer: async () => new TextEncoder().encode(`PNG-BYTES:${url}`).buffer,
+});
+const created = (calls) => calls.filter((c) => c.args[0] === 'image' && c.args[1] === 'create');
+const inputOf = (call) => JSON.parse(call.args[call.args.indexOf('--input_data') + 1]);
+
+// 提示词里塞满历来把 bash 拼崩的字符：双引号、单引号、换行、$、反引号、中文
+const NASTY = `He said "stop" — don't $PATH \`rm -rf\` 里面还有中文
+换行之后继续`;
+const jobOf = (over = {}) => ({
+  key: 'S01', kind: 'scene', name: '船舱', file: 'images/船舱-sheet.png',
+  prompt: NASTY, negativePrompt: 'people, hands', refFrom: null, ...over,
+});
+
+// 参数不经过 shell：提示词原样抵达，JSON 能完整 parse 回来
+{
+  const dir = join(TMP, 'shell');
+  const { exec, calls } = fakeCli((args) => {
+    if (args[0] === 'image') return JSON.stringify({ message: 'success', data: { task_id: 'T1' } });
+    return JSON.stringify({ message: 'success', data: { status: 'success', result: { url: 'https://x/1.png' } } });
+  });
+  const clock = fakeClock();
+  const { summary, results } = await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'nanobanana2', inputBase: { resolution: '2K', aspect_ratio: '16:9' },
+    outDir: dir, exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch,
+  });
+  eq(summary.ok, 1, '一张图跑通');
+  const input = inputOf(created(calls)[0]);
+  eq(input.prompt, NASTY, '引号换行美元符反引号中文全部原样抵达——参数不经过 shell');
+  eq(input.negative_prompt, 'people, hands', 'negative_prompt 是独立字段，不塞回正向提示词');
+  eq(input.resolution, '2K', '档位原样进 input_data');
+  ok(existsSync(join(dir, 'images', '船舱-sheet.png')), '图落到 render 找得到的路径');
+  ok(!existsSync(join(dir, 'images', '船舱-sheet.png.part')), '.part 中间文件已改名，不会被当成成品');
+  eq(results[0].bytes > 0, true, '落盘字节数带进汇报');
+}
+
+// 只读 data.status：响应里的 message: success 恒为 success，粗糙匹配会假命中
+{
+  const dir = join(TMP, 'status');
+  let polls = 0;
+  const { exec } = fakeCli((args) => {
+    if (args[0] === 'image') return JSON.stringify({ message: 'success', data: { task_id: 'T2' } });
+    polls += 1;
+    // 头两次任务还在跑，但整段 JSON 里就有 "success" 这个词
+    return polls < 3
+      ? JSON.stringify({ message: 'success', data: { status: 'running' } })
+      : JSON.stringify({ message: 'success', data: { status: 'success', result: { url: 'https://x/2.png' } } });
+  });
+  const clock = fakeClock();
+  const { summary } = await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'm', outDir: dir, exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch,
+  });
+  eq(polls, 3, '前两次 running 没有被 message: success 骗过去');
+  eq(summary.ok, 1, '真的 success 之后才落盘');
+}
+
+// data.status 缺失是硬错误，不当成「还没好」一直轮询到超时
+{
+  let threw = false;
+  try { pickData(JSON.stringify({ message: 'success', data: {} }), ['data', 'status'], '轮询'); } catch { threw = true; }
+  ok(threw, '响应里没有 data.status 就报错，不猜、不兜底');
+}
+
+// 超时有硬上限：到点标记 timeout，任务留在台账里等下次接着轮
+{
+  const dir = join(TMP, 'timeout');
+  const { exec } = fakeCli((args) =>
+    args[0] === 'image'
+      ? JSON.stringify({ data: { task_id: 'T3' } })
+      : JSON.stringify({ data: { status: 'running' } }));
+  const clock = fakeClock();
+  const { summary, results } = await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'm', outDir: dir, exec, sleep: clock.sleep, now: clock.now,
+    fetchImpl: fakeFetch, timeoutMs: 30_000,
+  });
+  eq(summary.timeout, 1, '到点收工，不是无限 while 循环');
+  ok(results[0].detail.includes('重跑'), '超时的说法要指向下一步动作，不是一句失败');
+  const ledger = JSON.parse(readFileSync(join(dir, LEDGER_FILE), 'utf8'));
+  eq(ledger.S01.taskId, 'T3', '超时的 task_id 留在台账里——任务多半还在网关那边跑');
+}
+
+// 断点续传：重跑接着轮询上次的任务，不重复提交也不重复花钱
+{
+  const dir = join(TMP, 'resume');
+  const clock = fakeClock();
+  const stall = fakeCli((args) =>
+    args[0] === 'image' ? JSON.stringify({ data: { task_id: 'T4' } }) : JSON.stringify({ data: { status: 'running' } }));
+  await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'm', outDir: dir, exec: stall.exec, sleep: clock.sleep, now: clock.now,
+    fetchImpl: fakeFetch, timeoutMs: 20_000,
+  });
+  eq(created(stall.calls).length, 1, '第一轮提交了一次');
+
+  const again = fakeCli((args) =>
+    args[0] === 'image'
+      ? JSON.stringify({ data: { task_id: 'T4-NEW' } })
+      : JSON.stringify({ data: { status: 'success', result: { url: 'https://x/4.png' } } }));
+  const { summary } = await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'm', outDir: dir, exec: again.exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch,
+  });
+  eq(created(again.calls).length, 0, '重跑没有重新提交——接着轮上次那个 task_id');
+  eq(again.calls[0].args[2], 'T4', '轮的正是台账里那个任务');
+  eq(summary.ok, 1, '这次拿到了图');
+  ok(!existsSync(join(dir, LEDGER_FILE)) || !JSON.parse(readFileSync(join(dir, LEDGER_FILE), 'utf8')).S01,
+    '图落地后台账里这条就消了——产物本身才是完成的凭据');
+}
+
+// 台账跟产物住同一格——段目录根只住交付物
+{
+  const dir = join(TMP, 'ledger-dir');
+  const { exec } = fakeCli((args) =>
+    args[0] === 'image' ? JSON.stringify({ data: { task_id: 'TL' } }) : JSON.stringify({ data: { status: 'running' } }));
+  const clock = fakeClock();
+  await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'm', outDir: dir, ledgerDir: join(dir, 'images'),
+    exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch, timeoutMs: 10_000,
+  });
+  ok(existsSync(join(dir, 'images', LEDGER_FILE)), '台账落在 images/ 里，跟跑完可删的东西放一起');
+  ok(!existsSync(join(dir, LEDGER_FILE)), '段目录根不留点文件——那一格只住三件交付物');
+}
+
+// 已有产物就跳过：一次 CLI 调用都不发
+{
+  const dir = join(TMP, 'skip');
+  mkdirSync(join(dir, 'images'), { recursive: true });
+  writeFileSync(join(dir, 'images', '船舱-sheet.png'), 'EXISTING');
+  const { exec, calls } = fakeCli(() => { throw new Error('不该被调用'); });
+  const clock = fakeClock();
+  const { summary } = await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'm', outDir: dir, exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch,
+  });
+  eq(summary.skipped, 1, '已有产物默认跳过');
+  eq(calls.length, 0, '跳过就是一次都不提交——重跑不该重复花钱');
+
+  const forced = fakeCli((args) =>
+    args[0] === 'image'
+      ? JSON.stringify({ data: { task_id: 'T5' } })
+      : JSON.stringify({ data: { status: 'success', result: { url: 'https://x/5.png' } } }));
+  const r2 = await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'm', outDir: dir, exec: forced.exec, sleep: clock.sleep, now: clock.now,
+    fetchImpl: fakeFetch, force: true,
+  });
+  eq(r2.summary.ok, 1, '--force 才重出');
+}
+
+// 变体分波次：母场景先落盘，再 upload 成 URL 挂给变体
+{
+  const dir = join(TMP, 'variant');
+  const { exec, calls } = fakeCli((args) => {
+    if (args[0] === 'upload') return 'https://assets/mother.png';
+    if (args[0] === 'image') return JSON.stringify({ data: { task_id: `T-${created(calls).length}` } });
+    return JSON.stringify({ data: { status: 'success', result: { url: 'https://x/v.png' } } });
+  });
+  const clock = fakeClock();
+  const jobs = [
+    jobOf({ key: 'S03', name: '芦苇滩', file: 'images/芦苇滩-sheet.png', refFrom: 'S02' }),
+    jobOf({ key: 'S02', name: '栈桥', file: 'images/栈桥-sheet.png' }),
+  ];
+  const { summary, results } = await runBatch(jobs, {
+    bin: '/x/lingying', model: 'm', outDir: dir, exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch,
+  });
+  eq(summary.ok, 2, '母场景与变体都出来了');
+  const upIdx = calls.findIndex((c) => c.args[0] === 'upload');
+  ok(upIdx > 0, '先出母场景再 upload——次序由代码保证，不靠模型记着');
+  const variantInput = inputOf(created(calls).find((c) => inputOf(c).images));
+  eq(variantInput.images[0], 'https://assets/mother.png', '变体挂上了母场景的成图当参考图');
+  eq(results.find((r) => r.key === 'S03').status, 'ok', '变体这张成了');
+}
+
+// 母场景没出成，变体就明说挂不上，不是静默出一张不一致的图
+{
+  const dir = join(TMP, 'variant-orphan');
+  const { exec } = fakeCli((args) =>
+    args[0] === 'image' ? JSON.stringify({ data: { task_id: 'T9' } }) : JSON.stringify({ data: { status: 'failed' } }));
+  const clock = fakeClock();
+  const jobs = [
+    jobOf({ key: 'S02', name: '栈桥', file: 'images/栈桥-sheet.png' }),
+    jobOf({ key: 'S03', name: '芦苇滩', file: 'images/芦苇滩-sheet.png', refFrom: 'S02' }),
+  ];
+  const { results } = await runBatch(jobs, {
+    bin: '/x/lingying', model: 'm', outDir: dir, exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch,
+  });
+  const v = results.find((r) => r.key === 'S03');
+  eq(v.status, 'failed', '母场景没成图，变体不硬出');
+  ok(v.detail.includes('母场景'), '失败原因指向该先做什么');
+}
+
+// 一张失败不阻断整批；枚举错的提交失败要指向 caps
+{
+  const dir = join(TMP, 'partial');
+  const { exec } = fakeCli((args, calls) => {
+    if (args[0] === 'image') {
+      if (created(calls).length === 1) throw new Error('input validation failed: resolution');
+      return JSON.stringify({ data: { task_id: 'T7' } });
+    }
+    return JSON.stringify({ data: { status: 'success', result: { url: 'https://x/7.png' } } });
+  });
+  const clock = fakeClock();
+  const jobs = [jobOf(), jobOf({ key: 'S02', name: '栈桥', file: 'images/栈桥-sheet.png' })];
+  const { summary, results } = await runBatch(jobs, {
+    bin: '/x/lingying', model: 'nanobanana2', outDir: dir, exec, sleep: clock.sleep, now: clock.now,
+    fetchImpl: fakeFetch, concurrency: 1,
+  });
+  eq(summary.failed, 1, '一张失败');
+  eq(summary.ok, 1, '另一张照常出——批次内不阻断');
+  ok(results.find((r) => r.status === 'failed').detail.includes('caps'), '枚举错要指向 novel-setup caps，别让人去猜');
+}
+
+// 网关抖动容错：task get 偶尔失败不判死，连续失败才算
+{
+  const dir = join(TMP, 'flaky');
+  let polls = 0;
+  const { exec } = fakeCli((args) => {
+    if (args[0] === 'image') return JSON.stringify({ data: { task_id: 'T8' } });
+    polls += 1;
+    if (polls === 1) throw new Error('connection reset');
+    return JSON.stringify({ data: { status: 'success', result: { url: 'https://x/8.png' } } });
+  });
+  const clock = fakeClock();
+  const { summary } = await runBatch([jobOf()], {
+    bin: '/x/lingying', model: 'm', outDir: dir, exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch,
+  });
+  eq(summary.ok, 1, '一次抖动不该让整张图判死');
+}
+
+// dry-run：不提交，把将要发的参数摆出来
+{
+  const dir = join(TMP, 'dry');
+  const { exec, calls } = fakeCli(() => { throw new Error('不该被调用'); });
+  const { summary, results } = await runBatch([jobOf({ refFrom: 'S02' })], {
+    bin: '/x/lingying', model: 'm', inputBase: { resolution: '2K' }, outDir: dir, exec, dryRun: true,
+  });
+  eq(calls.length, 0, 'dry-run 一次都不提交');
+  eq(summary.dryRun, 1, 'dry-run 单独计数');
+  eq(results[0].inputData.prompt, NASTY, '要发什么参数一眼看得见');
+  ok(results[0].detail.includes('S02'), '变体的参考图在 dry-run 阶段标出来');
+}
+
+// 退避是拉开的，不是固定 3 秒空转
+{
+  ok(backoffAt(0) < backoffAt(3), '轮询间隔逐步拉开');
+  eq(backoffAt(99), BACKOFF_MS[BACKOFF_MS.length - 1], '封顶，不会越等越久');
+}
+
+// 凭证问题在提交之前一次说完
+{
+  eq(preflight({ bin: null }).ok, false, '没装 CLI 就整步跳过，不假装能出图');
+  const home = join(TMP, 'home-empty');
+  mkdirSync(join(home, '.config', CLI_NAME), { recursive: true });
+  writeFileSync(join(home, '.config', CLI_NAME, 'config.json'), JSON.stringify({}));
+  const noKey = preflight({ bin: '/x/lingying', home });
+  eq(noKey.ok, false, '没有 api_key 提交必然 401——提交前就说');
+  writeFileSync(join(home, '.config', CLI_NAME, 'config.json'), JSON.stringify({ api_key: 'k' }));
+  eq(preflight({ bin: '/x/lingying', home }).ok, true, '有 api_key 就能出图');
+  eq(preflight({ bin: '/x/lingying', home, needUpload: true }).ok, false, '挂参考图与抠图另要 assethub_admin_token');
+}
+
+// 道具抠图：白底图出完再走一次，另存文件名
+{
+  const dir = join(TMP, 'cutout');
+  mkdirSync(join(dir, 'images'), { recursive: true });
+  writeFileSync(join(dir, 'images', '皮箱-sheet.png'), 'WHITE-BG');
+  const { exec, calls } = fakeCli((args) => {
+    if (args[0] === 'upload') return 'https://assets/prop.png';
+    if (args[0] === 'image') return JSON.stringify({ data: { task_id: 'C1' } });
+    return JSON.stringify({ data: { status: 'success', result: { url: 'https://x/cut.png' } } });
+  });
+  const clock = fakeClock();
+  const out = await cutout(
+    [{ key: 'P01', name: '皮箱', file: 'images/皮箱-sheet.png', cutoutFile: 'images/皮箱-sheet-cutout.png' }],
+    { bin: '/x/lingying', outDir: dir, exec, sleep: clock.sleep, now: clock.now, fetchImpl: fakeFetch },
+  );
+  eq(out[0].status, 'ok', '抠图跑通');
+  eq(created(calls)[0].args[3], CUTOUT_MODEL, '抠图走的是抠图模型，不是生图模型');
+  ok(existsSync(join(dir, 'images', '皮箱-sheet-cutout.png')), '抠图另存，render 找的仍然是原来的白底图');
+}
+
+rmSync(TMP, { recursive: true, force: true });
 
 console.log(`✓ ${passed} 项自测全部通过`);

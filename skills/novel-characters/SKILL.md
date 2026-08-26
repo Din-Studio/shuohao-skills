@@ -1,12 +1,13 @@
 ---
 name: novel-characters
-version: 1.15.0
+version: 1.16.0
 description: |
   从小说或短故事里拆出角色表、人物画像、形象提示词、音色提示词，
   并给每个角色出角色设定图（左半身像 + 右全身三视图 + 细节条），产出 JSON + Markdown + 可交互的 report.html。
   报告语言可指定（--lang），默认中文，任意语言都支持；
-  出图风格可指定（--style），默认半写实，也可以出吉卜力动画风。
-  零依赖、零 npm；出图走 lingying（灵影网关）CLI（可选，要它的 api_key）。
+  出图风格可指定（--style），默认真人实拍，也可以出吉卜力动画风。
+  零依赖、零 npm；出图是一条命令（可选，走 lingying 灵影网关，要它的 api_key）——
+  提交、轮询、落盘、断点续传全在脚本里，不靠模型现拼 bash。
   跑过 novel-setup 的项目会自动读工作目录根的 production.json：画风与设定图画幅两条硬检查，出图模型与尺寸也从那里取。
   Use when asked to 拆小说角色、分析人物、生成角色卡、character sheets from a novel。
 # 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
@@ -80,7 +81,7 @@ metadata:
 
 ### Step 0.5 — 确定画风
 
-**有 `production.json` 就以它的 `style` 为准，这一步只是确认。**没有才问用户：**默认 `realistic`**（半写实厚涂），想要动画质感就用 `ghibli`（吉卜力式手绘赛璐璐）。
+**有 `production.json` 就以它的 `style` 为准，这一步只是确认。**没有才问用户：**默认 `realistic`**（真人实拍），想要动画质感就用 `ghibli`（吉卜力式手绘赛璐璐）。
 
 ```bash
 node {baseDir}/scripts/novel-characters.mjs styles   # 打印预设的完整内容
@@ -216,7 +217,7 @@ node {baseDir}/scripts/novel-characters.mjs validate <cast.json> <book.txt>
 
 ### Step 8 — 出图（可选，每个角色都出）
 
-**每个角色一张**，用 `image.sheet`，落到 `./images/<slug>-sheet.png`。**出图模型与档位从 `production.json` 取**：`image.model` 传 `--model`，`image.asset.resolution` 与 `image.asset.aspectRatio` 原样进 `--input_data` 的 `resolution` / `aspect_ratio`——**提示词里一个像素都不写**。一行拿到拼好的参数：`novel-setup resolve --for characters`。一张横构图内部左右分栏（画幅按 `image.asset.aspectRatio`，默认 16:9）：
+**每个角色一张**，用 `image.sheet`，落到 `./images/<slug>-sheet.png`。出图模型与档位由命令自己从 `production.json` 取（`image.model` / `image.asset.resolution` / `image.asset.aspectRatio` 原样进 `--input_data`，**提示词里一个像素都不写**）。一张横构图内部左右分栏（画幅按 `image.asset.aspectRatio`，默认 16:9）：
 
 ```
 ┌──────────┬────────────────────────────┐
@@ -229,15 +230,22 @@ node {baseDir}/scripts/novel-characters.mjs validate <cast.json> <book.txt>
 
 左栏半身像是面部设计基准，右上三视图的脸照它画，右下是关键细节的小特写。**两条硬要求**：三视图的脸必须与半身像一致（否则一张图两个长相）；三个全身像的比例必须协调（模型会为了塞下细节把人压扁）。
 
-读 `{baseDir}/references/sheet.md`，照它的调用契约做。要点：
+```bash
+cd <段目录>
+node {baseDir}/scripts/novel-characters.mjs images <cast.json>
+```
 
-- **没有 lingying 就整步跳过**，只交提示词，后面照常走
-- 调用是三步：`image create` 提交拿 task_id、`task get` 轮询到 success、`curl` 把产物 URL 落盘。**一批角色可以先全部提交再统一轮询**
-- **一个角色一次调用，绝不批量**
-- 单个失败就跳过，不阻断；最后汇总说明
-- **断点续跑**：`images/<slug>-sheet.png` 已存在就跳过，失败重来时只补缺的
+**调用不用你写。** 提交、轮询、落盘、断点续传全在脚本里：参数不经过 shell（提示词里的引号换行中文原样抵达）、只读 `data.status`（响应里的 `"message": "success"` 恒为 success）、单张超时 300 秒到点就跳过继续下一张、一批先提交再统一轮询。出图参数自己从 `production.json` 取，**没有 lingying 就整步跳过**，只交提示词，后面照常走。
 
-**不按 `importance` 筛，选中的角色全都出。** 一个角色一次调用，30 个就是 30 次——这是整条管线里最慢的一步，开始前跟用户说一声要出多少张。用户想省就让他给个数，或者明说只要 `protagonist` / `major`。
+- 参数存疑先 `--dry-run`；`--only 老周,沈知微` 只出几个；`--force` 重出已有的
+- **画风漂就加 `--style-ref auto`**：先出第一个角色，其余拿它的成图当风格参考。代价是第一张定全片基调
+- 要透明底加 `--cutout`，抠完另存 `-cutout.png`（`render` 找的仍然是白底那张）
+- **失败不阻断批次，但有失败就 exit 1**——重跑跳过已有产物、接着轮询超时的任务
+- 拿到图先扫两眼：左右两栏是不是同一个人、三个全身像是不是等高。不是就 `--force` 重出
+
+**不按 `importance` 筛，选中的角色全都出。** 一个角色一次调用，30 个就是 30 次——这是整条管线里最慢的一步，命令开跑前会打印要出多少张。用户想省就用 `--only`。
+
+版面与提示词怎么写在 `{baseDir}/references/sheet.md`——**那才是这一步属于你的部分**。
 
 ### Step 9 — 输出
 
@@ -263,7 +271,8 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
     ├── <书名>-cast.md
     ├── report.html                ← 双击就能开
     ├── images/
-    │   └── <slug>-sheet.png       ← 有 lingying 才有
+    │   ├── <slug>-sheet.png       ← 有 lingying 才有
+    │   └── .tasks.json            ← 提交了还没落盘的任务；图到齐就空了，可以删
     └── .work/                     ← 分块、roster、角色卡，跑完可删
 ```
 
@@ -278,7 +287,7 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
 - 单次上限 24 块（净覆盖约 93 万字符），超了会明确报 `truncated`，不静默截断
 - 人类可读字段跟随 `--lang`（默认中文）；出图和 TTS 提示词**永远英文**，那些引擎吃英文最稳
 - 设定图最容易出的两个问题：**一张图里两个长相**、**为了塞细节把人物压扁**。拿到图先扫一眼，见 `references/sheet.md`
-- 出图只走 lingying。它是异步任务制：`create` 只返回 task_id，结果一律用 `task get` 取，**轮询时必须读 `data.status`**——响应里的 `"message": "success"` 恒为 success，粗糙的匹配会假命中
+- 出图只走 `images` 子命令——提交、轮询、落盘不再有第二份手写实现。以前那段 bash 拼错的方式比拼对的多：提示词里的引号把 `--input_data` 拆两半、轮询在整段 JSON 里搜 `success` 撞上恒为 success 的 `message`、`while` 循环没有出口
 - 想要能实时编辑、边跑边看的交互界面，那是另一个东西，不在这个 skill 里
 
 ## 自测
@@ -287,7 +296,7 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-376 项断言，不调模型、不花额度，覆盖分块 / 归并 / 合成 / 多语言 / 校验 / 生产参数 / 渲染的全部确定性逻辑。改完脚本先跑这个。
+435 项断言，不调模型、不花额度，覆盖分块 / 归并 / 合成 / 多语言 / 校验 / 生产参数 / 渲染的全部确定性逻辑；出图编排用注入的假 CLI 与假时钟跑完全部路径（提交、轮询、超时、续传、风格参考波次、抠图、凭证前置检查），**不 spawn 进程、不发一个请求**。改完脚本先跑这个。
 
 ## 自带样例
 

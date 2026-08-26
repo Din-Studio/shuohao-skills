@@ -6,6 +6,18 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  CLI_NAME,
+  DEFAULT_ASPECT,
+  DEFAULT_CONCURRENCY,
+  DEFAULT_IMAGE_MODEL,
+  DEFAULT_RESOLUTION,
+  DEFAULT_TIMEOUT_MS,
+  cutout,
+  findLingying,
+  preflight,
+  runBatch,
+} from './lib/lingying.mjs';
 
 /* ------------------------------------------------------------------ */
 /* chunk                                                               */
@@ -217,9 +229,9 @@ export const DEFAULT_STYLE = 'realistic';
 
 export const STYLE_PRESETS = {
   realistic: {
-    label: { zh: '半写实厚涂', en: 'Semi-realistic painterly', ja: '半写実・厚塗り' },
+    label: { zh: '真人实拍', en: 'Photorealistic live-action', ja: 'フォトリアル実写' },
     render:
-      'Semi-realistic character illustration, painterly rendering with soft blended edges and visible brush texture, anatomically grounded',
+      'Photorealistic portrait of a real human actor, live-action film casting reference, highly distinctive individual facial identity, natural human skin and authentic features, cinematic realism, anatomically grounded',
     surface:
       'Skin with visible pores and uneven tone, faint capillaries at the nostrils and ear rims, subtle subsurface scattering; eyes with a wet specular highlight, moist lower lid, visible iris fibres and a limbal ring; eyelids and eyebrows slightly asymmetric — no two sides identical; individual flyaway hair strands breaking the silhouette. Fabric with a visible weave, wear and shine at elbows, cuffs and knees, cloth falling with real weight and self-shadowing in the folds',
     // 设定表要平光才好抠图，写实要方向光才有体积——分区解决
@@ -228,7 +240,7 @@ export const STYLE_PRESETS = {
     // 注意：这里绝不能禁 photorealistic
     negative:
       'plastic or waxy skin, over-smoothed airbrushed complexion, poreless doll face, perfectly symmetrical face, dead flat eyes without specular highlight, helmet-like hair with no loose strands, flat untextured fabric with no weave or wear, stiff mannequin posing, extra fingers, malformed hands, text, watermark, signature, busy or patterned background, harsh cast shadows on the backdrop',
-    tags: ['semi-realistic', 'painterly', 'character sheet', 'subsurface skin', 'directional key light'],
+    tags: ['photorealistic', 'live-action', 'character sheet', 'subsurface skin', 'directional key light'],
   },
 
   ghibli: {
@@ -826,6 +838,11 @@ export function validateCast(characters, sourceText, lang = DEFAULT_LANG, style 
       const preset = stylePreset(style);
       if (typeof image.sheet === 'string' && !image.sheet.includes(preset.render)) {
         at(name, `image.sheet 里没有 style=${style} 的渲染句，画风会飘`);
+      }
+      // prompt 单独设门：只查 sheet 的话，prompt 里留着上一档画风也照样全绿，
+      // 出来就是设定表实拍、单张人像插画的两张皮
+      if (typeof image.prompt === 'string' && !image.prompt.includes(preset.render)) {
+        at(name, `image.prompt 里没有 style=${style} 的渲染句，画风会飘`);
       }
     }
 
@@ -1783,6 +1800,82 @@ document.addEventListener('click', async (e) => {
 /* CLI                                                                 */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* 出图任务                                                            */
+/* ------------------------------------------------------------------ */
+/*
+ * 出图要的东西全在 cast.json 里：`image.sheet` 是设定图提示词、
+ * `image.negativePrompt` 是反向词。这一层只做确定性搬运——拼出每张图该落到哪个
+ * 文件、把生产参数原样带上、按需要挂上风格参考。
+ *
+ * model / resolution / aspect_ratio 三个值原样进 --input_data，不折算像素、提示词里
+ * 也不写像素。它们在 production.json 里已经被 novel-setup 的能力表校验过一遍，
+ * **这里不再维护第二份枚举表**——同一张表存两份必漂。
+ */
+
+/*
+ * 画风一致性是这个 skill 的已知短板：同一批角色各自独立出图，风格会漂。
+ * 压住的办法是拿第一个角色的成图当风格参考喂给后面几个，代价是第一张定全片
+ * 基调。默认不开——只要几张草图的场合不该被这条绑住；`--style-ref` 才开。
+ */
+export const STYLE_REF_LINE =
+  'Match the art style, line weight, shading and colour treatment of the reference image exactly — these characters must belong to the same production.';
+
+/** 产物路径与 render 找图的路径必须是同一个算法，不许两边各写一遍。 */
+export const sheetFile = (name, dir = 'images') => `${dir}/${slug(name)}-sheet.png`;
+export const cutoutFile = (name, dir = 'images') => `${dir}/${slug(name)}-sheet-cutout.png`;
+
+export function imageJobsFrom(characters, production = null, { imagesDir = 'images', styleRef = null } = {}) {
+  const model = production?.image?.model ?? DEFAULT_IMAGE_MODEL;
+  const inputBase = {
+    aspect_ratio: production?.image?.asset?.aspectRatio ?? DEFAULT_ASPECT,
+    resolution: production?.image?.asset?.resolution ?? DEFAULT_RESOLUTION,
+  };
+  const problems = [];
+  const jobs = [];
+  const list = Array.isArray(characters) ? characters : [];
+
+  for (const c of list) {
+    const prompt = c?.image?.sheet;
+    if (typeof prompt !== 'string' || !prompt.trim()) {
+      problems.push(`「${c?.name ?? '?'}」的 image.sheet 是空的——提示词是模型的活，先填上再出图`);
+      continue;
+    }
+    jobs.push({
+      key: c.name,
+      kind: 'character',
+      name: c.name,
+      file: sheetFile(c.name, imagesDir),
+      cutoutFile: cutoutFile(c.name, imagesDir),
+      prompt: String(prompt),
+      negativePrompt: String(c?.image?.negativePrompt ?? ''),
+      refFrom: null,
+    });
+  }
+
+  // 风格参考：基准角色先出，其余等它落盘后挂上去当参考图
+  if (styleRef && styleRef !== 'off' && jobs.length > 1) {
+    const anchor = styleRef === 'auto' ? jobs[0] : jobs.find((j) => j.key === styleRef);
+    if (!anchor) problems.push(`--style-ref 指名的「${styleRef}」不在 cast.json 里`);
+    else {
+      for (const j of jobs) {
+        if (j === anchor) continue;
+        j.refFrom = anchor.key;
+        j.prompt = `${j.prompt} ${STYLE_REF_LINE}`;
+      }
+    }
+  }
+
+  // 重名会让两张图抢同一个文件名，后出的把先出的盖掉，而且 render 只看得见一张
+  const seen = new Map();
+  for (const j of jobs) {
+    if (seen.has(j.file)) problems.push(`「${seen.get(j.file)}」与「${j.key}」算出同一个文件名 ${j.file}——改掉其中一个的名字`);
+    else seen.set(j.file, j.key);
+  }
+
+  return { model, inputBase, jobs, problems };
+}
+
 const USAGE = `novel-characters.mjs — novel-characters skill 的确定性工具
 
   seed <outline.json>              从大纲预填角色表骨架（打印到 stdout，画像与提示词留空待填）
@@ -1793,6 +1886,14 @@ const USAGE = `novel-characters.mjs — novel-characters skill 的确定性工�
         [--lang] [--style] [--out] 把 card-*.json + summary.txt（+ ui.json）合成 cast.json
         [--order merged.json]      同档角色的戏份顺序（默认自动找 <workdir>/merged.json）
   validate <cast.json> <book.txt>  校验；有违规逐条打印并 exit 1
+  images <cast.json>               出设定图：提交 / 轮询 / 落盘全在代码里
+        [--only 名字1,名字2]        只出这几个（默认全出）
+        [--dry-run]                只打印将要提交的参数，不提交
+        [--force]                  已有产物也重出（默认跳过）
+        [--cutout]                 白底图再走一次抠图，另存 -cutout.png
+        [--style-ref auto|<角色名>] 拿这个角色的成图当风格参考喂给其余角色
+        [--timeout <秒>]           单张总超时，默认 ${DEFAULT_TIMEOUT_MS / 1000} 秒
+        [--concurrency <n>]        同时在跑的任务数
   render <cast.json> [--html|--md] 渲染报告到 stdout（默认 --md）
   slug <name>                      角色名转安全文件名
   ui-template [lang]               打印界面文案骨架，供翻译成内置表没有的语言
@@ -1804,8 +1905,11 @@ const USAGE = `novel-characters.mjs — novel-characters skill 的确定性工�
 
 render 选项：
   --source <name>   报告标题用的书名（默认取 cast.json 的 source 或文件名）
-  --images <dir>    图片目录名，默认 images
-                    会去找 <dir>/<slug>-sheet.png`;
+  --images <dir>    图片目录名，默认 images（images 命令也认这个）
+                    会去找 <dir>/<slug>-sheet.png
+
+images 走 ${CLI_NAME} CLI，没装就整步跳过只交提示词；出图参数取自 production.json，
+提示词取自 cast.json 的 image.sheet 与 image.negativePrompt。**先 images 再 render。**`;
 
 function readJson(path) {
   return JSON.parse(readFileSync(resolve(path), 'utf8'));
@@ -1854,7 +1958,7 @@ function loadCast(path) {
   };
 }
 
-function main(argv) {
+async function main(argv) {
   const [cmd, ...rest] = argv;
 
   if (!cmd || cmd === '-h' || cmd === '--help') {
@@ -2025,6 +2129,91 @@ function main(argv) {
     return;
   }
 
+  if (cmd === 'images') {
+    const [castPath] = rest;
+    if (!castPath) throw new Error('用法：images <cast.json> [--only 名字] [--dry-run] [--force] [--cutout] [--style-ref auto]');
+    const { characters } = loadCast(castPath);
+    const outDir = resolve(castPath, '..');
+    const imagesDir = flag(rest, '--images', 'images');
+    const prod = loadProduction(rest, outDir);
+    announceProduction(prod, castPath);
+
+    const styleRef = flag(rest, '--style-ref');
+    const { model, inputBase, jobs, problems } = imageJobsFrom(characters, prod.doc, { imagesDir, styleRef });
+    // **提交之前失败**：提示词缺了、风格参考指错了、两个名字撞成同一个文件名——
+    // 这些在网关那边发现要么白花钱，要么出完才发现少一张
+    if (problems.length) {
+      console.error(`✗ ${problems.length} 处挡住了出图：\n`);
+      for (const x of problems) console.error('  ' + x);
+      process.exit(1);
+    }
+    if (!prod.doc) console.error(`⚠️ 没有生产参数，按 ${model} + ${inputBase.resolution} + ${inputBase.aspect_ratio} 出——汇报里要说清`);
+
+    const only = flag(rest, '--only');
+    const picked = only
+      ? (() => {
+          const want = new Set(only.split(',').map((x) => x.trim()).filter(Boolean));
+          const miss = [...want].filter((k) => !jobs.some((j) => j.key === k));
+          if (miss.length) throw new Error(`--only 里这些角色不在 cast.json 里：${miss.join('、')}`);
+          const need = new Set(want);
+          // 风格参考的基准角色没被选中也得跟着出，否则参考图挂不上
+          for (const j of jobs) if (need.has(j.key) && j.refFrom) need.add(j.refFrom);
+          return jobs.filter((j) => need.has(j.key));
+        })()
+      : jobs;
+
+    const dryRun = rest.includes('--dry-run');
+    const wantCutout = rest.includes('--cutout');
+    const needUpload = wantCutout || picked.some((j) => j.refFrom);
+    const timeoutMs = Number(flag(rest, '--timeout', DEFAULT_TIMEOUT_MS / 1000)) * 1000;
+    const concurrency = Number(flag(rest, '--concurrency', DEFAULT_CONCURRENCY));
+
+    let bin = null;
+    if (!dryRun) {
+      bin = findLingying();
+      const pre = preflight({ bin, needUpload });
+      if (!pre.ok) {
+        // 没装 CLI 是「整步跳过」不是失败——提示词照常交付，其余产出不受影响
+        console.error(`⚠️ 出图跳过：\n${pre.problems.map((x) => '  ' + x).join('\n')}`);
+        console.log(JSON.stringify({ skipped: true, reason: pre.problems }, null, 2));
+        return;
+      }
+      console.error(`↳ ${CLI_NAME}：${bin}`);
+      console.error(`↳ 要出 ${picked.length} 张——这是整条管线最慢的一步`);
+    }
+
+    const { results, summary } = await runBatch(picked, {
+      bin, model, inputBase, outDir, ledgerDir: resolve(outDir, imagesDir),
+      timeoutMs, concurrency,
+      force: rest.includes('--force'),
+      dryRun,
+      log: (m) => console.error(m),
+    });
+
+    let cutouts = [];
+    if (wantCutout && !dryRun) {
+      cutouts = await cutout(
+        picked.map((j) => ({ key: j.key, name: j.name, file: j.file, cutoutFile: j.cutoutFile })),
+        { bin, outDir, timeoutMs, concurrency, force: rest.includes('--force'), log: (m) => console.error(m) },
+      );
+    }
+
+    for (const r of results) {
+      if (r.status === 'ok' || r.status === 'skipped' || r.status === 'dry-run') continue;
+      console.error(`✗ ${r.name} ${r.status} — ${r.detail ?? ''}`);
+    }
+    // stdout 只有这一行 JSON：agent 直接拿去汇报，不用自己数
+    console.log(JSON.stringify({ model, inputBase, summary, results, ...(cutouts.length ? { cutouts } : {}) }, null, 2));
+
+    const bad = summary.failed + summary.timeout;
+    if (bad) {
+      console.error(`\n✗ ${bad} 张没出成（成功 ${summary.ok}，跳过 ${summary.skipped}）——重跑本命令会跳过已有产物、接着轮询超时的任务`);
+      process.exit(1);
+    }
+    if (!dryRun) console.error(`\n✓ 出图完成：新出 ${summary.ok} 张，跳过 ${summary.skipped} 张`);
+    return;
+  }
+
   if (cmd === 'render') {
     const [castPath] = rest;
     if (!castPath) throw new Error('用法：render <cast.json> [--html|--md]');
@@ -2112,10 +2301,8 @@ if (isMainModule()) {
     if (e.code === 'EPIPE') process.exit(0);
     throw e;
   });
-  try {
-    main(process.argv.slice(2));
-  } catch (error) {
+  main(process.argv.slice(2)).catch((error) => {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);
-  }
+  });
 }
