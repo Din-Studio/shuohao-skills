@@ -1,6 +1,6 @@
 ---
 name: novel-script
-version: 1.2.0
+version: 1.3.0
 description: |
   给 AI 短剧写剧本：把 novel-outline 的分集梗概落成结构化的场次 + 节拍流（动作节拍与台词行交替），
   台词逐句带说话人与语气，时长逐集按语速确定性折算。产出 script.json + Markdown + 单页评审报告
@@ -63,6 +63,10 @@ metadata:
 
 **outline.json 是剧本的直接上游**（分集梗概、爽点落点、单集时长都在里面），标准流程从它开始。没有的话先问用户是否跑 `novel-outline`；用户坚持直接写，就问清集数与单集分钟数，手建骨架，对账门会明说跳过。
 
+**产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/script/`——`<剧名>-script.json`、`<剧名>-script.md`、`script-report.html` 都在这一格里。工作目录根只住 `production.json`（`novel-setup` 的产出），别的 skill 各占自己的一格（`outline/`、`characters/`、`art/`、`storyboard/`）。用户没指定工作目录就用大纲同级目录，**但段目录这一层不省**——合并报告的 `--from` 自动发现就是按段目录名找 JSON 的，平铺在根目录它找不到。下文的 `<段目录>` 就指 `<工作目录>/script/`。
+
+跑过 `novel-setup` 的项目这条是查的：`validate` 找到 `production.json` 就顺带核对落点，放错了会点名该去哪；没找到那份文件就无从判断工作目录根在哪，明说跳过。
+
 **一次写几集**：默认一批 ≤ 3 集。剧本是全管线改得最凶的一层，小批量出、快拍板、再往下写。用户明确要全剧也分批产出，每批过一次校验。
 
 顺手带上（都可选，给了才对账/显示名字）：
@@ -73,7 +77,8 @@ metadata:
 ### Step 1 — seed 骨架
 
 ```bash
-node {baseDir}/scripts/novel-script.mjs seed <outline.json> --eps 1-3 > <workdir>/script.json
+mkdir -p <段目录>
+node {baseDir}/scripts/novel-script.mjs seed <outline.json> --eps 1-3 > <段目录>/<剧名>-script.json
 ```
 
 确定性搬运：目标秒数（单集分钟 × 60）、钩子、悬念、该集爽点认领、候选场景与人物（进 `seedNote`）。**这些事实不要让模型重新想一遍。** scenes 留空，那才是写戏的活。
@@ -105,7 +110,7 @@ node {baseDir}/scripts/novel-script.mjs validate <script.json> \
 ### Step 4 — 输出与汇报
 
 ```bash
-cd <输出目录>
+cd <段目录>
 node {baseDir}/scripts/novel-script.mjs render <剧名>-script.json --md \
   --outline <outline.json> --art <art.json> > <剧名>-script.md
 node {baseDir}/scripts/novel-script.mjs render <剧名>-script.json --html \
@@ -120,10 +125,12 @@ node {baseDir}/scripts/novel-script.mjs render <剧名>-script.json --html \
 最终落地：
 
 ```
-<输出目录>/
-├── <剧名>-script.json
-├── <剧名>-script.md
-└── script-report.html             ← 双击就能开
+<工作目录>/
+├── production.json                ← novel-setup 的产出，住在根目录
+└── script/                        ← 本 skill 的全部产出，一格装满
+    ├── <剧名>-script.json
+    ├── <剧名>-script.md
+    └── script-report.html         ← 双击就能开
 ```
 
 ---
@@ -153,7 +160,7 @@ seed 吃 outline.json；validate/render 的 `--outline` `--art` 负责对账和�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-159 项断言，不调模型、不花额度。10 道质量门每一道都有击穿用例。改完脚本先跑这个。
+166 项断言，不调模型、不花额度。10 道质量门每一道都有击穿用例。改完脚本先跑这个。
 
 ## 自带样例
 

@@ -1,6 +1,6 @@
 ---
 name: novel-outline
-version: 1.2.0
+version: 1.3.0
 description: |
   把一本小说改编成短剧大纲五件套：改编说明、人物表、爽点表、分集梗概、资产清单，
   产出 outline.json + Markdown + 单页评审报告（KPI 带、关键决策、爽点时间轴、调度矩阵、场景概览、质量门）。
@@ -69,7 +69,13 @@ metadata:
 
 **禁止凭书名脑补内容**——一切判断基于给到的文本。落地手段：`adaptation.keep` 的关键取舍要附 `evidence`（原文逐字片段）。
 
-直接粘正文的先落成 .txt。输出目录：用户指定就用，没指定用原书同级目录。
+直接粘正文的先落成 .txt。
+
+**产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/outline/`——`<书名>-outline.json`、`<书名>-outline.md`、`outline-report.html` 都在这一格里。工作目录根只住 `production.json`（`novel-setup` 的产出），别的 skill 各占自己的一格（`characters/`、`art/`、`script/`、`storyboard/`）。用户没指定工作目录就用原书同级目录，**但段目录这一层不省**——合并报告的 `--from` 自动发现就是按段目录名找 JSON 的，平铺在根目录它找不到。下文的 `<段目录>` 就指 `<工作目录>/outline/`。
+
+分卷摘要、分集片段这类脚手架写进 `<段目录>/.work/`，跑完可以整个删掉，不影响任何交付物。
+
+跑过 `novel-setup` 的项目这条是查的：`validate` 找到 `production.json` 就顺带核对落点，放错了会点名该去哪；没找到那份文件就无从判断工作目录根在哪，明说跳过。
 
 ### Step 2 — 分卷摘要（长文本才需要）
 
@@ -81,19 +87,19 @@ metadata:
 长篇且没读过原文：
 
 ```bash
-node {baseDir}/scripts/novel-outline.mjs chunk <book.txt> <workdir>
+node {baseDir}/scripts/novel-outline.mjs chunk <book.txt> <段目录>/.work
 ```
 
 按章节标题分卷（默认每卷 15 章，`--per-volume` 可调），识别不出章节就按字数切。打印 `{"volumes": N, ...}`；`truncated: true` 就明确告诉用户尾部没扫到，别闷着。
 
-每卷一个子代理（支持并发就**同一条消息里全部发出**）：读 `{baseDir}/references/volume-pass.md`，读 `<workdir>/vol-NN.txt`，把卷摘要写到 `<workdir>/summary-NN.json`，只回一句「done NN」。
+每卷一个子代理（支持并发就**同一条消息里全部发出**）：读 `{baseDir}/references/volume-pass.md`，读 `<段目录>/.work/vol-NN.txt`，把卷摘要写到 `<段目录>/.work/summary-NN.json`，只回一句「done NN」。
 
 ### Step 3 — 快版骨架 → 用户拍板 ⛔
 
-读 `{baseDir}/references/outline-pass.md` 和 `{baseDir}/references/schema.md`，照着做。产出骨架四块（adaptation / characters / scenes / beats），写成 `<workdir>/outline.json`。
+读 `{baseDir}/references/outline-pass.md` 和 `{baseDir}/references/schema.md`，照着做。产出骨架四块（adaptation / characters / scenes / beats），写成 `<段目录>/<书名>-outline.json`（段目录不存在就先 `mkdir -p`）——**骨架从一开始就落在交付路径上**，后面几步都在同一份文件上加东西，不再搬家。
 
 ```bash
-node {baseDir}/scripts/novel-outline.mjs validate <workdir>/outline.json --stage beats
+node {baseDir}/scripts/novel-outline.mjs validate <段目录>/<书名>-outline.json --stage beats
 ```
 
 过了 beats 档，**把三件事摆给用户拍板：砍了哪条线、合了哪些人、大爆点落在第几集**。不点头不进 Step 4——快版错了只损失一轮骨架，分集写完才发现方向错，全废。
@@ -104,14 +110,14 @@ node {baseDir}/scripts/novel-outline.mjs validate <workdir>/outline.json --stage
 
 ### Step 5 — 分集梗概（分批）
 
-**每批 ≤ 10 集**，能并发就并发。每个子代理拿到：拍板后的骨架四块、自己负责的集数区间、区间内的爽点，读 `{baseDir}/references/episode-pass.md` 照着写，产出写到 `<workdir>/eps-NN.json`。
+**每批 ≤ 10 集**，能并发就并发。每个子代理拿到：拍板后的骨架四块、自己负责的集数区间、区间内的爽点，读 `{baseDir}/references/episode-pass.md` 照着写，产出写到 `<段目录>/.work/eps-NN.json`。
 
-合并时按 ep 排序拼进 outline.json 的 `episodes`。
+合并时按 ep 排序拼进 `<段目录>/<书名>-outline.json` 的 `episodes`。
 
 ### Step 6 — 校验 ⛔ 不能跳
 
 ```bash
-node {baseDir}/scripts/novel-outline.mjs validate <输出目录>/<书名>-outline.json
+node {baseDir}/scripts/novel-outline.mjs validate <段目录>/<书名>-outline.json
 ```
 
 14 道质量门全部是代码，不是给你读的清单：主角组 1–5 人、重要配角 ≤ 10、功能性角色 ≤ 10、主场景不超上限（随集数动态，60 集 → 10）、叙事道具 ≤ 8 件、一次性场景有规避方案、爽点间隔 ≤ 3 集无真空、第 1 集有钩子、大爆点不压最后一集、每集三栏齐全、三人同框有拆解、生成难点进预警、引用完整无失业角色无空转场景无零集道具、叙述体无对白。
@@ -121,7 +127,7 @@ node {baseDir}/scripts/novel-outline.mjs validate <输出目录>/<书名>-outlin
 ### Step 7 — 输出与汇报
 
 ```bash
-cd <输出目录>
+cd <段目录>
 node {baseDir}/scripts/novel-outline.mjs render <书名>-outline.json --md   > <书名>-outline.md
 node {baseDir}/scripts/novel-outline.mjs render <书名>-outline.json --html > outline-report.html
 ```
@@ -135,10 +141,13 @@ report 里自带：KPI 带、关键决策（拍板三件事，大爆点列表和
 最终落地：
 
 ```
-<输出目录>/
-├── <书名>-outline.json
-├── <书名>-outline.md
-└── outline-report.html            ← 双击就能开
+<工作目录>/
+├── production.json                ← novel-setup 的产出，住在根目录
+└── outline/                       ← 本 skill 的全部产出，一格装满
+    ├── <书名>-outline.json
+    ├── <书名>-outline.md
+    ├── outline-report.html        ← 双击就能开
+    └── .work/                     ← 分卷摘要与分集片段，跑完可删
 ```
 
 ---
@@ -171,7 +180,7 @@ node {baseDir}/scripts/novel-outline.mjs render <outline.json> --html > outline-
 node {baseDir}/scripts/selftest.mjs
 ```
 
-254 项断言，不调模型、不花额度。14 道质量门每一道都有击穿用例——证明它真的会拦。改完脚本先跑这个。
+261 项断言，不调模型、不花额度。14 道质量门每一道都有击穿用例——证明它真的会拦。改完脚本先跑这个。
 
 ## 自带样例
 

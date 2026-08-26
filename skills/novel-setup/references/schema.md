@@ -1,6 +1,6 @@
 # production.json 结构
 
-一部剧一份，住在**工作目录根**——五个 skill 各自的子目录都在它下面，下游从自己的输出目录**向上**找它（最多 5 层）。
+一部剧一份，住在**工作目录根**——五个 skill 各自的段目录都在它下面，下游从自己的段目录**向上**找它（最多 5 层）。
 
 ```json
 {
@@ -29,7 +29,7 @@
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `source` | string | 剧名，可选。只用来在参数表里显示 |
-| `style` | enum | 画风：`realistic` 半写实 / `ghibli` 吉卜力。**与 novel-characters / novel-art / novel-storyboard 的画风预设同名对齐** |
+| `style` | enum | 画风：`realistic` 真人实拍 / `ghibli` 吉卜力。**与 novel-characters / novel-art / novel-storyboard 的画风预设同名对齐** |
 | `lang` | enum | 报告界面语言 `zh` / `en`。五个 skill 的 `render --lang` 缺省时跟它 |
 | `promptLang` | enum | H3 视频提示词语言 `zh` / `en`。默认 `en`——官方规范口径 |
 | `image.model` | string | 生图模型，取 `lingying model list --model_type image` 的 ID 列。内置能力表里有的查枚举，没有的明说跳过 |

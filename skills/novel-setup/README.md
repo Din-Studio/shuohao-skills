@@ -124,7 +124,8 @@ node scripts/novel-setup.mjs show <工作目录>/production.json
 
 完整契约见 `references/contract.md`。三句话版本：
 
-- **下游向上找**：从自己的输出目录向上最多 5 层找 `production.json`。**下游不 import 本 skill 的代码**——每个 skill 都要能整个拷走单独跑，查找逻辑各自实现十几行。
+- **下游向上找**：从自己的段目录向上最多 5 层找 `production.json`。**下游不 import 本 skill 的代码**——每个 skill 都要能整个拷走单独跑，查找逻辑各自实现十几行。
+- **产物各归各的段目录**：`outline/`、`characters/`、`art/`、`script/`、`storyboard/`，根目录只住这份 `production.json`。下游找到它就顺带核对落点，放错了点名该去哪——是提示不是门。
 - **找不到就明说跳过**，照旧用内置默认值，但要在校验输出里说清哪几道门跳过了。装作查过比没查更坏。
 - **找到了就必须遵循**，界线是改了要不要重出图：画风、画幅**设门不可绕过**，出图档位必须带进调用；报告界面语言走继承，不设门。
 
@@ -171,7 +172,7 @@ novel-storyboard → storyboard.json （怎么拍：镜头、分镜图、批次�
 
 ## 自带样例
 
-- `examples/回南天-production.json`：**竖屏 9:16** 半写实、2K、英文提示词、`nanobanana2` + `MiniMax H3 · managed`——AI 短剧最常见的形态
+- `examples/回南天-production.json`：**竖屏 9:16** 真人实拍、2K、英文提示词、`nanobanana2` + `MiniMax H3 · managed`——AI 短剧最常见的形态
 - `examples/雪线-production.json`：**横屏 16:9** 吉卜力、4K、中文提示词、`image-2` + `seedance2.0`（没有变体）——另一头的极端
 
 成片画幅两种、画风两档、档位两档、提示词语言两种、生图模型两个、视频模型两个各出现一次——因为这个 skill 交付的就是「参数可以怎么组合」本身。

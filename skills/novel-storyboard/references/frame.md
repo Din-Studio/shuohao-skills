@@ -21,7 +21,7 @@ LY=$(find_lingying)
 
 ## 出图参数从 production.json 来 ⚠️
 
-出图之前先读工作目录根的 `production.json`（`novel-setup` 的产出，从输出目录**向上最多 5 层**找）：
+出图之前先读工作目录根的 `production.json`（`novel-setup` 的产出，从段目录**向上最多 5 层**找）：
 
 | 字段 | 用在哪 |
 | --- | --- |
@@ -77,7 +77,7 @@ FACE=$("$LY" upload ../characters/images/<角色名>-sheet.png)
 ## 调用三步
 
 ```bash
-mkdir -p "<段号>"
+cd <段目录> && mkdir -p "<段号>"   # <段目录> = <工作目录>/storyboard/，段文件夹与报告同级
 
 # 1 提交 —— JSON 一律用工具拼；提示词里有引号换行中文，手拼必崩
 TASK=$("$LY" image create --model "$MODEL" --json --input_data "$INPUT_JSON" \

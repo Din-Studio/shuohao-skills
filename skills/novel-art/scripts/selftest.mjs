@@ -28,6 +28,8 @@ import {
   findProduction,
   langOf,
   SKIP_PROD,
+  STAGE_DIR,
+  stageDirNote,
 } from './novel-art.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -564,4 +566,17 @@ eq(FIXTURE.props.length, 2, '样例带两件叙事道具');
   ok(gateEn.includes('Consistency anchors, 3–5'), 'EN 报告的质量门标签翻译且阈值原样保留');
   ok(!gateEn.includes('一致性锚点 3–5 个'), 'EN 报告不再出现中文门标签');
 }
+/* ---------------- 产物落点 ---------------- */
+
+eq(STAGE_DIR, 'art', '段目录名与端到端工作目录约定一致');
+{
+  const prod = '/w/production.json';
+  eq(stageDirNote('/w/art/渡口-art.json', prod), null, '落在自己的段目录里就不吭声');
+  ok(stageDirNote('/w/渡口-art.json', prod)?.includes('/w/art'), '平铺在工作目录根要提示该去哪');
+  ok(stageDirNote('/w/other/渡口-art.json', prod), '串进别人的段目录也要提示');
+  ok(stageDirNote('/w/art/sub/渡口-art.json', prod), '段目录下再套一层同样提示——报告按相对路径找图，多一层图就全丢');
+  eq(stageDirNote('/w/渡口-art.json', null), null, '没有 production.json 就无从判断，不猜');
+  eq(stageDirNote(null, prod), null, '没有产物路径也不猜');
+}
+
 console.log(`✓ ${passed} 项自测全部通过`);

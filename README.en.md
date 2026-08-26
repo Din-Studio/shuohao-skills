@@ -34,7 +34,7 @@ The five stage reports can be merged into a single page with a left-hand nav —
 node scripts/report.mjs --from <demo-dir> --out report.html
 ```
 
-`--from` discovers the five json files using the [working-directory convention](#repository-conventions); you can also point at each one directly (`--outline` `--cast` `--art` `--script` `--storyboard`). Ran only the character pass? You get one pane, no error.
+`--from` discovers the five json files using the [working-directory layout](#working-directory-layout); you can also point at each one directly (`--outline` `--cast` `--art` `--script` `--storyboard`). Ran only the character pass? You get one pane, no error.
 
 It is an **assembler, not a separate skill**: it imports no skill code, it shells out to each skill's own `render --html` and stitches the results. So the five creative skills stay untouched, still run standalone, and are still copyable on their own — and when a skill changes its rendering, this picks it up for free.
 
@@ -137,6 +137,34 @@ for f in skills/*/scripts/selftest.mjs; do node "$f"; done
 ```
 
 There is no CI — the self-tests run in about a second, so running them locally beats waiting on a pipeline. **Only tested on macOS with Node 24**; there is no platform-specific code, so Linux and older Node releases should be fine, but that is unverified.
+
+## Working-directory layout
+
+Running a novel through all five stages produces a pile of `*.json` / `*.md` / `*-report.html`. **Do not flatten them into the root.** Every skill except `novel-setup` writes into its own stage directory, one per pipeline stage:
+
+```
+<work-dir>/
+├── production.json ← novel-setup's output: production parameters, **lives at the root**
+├── outline/       ← novel-outline:    <drama>-outline.json / .md / outline-report.html
+├── characters/    ← novel-characters: <drama>-cast.json / .md / report.html + images/
+├── art/           ← novel-art:        <drama>-art.json / .md / art-report.html + images/
+├── script/        ← novel-script:     <drama>-script.json / .md / script-report.html
+├── storyboard/    ← novel-storyboard: <drama>-storyboard.json / .md / storyboard-report.html
+│   ├── manifest.json  ← from `export`
+│   ├── E01-01/        ← one folder per segment (prompt.md + f1..fN.png + video.mp4 once ordered)
+│   ├── E01-02/
+│   └── …
+├── docs/          ← notes you write yourself, kept apart from generated output
+└── scripts/       ← helper scripts for running the pipeline
+```
+
+Key points:
+
+- **`production.json` stays at the root**, never inside a stage directory — the five downstream skills walk up to find it, and a subdirectory hides it from all but one of them.
+- **One directory per skill.** New characters or scenes go into the matching stage directory; the root stays clean.
+- **The storyboard's `manifest.json` and `E01-0x/` packs belong in `storyboard/`**, exactly as `export --out .` writes them. **Do not tuck the segment folders one level deeper** (say, into `segments/`): the report links its frames by the relative path `<segment>/f<n>.png`, so the HTML and the segment folders must be siblings. Nest them and every embedded frame **silently** turns into a "not generated" placeholder — no error.
+- **Every skill checks its own landing spot.** When `validate` finds `production.json` it also compares where the artifact sits, and names the right directory if it is wrong. A misplaced file costs no re-rendering, so this is a notice rather than a gate — but staying silent would be worse, since `--from` discovery finds nothing when the files are flattened. With no `production.json` there is no way to tell where the work-directory root is, and the check says so instead of guessing.
+- **Report HTML can always be re-rendered** and images re-generated from the prompts — commit `json` / `md` / `docs` / `scripts` and gitignore the report HTML plus the `png` / `mp4` inside the segment folders.
 
 
 ## License

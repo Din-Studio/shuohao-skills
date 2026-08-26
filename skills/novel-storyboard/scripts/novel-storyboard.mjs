@@ -65,6 +65,32 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
   return null;
 }
 
+/* ------------------------------------------------------------------ */
+/* 产物落点                                                            */
+/* ------------------------------------------------------------------ */
+/*
+ * 工作目录约定：每个 skill 的产物归自己的段目录（outline / characters /
+ * art / script / storyboard），工作目录根只住 production.json。
+ *
+ * 落点写错了不用重出图，所以这里是提示不是门——但必须说出来：合并报告的
+ * `--from` 自动发现是按段目录名找 JSON 的，产物平铺在根目录它就找不到。
+ *
+ * 只有找得到 production.json 才判断得了——那份文件定义了工作目录根在哪。
+ * 单独跑某一段、没跑过 novel-setup 的场合无从判断，那就不提示。
+ */
+
+/** 本 skill 的产物该住的段目录名。 */
+export const STAGE_DIR = 'storyboard';
+
+/** 落点不对就返回一句人读的提示；落点对了、或无从判断，返回 null。 */
+export function stageDirNote(docPath, productionPath, stage = STAGE_DIR) {
+  if (!docPath || !productionPath) return null;
+  const want = resolve(dirname(resolve(productionPath)), stage);
+  const got = dirname(resolve(docPath));
+  if (got === want) return null;
+  return `产物落在 ${got}，按工作目录约定该住在 ${want}——每个 skill 的产物归自己的段目录，放错了合并报告的 --from 自动发现找不到它`;
+}
+
 /** 分镜图提示词里会出现的画幅写法——只认这几种，免得把台词时间戳当成比例。 */
 export const KNOWN_ASPECTS = ['16:9', '9:16', '4:3', '3:4', '1:1', '21:9', '2.39:1'];
 
@@ -124,7 +150,7 @@ export const CAMERA_MOVES = {
 /** 分镜图风格预设：与 novel-characters / novel-art 同名对齐（realistic / ghibli）。
  *  短语必须出现在每条分镜图提示词里——同一部剧的分镜图不许画风漂。 */
 export const STYLE_PRESETS = {
-  realistic: { zh: '半写实电影感', phrase: 'cinematic film still' },
+  realistic: { zh: '真人实拍', phrase: 'cinematic film still' },
   ghibli: { zh: '吉卜力手绘', phrase: 'hand-painted anime film still' },
 };
 export const DEFAULT_STYLE = 'realistic';
@@ -492,7 +518,7 @@ export function gateReport(board, ctx = {}) {
   // 提示词语言：默认英文——官方规范的口径（台词仍在 <d> 里保留原文）；'zh' 可切整条中文
   const promptLang = promptLangOf(board, production);
 
-  // 画风漂了 = 角色是吉卜力、场景是半写实，合成没法看，整套设定图白出
+  // 画风漂了 = 角色是吉卜力、场景是实拍，合成没法看，整套设定图白出
   if (production && board?.style && board.style !== production.style) {
     bad.pstyle.push(`storyboard.json 的 style「${board.style}」与生产参数的「${production.style}」不一致`);
   }
@@ -1780,13 +1806,17 @@ function loadCtx(rest, fromDir = '.') {
 }
 
 /** 找到就报一声，找不到也报一声——静默是最坏的那种。 */
-function announceProduction(ctx, rest) {
+function announceProduction(ctx, rest, docPath = null) {
+  const which = '2 道门（画风、分镜图画幅）与产物落点提示';
   if (rest.includes('--no-production')) {
-    console.error(`⚠️ --no-production：生产参数的 2 道门（画风、分镜图画幅）跳过`);
+    console.error(`⚠️ --no-production：生产参数的 ${which}跳过`);
     return;
   }
-  if (ctx.productionPath) console.error(`↳ 生产参数：${ctx.productionPath}`);
-  else console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，2 道门（画风、分镜图画幅）跳过——跑 /novel-setup 生成一份可以打开它`);
+  if (ctx.productionPath) {
+    console.error(`↳ 生产参数：${ctx.productionPath}`);
+    const note = stageDirNote(docPath, ctx.productionPath);
+    if (note) console.error(`⚠️ ${note}`);
+  } else console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，${which}跳过——跑 /novel-setup 生成一份可以打开它`);
 }
 
 function main(argv) {
@@ -1818,7 +1848,7 @@ function main(argv) {
     const ctx = loadCtx(rest, resolve(path, '..'));
     if (!ctx.script) throw new Error('分镜离开剧本没有意义——必须给 --script <script.json>');
     if (!ctx.outline && !ctx.cast) console.error('⚠️ 没给 --outline / --cast，跳过提示词人名检查');
-    announceProduction(ctx, rest);
+    announceProduction(ctx, rest, path);
 
     // 门的结果追加到 .gates.jsonl——validate 与 checkup 都记，
     // 这样「跑过多少次」这个分母才是全的
@@ -1890,7 +1920,7 @@ function main(argv) {
     const board = readJson(path);
     const ctx = loadCtx(rest, resolve(path, '..'));
     if (!ctx.script) throw new Error('分镜离开剧本没有意义——必须给 --script <script.json>');
-    announceProduction(ctx, rest);
+    announceProduction(ctx, rest, path);
     const dir = flag(rest, '--out', '.');
     const pack = exportPack(board, ctx.script, {
       imageExists: (rel) => existsSync(resolve(rel)),

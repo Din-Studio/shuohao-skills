@@ -58,6 +58,32 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
   return null;
 }
 
+/* ------------------------------------------------------------------ */
+/* 产物落点                                                            */
+/* ------------------------------------------------------------------ */
+/*
+ * 工作目录约定：每个 skill 的产物归自己的段目录（outline / characters /
+ * art / script / storyboard），工作目录根只住 production.json。
+ *
+ * 落点写错了不用重出图，所以这里是提示不是门——但必须说出来：合并报告的
+ * `--from` 自动发现是按段目录名找 JSON 的，产物平铺在根目录它就找不到。
+ *
+ * 只有找得到 production.json 才判断得了——那份文件定义了工作目录根在哪。
+ * 单独跑某一段、没跑过 novel-setup 的场合无从判断，那就不提示。
+ */
+
+/** 本 skill 的产物该住的段目录名。 */
+export const STAGE_DIR = 'script';
+
+/** 落点不对就返回一句人读的提示；落点对了、或无从判断，返回 null。 */
+export function stageDirNote(docPath, productionPath, stage = STAGE_DIR) {
+  if (!docPath || !productionPath) return null;
+  const want = resolve(dirname(resolve(productionPath)), stage);
+  const got = dirname(resolve(docPath));
+  if (got === want) return null;
+  return `产物落在 ${got}，按工作目录约定该住在 ${want}——每个 skill 的产物归自己的段目录，放错了合并报告的 --from 自动发现找不到它`;
+}
+
 export function paramsOf(doc) {
   return { ...DEFAULT_PARAMS, ...(doc?.params ?? {}) };
 }
@@ -1019,6 +1045,20 @@ function flag(rest, name, fallback = null) {
   return i >= 0 && rest[i + 1] ? rest[i + 1] : fallback;
 }
 
+/*
+ * 落点提示：产物该住在工作目录的段目录里。本 skill 只把 production.json
+ * 当锚点用——找不到那份文件就无从判断工作目录根在哪，那就不吭声。
+ */
+function announceStageDir(docPath) {
+  const hit = findProduction(resolve(docPath, '..'));
+  if (!hit) {
+    console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，产物落点提示跳过——跑 /novel-setup 生成一份可以打开它`);
+    return;
+  }
+  const note = stageDirNote(docPath, hit);
+  if (note) console.error(`⚠️ ${note}`);
+}
+
 function loadCtx(rest) {
   const get = (name) => {
     const path = flag(rest, name);
@@ -1056,6 +1096,7 @@ function main(argv) {
     const ctx = loadCtx(rest);
     if (!ctx.outline) console.error('⚠️ 没给 --outline，跳过角色引用与爽点认领检查');
     if (!ctx.art) console.error('⚠️ 没给 --art，跳过场景／光照／道具对账');
+    announceStageDir(path);
 
     if (cmd === 'checkup') {
       const gates = gateReport(doc, ctx);

@@ -44,6 +44,8 @@ import {
   findProduction,
   promptLangOf,
   styleIdOf,
+  STAGE_DIR,
+  stageDirNote,
 } from './novel-storyboard.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -66,7 +68,7 @@ function eq(actual, expected, label) {
 const clone = (x) => structuredClone(x);
 const gate = (doc, id, ctx = CTX) => gateReport(doc, ctx).find((g) => g.id === id);
 
-// 生产参数夹具：样例《渡口》是横屏半写实，参数照它配才是全绿基线
+// 生产参数夹具：样例《渡口》是横屏真人实拍，参数照它配才是全绿基线
 const PRODUCTION = {
   source: '渡口',
   style: 'realistic',
@@ -357,7 +359,7 @@ eq(h3Remainder('a <d>[Chinese] 你好</d> b "营业中" c'), 'a   b   c', 'h3Rem
 
 // style-phrase — 同剧分镜图画风不许漂
 {
-  eq(DEFAULT_STYLE, 'realistic', '默认半写实');
+  eq(DEFAULT_STYLE, 'realistic', '默认真人实拍');
   ok(STYLE_PRESETS.realistic.phrase && STYLE_PRESETS.ghibli.phrase, '预设带风格短语');
   const doc = clone(FIXTURE);
   doc.style = '油画';
@@ -863,4 +865,17 @@ ok(html.includes('老周'), 'html 里 ID 换成名字');
   ok(renderMarkdown(doc, CTX).includes('| ots-shot-reverse |'), '不挂卡库时配方列退回裸 id');
   ok(renderMarkdown(FIXTURE, CTX).includes('| — |'), '没引用配方的切在配方列写 —');
 }
+/* ---------------- 产物落点 ---------------- */
+
+eq(STAGE_DIR, 'storyboard', '段目录名与端到端工作目录约定一致');
+{
+  const prod = '/w/production.json';
+  eq(stageDirNote('/w/storyboard/渡口-storyboard.json', prod), null, '落在自己的段目录里就不吭声');
+  ok(stageDirNote('/w/渡口-storyboard.json', prod)?.includes('/w/storyboard'), '平铺在工作目录根要提示该去哪');
+  ok(stageDirNote('/w/other/渡口-storyboard.json', prod), '串进别人的段目录也要提示');
+  ok(stageDirNote('/w/storyboard/sub/渡口-storyboard.json', prod), '段目录下再套一层同样提示——报告按相对路径找图，多一层图就全丢');
+  eq(stageDirNote('/w/渡口-storyboard.json', null), null, '没有 production.json 就无从判断，不猜');
+  eq(stageDirNote(null, prod), null, '没有产物路径也不猜');
+}
+
 console.log(`✓ ${passed} 项自测全部通过`);

@@ -1,6 +1,6 @@
 ---
 name: novel-characters
-version: 1.13.0
+version: 1.14.0
 description: |
   从小说或短故事里拆出角色表、人物画像、形象提示词、音色提示词，
   并给每个角色出角色设定图（左半身像 + 右全身三视图 + 细节条），产出 JSON + Markdown + 可交互的 report.html。
@@ -99,11 +99,16 @@ node {baseDir}/scripts/novel-characters.mjs styles   # 打印预设的完整内�
 
 用户给文件路径就直接用。直接粘正文的，**先落到一个临时 .txt**——后面校验「引文是否逐字」要拿原文比对，没有原文文件这步就没法做。
 
-确定输出目录：用户指定就用；没指定就用原书同级目录。
+**产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/characters/`——`<书名>-cast.json`、`<书名>-cast.md`、`report.html`、`images/` 都在这一格里。工作目录根只住 `production.json`（`novel-setup` 的产出），别的 skill 各占自己的一格（`outline/`、`art/`、`script/`、`storyboard/`）。用户没指定工作目录就用原书同级目录，**但段目录这一层不省**——合并报告的 `--from` 自动发现就是按段目录名找 JSON 的，平铺在根目录它找不到。下文的 `<段目录>` 就指 `<工作目录>/characters/`。
+
+分块、roster、角色卡这些中间件写进 `<段目录>/.work/`，跑完可以整个删掉，不影响任何交付物。下文的 `<workdir>` 就指 `<段目录>/.work/`。
+
+跑过 `novel-setup` 的项目这条是查的：`validate` 找到 `production.json` 就顺带核对落点，放错了会点名该去哪；没找到那份文件就无从判断工作目录根在哪，明说跳过。
 
 **有 `outline.json`（novel-outline 的产出）就一起要过来，走 seed**——大纲是角色设定的上游，它的 `characters` 块已经定死了角色清单：
 
 ```bash
+mkdir -p <workdir>
 node {baseDir}/scripts/novel-characters.mjs seed <outline.json> > <workdir>/seed.json
 ```
 
@@ -195,7 +200,7 @@ node {baseDir}/scripts/novel-characters.mjs merge <workdir> --apply merges.json 
 ```bash
 node {baseDir}/scripts/novel-characters.mjs assemble <workdir> \
   --source <书名> --lang <lang> --style <style> \
-  --out <输出目录>/<书名>-cast.json
+  --out <段目录>/<书名>-cast.json
 ```
 
 坏卡会被逐个点名——哪份 `card-*.json` 坏了就只重跑那个角色，其他不用动。
@@ -240,7 +245,7 @@ node {baseDir}/scripts/novel-characters.mjs validate <cast.json> <book.txt>
 ### Step 9 — 输出
 
 ```bash
-cd <输出目录>
+cd <段目录>
 node {baseDir}/scripts/novel-characters.mjs render <cast.json> --md   > <书名>-cast.md
 node {baseDir}/scripts/novel-characters.mjs render <cast.json> --html > report.html
 ```
@@ -254,12 +259,15 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
 最终落地：
 
 ```
-<输出目录>/
-├── <书名>-cast.json
-├── <书名>-cast.md
-├── report.html                    ← 双击就能开
-└── images/
-    └── <slug>-sheet.png           ← 有 lingying 才有
+<工作目录>/
+├── production.json                ← novel-setup 的产出，住在根目录
+└── characters/                    ← 本 skill 的全部产出，一格装满
+    ├── <书名>-cast.json
+    ├── <书名>-cast.md
+    ├── report.html                ← 双击就能开
+    ├── images/
+    │   └── <slug>-sheet.png       ← 有 lingying 才有
+    └── .work/                     ← 分块、roster、角色卡，跑完可删
 ```
 
 ### Step 10 — 汇报
@@ -282,7 +290,7 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-368 项断言，不调模型、不花额度，覆盖分块 / 归并 / 合成 / 多语言 / 校验 / 生产参数 / 渲染的全部确定性逻辑。改完脚本先跑这个。
+376 项断言，不调模型、不花额度，覆盖分块 / 归并 / 合成 / 多语言 / 校验 / 生产参数 / 渲染的全部确定性逻辑。改完脚本先跑这个。
 
 ## 自带样例
 

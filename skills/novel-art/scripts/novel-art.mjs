@@ -80,6 +80,32 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
   return null;
 }
 
+/* ------------------------------------------------------------------ */
+/* 产物落点                                                            */
+/* ------------------------------------------------------------------ */
+/*
+ * 工作目录约定：每个 skill 的产物归自己的段目录（outline / characters /
+ * art / script / storyboard），工作目录根只住 production.json。
+ *
+ * 落点写错了不用重出图，所以这里是提示不是门——但必须说出来：合并报告的
+ * `--from` 自动发现是按段目录名找 JSON 的，产物平铺在根目录它就找不到。
+ *
+ * 只有找得到 production.json 才判断得了——那份文件定义了工作目录根在哪。
+ * 单独跑某一段、没跑过 novel-setup 的场合无从判断，那就不提示。
+ */
+
+/** 本 skill 的产物该住的段目录名。 */
+export const STAGE_DIR = 'art';
+
+/** 落点不对就返回一句人读的提示；落点对了、或无从判断，返回 null。 */
+export function stageDirNote(docPath, productionPath, stage = STAGE_DIR) {
+  if (!docPath || !productionPath) return null;
+  const want = resolve(dirname(resolve(productionPath)), stage);
+  const got = dirname(resolve(docPath));
+  if (got === want) return null;
+  return `产物落在 ${got}，按工作目录约定该住在 ${want}——每个 skill 的产物归自己的段目录，放错了合并报告的 --from 自动发现找不到它`;
+}
+
 /** 设定图提示词里会出现的画幅写法——只认这几种，免得误伤别的数字。 */
 export const KNOWN_ASPECTS = ['16:9', '9:16', '4:3', '3:4', '1:1', '21:9', '2.39:1'];
 
@@ -1107,11 +1133,14 @@ function loadProduction(rest, fromDir) {
 }
 
 /** 找到就报一声，找不到也报一声——静默是最坏的那种。 */
-function announceProduction(p) {
-  const which = '2 道门（画风、设定图画幅）';
+function announceProduction(p, docPath = null) {
+  const which = '2 道门（画风、设定图画幅）与产物落点提示';
   if (p.off) console.error(`⚠️ --no-production：生产参数的 ${which}跳过`);
-  else if (p.path) console.error(`↳ 生产参数：${p.path}`);
-  else console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，${which}跳过——跑 /novel-setup 生成一份可以打开它`);
+  else if (p.path) {
+    console.error(`↳ 生产参数：${p.path}`);
+    const note = stageDirNote(docPath, p.path);
+    if (note) console.error(`⚠️ ${note}`);
+  } else console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，${which}跳过——跑 /novel-setup 生成一份可以打开它`);
 }
 
 function main(argv) {
@@ -1137,7 +1166,7 @@ function main(argv) {
     const names = castPath ? castNamesOf(readJson(castPath)) : null;
     if (!castPath) console.error('⚠️ 没给 --cast，跳过「提示词不含角色名」检查');
     const prod = loadProduction(rest, resolve(path, '..'));
-    announceProduction(prod);
+    announceProduction(prod, path);
 
     if (cmd === 'checkup') {
       const gates = gateReport(doc, names, prod.doc);

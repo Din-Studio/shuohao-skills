@@ -35,6 +35,8 @@ import {
   brief,
   findProduction,
   productionProblems,
+  STAGE_DIR,
+  stageDirNote,
 } from './novel-characters.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -933,5 +935,18 @@ ok(/data-src="images\/x-sheet\.png"/.test(sheetHtml), '弹层拿到图片地址'
 ok(/class="copy-img" data-img="images\/x-sheet\.png"/.test(sheetHtml), '图上有复制按钮');
 ok(sheetHtml.includes('ClipboardItem'), '复制的是图片本身而不是路径');
 ok(/blob\.type !== 'image\/png'/.test(sheetHtml), '非 PNG 先转码——Safari 只认 image/png');
+
+/* ---------------- 产物落点 ---------------- */
+
+eq(STAGE_DIR, 'characters', '段目录名与端到端工作目录约定一致');
+{
+  const prod = '/w/production.json';
+  eq(stageDirNote('/w/characters/渡口-cast.json', prod), null, '落在自己的段目录里就不吭声');
+  ok(stageDirNote('/w/渡口-cast.json', prod)?.includes('/w/characters'), '平铺在工作目录根要提示该去哪');
+  ok(stageDirNote('/w/other/渡口-cast.json', prod), '串进别人的段目录也要提示');
+  ok(stageDirNote('/w/characters/sub/渡口-cast.json', prod), '段目录下再套一层同样提示——报告按相对路径找图，多一层图就全丢');
+  eq(stageDirNote('/w/渡口-cast.json', null), null, '没有 production.json 就无从判断，不猜');
+  eq(stageDirNote(null, prod), null, '没有产物路径也不猜');
+}
 
 console.log(`✓ ${passed} 项自测全部通过`);

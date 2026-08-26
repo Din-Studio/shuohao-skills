@@ -28,6 +28,8 @@ import {
   PRODUCTION_DEPTH,
   PRODUCTION_FILE,
   findProduction,
+  STAGE_DIR,
+  stageDirNote,
 } from './novel-outline.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -708,6 +710,19 @@ eq(findProduction(here, 0), null, '本目录没有就找不到（层数 0）');
   eq(findProduction(deep), join(root, 'work', PRODUCTION_FILE), '从段目录向上找得到工作目录根的参数');
   eq(findProduction(root), null, '工作目录之上找不到——不越界往用户主目录爬');
   rmSync(root, { recursive: true, force: true });
+}
+
+/* ---------------- 产物落点 ---------------- */
+
+eq(STAGE_DIR, 'outline', '段目录名与端到端工作目录约定一致');
+{
+  const prod = '/w/production.json';
+  eq(stageDirNote('/w/outline/渡口-outline.json', prod), null, '落在自己的段目录里就不吭声');
+  ok(stageDirNote('/w/渡口-outline.json', prod)?.includes('/w/outline'), '平铺在工作目录根要提示该去哪');
+  ok(stageDirNote('/w/other/渡口-outline.json', prod), '串进别人的段目录也要提示');
+  ok(stageDirNote('/w/outline/sub/渡口-outline.json', prod), '段目录下再套一层同样提示——报告按相对路径找图，多一层图就全丢');
+  eq(stageDirNote('/w/渡口-outline.json', null), null, '没有 production.json 就无从判断，不猜');
+  eq(stageDirNote(null, prod), null, '没有产物路径也不猜');
 }
 
 console.log(`✓ ${passed} 项自测全部通过`);

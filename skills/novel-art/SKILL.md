@@ -1,6 +1,6 @@
 ---
 name: novel-art
-version: 1.4.0
+version: 1.5.0
 description: |
   给 AI 短剧出美术设定集（场景 + 叙事道具）：场景的设计意图、一致性锚点、光照时段变体、
   空景提示词；道具的戏剧功能、状态变体、尺度参照、白底无手提示词。
@@ -71,6 +71,10 @@ metadata:
 
 有 cast.json（novel-characters 的产出）也带上——校验「提示词不含角色名」要用。
 
+**产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/art/`——`<剧名>-art.json`、`<剧名>-art.md`、`art-report.html`、`images/` 都在这一格里。工作目录根只住 `production.json`（`novel-setup` 的产出），别的 skill 各占自己的一格（`outline/`、`characters/`、`script/`、`storyboard/`）。用户没指定工作目录就用大纲同级目录，**但段目录这一层不省**——合并报告的 `--from` 自动发现就是按段目录名找 JSON 的，平铺在根目录它找不到。下文的 `<段目录>` 就指 `<工作目录>/art/`。
+
+跑过 `novel-setup` 的项目这条是查的：`validate` 找到 `production.json` 就顺带核对落点，放错了会点名该去哪；没找到那份文件就无从判断工作目录根在哪，明说跳过。
+
 **生产参数不用挂载，脚本自己找。** `production.json`（`novel-setup` 的产出）住在工作目录根，`validate` / `render` 都会从 art.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「2 道门跳过」——不静默。
 
 找到了画风就以它为准（上面那句「跟角色 skill 保持同一档」由脚本查了），设定图版面的画幅也必须与 `image.asset.aspectRatio` 一致。出图用 `image.model` + `image.asset.resolution`（**档位就是 lingying 收的 `resolution` 枚举值**，原样进 `--input_data`，不折算像素；一行拿到拼好的参数：`novel-setup resolve --for art`）。老项目没有这份文件照跑；临时绕过用 `--no-production`，用了会明说。
@@ -78,7 +82,8 @@ metadata:
 ### Step 1 — seed 骨架（有 outline.json 才有这步）
 
 ```bash
-node {baseDir}/scripts/novel-art.mjs seed <outline.json> > <workdir>/art.json
+mkdir -p <段目录>
+node {baseDir}/scripts/novel-art.mjs seed <outline.json> > <段目录>/<剧名>-art.json
 ```
 
 确定性搬运：场景 id/名称/主场景标记/出现集/承载爽点，带复用方案的场景会有 `seedNote` 提示做成变体。**这些事实不要让模型重新想一遍。**
@@ -121,7 +126,7 @@ node {baseDir}/scripts/novel-art.mjs validate <art.json> --cast <cast.json>
 ### Step 5 — 输出与汇报
 
 ```bash
-cd <输出目录>
+cd <段目录>
 node {baseDir}/scripts/novel-art.mjs render <剧名>-art.json --md   > <剧名>-art.md
 node {baseDir}/scripts/novel-art.mjs render <剧名>-art.json --html > art-report.html
 ```
@@ -133,12 +138,14 @@ node {baseDir}/scripts/novel-art.mjs render <剧名>-art.json --html > art-repor
 最终落地：
 
 ```
-<输出目录>/
-├── <剧名>-art.json
-├── <剧名>-art.md
-├── art-report.html                ← 双击就能开
-└── images/
-    └── <slug>-sheet.png           ← 有 lingying 才有
+<工作目录>/
+├── production.json                ← novel-setup 的产出，住在根目录
+└── art/                           ← 本 skill 的全部产出，一格装满
+    ├── <剧名>-art.json
+    ├── <剧名>-art.md
+    ├── art-report.html            ← 双击就能开
+    └── images/
+        └── <slug>-sheet.png       ← 有 lingying 才有
 ```
 
 ---
@@ -168,7 +175,7 @@ seed 吃 outline.json 的场景与道具两块（大纲没有 `props` 时道具�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-185 项断言，不调模型、不花额度。13 道质量门每一道都有击穿用例。改完脚本先跑这个。
+193 项断言，不调模型、不花额度。13 道质量门每一道都有击穿用例。改完脚本先跑这个。
 
 ## 自带样例
 

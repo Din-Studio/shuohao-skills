@@ -4,7 +4,7 @@
 
 ## 查找规则
 
-从**自己的输出目录**向上找 `production.json`，最多 5 层，找到第一份就用。
+从**自己的段目录**向上找 `production.json`，最多 5 层，找到第一份就用。
 
 ```
 <工作目录>/
@@ -19,11 +19,33 @@
 
 5 层是算过的：`<工作目录>/<段目录>/<投产包目录>` 最深两层，留三层余量，又不至于爬到用户主目录去。
 
+## 产物落点
+
+上面那棵树不是建议，是**约定**：除 `novel-setup` 外，每个 skill 的全部产物——JSON、Markdown、报告 HTML、`images/`、分镜的 `manifest.json` 与 `E01-0x/` 投产包——都写进自己那一格，工作目录根只住 `production.json`。
+
+| skill | 段目录 | 装什么 |
+| --- | --- | --- |
+| **novel-outline** | `outline/` | `<书名>-outline.json` / `.md` / `outline-report.html` |
+| **novel-characters** | `characters/` | `<书名>-cast.json` / `.md` / `report.html` / `images/` |
+| **novel-art** | `art/` | `<剧名>-art.json` / `.md` / `art-report.html` / `images/` |
+| **novel-script** | `script/` | `<剧名>-script.json` / `.md` / `script-report.html` |
+| **novel-storyboard** | `storyboard/` | `<剧名>-storyboard.json` / `.md` / `storyboard-report.html` / `manifest.json` / `E01-0x/` |
+
+**为什么要固定**：合并报告（仓库根的 `scripts/report.mjs --from <工作目录>`）就是按段目录名去找那五份 JSON 的，产物平铺在根目录它一份也找不到。分镜还多一条——报告里的图走相对路径 `<段号>/f<切序>.png`，段文件夹与报告 HTML 必须同级，多套一层目录图会**静默**全变成占位。
+
+**下游各自核对，是提示不是门**。落点写错不用重出图，按上面那条界线就不该设门；但也不能不说，所以 `validate` 找到 `production.json` 之后顺带比一下产物在不在自己那一格，不在就点名该去哪：
+
+> ⚠️ 产物落在 `<工作目录>`，按工作目录约定该住在 `<工作目录>/art`——每个 skill 的产物归自己的段目录，放错了合并报告的 `--from` 自动发现找不到它
+
+没有 `production.json` 就无从判断工作目录根在哪，那时明说跳过，不猜。
+
+中间脚手架（`novel-outline` 的分卷摘要、`novel-characters` 的分块与角色卡）写进段目录下的 `.work/`，跑完可以整个删掉。
+
 ## 找不到怎么办
 
 **明说跳过，不静默降级。** 老项目、单跑某一段的场合都可能没有这份文件，那时下游照旧用自己的内置默认值，但必须在校验输出和汇报里说清哪几道门跳过了。
 
-> ⚠️ 未找到 production.json，2 道参数门跳过（画风一致、画幅一致）。跑 `/novel-setup` 生成一份可以打开这些门。
+> ⚠️ 未找到 production.json，2 道参数门（画风一致、画幅一致）与产物落点提示跳过。跑 `/novel-setup` 生成一份可以打开它们。
 
 装作查过比没查更坏。
 
@@ -35,7 +57,7 @@
 
 | 参数 | 谁查 | 查什么 |
 | --- | --- | --- |
-| `style` | novel-characters / novel-art / novel-storyboard | 产物 JSON 的 `style` 必须与参数一致。画风漂了 = 角色是吉卜力、场景是半写实，合成没法看，整套设定图白出 |
+| `style` | novel-characters / novel-art / novel-storyboard | 产物 JSON 的 `style` 必须与参数一致。画风漂了 = 角色是吉卜力、场景是实拍，合成没法看，整套设定图白出 |
 | `image.frame.aspectRatio` | novel-storyboard | 每条分镜图提示词里的比例短语必须是这个值。写死 `16:9` 却要拍竖屏 = 一集三四十格全白出 |
 | `image.asset.aspectRatio` | novel-characters / novel-art | 设定图版面的画幅短语必须是这个值 |
 | `image.asset.resolution` / `image.frame.resolution` | 出图那一步 | 出图调用的 `--input_data` 必须带这个档位。它就是 lingying 的 `resolution` 枚举值，原样填，不折算 |

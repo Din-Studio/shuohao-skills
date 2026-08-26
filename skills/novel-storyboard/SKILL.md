@@ -1,6 +1,6 @@
 ---
 name: novel-storyboard
-version: 1.5.0
+version: 1.6.0
 description: |
   给 AI 短剧出分镜：三层结构——段（一次视频生成，≤15 秒）→ 分镜（段内 2–5 秒的剪切，认领剧本节拍）
   → 分镜图（每切一张关键帧：主分镜图钉 0.00 秒，子分镜图钉各自切点）。
@@ -70,6 +70,12 @@ metadata:
 - `--art`：报告里 S01 显示成场景名 + 批次单嵌场景设定图
 - `--shots <卡片目录>`：**可选**挂载 shot-recipes 的镜头配方卡库（指向 `shot-recipes/references/cards`，只接受目录不接受导出的 JSON），开第 19 道 `shot-recipe` 门。没装 shot-recipes 就别给——本 skill 自包含，不依赖它
 
+**产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/storyboard/`——`<剧名>-storyboard.json`、`<剧名>-storyboard.md`、`storyboard-report.html`、`manifest.json`、每段一个的 `E01-0x/` 投产包、门失败日志 `.gates.jsonl` 都在这一格里。工作目录根只住 `production.json`（`novel-setup` 的产出），别的 skill 各占自己的一格（`outline/`、`characters/`、`art/`、`script/`）。用户没指定工作目录就用剧本同级目录，**但段目录这一层不省**——合并报告的 `--from` 自动发现就是按段目录名找 JSON 的，平铺在根目录它找不到。下文的 `<段目录>` 就指 `<工作目录>/storyboard/`。
+
+**段文件夹就摆在 `<段目录>` 里，不要再往下收一层**（例如收进 `segments/`）：报告里的分镜图走相对路径 `<段号>/f<切序>.png`，报告 HTML 与段文件夹必须同级，多套一层目录报告里的图会**静默**全变成「未生成」占位，不报错。
+
+跑过 `novel-setup` 的项目落点这条是查的：`validate` 与 `export` 找到 `production.json` 就顺带核对，放错了会点名该去哪；没找到那份文件就无从判断工作目录根在哪，明说跳过。
+
 **生产参数不用挂载，脚本自己找。** `production.json`（`novel-setup` 的产出）住在工作目录根，`validate` / `render` / `export` 都会从 storyboard.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「2 道门跳过」——不静默。
 
 找到了就必须遵循两件事，这两件改了都要整批重出图：
@@ -84,7 +90,8 @@ metadata:
 ### Step 1 — seed 工作底稿
 
 ```bash
-node {baseDir}/scripts/novel-storyboard.mjs seed <script.json> --eps 1-3 > <workdir>/storyboard.json
+mkdir -p <段目录>
+node {baseDir}/scripts/novel-storyboard.mjs seed <script.json> --eps 1-3 > <段目录>/<剧名>-storyboard.json
 ```
 
 确定性展开：每场的节拍清单（编号、动作/台词、每拍秒数、说话人）进 `seedScenes`，这就是切镜时的工作底稿。**每拍几秒是算出来的，不要让模型重新估。** shots 留空，切镜才是模型的活。
@@ -123,39 +130,49 @@ node {baseDir}/scripts/novel-storyboard.mjs validate <storyboard.json> \
 - **没有 lingying 就整步跳过**，只交提示词，报告显示占位不装有
 - **出图参数从 `production.json` 来**：`image.model` 传 `--model`，`image.frame.resolution` 与 `image.frame.aspectRatio` 原样进 `--input_data` 的 `resolution` / `aspect_ratio`。**提示词里一个像素都不写**——它们是结构化字段。一行拿到拼好的参数：`novel-setup resolve --for storyboard`。**先把画幅和档位对上再出图**——一集三四十格，错了全批重来
 - **参考图是命根子**：该段场景设定图（该光照状态）+ 画内角色的设定图 + 涉及道具的设定图，各自先 `lingying upload` 换成 URL 再放进 `images` 数组，提示词只负责取景和此刻的姿态。**建一张「本地路径 → URL」的映射表整集共用**，`upload` 按内容去重，同一张图不重复传输
-- **可以整段并发提交**：`image create` 只返回 task_id，先把一段（或一集）全部提交，再统一 `task get` 轮询，谁成功谁落盘。输出 `./<段号>/f<切序>.png`（f1 = 主分镜图，每段一个文件夹）
+- **可以整段并发提交**：`image create` 只返回 task_id，先把一段（或一集）全部提交，再统一 `task get` 轮询，谁成功谁落盘。输出 `<段目录>/<段号>/f<切序>.png`（f1 = 主分镜图，每段一个文件夹）
 - **默认先出第一段的整套分镜图给用户看效果**（3–5 张），确认画风和正反打构图再往后补——一集约 30–40 格，错了浪费的是整批
 - 单个失败跳过不阻断，最后汇总说明
 
 ### Step 5 — 输出与汇报
 
 ```bash
-cd <输出目录>
+cd <段目录>
 node {baseDir}/scripts/novel-storyboard.mjs render <剧名>-storyboard.json --md \
   --script <script.json> --outline <outline.json> --art <art.json> > <剧名>-storyboard.md
 node {baseDir}/scripts/novel-storyboard.mjs render <剧名>-storyboard.json --html \
   --script <script.json> --outline <outline.json> --art <art.json> > storyboard-report.html
 ```
 
-报告界面语言用 `--lang zh|en` 指定（优先级 `--lang` > JSON 顶层 `lang` 字段 > `production.json` 的 `lang` > 默认中文）——只切界面标签，与 `promptLang`（H3 提示词语言）互相独立。`render` 自动去 `images/<镜号>-frame.png` 找首帧（批次单还会找场景设定图），**先出图再 render**。报告含：KPI 带、分镜节奏带（粗分隔 = 段边界、片宽 = 分镜时长占比、颜色深浅 = 景别远近、点击跳段卡）、分集分镜表（主分镜图 + 子分镜条 + 逐切分镜行 + 分镜图/H3 提示词复制按钮）、生成批次单、配音对齐单、质量门、导出 JSON。Markdown 版每段附完整 H3 提示词，直接复制可用。
+报告界面语言用 `--lang zh|en` 指定（优先级 `--lang` > JSON 顶层 `lang` 字段 > `production.json` 的 `lang` > 默认中文）——只切界面标签，与 `promptLang`（H3 提示词语言）互相独立。`render` 自动去 `<段号>/f<切序>.png` 找分镜图（批次单还会找场景设定图），路径是相对当前目录的——所以要先 `cd <段目录>`，**先出图再 render**。报告含：KPI 带、分镜节奏带（粗分隔 = 段边界、片宽 = 分镜时长占比、颜色深浅 = 景别远近、点击跳段卡）、分集分镜表（主分镜图 + 子分镜条 + 逐切分镜行 + 分镜图/H3 提示词复制按钮）、生成批次单、配音对齐单、质量门、导出 JSON。Markdown 版每段附完整 H3 提示词，直接复制可用。
 
 汇报一句话说清：几集几镜、总时长 vs 目标、几个生成批次、出了几张首帧、报告路径；没过的门和没出的图明说。
 
-最终落地：
+导出投产包（还在 `<段目录>` 里跑，`--out .` 就是把 `manifest.json` 与每段一个的文件夹落在报告旁边）：
+
+```bash
+node {baseDir}/scripts/novel-storyboard.mjs export <剧名>-storyboard.json \
+  --script <script.json> --out .
+```
 
 `export` 会把生产参数里的视频模型、`aspect_ratio`、`resolution`、`variant` 写进两处：`manifest.json` 的顶层 `video` 字段，以及每段 `prompt.md` 的头部。下单时参数就在投产包里，不用回头翻配置。
 
+最终落地：
+
 ```
-<输出目录>/
-├── <剧名>-storyboard.json
-├── <剧名>-storyboard.md
-├── storyboard-report.html         ← 双击就能开
-├── manifest.json                  ← export 生成（顶层带视频参数）
-└── E01-01/                        ← 一段一个文件夹 = 一次视频生成的全部材料
-    ├── f1.png                     ← 主分镜图（有 lingying 才有）
-    ├── f2.png …                   ← 子分镜图
-    ├── prompt.md                  ← H3 提示词（export 生成）
-    └── video.mp4                  ← 下单产出（跑了 Step 6 才有）
+<工作目录>/
+├── production.json                ← novel-setup 的产出，住在根目录
+└── storyboard/                    ← 本 skill 的全部产出，一格装满
+    ├── <剧名>-storyboard.json
+    ├── <剧名>-storyboard.md
+    ├── storyboard-report.html     ← 双击就能开
+    ├── manifest.json              ← export 生成（顶层带视频参数）
+    ├── .gates.jsonl               ← 门失败累积（在这个目录里跑 stats）
+    └── E01-01/                    ← 一段一个文件夹 = 一次视频生成的全部材料
+        ├── f1.png                 ← 主分镜图（有 lingying 才有）
+        ├── f2.png …               ← 子分镜图
+        ├── prompt.md              ← H3 提示词（export 生成）
+        └── video.mp4              ← 下单产出（跑了 Step 6 才有）
 ```
 
 ### Step 6 — 下单生视频（可选）
@@ -168,7 +185,7 @@ node {baseDir}/scripts/novel-storyboard.mjs render <剧名>-storyboard.json --ht
 - **`duration` 要折算**：模型收的是区间内的整数秒（H3 是 5~15），段秒数不一定是。跑 `novel-setup duration <秒> --model <名>` 折，向上取整、夹进区间，动过就在汇报里说清
 - **按秒计费**：提交前把这一集的总秒数和预估花费报给用户，不要闷头提交一整集
 - 整集可以并发提交，再统一轮询；单段失败跳过不阻断，同一段连着失败两次就停下来问，不要烧钱重试
-- 落盘到 `<段号>/video.mp4`，和这一段的分镜图、提示词住在一起
+- 落盘到 `<段目录>/<段号>/video.mp4`，和这一段的分镜图、提示词住在一起
 
 ---
 
@@ -194,7 +211,7 @@ novel-storyboard → storyboard.json （怎么拍：镜头、首帧、批次）
 
 ## 门失败会累积
 
-`validate` 与 `checkup` 每次都把门的结果追加到**当前目录**的 `.gates.jsonl`；跑 `stats` 汇总：
+`validate` 与 `checkup` 每次都把门的结果追加到**当前目录**的 `.gates.jsonl`——在 `<段目录>` 里跑就落在 `<段目录>`，和分镜产物住在一起；跑 `stats` 汇总（同样在 `<段目录>` 里跑）：
 
 ```bash
 node {baseDir}/scripts/novel-storyboard.mjs stats
@@ -210,7 +227,7 @@ node {baseDir}/scripts/novel-storyboard.mjs stats
 node {baseDir}/scripts/selftest.mjs
 ```
 
-297 项断言，不调模型、不花额度。19 道质量门每一道都有击穿用例。改完脚本先跑这个。
+304 项断言，不调模型、不花额度。19 道质量门每一道都有击穿用例。改完脚本先跑这个。
 
 ## 自带样例
 

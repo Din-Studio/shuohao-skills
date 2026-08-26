@@ -1,5 +1,61 @@
 # Changelog
 
+## 产物落点固定到段目录 — 2026-08-26
+
+**novel-setup 1.2.0 · novel-outline 1.3.0 · novel-characters 1.14.0 · novel-art 1.5.0 · novel-script 1.3.0 · novel-storyboard 1.6.0**
+
+除 `novel-setup` 外，每个 skill 的产物**只有一个去处**：自己那一格段目录。以前 SKILL.md
+只写「输出目录：用户指定就用，没指定用原书同级目录」，五份产物平铺在同一层是默认结局；
+工作目录约定虽然写在仓库 README 里，却没有任何一个 skill 读得到它——skill 要能整个拷走
+单独跑，约定不进 SKILL.md 就等于不存在。
+
+| skill | 段目录 | 装什么 |
+| --- | --- | --- |
+| **novel-outline** | `outline/` | `<书名>-outline.json` / `.md` / `outline-report.html` |
+| **novel-characters** | `characters/` | `<书名>-cast.json` / `.md` / `report.html` / `images/` |
+| **novel-art** | `art/` | `<剧名>-art.json` / `.md` / `art-report.html` / `images/` |
+| **novel-script** | `script/` | `<剧名>-script.json` / `.md` / `script-report.html` |
+| **novel-storyboard** | `storyboard/` | `<剧名>-storyboard.json` / `.md` / `storyboard-report.html` / `manifest.json` / `.gates.jsonl` / `E01-0x/` |
+
+工作目录根仍然只住 `production.json`——下游是向上找它的。
+
+### 中间脚手架进 `.work/`
+
+`novel-outline` 的分卷摘要与分集片段、`novel-characters` 的分块 / roster / 角色卡，
+以前都散在一个含义不清的 `<workdir>` 里，跑完没人知道哪些能删。现在统一写进
+`<段目录>/.work/`，跑完整个删掉不影响任何交付物。
+
+`novel-outline` 的骨架也不再先落一份 `<workdir>/outline.json` 再搬家——从 Step 3 起
+就写在 `<段目录>/<书名>-outline.json`，后面几步在同一份文件上加东西。
+
+### 落点由脚本核对，是提示不是门
+
+五个脚本各加十几行 `stageDirNote()`（**有意重复，不 import 兄弟 skill 的代码**）：
+`validate` 找到 `production.json` 就顺带比一下产物在不在自己那一格，不在就点名该去哪。
+
+```
+⚠️ 产物落在 /w，按工作目录约定该住在 /w/art——每个 skill 的产物归自己的段目录，
+   放错了合并报告的 --from 自动发现找不到它
+```
+
+为什么是提示不是门：契约里那条界线是**改了要不要重出图**。落点写错一个 `mv` 就好，
+不该按整批重出图的规格设门。但也不能不说——`scripts/report.mjs --from` 就是按段目录名
+找那五份 JSON 的，平铺在根目录它一份也找不到。
+
+没有 `production.json` 就无从判断工作目录根在哪，那时明说跳过，不猜。三个原本就
+播报生产参数的 skill 把这句折进原来那行，`novel-outline` / `novel-script` 各加一行。
+
+### 顺带修掉的
+
+- `novel-storyboard` 的 SKILL.md 写着「`render` 自动去 `images/<镜号>-frame.png` 找首帧」——
+  脚本从来找的是 `<段号>/f<切序>.png`。照着那句放图，报告里一张也嵌不上，还不报错
+- `novel-storyboard` 的 SKILL.md 通篇没给过 `export` 的命令行，只说它会生成 `manifest.json`。
+  补上，并写明 `--out .`：投产包与报告 HTML 必须同级
+- `README.en.md` 的「working-directory convention」链接指向一个没有工作目录内容的章节。
+  补一节 Working-directory layout，与中文 README 对齐
+
+自测：261 / 376 / 193 / 166 / 304 项，各加 7 项落点断言。
+
 ## 安装脚本支持 pi — 2026-08-25
 
 `scripts/install.sh` 增加 `--pi`，自动检测里也加上 `~/.pi/agent`——本机安装了 pi 就把六个 skill

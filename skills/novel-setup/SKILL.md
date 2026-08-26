@@ -1,6 +1,6 @@
 ---
 name: novel-setup
-version: 1.1.0
+version: 1.2.0
 description: |
   给 AI 短剧定生产参数：生图模型、资产图与分镜图的分辨率档位与比例、生视频模型与变体、
   视频 aspect_ratio 与 resolution，外加三个必须跨 skill 一致的口径（画风、报告界面语言、
@@ -52,7 +52,7 @@ metadata:
 | 分辨率与比例存**枚举值** | 它们就是 lingying `--input_data` 里的 `resolution` / `aspect_ratio`，原样填、不折算像素 |
 | `caps` 查模型收什么 | 「nanobanana2 收不收 4:3」「H3 managed 的档位是哪两个」——定参数时就查死，不等提交被网关拒 |
 | 资产图与分镜图分开定 | 设定图的版面要横构图，成片可以是竖屏——这两件事不是一回事 |
-| 画风与语言也收进来 | 画风漂了角色是吉卜力、场景是半写实，合成没法看 |
+| 画风与语言也收进来 | 画风漂了角色是吉卜力、场景是实拍，合成没法看 |
 
 `{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/novel-setup.mjs`，零依赖，`node` 直接跑。
 
@@ -66,7 +66,7 @@ metadata:
 
 1. **成片画幅**——竖屏 `9:16` 还是横屏 `16:9`？AI 短剧多数是竖屏，但这条不能替用户定：猜错了整批分镜图和视频重出。
 2. **生视频模型**——用哪个？跑 `lingying model list --model_type video` 看网关上现在有什么，把 ID 列的值原样填。`MiniMax H3` 还要定**变体**（`managed` / `open_source` / `bf16` / `int8`），它决定 `resolution` 的枚举。
-3. **画风**——`realistic` 半写实还是 `ghibli` 吉卜力？
+3. **画风**——`realistic` 真人实拍还是 `ghibli` 吉卜力？
 
 生图模型默认 `nanobanana2`，分辨率档位默认 `2K`，用户没特别要求就不用问。
 
@@ -152,8 +152,9 @@ node {baseDir}/scripts/novel-setup.mjs show <工作目录>/production.json
 
 完整契约见 `{baseDir}/references/contract.md`。三句话版本：
 
-- **下游向上找**：从自己的输出目录向上最多 5 层找 `production.json`，找到第一份就用。**下游不 import 本 skill 的代码**——每个 skill 都要能整个拷走单独跑，查找逻辑各自实现十几行。
+- **下游向上找**：从自己的段目录向上最多 5 层找 `production.json`，找到第一份就用。**下游不 import 本 skill 的代码**——每个 skill 都要能整个拷走单独跑，查找逻辑各自实现十几行。
 - **找不到就明说跳过**，照旧用内置默认值，但要在校验输出里说清哪几道门跳过了。装作查过比没查更坏。
+- **产物各归各的段目录**：`outline/`、`characters/`、`art/`、`script/`、`storyboard/`，根目录只住这份 `production.json`。下游 `validate` 找到它就顺带核对落点——放错了点名该去哪，是提示不是门（落点写错不用重出图）。
 - **找到了就必须遵循**，界线是改了要不要重出图：画风、画幅**设门不可绕过**，出图档位必须带进调用；报告界面语言走继承（`--lang` > 产物 JSON 顶层 > `production.json` > 默认中文），不设门。
 
 一行拿到某一段要的全部参数：
@@ -195,7 +196,7 @@ node {baseDir}/scripts/selftest.mjs
 
 ## 自带样例
 
-- `{baseDir}/examples/回南天-production.json`：**竖屏 9:16** 半写实、2K、英文提示词、`nanobanana2` + `MiniMax H3 · managed`——AI 短剧最常见的形态
+- `{baseDir}/examples/回南天-production.json`：**竖屏 9:16** 真人实拍、2K、英文提示词、`nanobanana2` + `MiniMax H3 · managed`——AI 短剧最常见的形态
 - `{baseDir}/examples/雪线-production.json`：**横屏 16:9** 吉卜力、4K、中文提示词、`image-2` + `seedance2.0`（没有变体）——另一头的极端
 
 两份都当质量基准，也是自测夹具。**成片画幅两种、画风两档、提示词语言两种、生图模型两个、视频模型两个（带变体与不带变体各一）各出现一次**——因为这个 skill 交付的就是「参数可以怎么组合」本身。

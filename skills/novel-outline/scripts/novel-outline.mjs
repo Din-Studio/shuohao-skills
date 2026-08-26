@@ -89,6 +89,32 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
   return null;
 }
 
+/* ------------------------------------------------------------------ */
+/* 产物落点                                                            */
+/* ------------------------------------------------------------------ */
+/*
+ * 工作目录约定：每个 skill 的产物归自己的段目录（outline / characters /
+ * art / script / storyboard），工作目录根只住 production.json。
+ *
+ * 落点写错了不用重出图，所以这里是提示不是门——但必须说出来：合并报告的
+ * `--from` 自动发现是按段目录名找 JSON 的，产物平铺在根目录它就找不到。
+ *
+ * 只有找得到 production.json 才判断得了——那份文件定义了工作目录根在哪。
+ * 单独跑某一段、没跑过 novel-setup 的场合无从判断，那就不提示。
+ */
+
+/** 本 skill 的产物该住的段目录名。 */
+export const STAGE_DIR = 'outline';
+
+/** 落点不对就返回一句人读的提示；落点对了、或无从判断，返回 null。 */
+export function stageDirNote(docPath, productionPath, stage = STAGE_DIR) {
+  if (!docPath || !productionPath) return null;
+  const want = resolve(dirname(resolve(productionPath)), stage);
+  const got = dirname(resolve(docPath));
+  if (got === want) return null;
+  return `产物落在 ${got}，按工作目录约定该住在 ${want}——每个 skill 的产物归自己的段目录，放错了合并报告的 --from 自动发现找不到它`;
+}
+
 export function primarySceneCap(episodes) {
   if (!Number.isInteger(episodes) || episodes < 1) return 8; // 没有集数信息给个居中值
   return Math.max(5, Math.min(15, 4 + Math.ceil(episodes / 10)));
@@ -1611,6 +1637,20 @@ function flag(rest, name, fallback = null) {
   return i >= 0 && rest[i + 1] ? rest[i + 1] : fallback;
 }
 
+/*
+ * 落点提示：产物该住在工作目录的段目录里。本 skill 只把 production.json
+ * 当锚点用——找不到那份文件就无从判断工作目录根在哪，那就不吭声。
+ */
+function announceStageDir(docPath) {
+  const hit = findProduction(resolve(docPath, '..'));
+  if (!hit) {
+    console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，产物落点提示跳过——跑 /novel-setup 生成一份可以打开它`);
+    return;
+  }
+  const note = stageDirNote(docPath, hit);
+  if (note) console.error(`⚠️ ${note}`);
+}
+
 function main(argv) {
   const [cmd, ...rest] = argv;
 
@@ -1641,6 +1681,7 @@ function main(argv) {
     if (!path) throw new Error('用法：validate <outline.json> [--stage skeleton|beats|full]');
     const stage = flag(rest, '--stage', 'full');
     if (!STAGES.includes(stage)) throw new Error(`--stage 只能是 ${STAGES.join('/')}`);
+    announceStageDir(path);
     const problems = validateOutline(readJson(path), stage);
     if (problems.length) {
       console.error(`✗ ${problems.length} 处违规（stage=${stage}）：\n`);
@@ -1654,6 +1695,7 @@ function main(argv) {
   if (cmd === 'checkup') {
     const [path] = rest;
     if (!path) throw new Error('用法：checkup <outline.json>');
+    announceStageDir(path);
     const gates = gateReport(readJson(path));
     for (const g of gates) console.log(`${g.ok ? '✓' : '✗'} ${g.label}${!g.ok && g.detail ? ` — ${g.detail}` : ''}`);
     const failed = gates.filter((g) => !g.ok).length;

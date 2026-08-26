@@ -171,7 +171,7 @@ novel-storyboard → storyboard.json （how it's shot: cuts, frames, batches）
 
 ## Bundled examples
 
-- `examples/回南天-production.json`: **vertical 9:16**, semi-realistic, 2K, English prompts, `nanobanana2` + `MiniMax H3 · managed` — the most common AI short-drama shape
+- `examples/回南天-production.json`: **vertical 9:16**, photorealistic live-action, 2K, English prompts, `nanobanana2` + `MiniMax H3 · managed` — the most common AI short-drama shape
 - `examples/雪线-production.json`: **horizontal 16:9**, Ghibli, 4K, Chinese prompts, `image-2` + `seedance2.0` (no variant) — the other extreme
 
 Two aspects, two styles, two tiers, two prompt languages, two image models, two video models (one with a variant, one without), each appearing once — because what this skill delivers *is* the space of valid parameter combinations.
