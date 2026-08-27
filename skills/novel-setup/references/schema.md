@@ -16,8 +16,7 @@
   "video": {
     "model": "MiniMax H3",
     "aspectRatio": "9:16",
-    "resolution": "768p",
-    "variant": "managed"
+    "resolution": "768p"
   }
 }
 ```
@@ -39,8 +38,7 @@
 | `image.frame.aspectRatio` | string | **分镜图比例**：`W:H`。**必须等于 `video.aspectRatio`** |
 | `video.model` | string | 生视频模型，取 `lingying model list --model_type video` 的 ID 列 |
 | `video.aspectRatio` | string | **视频 aspect_ratio**：`W:H`。这就是成片画幅 |
-| `video.resolution` | string | **视频 resolution 档位**。枚举**由模型和变体一起决定**：`MiniMax H3 · managed` 是 `768p` / `2K`，seedance 全系是 `480p` / `720p`（`seedance2.0` 多一档 `1080p`） |
-| `video.variant` | string | 模型变体。`MiniMax H3` 必填（`managed` / `open_source` / `bf16` / `int8`），下单时进 `metadata.h3_variant`；seedance 全系没有变体，留空 |
+| `video.resolution` | string | **视频 resolution 档位**。枚举**逐个模型不同**：`MiniMax H3` 是 `768p` / `2K`，seedance 全系是 `480p` / `720p`（`seedance2.0` 多一档 `1080p`） |
 
 ## adaptive 不能用 ⚠️
 
@@ -64,7 +62,7 @@ lingying 的视频模型都收 `aspect_ratio: "adaptive"`（按输入自动挑�
 | `frame-matches-video` | **分镜图比例 = 视频比例** | 不一致 = 整批分镜图被裁或被拉，白出 |
 | `asset-landscape` | 资产图是横构图或方形 | 竖构图会把设定图的三视图压扁 |
 | `resolution-filled` | 三处分辨率档位都已填 | 没填就等于没定 |
-| `video-model` | 视频模型已填，`variant` 合法，`resolution` 与 `aspect_ratio` 在该变体的枚举里 | 档位写错要到提交那一刻才被网关拒绝，那时整集分镜图已经出完了 |
+| `video-model` | 视频模型已填，`resolution` 与 `aspect_ratio` 在该模型的枚举里 | 档位写错要到提交那一刻才被网关拒绝，那时整集分镜图已经出完了 |
 | `model-caps` | 资产图与分镜图的档位、比例都被生图模型收 | 同上。**`nanobanana2` 不收 `4:3`、`image-2` 的 `4K` 只收 `16:9` / `9:16`** —— 选错了整批出不来 |
 
 ## 能力表从哪来
@@ -77,6 +75,8 @@ lingying model get 7809cb1a-4f09-40de-a9e9-dd3841016138   # 看某个模型收�
 ```
 
 所以表可以填，但**出处不许省**：`IMAGE_MODELS` / `VIDEO_MODELS` 里每一条都带 `source`（取数命令）和 `modelId`（UUID），过期了重新跑一次就能对账。自测里有断言盯着这两个字段。
+
+**模型自己特有的配置参数不进 `production.json`。**有的模型除了通用的 `resolution` / `aspect_ratio` 还收一个只有它认识的字段，那个字段还会反过来决定前两者的枚举。这类参数属于下单那一层，`production.json` 只放跨 skill 共用的口径。能力表因此按 `input_schema` 里那个字段的 **default 值**抄——不传它时网关生效的就是这一套。`MiniMax H3` 的 `768p` / `2K` 就是这么来的。
 
 一行看全表：
 

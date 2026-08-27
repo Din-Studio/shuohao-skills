@@ -95,22 +95,15 @@ eq(matchTier('2K', []), null, '空枚举对不上任何东西');
 eq(imageCaps('不存在的模型', '2K'), null, '未知生图模型给不出能力——由门去说明「跳过」');
 eq(imageCaps('nanobanana2', '8K').tier, null, '未知档位对不上枚举');
 
-/* ---------------- 生视频模型能力（条件枚举） ---------------- */
+/* ---------------- 生视频模型能力 ---------------- */
 
 {
-  const caps = videoCaps('MiniMax H3', 'managed');
-  eq(caps.resolutions.join(','), '768p,2K', 'H3 managed 的档位是 768p / 2K，不是 720p / 1080p');
-  ok(caps.aspectRatios.includes('21:9'), 'H3 managed 收 21:9');
+  const caps = videoCaps('MiniMax H3');
+  eq(caps.resolutions.join(','), '768p,2K', 'H3 的档位是 768p / 2K，不是随手会写的 720p / 1080p');
+  ok(caps.aspectRatios.includes('21:9'), 'H3 收 21:9');
   eq(caps.duration.min, 5, 'H3 的单段下限 5 秒');
   eq(caps.duration.max, 15, 'H3 的单段上限 15 秒——分镜的段上限就是按它定的');
 }
-{
-  const caps = videoCaps('MiniMax H3', 'open_source');
-  eq(caps.resolutions.join(','), '480p,720p', '换个变体档位就变了——所以 variant 必须落盘');
-  ok(!caps.aspectRatios.includes('21:9'), 'open_source 不收 21:9');
-}
-eq(videoCaps('MiniMax H3').variant, 'managed', '不给变体就取默认那个');
-eq(videoCaps('MiniMax H3', '不存在的变体'), null, '变体名不对给不出能力');
 {
   const caps = videoCaps('seedance2.0');
   ok(caps.resolutions.includes('1080p'), 'seedance2.0 收 1080p');
@@ -156,25 +149,22 @@ eq(clampDuration('大概十秒', 'MiniMax H3').duration, null, '不是数字也�
   eq(d.lang, 'zh', '报告界面语言默认中文');
   eq(d.promptLang, 'en', '提示词语言默认英文——H3 官方口径');
   eq(Object.keys(d.image.asset).join(','), 'resolution,aspectRatio', '资产图只有档位与比例两个字段，没有像素');
-  eq(Object.keys(d.video).join(','), 'model,aspectRatio,resolution,variant', '视频四个字段，variant 也在里面');
+  eq(Object.keys(d.video).join(','), 'model,aspectRatio,resolution', '视频三个字段——模型自己特有的配置参数不进这里');
   eq(validateProduction(d).length, 2, 'init 出来的骨架差视频模型与视频分辨率');
   ok(validateProduction(d).some((x) => x.includes('video-model')), '差的一条是视频模型');
   ok(validateProduction(d).some((x) => x.includes('resolution-filled')), '另一条是视频分辨率');
 }
 {
   const d = initProduction({ aspect: '9:16', videoModel: 'MiniMax H3', videoResolution: '768p' });
-  eq(d.video.variant, 'managed', '模型自带变体而用户没指定，就填默认那个——留空要到提交那一刻才报错');
   eq(validateProduction(d).length, 0, '把视频模型与档位补齐就全过');
 }
 {
   const d = initProduction({ aspect: '16:9', videoModel: 'seedance2.0', videoResolution: '720p' });
-  eq(d.video.variant, '', '没有变体的模型 variant 留空');
-  eq(validateProduction(d).length, 0, 'seedance 不需要变体也能全过');
+  eq(validateProduction(d).length, 0, '换个视频模型也全过');
 }
 {
-  const d = initProduction({ aspect: '9:16', videoModel: 'MiniMax H3', videoResolution: '768p', videoVariant: 'int8' });
-  eq(d.video.variant, 'int8', '显式指定的变体优先于默认');
-  ok(validateProduction(d).some((x) => x.includes('768p')), 'int8 不收 768p——变体一换档位就得跟着换');
+  const d = initProduction({ aspect: '16:9', videoModel: 'seedance2.5', videoResolution: '1080p' });
+  ok(validateProduction(d).some((x) => x.includes('1080p')), 'seedance2.5 不收 1080p——档位逐个模型不同');
 }
 {
   let threw = false;
@@ -205,7 +195,7 @@ eq(LANDSCAPE.promptLang, 'zh', '横屏样例演示了中文提示词');
 ok(PORTRAIT.image.frame.resolution !== LANDSCAPE.image.frame.resolution, '两份样例演示了不同档位');
 ok(PORTRAIT.image.model !== LANDSCAPE.image.model, '两份样例演示了两个生图模型');
 ok(PORTRAIT.video.model !== LANDSCAPE.video.model, '两份样例演示了两个视频模型');
-ok(PORTRAIT.video.variant && !LANDSCAPE.video.variant, '一份带变体一份不带——两种形态各出现一次');
+ok(PORTRAIT.video.resolution !== LANDSCAPE.video.resolution, '两份样例演示了两个视频档位');
 ok(PORTRAIT.source !== LANDSCAPE.source, '两份样例是两部不同的剧');
 eq(gateReport(PORTRAIT).length, 7, '一共七道门');
 
@@ -296,24 +286,19 @@ eq(gateReport(PORTRAIT).length, 7, '一共七道门');
 }
 {
   const d = clone(); d.video.resolution = '720p';
-  ok(fails(d, 'video-model'), 'H3 managed 配 720p 击穿 video-model——720p 是别的变体的档位');
+  ok(fails(d, 'video-model'), 'H3 配 720p 击穿 video-model——720p 是别的模型的档位');
   ok(/768p \/ 2K/.test(gate(d, 'video-model').detail), '点名该用哪两个档位');
 }
 {
-  const d = clone(); d.video.variant = '';
-  ok(fails(d, 'video-model'), 'H3 不填变体击穿 video-model');
-  ok(/managed/.test(gate(d, 'video-model').detail), '点名可选的变体');
+  const d = clone(); d.video.aspectRatio = '21:9'; d.image.frame.aspectRatio = '21:9';
+  ok(gate(d, 'video-model').ok, 'H3 收 21:9');
 }
 {
-  const d = clone(); d.video.variant = 'turbo';
-  ok(fails(d, 'video-model'), '变体名不对击穿 video-model');
+  const d = clone(); d.video.model = 'seedance2.0'; d.video.resolution = '720p';
+  ok(gate(d, 'video-model').ok, '换个模型换个档位照样过');
 }
 {
-  const d = clone(); d.video.model = 'seedance2.0'; d.video.resolution = '720p'; d.video.variant = '';
-  ok(gate(d, 'video-model').ok, '没有变体的模型不要求填 variant');
-}
-{
-  const d = clone(); d.video.model = '某个新模型'; d.video.variant = '';
+  const d = clone(); d.video.model = '某个新模型';
   const g = gate(d, 'video-model');
   ok(g.ok, '表里没有的视频模型只查非空');
   ok(/不在能力表里/.test(g.detail), '跳过了要明说');
@@ -379,14 +364,13 @@ eq(resolveStage(PORTRAIT, 'art').aspectRatio, '16:9', '场景阶段与角色阶�
   eq(r.resolution, '768p', '视频阶段带上 resolution');
   eq(r.aspectRatio, '9:16', '视频阶段带上 aspect_ratio');
   eq(r.promptLang, 'en', '视频阶段带上提示词语言');
-  eq(r.inputData.metadata.h3_variant, 'managed', '带变体的模型把变体拼进 metadata——H3 的必填字段');
   eq(r.durationRange.max, 15, '视频阶段带上单段时长上限');
   eq(r.inputData.duration, undefined, 'duration 逐段不同，不在这里定');
   ok(r.command.includes('video create'), '视频阶段给的是 video create');
 }
 {
   const r = resolveStage(LANDSCAPE, 'video');
-  eq(r.inputData.metadata, undefined, '没有变体的模型不拼 metadata');
+  eq(Object.keys(r.inputData).join(','), 'aspect_ratio,resolution', 'inputData 只有两个通用字段——模型特有的参数由下单方按 input_schema 补');
   eq(r.durationRange.min, 4, 'seedance 的下限跟着模型走');
 }
 {
@@ -420,7 +404,6 @@ eq(Object.keys(STAGES).join(','), 'characters,art,storyboard,video', '四个消�
   ok(md.includes('| 分镜图比例 | 9:16 |'), '参数表列出分镜图比例');
   ok(md.includes('| 分镜图分辨率 | 2K |'), '档位原样显示，没有像素');
   ok(!/参考像素/.test(md), '参数表里不再有参考像素——档位就是下给模型的值');
-  ok(md.includes('| 视频变体 | managed |'), '参数表列出视频变体');
   ok(md.includes('| 视频 aspect_ratio | 9:16 |'), '参数表用视频模型的字段名');
   ok(md.includes('| 视频 resolution | 768p |'), '视频分辨率原样显示');
   ok(md.includes(GENERATION_CLI), '表下有一句说清出图与生视频走哪个 CLI');
@@ -436,7 +419,7 @@ eq(Object.keys(STAGES).join(','), 'characters,art,storyboard,video', '四个消�
 }
 {
   const md = renderMarkdown(LANDSCAPE);
-  ok(md.includes('| 视频变体 | — |'), '没有变体的模型渲染成破折号');
+  ok(md.includes('| 视频 resolution | 1080p |'), '横屏样例的视频档位也原样显示');
 }
 
 /* ---------------- 能力表的自律 ---------------- */
@@ -454,7 +437,7 @@ for (const [name, m] of Object.entries(IMAGE_MODELS)) {
 for (const [name, m] of Object.entries(VIDEO_MODELS)) {
   ok(m.source.includes(`${GENERATION_CLI} model get`), `${name} 注明了取数命令`);
   ok(m.modelId.length === 36, `${name} 带了 model get 要用的 UUID`);
-  ok(!!m.variants || (m.resolutions?.length && m.aspectRatios?.length), `${name} 要么给变体表要么给枚举`);
+  ok(m.resolutions?.length && m.aspectRatios?.length, `${name} 的档位与比例枚举都不为空`);
 }
 ok(Object.keys(IMAGE_MODELS).includes('nanobanana2'), '生图能力表收了 nanobanana2');
 ok(Object.keys(VIDEO_MODELS).includes('MiniMax H3'), '生视频能力表收了 MiniMax H3——分镜的 H3 提示词就是给它的');

@@ -131,12 +131,12 @@ node {baseDir}/scripts/novel-setup.mjs resolve --for storyboard
 
 ## 视频参数怎么落地
 
-`novel-storyboard` 的 `export` 把整个 `video` 对象（`model` / `aspectRatio` / `resolution` / `variant`）写进两处：
+`novel-storyboard` 的 `export` 把整个 `video` 对象（`model` / `aspectRatio` / `resolution`）写进两处：
 
 - `manifest.json` 的顶层 `video` 字段
 - 每段 `prompt.md` 的头部对照表
 
-下单时参数就在投产包里，不用再回头翻配置。**`variant` 一起带上**——`MiniMax H3` 的 `metadata.h3_variant` 是必填字段，少了它整集提交不出去。
+下单时参数就在投产包里，不用再回头翻配置。**有的模型还收自己特有的配置参数**——它不属于跨 skill 的生产参数，不在 `production.json` 里。能力表按那个参数的 default 值抄枚举，所以照表填的档位与比例，不传它也提交得出去。
 
 段时长要折成整数秒再下单（模型收的是区间内的整数）：
 

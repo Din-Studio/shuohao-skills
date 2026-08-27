@@ -3,5 +3,5 @@
   "style": "realistic",
   "lang": "zh",
   "promptLang": "en",
-  "video": { "model": "MiniMax H3", "aspectRatio": "9:16", "resolution": "768p", "variant": "managed" }
+  "video": { "model": "MiniMax H3", "aspectRatio": "9:16", "resolution": "768p" }
 }

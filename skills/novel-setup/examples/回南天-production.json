@@ -17,7 +17,6 @@
   "video": {
     "model": "MiniMax H3",
     "aspectRatio": "9:16",
-    "resolution": "768p",
-    "variant": "managed"
+    "resolution": "768p"
   }
 }

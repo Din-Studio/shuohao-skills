@@ -82,9 +82,12 @@ export const IMAGE_MODELS = {
  * 没有本机文档可依据时凭记忆编一张比不查更坏。改走 lingying 之后依据有了：
  * `lingying model list --model_type video` 加 `model get`，逐条抄下来。
  *
- * MiniMax H3 的 resolution 与 aspect_ratio 是**条件枚举**——由
- * metadata.h3_variant 决定，所以 production.json 多一个 video.variant 字段。
- * 不填 variant 的模型（seedance 全系）把 variant 留空即可。
+ * 各家的 resolution 口径不一样（`768p` / `2K` 与 `480p` / `720p` / `1080p` 并存），
+ * 所以这张表逐个模型抄枚举，不做任何归一。
+ *
+ * 有的模型还收自己特有的配置参数，且它会反过来决定 resolution 与 aspect_ratio 的枚举。
+ * 那类参数**不属于跨 skill 的生产参数**，不进 production.json——这张表按
+ * `input_schema` 里那个参数的 **default 值**抄，也就是不传它时真正生效的那套枚举。
  */
 
 export const VIDEO_MODELS = {
@@ -92,26 +95,8 @@ export const VIDEO_MODELS = {
     label: 'MiniMax H3 · 灵影网关',
     source: 'lingying model get 7809cb1a-4f09-40de-a9e9-dd3841016138',
     modelId: '7809cb1a-4f09-40de-a9e9-dd3841016138',
-    variantField: 'metadata.h3_variant',
-    defaultVariant: 'managed',
-    variants: {
-      managed: {
-        resolutions: ['768p', '2K'],
-        aspectRatios: ['16:9', '21:9', '4:3', '1:1', '3:4', '9:16', 'adaptive'],
-      },
-      open_source: {
-        resolutions: ['480p', '720p'],
-        aspectRatios: ['1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9'],
-      },
-      bf16: {
-        resolutions: ['480p', '720p'],
-        aspectRatios: ['1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9'],
-      },
-      int8: {
-        resolutions: ['480p', '720p'],
-        aspectRatios: ['1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9'],
-      },
-    },
+    resolutions: ['768p', '2K'],
+    aspectRatios: ['16:9', '21:9', '4:3', '1:1', '3:4', '9:16', 'adaptive'],
     duration: { min: 5, max: 15, integer: true },
     price: '0.1 元每秒',
   },
@@ -188,19 +173,13 @@ export function matchTier(text, list = []) {
 }
 
 /**
- * 取某个模型在某个变体下的枚举。
+ * 取某个生视频模型的枚举。
  * 模型不在表里返回 null——调用方据此说明「跳过检查」，不要装作查过。
  */
-export function videoCaps(model, variant = '') {
+export function videoCaps(model) {
   const m = VIDEO_MODELS[model];
   if (!m) return null;
-  if (!m.variants) {
-    return { resolutions: m.resolutions, aspectRatios: m.aspectRatios, duration: m.duration ?? null };
-  }
-  const key = String(variant ?? '').trim() || m.defaultVariant;
-  const v = m.variants[key];
-  if (!v) return null;
-  return { resolutions: v.resolutions, aspectRatios: v.aspectRatios, duration: m.duration ?? null, variant: key };
+  return { resolutions: m.resolutions, aspectRatios: m.aspectRatios, duration: m.duration ?? null };
 }
 
 /** 生图模型在这个档位下允许的比例；模型不在表里返回 null。 */
@@ -261,7 +240,6 @@ export function initProduction({
   imageModel = 'nanobanana2',
   videoModel = '',
   videoResolution = '',
-  videoVariant = '',
   style = 'realistic',
   lang = 'zh',
   promptLang = 'en',
@@ -272,10 +250,6 @@ export function initProduction({
       `--aspect 必须显式给出且形如 9:16 或 16:9（成片画幅没有默认值——猜错了整批分镜图和视频白出）`,
     );
   }
-
-  // 模型自带变体（H3 的 managed / open_source / …）而用户没指定，就填默认那个：
-  // 留空会让下单少一个必填字段，报错要到提交那一刻才看得见
-  const variant = videoVariant || (VIDEO_MODELS[videoModel]?.defaultVariant ?? '');
 
   return {
     source,
@@ -291,7 +265,6 @@ export function initProduction({
       model: videoModel,
       aspectRatio: aspect,
       resolution: videoResolution,
-      variant,
     },
   };
 }
@@ -399,22 +372,15 @@ export function gateReport(doc) {
     if (model && !entry) {
       note = `${model} 不在能力表里，只查了非空（能力表来自 lingying model get，加一条就自动开始查）`;
     } else if (entry) {
-      const variant = String(video.variant ?? '').trim();
-      if (entry.variants && !variant) {
-        bad.push(`${model} 要填 video.variant（${Object.keys(entry.variants).join(' / ')}），它决定 resolution 与 aspect_ratio 的枚举`);
-      } else if (entry.variants && !entry.variants[variant]) {
-        bad.push(`video.variant=${variant} 不是 ${model} 的变体（${Object.keys(entry.variants).join(' / ')}）`);
-      } else {
-        const caps = videoCaps(model, variant);
-        if (caps && !matchTier(video.resolution, caps.resolutions)) {
-          bad.push(`${model}${caps.variant ? ` · ${caps.variant}` : ''} 的 resolution 要是 ${caps.resolutions.join(' / ')}（现在是 ${video.resolution || '(空)'}）`);
-        }
-        if (caps && !caps.aspectRatios.includes(String(video.aspectRatio ?? '').trim())) {
-          bad.push(`${model}${caps.variant ? ` · ${caps.variant}` : ''} 的 aspect_ratio 要是 ${caps.aspectRatios.join(' / ')}（现在是 ${video.aspectRatio || '(空)'}）`);
-        }
-        if (caps?.duration) {
-          note = `段时长下单时要折成 ${caps.duration.min}~${caps.duration.max} 的整数秒`;
-        }
+      const caps = videoCaps(model);
+      if (caps && !matchTier(video.resolution, caps.resolutions)) {
+        bad.push(`${model} 的 resolution 要是 ${caps.resolutions.join(' / ')}（现在是 ${video.resolution || '(空)'}）`);
+      }
+      if (caps && !caps.aspectRatios.includes(String(video.aspectRatio ?? '').trim())) {
+        bad.push(`${model} 的 aspect_ratio 要是 ${caps.aspectRatios.join(' / ')}（现在是 ${video.aspectRatio || '(空)'}）`);
+      }
+      if (caps?.duration) {
+        note = `段时长下单时要折成 ${caps.duration.min}~${caps.duration.max} 的整数秒`;
       }
     }
     add('video-model', '视频模型与参数合法', bad.length === 0, bad.length ? bad.join('；') : note);
@@ -496,19 +462,15 @@ export function resolveStage(doc, stage) {
 
   if (meta.kind === 'video') {
     const model = doc?.video?.model ?? '';
-    const variant = doc?.video?.variant ?? '';
     const aspectRatio = doc?.video?.aspectRatio ?? '';
     const resolution = doc?.video?.resolution ?? '';
-    const entry = VIDEO_MODELS[model];
-    const caps = videoCaps(model, variant);
+    const caps = videoCaps(model);
     // inputData 里的档位回填成枚举里的写法：用户写了 768P，网关只认 768p
     const inputData = { aspect_ratio: aspectRatio, resolution: matchTier(resolution, caps?.resolutions ?? []) ?? resolution };
-    if (entry?.variants) inputData.metadata = { h3_variant: variant || entry.defaultVariant };
     return {
       ...common,
       promptLang: doc?.promptLang,
       model,
-      variant,
       aspectRatio,
       resolution,
       // duration 逐段不同，下单时用 clampDuration 折算后补进去
@@ -557,7 +519,6 @@ export function renderMarkdown(doc) {
   out.push(`| 分镜图分辨率 | ${dash(img.frame?.resolution)} |`);
   out.push(`| 分镜图比例 | ${dash(img.frame?.aspectRatio)} |`);
   out.push(`| 生视频模型 | ${dash(doc?.video?.model)} |`);
-  out.push(`| 视频变体 | ${dash(doc?.video?.variant)} |`);
   out.push(`| 视频 aspect_ratio | ${dash(doc?.video?.aspectRatio)} |`);
   out.push(`| 视频 resolution | ${dash(doc?.video?.resolution)} |`);
   out.push(`| 画风 | ${dash(doc?.style)} |`);
@@ -587,7 +548,6 @@ const USAGE = `novel-setup.mjs — novel-setup skill 的确定性工具（生产
        [--image-model <名>]              默认 nanobanana2
        [--video-model <名>]              视频模型，取 lingying model list 的 ID 列
        [--video-resolution <档位>]        视频分辨率档位（如 768p）
-       [--video-variant <名>]            视频模型的变体（MiniMax H3：managed 等），不给取默认
        [--style realistic|ghibli]        默认 realistic
        [--lang zh|en]                    报告界面语言，默认 zh
        [--prompt-lang zh|en]             H3 提示词语言，默认 en
@@ -645,7 +605,6 @@ function main(argv) {
       imageModel: flag(rest, '--image-model', 'nanobanana2'),
       videoModel: flag(rest, '--video-model', ''),
       videoResolution: flag(rest, '--video-resolution', ''),
-      videoVariant: flag(rest, '--video-variant', ''),
       style: flag(rest, '--style', 'realistic'),
       lang: flag(rest, '--lang', 'zh'),
       promptLang: flag(rest, '--prompt-lang', 'en'),
@@ -704,13 +663,7 @@ function main(argv) {
       }
       console.log('\n生视频：');
       for (const [name, m] of Object.entries(VIDEO_MODELS)) {
-        if (m.variants) {
-          for (const [v, caps] of Object.entries(m.variants)) {
-            console.log(`  ${`${name} · ${v}`.padEnd(28)} 档位 ${caps.resolutions.join(' / ')}　比例 ${caps.aspectRatios.join(' / ')}`);
-          }
-        } else {
-          console.log(`  ${name.padEnd(28)} 档位 ${m.resolutions.join(' / ')}　比例 ${m.aspectRatios.join(' / ')}`);
-        }
+        console.log(`  ${name.padEnd(28)} 档位 ${m.resolutions.join(' / ')}　比例 ${m.aspectRatios.join(' / ')}`);
         if (m.duration) console.log(`  ${''.padEnd(28)} ↳ duration ${m.duration.min}~${m.duration.max} 秒整数`);
       }
       return;

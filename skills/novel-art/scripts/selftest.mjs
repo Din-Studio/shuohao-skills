@@ -159,7 +159,7 @@ const PRODUCTION = {
     asset: { resolution: '2K', aspectRatio: '16:9' },
     frame: { resolution: '2K', aspectRatio: '16:9' },
   },
-  video: { model: 'MiniMax H3', aspectRatio: '16:9', resolution: '768p', variant: 'managed' },
+  video: { model: 'MiniMax H3', aspectRatio: '16:9', resolution: '768p' },
 };
 const pgate = (d, id, prod = PRODUCTION) => gateReport(d, NAMES, prod).find((g) => g.id === id);
 

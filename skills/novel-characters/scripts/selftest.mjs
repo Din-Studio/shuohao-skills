@@ -391,7 +391,7 @@ const PRODUCTION = {
     asset: { resolution: '2K', aspectRatio: '16:9' },
     frame: { resolution: '2K', aspectRatio: '16:9' },
   },
-  video: { model: 'MiniMax H3', aspectRatio: '16:9', resolution: '768p', variant: 'managed' },
+  video: { model: 'MiniMax H3', aspectRatio: '16:9', resolution: '768p' },
 };
 
 eq(PRODUCTION_FILE, 'production.json', '文件名与 novel-setup 一致');

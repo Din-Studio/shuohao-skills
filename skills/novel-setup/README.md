@@ -22,8 +22,7 @@
   "video": {
     "model": "MiniMax H3",
     "aspectRatio": "9:16",
-    "resolution": "768p",
-    "variant": "managed"
+    "resolution": "768p"
   }
 }
 ```
@@ -34,7 +33,7 @@
 | **资产图分辨率 · 资产图比例** | 角色设定图、场景设定图、道具设定图 |
 | **分镜图分辨率 · 分镜图比例** | 分镜图——它就是成片的一格 |
 | **生视频模型** | novel-storyboard 的 `export` 投产包 |
-| **视频 aspect_ratio · 视频 resolution · 变体** | 下单给视频模型时的三个参数 |
+| **视频 aspect_ratio · 视频 resolution** | 下单给视频模型时的两个参数 |
 | **画风**（realistic / ghibli） | 三个出图 skill，漂了合成没法看 |
 | **报告界面语言 · 提示词语言** | 五个 skill 的 `render` 与 H3 提示词 |
 
@@ -74,7 +73,7 @@ node scripts/novel-setup.mjs caps
 
 这张表以前视频侧是**有意留空**的，理由是「各家口径不同、版本之间还会变，凭记忆编一张比不查更坏」。改走 lingying 之后依据有了——`lingying model get <UUID>` 本机就能把 `input_schema` 打出来。所以表填上了，但**出处不许省**：每条都带取数命令与 UUID，过期了重跑一次就能对账。
 
-它拦得住的是这类事：想拍 `4:3` 就不能选 `nanobanana2`（它不收这个比例）；`image-2` 出 `4K` 时只剩 `16:9` / `9:16` 两个比例可选（8.29MP 像素上限）；`MiniMax H3` 的 `managed` 变体档位是 `768p` / `2K`，**不是随手会写的 `720p` / `1080p`**。这些以前都要等到提交那一刻被网关拒绝才知道。
+它拦得住的是这类事：想拍 `4:3` 就不能选 `nanobanana2`（它不收这个比例）；`image-2` 出 `4K` 时只剩 `16:9` / `9:16` 两个比例可选（8.29MP 像素上限）；`MiniMax H3` 的档位是 `768p` / `2K`，**不是随手会写的 `720p` / `1080p`**。这些以前都要等到提交那一刻被网关拒绝才知道。
 
 **表里没有的模型不是错误**：相关的门明说跳过，其余门照常。网关上新加了模型，跑一句 `lingying model list` 看口径，往表里加一条就自动开始查。
 
@@ -93,7 +92,7 @@ lingying 的视频模型都收 `aspect_ratio: "adaptive"`（按输入自动挑�
 | **分镜图比例 = 视频比例** | 不一致 = 整批分镜图被裁或被拉，白出 |
 | 资产图是横构图或方形 | 竖构图会把设定图的三视图压扁 |
 | 三处分辨率档位都已填 | 没填就等于没定 |
-| 视频模型与参数合法 | 模型、变体、档位、比例四者要对得上。`MiniMax H3 · managed` 配 `720p` 会被网关拒，那时整集分镜图已经出完了 |
+| 视频模型与参数合法 | 模型、档位、比例三者要对得上。`MiniMax H3` 配 `720p` 会被网关拒，那时整集分镜图已经出完了 |
 | 档位与比例都被生图模型收 | 同上。`nanobanana2` 不收 `4:3`、`image-2` 的 `4K` 只收 `16:9` / `9:16` |
 
 自测里每道门都有**击穿用例**——证明它真的会拦。
@@ -172,8 +171,8 @@ novel-storyboard → storyboard.json （怎么拍：镜头、分镜图、批次�
 
 ## 自带样例
 
-- `examples/回南天-production.json`：**竖屏 9:16** 真人实拍、2K、英文提示词、`nanobanana2` + `MiniMax H3 · managed`——AI 短剧最常见的形态
-- `examples/雪线-production.json`：**横屏 16:9** 吉卜力、4K、中文提示词、`image-2` + `seedance2.0`（没有变体）——另一头的极端
+- `examples/回南天-production.json`：**竖屏 9:16** 真人实拍、2K、英文提示词、`nanobanana2` + `MiniMax H3`——AI 短剧最常见的形态
+- `examples/雪线-production.json`：**横屏 16:9** 吉卜力、4K、中文提示词、`image-2` + `seedance2.0`——另一头的极端
 
 成片画幅两种、画风两档、档位两档、提示词语言两种、生图模型两个、视频模型两个各出现一次——因为这个 skill 交付的就是「参数可以怎么组合」本身。
 
@@ -183,7 +182,7 @@ novel-storyboard → storyboard.json （怎么拍：镜头、分镜图、批次�
 node scripts/selftest.mjs
 ```
 
-195 项断言，不调模型、不碰网络、不花额度。
+184 项断言，不调模型、不碰网络、不花额度。
 
 ## 边界
 

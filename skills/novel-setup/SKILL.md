@@ -2,7 +2,7 @@
 name: novel-setup
 version: 1.3.0
 description: |
-  给 AI 短剧定生产参数：生图模型、资产图与分镜图的分辨率档位与比例、生视频模型与变体、
+  给 AI 短剧定生产参数：生图模型、资产图与分镜图的分辨率档位与比例、生视频模型、
   视频 aspect_ratio 与 resolution，外加三个必须跨 skill 一致的口径（画风、报告界面语言、
   提示词语言）。一次定死，落成工作目录根的 production.json，后面四个 skill 出图与下单前
   向上找到它照着做。
@@ -65,7 +65,7 @@ metadata:
 **成片画幅没有默认值**，必须问用户。另外两件事也一起问清：
 
 1. **成片画幅**——竖屏 `9:16` 还是横屏 `16:9`？AI 短剧多数是竖屏，但这条不能替用户定：猜错了整批分镜图和视频重出。
-2. **生视频模型**——用哪个？跑 `lingying model list --model_type video` 看网关上现在有什么，把 ID 列的值原样填。`MiniMax H3` 还要定**变体**（`managed` / `open_source` / `bf16` / `int8`），它决定 `resolution` 的枚举。
+2. **生视频模型**——用哪个？跑 `lingying model list --model_type video` 看网关上现在有什么，把 ID 列的值原样填。跟着定 `resolution` 档位，枚举逐个模型不同，跑 `caps --model <名>` 能查到。
 3. **画风**——`realistic` 真人实拍还是 `ghibli` 吉卜力？
 
 生图模型默认 `nanobanana2`，分辨率档位默认 `2K`，用户没特别要求就不用问。
@@ -103,12 +103,12 @@ lingying model get <MODEL_ID 列的 UUID>
 ```bash
 node {baseDir}/scripts/novel-setup.mjs init --aspect 9:16 \
   --source <剧名> --video-model "MiniMax H3" --video-resolution 768p \
-  [--video-variant managed] [--style realistic|ghibli] \
+  [--style realistic|ghibli] \
   [--asset-resolution 2K] [--frame-resolution 2K] \
   > <工作目录>/production.json
 ```
 
-`--aspect` 一个参数同时落到分镜图比例和视频 `aspect_ratio`——这两个本来就必须相等。`--video-variant` 不给就取该模型的默认变体（H3 是 `managed`）。资产图比例单独默认 `16:9`，成片拍竖屏也不改（理由见 `{baseDir}/references/schema.md` 的「两个比例是两件事」）。
+`--aspect` 一个参数同时落到分镜图比例和视频 `aspect_ratio`——这两个本来就必须相等。资产图比例单独默认 `16:9`，成片拍竖屏也不改（理由见 `{baseDir}/references/schema.md` 的「两个比例是两件事」）。
 
 **文件必须落在工作目录根**，不是某个 skill 的子目录里——下游是向上找它的。
 
@@ -130,7 +130,7 @@ node {baseDir}/scripts/novel-setup.mjs validate <工作目录>/production.json
 node {baseDir}/scripts/novel-setup.mjs show <工作目录>/production.json
 ```
 
-打印一张人读的参数表加门的结果。汇报一句话说清：成片什么画幅、分镜图和资产图各是什么档位、生图与生视频模型是哪个（带变体）、画风哪一档、文件落在哪里。
+打印一张人读的参数表加门的结果。汇报一句话说清：成片什么画幅、分镜图和资产图各是什么档位、生图与生视频模型是哪个、画风哪一档、文件落在哪里。
 
 最终落地：
 
@@ -192,11 +192,11 @@ novel-storyboard → storyboard.json （怎么拍：镜头、分镜图、批次�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-195 项断言，不调模型、不碰网络、不花额度。7 道质量门每一道都有击穿用例。改完脚本先跑这个。
+184 项断言，不调模型、不碰网络、不花额度。7 道质量门每一道都有击穿用例。改完脚本先跑这个。
 
 ## 自带样例
 
-- `{baseDir}/examples/回南天-production.json`：**竖屏 9:16** 真人实拍、2K、英文提示词、`nanobanana2` + `MiniMax H3 · managed`——AI 短剧最常见的形态
-- `{baseDir}/examples/雪线-production.json`：**横屏 16:9** 吉卜力、4K、中文提示词、`image-2` + `seedance2.0`（没有变体）——另一头的极端
+- `{baseDir}/examples/回南天-production.json`：**竖屏 9:16** 真人实拍、2K、英文提示词、`nanobanana2` + `MiniMax H3`——AI 短剧最常见的形态
+- `{baseDir}/examples/雪线-production.json`：**横屏 16:9** 吉卜力、4K、中文提示词、`image-2` + `seedance2.0`——另一头的极端
 
-两份都当质量基准，也是自测夹具。**成片画幅两种、画风两档、提示词语言两种、生图模型两个、视频模型两个（带变体与不带变体各一）各出现一次**——因为这个 skill 交付的就是「参数可以怎么组合」本身。
+两份都当质量基准，也是自测夹具。**成片画幅两种、画风两档、档位两档、提示词语言两种、生图模型两个、视频模型两个各出现一次**——因为这个 skill 交付的就是「参数可以怎么组合」本身。

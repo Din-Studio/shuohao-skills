@@ -22,8 +22,7 @@ Lock them once into a single `production.json` at the work-directory root; the f
   "video": {
     "model": "MiniMax H3",
     "aspectRatio": "9:16",
-    "resolution": "768p",
-    "variant": "managed"
+    "resolution": "768p"
   }
 }
 ```
@@ -34,7 +33,7 @@ Lock them once into a single `production.json` at the work-directory root; the f
 | **Asset resolution · asset aspect** | character sheets, scene sheets, prop sheets |
 | **Frame resolution · frame aspect** | storyboard frames — each one *is* a frame of the finished show |
 | **Video model** | novel-storyboard's `export` production package |
-| **Video aspect_ratio · video resolution · variant** | the three parameters you pass the video model |
+| **Video aspect_ratio · video resolution** | the two parameters you pass the video model |
 | **Style** (realistic / ghibli) | the three image skills; drift here and the composite falls apart |
 | **Report UI language · prompt language** | `render` across all five skills, plus the H3 prompts |
 
@@ -74,7 +73,7 @@ node scripts/novel-setup.mjs caps
 
 The video side of this table used to be **deliberately empty**, on the grounds that vendor conventions differ, shift between versions, and inventing one from memory is worse than not checking. Under lingying the evidence exists — `lingying model get <UUID>` prints the `input_schema` locally. So the table is filled, but **the provenance is not optional**: every entry carries the command that produced it and the model UUID, so a stale row can be reconciled by re-running one command.
 
-What it catches: shooting `4:3` rules out `nanobanana2` (it does not accept that ratio); `image-2` at `4K` is down to `16:9` / `9:16` only (the 8.29MP cap); `MiniMax H3` on the `managed` variant takes `768p` / `2K` — **not the `720p` / `1080p` you would reach for by reflex**. All of these used to surface only when the gateway rejected the submission.
+What it catches: shooting `4:3` rules out `nanobanana2` (it does not accept that ratio); `image-2` at `4K` is down to `16:9` / `9:16` only (the 8.29MP cap); `MiniMax H3` takes `768p` / `2K` — **not the `720p` / `1080p` you would reach for by reflex**. All of these used to surface only when the gateway rejected the submission.
 
 **A model missing from the tables is not an error** — the relevant gates say they are skipping, and the rest run as usual. When the gateway adds a model, run `lingying model list`, confirm its wording, and add a row.
 
@@ -93,7 +92,7 @@ Same stance as the other five skills in this repo: **a checklist left to the mod
 | **Frame aspect = video aspect** | mismatch means the whole batch of frames gets cropped or stretched |
 | Asset sheets are landscape or square | portrait squashes the three-view figures |
 | All three resolution tiers filled | blank means undecided |
-| Video model and parameters valid | model, variant, tier and aspect all have to line up. `MiniMax H3 · managed` with `720p` gets rejected by the gateway — by which point the episode's frames are already generated |
+| Video model and parameters valid | model, tier and aspect all have to line up. `MiniMax H3` with `720p` gets rejected by the gateway — by which point the episode's frames are already generated |
 | Tier and aspect accepted by the image model | same reasoning. `nanobanana2` does not take `4:3`; `image-2` at `4K` takes only `16:9` / `9:16` |
 
 Every gate has a **breaking test case** in the self-test — proof it actually stops something.
@@ -171,10 +170,10 @@ novel-storyboard → storyboard.json （how it's shot: cuts, frames, batches）
 
 ## Bundled examples
 
-- `examples/回南天-production.json`: **vertical 9:16**, photorealistic live-action, 2K, English prompts, `nanobanana2` + `MiniMax H3 · managed` — the most common AI short-drama shape
-- `examples/雪线-production.json`: **horizontal 16:9**, Ghibli, 4K, Chinese prompts, `image-2` + `seedance2.0` (no variant) — the other extreme
+- `examples/回南天-production.json`: **vertical 9:16**, photorealistic live-action, 2K, English prompts, `nanobanana2` + `MiniMax H3` — the most common AI short-drama shape
+- `examples/雪线-production.json`: **horizontal 16:9**, Ghibli, 4K, Chinese prompts, `image-2` + `seedance2.0` — the other extreme
 
-Two aspects, two styles, two tiers, two prompt languages, two image models, two video models (one with a variant, one without), each appearing once — because what this skill delivers *is* the space of valid parameter combinations.
+Two aspects, two styles, two tiers, two prompt languages, two image models, two video models, each appearing once — because what this skill delivers *is* the space of valid parameter combinations.
 
 ## Self-test
 
@@ -182,7 +181,7 @@ Two aspects, two styles, two tiers, two prompt languages, two image models, two 
 node scripts/selftest.mjs
 ```
 
-195 assertions, no model calls, no network, no quota.
+184 assertions, no model calls, no network, no quota.
 
 ## Boundaries
 
