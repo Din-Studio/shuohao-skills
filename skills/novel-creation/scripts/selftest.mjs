@@ -9,6 +9,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  promptFamilyOf,
+  videoModelOf,
+  DEFAULT_VIDEO_MODEL,
+  TIMECODE_RE,
   CAMERA_MOVES,
   CREATION_TOKENS,
   DEFAULT_PARAMS,
@@ -215,10 +219,66 @@ eq(loadRecipes(join(here, '../不存在的目录')).size, 0, '目录不存在不
 
 /* ---------------- 夹具本身：全绿基线 ---------------- */
 
-eq(gateReport(FIXTURE, CTX_IMG_P).length, 16, '十六道门');
+eq(gateReport(FIXTURE, CTX_IMG_P).length, 17, '十七道门');
 ok(gateReport(FIXTURE, CTX_IMG_P).every((g) => g.ok), '样例挂全部上游 + 生产参数全部门通过');
 ok(gateReport(FIXTURE, CTX_IMG).every((g) => g.ok), '不挂生产参数（用默认 15 秒上限）同样通过');
 eq(validateCreation(FIXTURE, CTX_IMG_P).length, 0, '样例通过结构 + 质量门校验');
+
+/* ---------------- 填法按 production.json 的 video.model 分流 ---------------- */
+// 骨架是模型无关的（这是本 skill 与 novel-storyboard 的分工），但两件事跟着模型走：
+// 默认语言，以及 seedance 那条官方硬约束——提示词里一个精确时刻都不许有。
+
+eq(promptFamilyOf('MiniMax H3'), 'h3', 'H3 归 h3 族');
+eq(promptFamilyOf('seedance2.0 mini'), 'seedance', 'seedance 的档位变体同族');
+eq(promptFamilyOf(undefined), 'h3', '没填模型按默认模型算');
+eq(videoModelOf({}, null), DEFAULT_VIDEO_MODEL, '两处都没写就用默认模型');
+eq(videoModelOf({}, { video: { model: 'seedance2.5' } }), 'seedance2.5', '模型从 production.json 继承');
+eq(
+  videoModelOf({ video: { model: 'MiniMax H3' } }, { video: { model: 'seedance2.5' } }),
+  'MiniMax H3',
+  'creation.json 自己写了就覆盖生产参数',
+);
+eq(promptLangOf({}, null, 'h3'), 'en', '非 seedance 默认英文——兼容面最广');
+eq(promptLangOf({}, null, 'seedance'), 'zh', 'seedance 默认中文——官方指南通篇中文术语与中文案例');
+eq(promptLangOf({ promptLang: 'en' }, null, 'seedance'), 'en', '自己写了 promptLang 就照写的来');
+ok(TIMECODE_RE.test('[Shot 2] At 00:03.000,'), '时刻正则认得 H3 骨架的切点写法');
+ok(!TIMECODE_RE.test('[Shot 2] wide shot, static shot — the door swings open'), '正常镜头行不会被误判成时刻');
+
+{
+  // 挂 H3：通用骨架没有附加约束，本门明说这一点，不假装查了什么
+  const g = gateReport(FIXTURE, CTX_IMG_P).find((x) => x.id === 'prompt-model-fit');
+  ok(g.ok, '挂 MiniMax H3 时本门通过');
+  ok(g.detail.includes('没有附加约束'), 'H3 下明说通用骨架没有附加约束');
+}
+{
+  // 挂 seedance：夹具本身不含时刻，照样全绿（promptLang 显式保持 en，只测这一道门）
+  const doc = clone(FIXTURE);
+  doc.video = { model: 'seedance2.0' };
+  doc.promptLang = 'en';
+  const g = gateReport(doc, CTX_IMG_P).find((x) => x.id === 'prompt-model-fit');
+  ok(g.ok, '挂 seedance 时样例提示词本来就没有时刻，照样通过');
+  ok(g.label.includes('seedance2.0'), '门 label 带上实际挂的模型名');
+}
+{
+  // 从 novel-storyboard 那边搬提示词最容易带过来的东西就是切点时刻
+  const doc = clone(FIXTURE);
+  doc.video = { model: 'seedance2.0' };
+  doc.promptLang = 'en';
+  const seg = doc.episodes[0].segments[0];
+  seg.prompt = seg.prompt.replace('[Shot 2]', '[Shot 2] At 00:03.000,');
+  const g = gateReport(doc, CTX_IMG_P).find((x) => x.id === 'prompt-model-fit');
+  ok(!g.ok, 'seedance 下提示词里写死时刻被拦');
+  ok(g.detail.includes('00:03.000'), '点名是哪一处时刻');
+  ok(gateReport(doc, CTX_IMG_P).find((x) => x.id === 'prompt-lang').ok, '同一份提示词的其余门不受影响');
+}
+{
+  // 同一处时刻，挂回 H3 就不拦——这道门是真的按模型走的
+  const doc = clone(FIXTURE);
+  const seg = doc.episodes[0].segments[0];
+  seg.prompt = seg.prompt.replace('[Shot 2]', '[Shot 2] At 00:03.000,');
+  ok(gateReport(doc, CTX_IMG_P).find((x) => x.id === 'prompt-model-fit').ok, '挂 H3 时同一处时刻不拦');
+}
+
 {
   const stats = computeStats(FIXTURE, SCRIPT);
   eq(stats.totals.segments, 4, '样例四段');
@@ -615,7 +675,7 @@ ok(validateCreation({ source: 'x', episodes: [] }).some((x) => x.includes('episo
   ok(html.includes('>参考图挂载单<'), '有参考图挂载单区块');
   ok(html.includes('>配音对齐单<'), '有配音对齐单区块');
   ok(html.includes('>质量门<'), '有质量门区块');
-  eq((html.match(/<li class="ok">/g) || []).length, 16, '十六道质量门全 ✓');
+  eq((html.match(/<li class="ok">/g) || []).length, 17, '十七道质量门全 ✓');
   ok(html.includes('gatepill pass'), '页眉徽章通过态');
   ok(!html.includes('class="reftile-ph"'), '真实文件都存在时不出现缺图占位');
 }

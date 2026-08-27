@@ -1,6 +1,8 @@
 # H3 视频提示词 · 写法规范（内化版）
 
-方法论学自 MiniMax-H3 官方提示词指南（I2VA / 多图对齐模式），**内化成本 skill 自带文档——不依赖任何外部 skill**。写每段的 `h3Prompt` 照这份做，结构部分有质量门逐字对账。
+**什么时候读这份**：`production.json` 的 `video.model` 是 `MiniMax H3`，或者两边都没写模型（按默认模型算）。选了 seedance 系列就整份跳过，改读 `seedance2-prompt.md`——**两套骨架不通用**，混着写必撞门。
+
+方法论学自 MiniMax-H3 官方提示词指南（I2VA / 多图对齐模式），**内化成本 skill 自带文档——不依赖任何外部 skill**。写每段的 `videoPrompt` 照这份做，结构部分有质量门逐字对账。
 
 ## 语言分工
 

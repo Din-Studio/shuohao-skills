@@ -9,12 +9,12 @@ segment ＝ one video-generation call, ≤ 15s (also within the video model's du
            parameters are mounted), never crosses a scene
  ├─ cut × 2–3 ＝ an edit inside the segment, 2–5s each (hard gate), each claims script beats
  ├─ reference mounts ＝ segment-level, referencing existing cast.json / art.json sheets directly (no new images)
- └─ general-purpose video prompt ＝ one per segment, identifies each reference then lists [Shot k] lines,
-                                    not tied to any single model
+ └─ general-purpose video prompt ＝ one per segment, identifies each reference then lists [Shot k] lines;
+                                    one skeleton across models, filled per production.json's video.model
 ```
 
 - **Zero new image-generation calls** — from `seed` through submitting `videos`, no command in this skill ever calls `lingying image create`. References come only from sheet files `cast.json` / `art.json` already produced
-- **The prompt is not an internalized H3 spec** — there is no keyframe to align, so there is no alignment line, no cut timestamps, no `<d>` tags. The writing convention is this skill's own methodology (`references/creation-prompt.md`), model-agnostic by design: `lingying model get` was checked live and both `MiniMax H3` and `seedance2.5`/`seedance2.0` expose a general `images: string[]` field at the top level — "references + prompt → video" is a cross-model capability, not an H3 exclusive
+- **The prompt is not an internalized spec of any one model** — there is no keyframe to align, so there is no alignment line, no cut timestamps, no `<d>` tags. The writing convention is this skill's own methodology (`references/creation-prompt.md`), model-agnostic by design: `lingying model get` was checked live and both `MiniMax H3` and `seedance2.5`/`seedance2.0` expose a general `images: string[]` field at the top level — "references + prompt → video" is a cross-model capability, not an H3 exclusive. **What routes on the model is the fill, not the skeleton**: mounting a seedance model flips the default prompt language to Chinese and bans every exact timestamp (official guidance, gated) — see `references/seedance2-prompt.md`
 - **Segment-level mounts, no file copies** — the `images` array references `../characters/images/…` and `../art/images/…` by relative path; those sheets are shared across dozens of segments, so copying them would duplicate assets on disk many times over
 - **Ordering logic lives in code** — a single `videos` command handles submit/poll/download/resume via `scripts/lib/lingying.mjs` (a port of the image-generation orchestration already used by `novel-art`/`novel-characters`), not a bash doc the model re-improvises each time
 
@@ -30,9 +30,9 @@ Produces `creation.json` + Markdown + a double-clickable `creation-report.html`.
 
 Both lines share `production.json` and `cast.json`/`art.json`, and neither touches the other's code — pick per occasion, or mix them within the same episode.
 
-## Quality gates: 16, all scripted
+## Quality gates: 17, all scripted
 
-Three fewer than `novel-storyboard`'s 19 (drops H3-structure alignment, style-phrase, frame-aspect — there's no frame-image artifact), two new ones watch reference sheets:
+Two fewer than `novel-storyboard`'s 19 (drops style-phrase and frame-aspect — there's no frame-image artifact; the structure gate stays but audits this skill's own skeleton), three new ones: two watch reference sheets, one watches the prompt against the mounted model:
 
 | Gate | Rule |
 | --- | --- |
@@ -44,13 +44,14 @@ Three fewer than `novel-storyboard`'s 19 (drops H3-structure alignment, style-ph
 | Crowd cap | ≤ 3 characters on screen per cut; more requires a breakdown note |
 | Segment IDs | `E01-01` format, sequential |
 | Shot-size phrase | Must appear in this cut's own `[Shot k]` line (no separate frame-prompt field here) |
-| Camera vocabulary | The shared vocabulary (H3's official list, used generically), must appear in its own `[Shot k]` line |
+| Camera vocabulary | The shared vocabulary (English terms follow H3's official list, used generically), must appear in its own `[Shot k]` line |
 | **Dialogue verbatim** | Plain substring match inside `prompt`, no tag required — change one character and it's caught |
 | Prompt language | Body language matches `promptLang`, checked both ways |
 | No character names | Quoted dialogue is exempt; skipped (and said so) without `--outline`/`--cast` |
 | Cross-references | Scenes/characters/props audited against the script |
 | **Reference resolves to a file** | Every character/scene/prop appearing in a segment must resolve a name via `outline`/`art` and an existing `../characters\|art/images/<slug>-sheet.png` — missing files are named with their expected path |
-| **Reference label count matches** | The number of `Picture k is …` identity lines at the top of the prompt must match the length of the `images` array |
+| **Reference label count matches** | The number of `Picture k is …` / `图 k 是…` identity lines at the top of the prompt must match the length of the `images` array |
+| **Prompt fits the mounted model** | Routed on `production.json`'s `video.model`: with a seedance model the prompt must contain **no exact timestamp at all** (the official guide states that pinning exact times destabilizes generation); with `MiniMax H3` the general skeleton carries no extra constraint, and the gate says so |
 | Shot recipe (optional mount) | Same judging as `novel-storyboard`, just checked against the matching `[Shot k]` line |
 
 Every gate has a breaking test case in the self-test suite.
@@ -97,7 +98,8 @@ scripts/
   selftest.mjs           self-test, no model calls
 references/
   schema.md              creation.json shape + the duration-constraint chain
-  creation-prompt.md     video-prompt writing convention (this skill's own method, not an H3 port)
+  creation-prompt.md     video-prompt writing convention (this skill's own method, not a port of any one model's spec)
+  seedance2-prompt.md    tightened fill rules when video.model is a seedance one (port of the Volcengine official guide)
   shot-pass.md           cutting: segmentation rules, segment-level reference mounting, camera feel, common pitfalls
   video-order.md         behavioral description of the videos command
   report-style.md        the report's design conventions

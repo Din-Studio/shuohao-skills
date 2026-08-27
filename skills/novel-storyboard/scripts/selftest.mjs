@@ -43,6 +43,13 @@ import {
   brief,
   findProduction,
   promptLangOf,
+  promptFamilyOf,
+  videoModelOf,
+  videoPromptOf,
+  seedanceCutSlices,
+  seedanceRemainder,
+  DEFAULT_VIDEO_MODEL,
+  TIMECODE_RE,
   styleIdOf,
   STAGE_DIR,
   stageDirNote,
@@ -79,7 +86,7 @@ const PRODUCTION = {
     asset: { resolution: '2K', aspectRatio: '16:9' },
     frame: { resolution: '2K', aspectRatio: '16:9' },
   },
-  video: { model: 'MiniMax H3', aspectRatio: '16:9', resolution: '768p', variant: 'managed' },
+  video: { model: 'MiniMax H3', aspectRatio: '16:9', resolution: '768p' },
 };
 const CTX_P = { ...CTX, production: PRODUCTION };
 
@@ -256,68 +263,189 @@ eq(gateReport(FIXTURE, CTX).length, 19, '十九道门');
 {
   const doc = clone(FIXTURE);
   doc.episodes[0].segments[0].cuts[0].camera = '推';
-  ok(!gate(doc, 'camera-phrase').ok, '运镜不在 H3 词表里被拦');
+  ok(!gate(doc, 'camera-phrase').ok, '运镜不在词表里被拦');
 }
 {
   const doc = clone(FIXTURE);
   const seg = doc.episodes[0].segments[0];
-  seg.h3Prompt = seg.h3Prompt.replace('a tracking shot follows her', 'the camera follows her');
+  seg.videoPrompt = seg.videoPrompt.replace('a tracking shot follows her', 'the camera follows her');
   const g = gate(doc, 'camera-phrase');
   ok(!g.ok, '运镜词没写进自己的 [Shot k] 段落被拦');
   ok(g.detail.includes('E01-01#1'), '点名到切');
 }
-// h3-structure — 对齐指令由分镜结构推导，逐字对账
+// prompt-structure（H3 骨架）— 对齐指令由分镜结构推导，逐字对账
 {
   const doc = clone(FIXTURE);
   doc.episodes[0].segments[0].cuts[0].seconds = 4; // 时长改了、提示词没跟着改
-  ok(gate(doc, 'h3-structure').detail.includes('对不上'), '分镜秒数一改，旧对齐指令立刻对不上');
+  ok(gate(doc, 'prompt-structure').detail.includes('对不上'), '分镜秒数一改，旧对齐指令立刻对不上');
 }
 {
   const doc = clone(FIXTURE);
   const seg = doc.episodes[0].segments[0];
-  seg.h3Prompt = seg.h3Prompt.replace('[Shot 2] At 00:03.000,', '[Shot 2] At 00:03.500,');
-  const g = gate(doc, 'h3-structure');
+  seg.videoPrompt = seg.videoPrompt.replace('[Shot 2] At 00:03.000,', '[Shot 2] At 00:03.500,');
+  const g = gate(doc, 'prompt-structure');
   ok(!g.ok, '切点时刻和分镜秒数累计不一致被拦');
   ok(g.detail.includes('切点时刻'), '报出哪一处时刻错了');
 }
 {
   const doc = clone(FIXTURE);
   const seg = doc.episodes[0].segments[0];
-  seg.h3Prompt = seg.h3Prompt.replace('overall_soundscape:', 'ambient_sound:');
-  ok(gate(doc, 'h3-structure').detail.includes('核心字段'), '三字段缺失被拦');
+  seg.videoPrompt = seg.videoPrompt.replace('overall_soundscape:', 'ambient_sound:');
+  ok(gate(doc, 'prompt-structure').detail.includes('核心字段'), '三字段缺失被拦');
 }
-// h3-dialogue
+// dialogue-verbatim（H3 骨架）
 {
   const doc = clone(FIXTURE);
   const seg = doc.episodes[0].segments[0];
-  seg.h3Prompt = seg.h3Prompt.replace('上船喽——过河的抓紧，雾要变天。', 'the ferryman calls out.');
-  const g = gate(doc, 'h3-dialogue');
+  seg.videoPrompt = seg.videoPrompt.replace('上船喽——过河的抓紧，雾要变天。', 'the ferryman calls out.');
+  const g = gate(doc, 'dialogue-verbatim');
   ok(!g.ok, '台词没进 <d> 块被拦');
-  ok(gate(doc, 'h3-dialogue', {}).detail.includes('跳过'), '没给剧本时本门跳过并明说');
+  ok(gate(doc, 'dialogue-verbatim', {}).detail.includes('跳过'), '没给剧本时本门跳过并明说');
 }
-// h3-lang — 语言与设定双向对账（默认英文 = 官方口径）
+// prompt-lang — 语言与设定双向对账（H3 默认英文 = 官方口径）
 {
   const doc = clone(FIXTURE);
-  doc.episodes[0].segments[0].h3Prompt += ' 浓雾弥漫。';
-  ok(!gate(doc, 'h3-lang').ok, '英文提示词在 <d> 台词之外混中文被拦');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.promptLang = 'zh';
-  ok(!gate(doc, 'h3-lang').ok, '设定中文、正文却是英文被拦——语言开关双向都管');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].segments[0].h3Prompt = doc.episodes[0].segments[0].h3Prompt.replace('the old ferryman squatting', '老周 squatting');
-  ok(!gate(doc, 'prompt-no-names').ok, '英文模式下 H3 提示词里的人名被拦');
+  doc.episodes[0].segments[0].videoPrompt += ' 浓雾弥漫。';
+  ok(!gate(doc, 'prompt-lang').ok, '英文提示词在 <d> 台词之外混中文被拦');
 }
 {
   const doc = clone(FIXTURE);
   doc.promptLang = 'zh';
-  doc.episodes[0].segments[0].h3Prompt += ' 老周站在船头。';
-  ok(gate(doc, 'prompt-no-names').ok, '中文模式 H3 提示词人名放行——身份靠分镜图锚定');
+  ok(!gate(doc, 'prompt-lang').ok, '设定中文、正文却是英文被拦——语言开关双向都管');
+}
+{
+  const doc = clone(FIXTURE);
+  doc.episodes[0].segments[0].videoPrompt = doc.episodes[0].segments[0].videoPrompt.replace('the old ferryman squatting', '老周 squatting');
+  ok(!gate(doc, 'prompt-no-names').ok, '英文模式下视频提示词里的人名被拦');
+}
+{
+  const doc = clone(FIXTURE);
+  doc.promptLang = 'zh';
+  doc.episodes[0].segments[0].videoPrompt += ' 老周站在船头。';
+  ok(gate(doc, 'prompt-no-names').ok, '中文模式视频提示词人名放行——身份靠分镜图锚定');
 }
 eq(h3Remainder('a <d>[Chinese] 你好</d> b "营业中" c'), 'a   b   c', 'h3Remainder 剔除 <d> 块与画面文字');
+
+/* ---------------- 提示词骨架按 production.json 的 video.model 分流 ---------------- */
+// 两套骨架不是文案偏好：H3 靠切点时刻把每张分镜图钉在秒数上，seedance 官方明说
+// 限制精确时间会让生成异常。选错一套，整段提示词作废——所以门也得跟着模型走。
+
+eq(promptFamilyOf('MiniMax H3'), 'h3', 'H3 走 I2VA 骨架');
+eq(promptFamilyOf('seedance2.0'), 'seedance', 'seedance2.0 走全模态参考骨架');
+eq(promptFamilyOf('seedance2.0 fast'), 'seedance', 'seedance 的档位变体同族');
+eq(promptFamilyOf('seedance2.5'), 'seedance', 'seedance2.5 同族');
+eq(promptFamilyOf(undefined), 'h3', '没填模型按默认模型算');
+eq(videoModelOf({}, null), DEFAULT_VIDEO_MODEL, '两处都没写就用默认模型');
+eq(videoModelOf({}, { video: { model: 'seedance2.0' } }), 'seedance2.0', '模型从 production.json 继承');
+eq(
+  videoModelOf({ video: { model: 'MiniMax H3' } }, { video: { model: 'seedance2.0' } }),
+  'MiniMax H3',
+  'storyboard.json 自己写了就覆盖生产参数',
+);
+eq(promptLangOf({}, null, 'h3'), 'en', 'H3 骨架默认英文——官方口径');
+eq(promptLangOf({}, null, 'seedance'), 'zh', 'seedance 骨架默认中文——官方指南通篇中文术语与中文案例');
+eq(promptLangOf({ promptLang: 'en' }, null, 'seedance'), 'en', '自己写了 promptLang 就照写的来');
+
+eq(videoPromptOf({ videoPrompt: 'a' }), 'a', 'videoPrompt 是模型无关的新字段名');
+eq(videoPromptOf({ h3Prompt: 'b' }), 'b', '老项目写的 h3Prompt 照样读得出来，不强迫回头改一遍');
+
+ok(TIMECODE_RE.test('[Shot 2] At 00:03.000,'), '时刻正则认得 H3 的切点写法');
+ok(TIMECODE_RE.test('aligns with the 3.00-second mark'), '时刻正则认得对齐指令里的秒数');
+ok(!TIMECODE_RE.test('[镜头 2] 大远景, 固定 — 雾里浮出渡口'), '正常中文描述不会被误判成时刻');
+
+// seedance 夹具：同一段《渡口》E01-01，换成 seedance 骨架——
+// 身份说明 + 全程复用的主体标签、{} 包台词、逐镜一行、全程没有时刻
+const SEEDANCE_PROMPT = `图 1 是抱着旧皮箱、在雾里沿河岸奔跑的年轻女子，下文称<主体1>。图 2 是雾里浮出的木质渡口全景，船头蹲着一个叼旱烟杆的老船夫，下文称<场景1>与<主体2>。图 3 是<主体2>立在船头拢手喊话的构图。图 4 是挑着满担踏上跳板的中年货郎，下文称<主体3>。
+
+镜头描述：
+[镜头 1] 中景, 跟拍 — 浓雾里，<主体1>沿泥泞河岸奔跑，怀里死死抱着旧皮箱；镜头在她身后跟拍，渡口还没露面。<急促的踏水脚步声>
+[镜头 2] 大远景, 固定 — 奔跑到头，<场景1>从雾里浮出来，<主体2>蹲在船头，烟锅火星透过雾一明一暗；镜头固定不动。<远处更夫的梆子声>
+[镜头 3] 全景, 固定 — <主体2>立在船头，一只手拢在嘴边，镜头固定，他朝岸上粗声长喊：{上船喽——过河的抓紧，雾要变天。}
+[镜头 4] 全景, 跟拍 — <主体3>挑着满担快步踏上跳板，镜头跟拍他；他喘着气喊：{等等二爷我！这雾天赶船，命都得跑掉半条。}
+
+环境声与配乐：雾里被闷住的踏水脚步声，水拍着木桩，远处两记梆子，后段跳板上箩筐吱呀作响。（低沉持续的弦乐，极慢，几乎贴着静音）
+
+全片高清电影质感，冷灰绿色调，光影柔和；人物面部稳定不变形，动作自然连贯。保持无字幕，不要生成 Logo，不要生成水印。视频全程禁止出现外形、着装完全一致的人物，禁止生成同款分身、双胞胎效果。`;
+
+// 只留第一段：其余九段还是 H3 骨架，混在一起测不出这一段的对账口径
+const seedanceDoc = (prompt = SEEDANCE_PROMPT, model = 'seedance2.0') => {
+  const doc = clone(FIXTURE);
+  doc.video = { model };
+  doc.episodes = [{ ...doc.episodes[0], segments: [doc.episodes[0].segments[0]] }];
+  doc.episodes[0].segments[0].videoPrompt = prompt;
+  return doc;
+};
+
+{
+  const doc = seedanceDoc();
+  ok(gate(doc, 'prompt-structure').ok, 'seedance 基线：身份说明逐张齐全、逐镜齐全、全程无时刻');
+  ok(gate(doc, 'dialogue-verbatim').ok, 'seedance 基线：{} 里的台词逐字对得上');
+  ok(gate(doc, 'prompt-lang').ok, 'seedance 基线：默认中文，语言门全绿');
+  ok(gate(doc, 'camera-phrase').ok, 'seedance 基线：中文运镜词落在自己的 [镜头 k] 段落里');
+  ok(gate(doc, 'prompt-structure').label.includes('seedance'), '门 label 说清这一批按哪套骨架对账');
+  ok(gate(doc, 'prompt-structure').label.includes('seedance2.0'), '门 label 带上实际挂的模型名');
+}
+// 改了模型忘了改提示词——最常见的一种错
+{
+  const doc = seedanceDoc(FIXTURE.episodes[0].segments[0].videoPrompt);
+  const g = gate(doc, 'prompt-structure');
+  ok(!g.ok, 'seedance 模型配 H3 提示词被拦');
+  ok(g.detail.includes('时刻'), '点名到时刻——这正是 seedance 生成异常的直接原因');
+}
+// 反过来也拦：两套骨架不通用，方向反了同样是废提示词
+{
+  const doc = clone(FIXTURE);
+  doc.episodes = [{ ...doc.episodes[0], segments: [doc.episodes[0].segments[0]] }];
+  doc.episodes[0].segments[0].videoPrompt = SEEDANCE_PROMPT;
+  ok(!gate(doc, 'prompt-structure').ok, 'H3 模型配 seedance 提示词同样被拦');
+}
+{
+  const doc = seedanceDoc(SEEDANCE_PROMPT.replace('图 4 是挑着满担踏上跳板的中年货郎，下文称<主体3>。', ''));
+  const g = gate(doc, 'prompt-structure');
+  ok(!g.ok, '身份说明段漏一张分镜图被拦');
+  ok(g.detail.includes('图 4 是'), '点名漏的是哪一张');
+}
+{
+  const doc = seedanceDoc(SEEDANCE_PROMPT.replace('[镜头 3]', '[镜头三]'));
+  ok(gate(doc, 'prompt-structure').detail.includes('[镜头 3]'), '镜头描述缺一镜被拦');
+}
+{
+  const doc = seedanceDoc(SEEDANCE_PROMPT.replace('镜头描述：', '镜头段落：'));
+  ok(gate(doc, 'prompt-structure').detail.includes('镜头描述：'), '缺骨架字段被拦');
+}
+{
+  const doc = seedanceDoc(SEEDANCE_PROMPT.replace('[镜头 2] 大远景, 固定 —', '[镜头 2] 于 00:03.000，大远景, 固定 —'));
+  const g = gate(doc, 'prompt-structure');
+  ok(!g.ok, 'seedance 提示词里写死时刻被拦');
+  ok(g.detail.includes('00:03.000'), '点名是哪一处时刻');
+}
+{
+  const doc = seedanceDoc(SEEDANCE_PROMPT.replace('雾要变天。', '雾要变了。'));
+  const g = gate(doc, 'dialogue-verbatim');
+  ok(!g.ok, 'seedance 骨架下台词漂一个字照样被拦');
+  ok(g.detail.includes('上船喽'), '点名是哪一句');
+  ok(gate(doc, 'dialogue-verbatim', {}).detail.includes('跳过'), '没给剧本时本门跳过并明说');
+}
+{
+  const doc = seedanceDoc();
+  doc.promptLang = 'en';
+  ok(!gate(doc, 'prompt-lang').ok, 'seedance 骨架切英文后中文正文被拦——语言门双向对账，两套骨架都管');
+}
+// 模型从 production.json 继承：storyboard.json 自己不写 video 也要分流
+{
+  const doc = seedanceDoc();
+  delete doc.video;
+  const prod = { source: '渡口', style: 'realistic', video: { model: 'seedance2.0 fast' } };
+  ok(gate(doc, 'prompt-structure', { ...CTX, production: prod }).ok, '模型从 production.json 继承，骨架跟着切');
+  ok(!gate(doc, 'prompt-structure', CTX).ok, '同一份提示词退回默认的 H3 就对不上——分流真的在按模型走');
+}
+eq(seedanceCutSlices(SEEDANCE_PROMPT, 4, 'zh').length, 4, 'seedanceCutSlices 按 [镜头 k] 切出四段');
+ok(seedanceCutSlices(SEEDANCE_PROMPT, 4, 'zh')[3].includes('跟拍'), '第四镜的运镜词落在第四段里');
+{
+  const rem = seedanceRemainder('他喊：{上船喽} 招牌写着 "渡口"');
+  ok(!rem.includes('上船喽') && !rem.includes('渡口'), 'seedanceRemainder 剔除 {} 台词与画面里的文字');
+}
+
 // prompt-english
 {
   const doc = clone(FIXTURE);
@@ -538,18 +666,18 @@ const withRecipe = () => {
 }
 eq(GATE_LOG, '.gates.jsonl', '日志文件名固定');
 
-/* ---------------- exportPack（H3 投产包） ---------------- */
+/* ---------------- exportPack（视频投产包） ---------------- */
 
 {
   const pack = exportPack(FIXTURE, SCRIPT, { imageExists: () => false });
   eq(pack.files.length, 11, '十段 prompt.md + 一份 manifest');
   ok(pack.files.some((f) => f.path === 'E01-01/prompt.md'), '每段一个文件夹里的 prompt.md');
   const p01 = pack.files.find((f) => f.path === 'E01-01/prompt.md');
-  ok(p01.content.startsWith('# E01-01 · H3 提示词'), 'prompt.md 带标题');
+  ok(p01.content.startsWith('# E01-01 · 视频提示词（MiniMax H3）'), 'prompt.md 标题带模型族');
   ok(p01.content.includes('Picture 1 = f1.png（**首帧**，钉 0.00 秒）'), '明确指定哪个文件是首帧');
   ok(p01.content.includes('Picture 4 = f4.png（钉 10.00 秒）'), '每张图的切点秒数写明');
-  ok(p01.content.includes('---\n\nHow the reference pictures align'), '分隔线以下是 h3Prompt 原样（官方英文口径）');
-  ok(!JSON.stringify(pack).includes('recipe'), '配方是创作期语汇，H3 投产包里没有它的位置');
+  ok(p01.content.includes('---\n\nHow the reference pictures align'), '分隔线以下是视频提示词原样（官方英文口径）');
+  ok(!JSON.stringify(pack).includes('recipe'), '配方是创作期语汇，投产包里没有它的位置');
   const m = pack.manifest.find((x) => x.segment === 'E01-01');
   eq(m.pictures.join(','), 'E01-01/f1.png,E01-01/f2.png,E01-01/f3.png,E01-01/f4.png', 'Picture 序 = 文件夹里的 f1..fn');
   eq(m.cutStarts.join(','), '0,3,6,10', 'manifest 带切点时刻表');
@@ -570,11 +698,10 @@ eq(GATE_LOG, '.gates.jsonl', '日志文件名固定');
   eq(mf.video.model, 'MiniMax H3', 'manifest 顶层带生视频模型');
   eq(mf.video.aspectRatio, '16:9', 'manifest 顶层带 aspect_ratio');
   eq(mf.video.resolution, '768p', 'manifest 顶层带 resolution');
-  eq(mf.video.variant, 'managed', 'manifest 顶层带模型变体——H3 的 metadata.h3_variant 是必填字段');
   eq(mf.segments.length, 10, '段清单挪到 segments 字段下，顶层腾给视频参数');
   eq(mf.source, '渡口', 'manifest 带剧名');
   const p01 = pack.files.find((f) => f.path === 'E01-01/prompt.md');
-  ok(p01.content.includes('生成参数：MiniMax H3 · aspect_ratio 16:9 · resolution 768p · variant managed'), 'prompt.md 头部也写一份——单独拖一个文件夹去下单也够用');
+  ok(p01.content.includes('生成参数：MiniMax H3 · aspect_ratio 16:9 · resolution 768p'), 'prompt.md 头部也写一份——单独拖一个文件夹去下单也够用');
   ok(p01.content.indexOf('生成参数') < p01.content.indexOf('首帧 ='), '视频参数在图片对照表之前');
 }
 {
@@ -582,6 +709,17 @@ eq(GATE_LOG, '.gates.jsonl', '日志文件名固定');
   const mf = JSON.parse(pack.files.find((f) => f.path === 'manifest.json').content);
   eq(mf.video, null, '没有生产参数就是 null，不编一个假的');
   ok(!pack.files.find((f) => f.path === 'E01-01/prompt.md').content.includes('生成参数'), '没有参数就不写那一行');
+}
+// 投产包的头部也按模型分流：H3 把每张图钉在秒数上，seedance 只按顺序给图
+{
+  const prod = { ...PRODUCTION, video: { model: 'seedance2.0', aspectRatio: '16:9', resolution: '720p' } };
+  const pack = exportPack(FIXTURE, SCRIPT, { imageExists: () => true, production: prod });
+  const p01 = pack.files.find((f) => f.path === 'E01-01/prompt.md');
+  ok(p01.content.startsWith('# E01-01 · 视频提示词（seedance 系列）'), 'seedance 投产包标题带模型族');
+  ok(p01.content.includes('图 1 = f1.png（**首帧**，按顺序排在最前）'), 'seedance 的分镜图按顺序给');
+  ok(p01.content.includes('图 4 = f4.png'), '每张分镜图都在对照表里');
+  ok(!p01.content.includes('钉 0.00 秒'), 'seedance 的头部不给时刻——官方明说限制精确时间会让生成异常');
+  ok(!p01.content.includes('Picture 1 ='), 'seedance 的对照表不用 Picture 序');
 }
 
 /* ---------------- 生产参数（production.json） ---------------- */
@@ -678,7 +816,7 @@ ok(validateStoryboard({ source: 'x', episodes: [] }).some((p) => p.includes('epi
   doc.episodes[0].segments[0] = { id: 'E01-01' };
   const problems = validateStoryboard(doc, CTX);
   ok(problems.some((p) => p.includes('sceneIndex')), '缺 sceneIndex 报出来');
-  ok(problems.some((p) => p.includes('h3Prompt')), '缺 H3 提示词报出来');
+  ok(problems.some((p) => p.includes('videoPrompt')), '缺视频提示词报出来');
   ok(problems.some((p) => p.includes('没有分镜')), '缺 cuts 报出来');
 }
 {
@@ -711,7 +849,7 @@ eq(seedFromScript({}).episodes.length, 0, '空剧本不崩');
 eq(slug('渡口'), '渡口', '中文原样');
 eq(slug('  '), 'storyboard', '空名兜底');
 ok(Object.values(SHOT_SIZES).every((s) => s.zh && s.phrase), '景别枚举带中文名与英文短语');
-ok(Object.keys(CAMERA_MOVES).length >= 18, '运镜词表覆盖 H3 全部动作类型');
+ok(Object.keys(CAMERA_MOVES).length >= 18, '运镜词表覆盖全部动作类型');
 ok(CAMERA_MOVES['Static Shot'] === '固定' && CAMERA_MOVES['Push In'] === '推', '运镜词表中英对照');
 
 /* ---------------- render markdown ---------------- */
@@ -719,7 +857,7 @@ ok(CAMERA_MOVES['Static Shot'] === '固定' && CAMERA_MOVES['Push In'] === '推'
 const md = renderMarkdown(FIXTURE, CTX);
 ok(md.includes('# 渡口 · 分镜（第 1 集）'), 'md 标题');
 ok(md.includes('### E01-01 · 渡口栈桥（浓雾清晨）'), 'md 段头带场景名与光照');
-ok(md.includes('H3 视频提示词'), 'md 带逐段 H3 提示词');
+ok(md.includes('视频提示词'), 'md 带逐段视频提示词');
 ok(md.includes('How the reference pictures align'), '多分镜段的对齐指令完整可复制');
 ok(md.includes('[Shot 2] At 00:03.000,'), '切点时刻原样进 md');
 ok(md.includes('老周'), 'md 说话人显示名字');
@@ -750,7 +888,7 @@ ok(html.includes('#2 未生成'), '子分镜图缺图有小占位');
 }
 ok(html.includes('class="shots clip"'), '段卡区默认截断');
 ok(html.includes('展开全部段'), '每集自带展开按钮');
-ok(html.includes('H3 提示词'), '段卡带 H3 提示词面板');
+ok(html.includes('视频提示词'), '段卡带视频提示词面板');
 ok(html.includes('class="duo"'), '分镜列表与提示词面板五五分栏');
 ok(html.includes('static shot'), '英文提示词正文进面板');
 ok(html.includes('integrated_multimodal_description'), '官方骨架字段进面板');

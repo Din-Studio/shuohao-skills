@@ -74,9 +74,35 @@ export const SKIP_PROD = `未找到 ${PRODUCTION_FILE}（向上 ${PRODUCTION_DEP
 export const brief = (list, n = 6) =>
   list.length <= n ? list.join('；') : `${list.slice(0, n).join('；')}；……等 ${list.length} 处`;
 
-/** 提示词语言：没写就继承生产参数，默认 en——不是哪个模型要求，是英文提示词兼容面最广。 */
-export const promptLangOf = (doc, production = null) =>
-  doc?.promptLang ?? production?.promptLang ?? 'en';
+/** 视频模型：creation.json 自己不写就继承生产参数，都没有就按默认模型算。 */
+export const DEFAULT_VIDEO_MODEL = 'MiniMax H3';
+export const videoModelOf = (doc, production = null) =>
+  doc?.video?.model ?? production?.video?.model ?? DEFAULT_VIDEO_MODEL;
+
+/*
+ * 模型族：本 skill 的提示词骨架是模型无关的（身份说明 + [Shot k] 分行），
+ * 两族共用**同一套骨架**——与 novel-storyboard 不同，那边 H3 与 seedance 的
+ * 骨架互不相容。这里模型族只影响两件事：默认语言，以及 seedance 那一条
+ * 官方硬约束（提示词里不许出现精确时刻）。
+ */
+export function promptFamilyOf(model) {
+  return /seedance/i.test(String(model ?? '')) ? 'seedance' : 'h3';
+}
+export const FAMILY_LABEL = { h3: 'MiniMax H3', seedance: 'seedance 系列' };
+
+/**
+ * 时刻标记：seedance 官方明说「模型对精确时间（如 0–3 秒）的支持不稳定，
+ * 强行限制时长可能导致生成结果异常」，所以选了它就一个时刻都不许写。
+ * 拦 `00:03.000`、`3.00-second`、`3.00 秒处` 三种写法。
+ */
+export const TIMECODE_RE = /\d{1,2}:\d{2}\.\d{3}|\d+\.\d{2}\s*(?:-second|秒处)/;
+
+/**
+ * 提示词语言：没写就继承生产参数，都没写就跟着模型的官方口径走——
+ * seedance 的官方指南通篇中文术语与中文案例，其余情况用英文（兼容面最广）。
+ */
+export const promptLangOf = (doc, production = null, family = 'h3') =>
+  doc?.promptLang ?? production?.promptLang ?? (family === 'seedance' ? 'zh' : 'en');
 
 /** 景别枚举：短语必须出现在这一切自己的 [Shot k] 行里。与 novel-storyboard 同一张表。 */
 export const SHOT_SIZES = {
@@ -87,7 +113,8 @@ export const SHOT_SIZES = {
   'extreme-close': { zh: '大特写', phrase: 'extreme close-up' },
 };
 
-/** 运镜枚举：通用摄影语汇（沿用 H3 官方词表，但这里不是 H3 私有字段）。 */
+/** 运镜枚举：通用摄影语汇（英文词沿用 H3 官方词表，中文词是 seedance 官方术语的词根），
+ *  跨模型通用——不是任何一个模型的私有字段。 */
 export const CAMERA_MOVES = {
   'Static Shot': '固定',
   'Push In': '推',
@@ -338,14 +365,15 @@ export function resolveReferenceImage(kind, name, workDir = '.', { existsImpl = 
 /* 质量门                                                               */
 /* ------------------------------------------------------------------ */
 /*
- * 16 道门，比 novel-storyboard 少 3 道（19 - 5 + 2）：
+ * 17 道门，比 novel-storyboard 少 2 道（19 - 5 + 3）：
  *   去掉 h3-structure / style-phrase / prompt-english / production-style /
  *   frame-aspect——没有关键帧图可对齐，没有分镜图这个产物，画风一致性完全
  *   交给参考图本身，不需要在提示词里重复交代
  *   h3-dialogue → dialogue-verbatim（纯文本子串匹配，不要求 <d> 标签）
  *   h3-lang → prompt-lang（逻辑不变，检查对象从 h3Prompt 换成 prompt）
  *   新增 refimage-coverage（AC3：缺参考图文件时点名缺哪张）、
- *   refimage-labeled（提示词的身份说明句数量与 images 数组长度一致）
+ *   refimage-labeled（提示词的身份说明句数量与 images 数组长度一致）、
+ *   prompt-model-fit（提示词与生产参数挂的视频模型口径相符）
  */
 
 export function gateReport(doc, ctx = {}) {
@@ -358,12 +386,15 @@ export function gateReport(doc, ctx = {}) {
   const bad = {
     coverage: [], segCap: [], segCapModel: [], cutLen: [], fit: [], duration: [], crowd: [],
     id: [], size: [], camera: [], dlgVerbatim: [], lang: [], names: [], refs: [],
-    recipe: [], refCoverage: [], refLabeled: [],
+    recipe: [], refCoverage: [], refLabeled: [], modelFit: [],
   };
   const recipes = ctx.recipes ?? null;
   let recipeRefs = 0;
   const production = ctx.production ?? null;
-  const promptLang = promptLangOf(doc, production);
+  // 骨架是模型无关的，但填法要跟着挂的模型走：默认语言、以及 seedance 的时刻禁令
+  const videoModel = videoModelOf(doc, production);
+  const family = promptFamilyOf(videoModel);
+  const promptLang = promptLangOf(doc, production, family);
   const imageExists = ctx.imageExists ?? (() => false);
   const haveNames = !!(ctx.outline && ctx.art);
   const n = namer(ctx);
@@ -404,6 +435,15 @@ export function gateReport(doc, ctx = {}) {
       const prompt = String(seg?.prompt ?? '');
       const slices = promptCutSlices(prompt, cuts.length, promptLang);
       const tk = CREATION_TOKENS[promptLang] ?? CREATION_TOKENS.en;
+
+      // seedance 的时刻禁令：骨架本来就不写秒数，但从 novel-storyboard 那边
+      // 搬提示词、或者手动加「第 3 秒切到……」都会踩上去
+      if (family === 'seedance') {
+        const stamp = prompt.match(TIMECODE_RE);
+        if (stamp) {
+          bad.modelFit.push(`${sid} 出现时刻「${stamp[0]}」——${videoModel} 对精确时间的支持不稳定，秒数只留在 creation.json 里，不进提示词`);
+        }
+      }
 
       const rest = promptRemainder(prompt);
       if (promptLang === 'en') {
@@ -617,6 +657,15 @@ export function gateReport(doc, ctx = {}) {
   );
   add('refimage-coverage', '段内出现的每个人物/场景/道具都能解出一张存在的设定图文件', bad.refCoverage.length === 0, haveNames ? brief(bad.refCoverage) : SKIP_REFS);
   add('refimage-labeled', '提示词开头的参考图身份说明句数量与 images 数组长度一致', bad.refLabeled.length === 0, bad.refLabeled.join('；'));
+  // 骨架跨模型通用，但填法有一条按模型分流的硬约束——写法见两份规范
+  add(
+    'prompt-model-fit',
+    family === 'seedance'
+      ? `提示词与挂的视频模型口径相符（${videoModel}：全程不出现精确时刻）`
+      : `提示词与挂的视频模型口径相符（${videoModel}）`,
+    bad.modelFit.length === 0,
+    family === 'seedance' ? brief(bad.modelFit) : `模型是 ${videoModel}，通用骨架没有附加约束`,
+  );
 
   return gates;
 }
@@ -784,7 +833,7 @@ export function exportPack(doc, script, { resolveImage = () => ({ name: '', path
   let missingTotal = 0;
   const video = production?.video ?? null;
   const videoLine = video
-    ? `生成参数：${video.model || '（未填模型）'} · aspect_ratio ${video.aspectRatio || '（未填）'} · resolution ${video.resolution || '（未填）'}${video.variant ? ` · variant ${video.variant}` : ''}\n\n`
+    ? `生成参数：${video.model || '（未填模型）'} · aspect_ratio ${video.aspectRatio || '（未填）'} · resolution ${video.resolution || '（未填）'}\n\n`
     : '';
   for (const ep of doc?.episodes ?? []) {
     for (const seg of ep?.segments ?? []) {
@@ -836,6 +885,7 @@ const GATE_LABELS_EN = {
   'camera-phrase': 'Camera move from the shared vocabulary, inside its own [Shot k] line',
   'dialogue-verbatim': 'Claimed dialogue appears verbatim inside prompt',
   'prompt-lang': 'Prompt language matches the promptLang setting',
+  'prompt-model-fit': 'Prompt matches what the mounted video model expects',
   'prompt-no-names': 'Prompt body carries no character names (quoted dialogue is exempt)',
   'refs': 'Scenes / characters / props audited against the script',
   'shot-recipe': 'Referenced recipes exist, their must-phrases are in the matching [Shot k] line, multi-cut recipes run long enough',
@@ -1743,7 +1793,6 @@ async function main(argv) {
     const inputBase = {};
     if (video.aspectRatio) inputBase.aspect_ratio = video.aspectRatio;
     if (video.resolution) inputBase.resolution = video.resolution;
-    if (video.model === 'MiniMax H3' && video.variant) inputBase.metadata = { h3_variant: video.variant };
 
     const durationNotes = [];
     const jobs = segs.map((s) => {

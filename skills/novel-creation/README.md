@@ -8,11 +8,12 @@
 段（segment）＝ 一次视频生成调用，≤ 15 秒（挂了生产参数还要落进对应视频模型的时长区间），不跨场次
  ├─ 分镜（cut）× 2–3 ＝ 段内剪切，每切 2–5 秒（硬门），各自认领剧本节拍
  ├─ 参考图挂载 ＝ 段级直接引用 cast.json / art.json 已经生成落盘的设定图（不出任何新图）
- └─ 通用视频提示词 ＝ 一段一条，逐张交代参考图身份 + [Shot k] 分行，不绑定任何一个模型
+ └─ 通用视频提示词 ＝ 一段一条，逐张交代参考图身份 + [Shot k] 分行；一套骨架跨模型通用，
+                      填法按 production.json 的 video.model 分流
 ```
 
 - **零新增出图调用**——从 `seed` 到 `videos` 提交，本 skill 的任一命令都不调用 `lingying image create`。参考图全部来自 `cast.json` / `art.json` 已落盘的设定图文件
-- **提示词不是 H3 的内化版**——没有关键帧图可对齐，就没有对齐指令、没有切点时刻、没有 `<d>` 标签。写法规范是本 skill 自己的方法论（`references/creation-prompt.md`），跨模型通用：`lingying model get` 现场查证过，`MiniMax H3` 与 `seedance2.5`/`seedance2.0` 都在顶层暴露通用的 `images: string[]` 字段，「参考图 + 提示词 → 视频」是跨模型的能力，不是 H3 独有
+- **提示词不是任何一个模型的内化版**——没有关键帧图可对齐，就没有对齐指令、没有切点时刻、没有 `<d>` 标签。写法规范是本 skill 自己的方法论（`references/creation-prompt.md`），一套骨架跨模型通用：`lingying model get` 现场查证过，`MiniMax H3` 与 `seedance2.5`/`seedance2.0` 都在顶层暴露通用的 `images: string[]` 字段，「参考图 + 提示词 → 视频」是跨模型的能力，不是 H3 独有。**按模型分流的是填法不是骨架**：挂 seedance 系列时默认语言切中文、并且一个精确时刻都不许写（官方口径，有门查），规范见 `references/seedance2-prompt.md`
 - **段级参考图挂载，不复制文件**——`images` 数组直接引用 `../characters/images/…`、`../art/images/…` 的相对路径，这些设定图被跨段共用，复制会在磁盘上重复几十份
 - **出图调用收进代码**——下单走一条 `videos` 命令，提交/轮询/落盘/断点续传全在 `scripts/lib/lingying.mjs` 里（`novel-art`/`novel-characters` 出图那份的移植版），不经过 bash 文档现拼参数
 
@@ -28,9 +29,9 @@
 
 两条产线共享 `production.json` 与 `cast.json`/`art.json`，互不改动对方的代码，按场合二选一，也可以同一集分场次混用。
 
-## 质量门：16 道，全是代码
+## 质量门：17 道，全是代码
 
-比 `novel-storyboard` 的 19 道少 3（去掉 H3 结构对齐、风格短语、分镜图画幅——没有分镜图这个产物），新增 2 道盯参考图：
+比 `novel-storyboard` 的 19 道少 2（去掉风格短语、分镜图画幅——没有分镜图这个产物；结构门保留但换成本 skill 自己的骨架），新增 3 道：2 道盯参考图，1 道盯提示词与模型的口径：
 
 | 门 | 规则 |
 | --- | --- |
@@ -42,13 +43,14 @@
 | 同框上限 | 单个分镜 ≤ 3 人，超了必须带拆解说明 |
 | 段号纪律 | `E01-01` 格式、按顺序连号 |
 | 景别短语 | 必须出现在这一切自己的 `[Shot k]` 行里（不是分开的分镜图提示词——这里没有那个字段） |
-| 运镜词表 | 沿用 H3 官方词表（通用摄影语汇），必须出现在自己的 `[Shot k]` 行里 |
+| 运镜词表 | 通用摄影语汇（英文词沿用 H3 官方词表），必须出现在自己的 `[Shot k]` 行里 |
 | **台词逐字出现在 prompt 里** | 纯文本子串匹配，不要求任何标签——改一个字必被拦 |
 | 提示词语言一致 | 正文语言与 `promptLang` 双向对账 |
 | 提示词不含角色名 | 台词引号内放行；给 `--outline`/`--cast` 才查，不给明说跳过 |
 | 引用对账 | 场次/人物/道具全部对账剧本该场 |
 | **参考图能解出文件** | 段内出现的每个人物/场景/道具都要能从 `outline`/`art` 解出名字、拼出 `../characters\|art/images/<slug>-sheet.png`，文件不存在点名缺哪张 + 期望路径 |
-| **参考图标注数量一致** | 提示词开头的 `Picture k is …` 身份说明句数量必须与 `images` 数组长度一致 |
+| **参考图标注数量一致** | 提示词开头的 `Picture k is …` / `图 k 是…` 身份说明句数量必须与 `images` 数组长度一致 |
+| **提示词与模型口径相符** | 按 `production.json` 的 `video.model` 分流：挂 seedance 系列时提示词里**一个精确时刻都不许有**（官方明说限制精确时间会让生成异常），挂 `MiniMax H3` 时通用骨架没有附加约束，门会明说这一点 |
 | **镜头配方**（可选挂载） | 与 `novel-storyboard` 同一套判定，核对目标换成对应 `[Shot k]` 行 |
 
 自测里每道门都有击穿用例。
@@ -95,7 +97,8 @@ scripts/
   selftest.mjs           自测，不调模型
 references/
   schema.md              creation.json 结构 + 时长约束链
-  creation-prompt.md     视频提示词写法规范（本 skill 自己的方法论，非 H3 内化版）
+  creation-prompt.md     视频提示词写法规范（本 skill 自己的方法论，不是任何一个模型的内化版）
+  seedance2-prompt.md    video.model 是 seedance 系列时的加严填法（火山引擎官方指南内化版）
   shot-pass.md           切镜：分段规则、段级参考图挂载、导演运镜手感、常见病
   video-order.md         下单生视频的行为说明（videos 命令内部做什么）
   report-style.md        报告的设计约定

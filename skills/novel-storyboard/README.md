@@ -8,12 +8,12 @@
 段（segment）＝ 一次视频生成调用，≤ 15 秒，不跨场次
  ├─ 分镜（cut）× 3–5 ＝ 段内剪切，每切 2–5 秒（硬门），各自认领剧本节拍
  ├─ 分镜图 ＝ 每切一张关键帧（<段号>/f1..fN.png）：主图钉 0.00 秒，子图钉各自切点
- └─ H3 提示词 ＝ 一段一条，多图对齐指令 + [Shot k] 切点时刻逐字对账
+ └─ 视频提示词 ＝ 一段一条，骨架按 production.json 的 video.model 分流（H3 / seedance）
 ```
 
 - **两人对话的正反打在一段里一次生成**——全景、A 近景、B 近景各是一个 2–5 秒的分镜，每格构图由自己的分镜图控制，不靠文字赌
 - **对齐指令是推导出来的，不是写出来的** — 多图对齐句式（`Picture 2 aligns with the 3.00-second mark…`）和 `[Shot k] At 00:0X.XXX` 切点时刻全部由分镜秒数推导，validate **逐字对账**：改了秒数忘改提示词，当场拦
-- **提示词按官方口径默认英文、逐镜换行** — 每个镜头独立一行、切点时刻开头；台词/歌词/画面文字按官方规定保留原文（`<d>[Chinese] …</d>` 逐字）。`promptLang: 'zh'` 可切整条中文（对齐指令、字段名、镜头标记都有中文版）。写法规范已内化为 `references/h3-prompt.md`——**本 skill 自包含，不依赖任何外部 skill**
+- **提示词骨架跟着挂载的视频模型走** — `MiniMax H3` 走 I2VA（默认英文、逐镜换行、切点时刻开头，台词逐字进 `<d>[Chinese] …</d>`）；seedance 系列走全模态参考骨架（默认中文、每张分镜图一句身份说明并给全程复用的标签、台词用 `{}` 包、**全程不出现时刻**——官方明说限制精确时间会让生成异常）。`validate` 的对账口径跟着模型换，选错一套当场拦。两套写法规范都已内化为 `references/h3-prompt.md` 与 `references/seedance2-prompt.md`——**本 skill 自包含，不依赖任何外部 skill**
 - **分镜图是资产合成，不是凭空画** — 出图挂场景/角色/道具设定图当参考图，novel-art 和 novel-characters 的图在这一步真正被消费。有 lingying 就真出图（可选）
 
 产出 `storyboard.json` + Markdown + 一个双击就能开的 `storyboard-report.html`：
@@ -34,13 +34,13 @@
 | 同框上限 | 单个分镜 ≤ 3 人，超了必须带拆解说明 |
 | 段号纪律 | `E01-01` 格式、按顺序连号——段号就是素材文件名 |
 | 景别短语 | `close-up` 这类英文短语必须出现在分镜图提示词里 |
-| 运镜词表 | 运镜直接用 H3 官方词表（`Push In` / `Pan Left` / `Tracking Shot`…），且必须出现在**自己的 [Shot k] 段落**里 |
-| **H3 结构** | 首行对齐指令**由分镜结构按语言推导、逐字对账**；三字段按序；每个 `[Shot k]` 的切点时刻等于前面分镜秒数的累计 |
-| **H3 台词逐字** | 认领的每句台词逐字出现在 `<d>` 块里，改一个标点都过不去 |
+| 运镜词表 | 运镜用统一词表（`Push In` / `Pan Left` / `Tracking Shot`…，两套骨架通用），且必须出现在**自己的镜头段落**里 |
+| **提示词结构** | 按 `video.model` 分流对账：H3 查首行对齐指令**由分镜结构推导、逐字对账** + 三字段按序 + 每个 `[Shot k]` 的切点时刻等于前面分镜秒数的累计；seedance 查身份说明逐张齐全 + 逐镜 `[镜头 k]` 齐全 + **全文不出现时刻** |
+| **台词逐字** | 认领的每句台词逐字出现在视频提示词里（H3 要求进 `<d>` 块），改一个标点都过不去 |
 | **提示词语言一致** | 正文语言与 `promptLang` 双向对账：设定中文写成英文、设定英文混进中文，都拦 |
 | **风格短语统一** | `style` 预设（realistic / ghibli，与角色/场景 skill 同名对齐）的英文短语必须出现在每条分镜图提示词里——同剧不许画风漂 |
 | 分镜图提示词卫生 | 全英文非空 |
-| 提示词不含角色名 | 分镜图提示词恒查；H3 提示词仅英文模式查（中文放行，身份靠分镜图锚定）。给 `--outline` / `--cast` 才查，不给**明说跳过** |
+| 提示词不含角色名 | 分镜图提示词恒查；视频提示词仅英文模式查（中文放行，身份靠分镜图锚定）。给 `--outline` / `--cast` 才查，不给**明说跳过** |
 | 引用对账 | 场次/人物/道具全部对账剧本该场 |
 | **画风与生产参数一致** | 工作目录根有 `production.json`（`novel-setup` 的产出）就查：`style` 与它不一致直接拦。找不到那份文件**明说跳过** |
 | **分镜图画幅与生产参数一致** | 每条分镜图提示词里的画幅必须是 `image.frame.aspectRatio`——**成片竖屏而提示词写着 16:9，一集三四十格喂给视频模型全被裁掉两边**。找不到那份文件**明说跳过** |
@@ -76,12 +76,12 @@ node scripts/novel-storyboard.mjs stats
 
 - **KPI 带**：生成段数 / 分镜数与平均秒数 / 总时长 vs 目标 / 生成批次数 / 台词段数
 - **分镜节奏带**（招牌图）：每集一行色带，**粗分隔 = 段边界（一次生成）**，片宽 = 分镜时长占比、颜色深浅 = 景别远近——深浅相间、长短相间就是好节奏；点一片跳到那张段卡
-- **分集分镜表**：每段一张卡——**主分镜图** 16:9（缺图显示提示词占位，**不装有**）、**子分镜条**缩略格、下方**五五分栏**：左列逐切分镜行（起点秒 · 秒数 · 景别 · 运镜 · 配方 · 画面摘要**从剧本认领的节拍自动带出**），右列 H3 提示词面板——逐镜换行直接可读，一键复制
+- **分集分镜表**：每段一张卡——**主分镜图** 16:9（缺图显示提示词占位，**不装有**）、**子分镜条**缩略格、下方**五五分栏**：左列逐切分镜行（起点秒 · 秒数 · 景别 · 运镜 · 配方 · 画面摘要**从剧本认领的节拍自动带出**），右列视频提示词面板——逐镜换行直接可读，一键复制
 - **生成批次单**：同场景 + 同光照的段归一批，共用同一张环境参考图——批次卡嵌场景设定图，列出需要的角色设定图和道具
 - **配音对齐单**：每句台词对到**段号#切序**——TTS 音频贴到哪一段的第几切，全自动
 - **质量门**面板 + 页眉徽章 + **导出 JSON**（下载的就是 `storyboard.json` 原样）
 - 全部图形内联 CSS/SVG，零外部依赖，离线双击能开
-- 报告界面默认中文，`render --lang en` 输出全英文界面（内置 zh / en 两套）——只切界面标签，与 `promptLang`（H3 提示词语言，默认英文）互相独立。英文界面下质量门标签同样翻译（阈值原样），门的失败详情与数据内容保持原文
+- 报告界面默认中文，`render --lang en` 输出全英文界面（内置 zh / en 两套）——只切界面标签，与 `promptLang`（视频提示词语言）互相独立。英文界面下质量门标签同样翻译（阈值原样），门的失败详情与数据内容保持原文
 
 ## 六个 skill 的接力（管线到此闭环）
 
@@ -91,12 +91,12 @@ novel-outline    → outline.json    （什么：结构与分集）
 novel-characters → cast.json       （谁：角色设定图）
 novel-art        → art.json        （哪里：场景/道具设定图）
 novel-script     → script.json     （戏：场次、节拍、台词）
-novel-storyboard → storyboard.json （怎么拍：段、分镜、分镜图、H3 提示词）
+novel-storyboard → storyboard.json （怎么拍：段、分镜、分镜图、视频提示词）
 ```
 
 - `seed <script.json> --eps 1-3` 确定性展开每场的节拍清单（编号、每拍秒数、说话人）当切镜底稿——**每拍几秒是算出来的，不让模型重新估**
 - `validate --script` 是硬前提（分镜离开剧本没有意义）；`--outline` / `--cast` 查提示词人名，`--art` 让报告显示场景名并在批次单嵌设定图
-- 分镜图出图走 lingying，场景/角色/道具设定图先 `upload` 换成 URL 当参考图；H3 提示词 + 整套分镜图再走 `lingying video create` 下单给 MiniMax H3
+- 分镜图出图走 lingying，场景/角色/道具设定图先 `upload` 换成 URL 当参考图；视频提示词 + 整套分镜图再走 `lingying video create` 下单给生产参数里挂的视频模型
 
 ## 命令行直接用
 
@@ -114,7 +114,7 @@ node scripts/novel-storyboard.mjs render sb.json --html --lang en \
 node scripts/novel-storyboard.mjs export sb.json --script script.json   # 投产包
 ```
 
-`export` 的投产结构固定：**每段一个文件夹** `E01-01/`——分镜图 `f1..fN.png` 和 `prompt.md` 同住（头部 Picture ↔ 文件对照表**明确 f1.png 是首帧**、各图钉在第几秒，分隔线以下是 h3Prompt 原样），根部 `manifest.json` 带 Picture 序图清单、切点时刻表、缺图标注。一个段文件夹 = 一次视频生成的全部材料。`manifest.json` 顶层还带着生产参数里的视频模型、`aspect_ratio`、`resolution`、`variant`——下单时不用回头翻配置。
+`export` 的投产结构固定：**每段一个文件夹** `E01-01/`——分镜图 `f1..fN.png` 和 `prompt.md` 同住（头部的图 ↔ 文件对照表**明确 f1.png 是首帧**，H3 还写明各图钉在第几秒、seedance 只给顺序，分隔线以下是 `videoPrompt` 原样），根部 `manifest.json` 带 Picture 序图清单、切点时刻表、缺图标注。一个段文件夹 = 一次视频生成的全部材料。`manifest.json` 顶层还带着生产参数里的视频模型、`aspect_ratio`、`resolution`——下单时不用回头翻配置。
 
 ## 边界
 
@@ -130,10 +130,11 @@ node scripts/novel-storyboard.mjs export sb.json --script script.json   # 投产
 SKILL.md                 给 agent 读的工作流
 scripts/
   novel-storyboard.mjs   seed / validate / checkup / render / export / slug
-  selftest.mjs           297 项断言，不调模型
+  selftest.mjs           348 项断言，不调模型
 references/
   schema.md              storyboard.json 结构 + 时长约束链
-  h3-prompt.md           H3 提示词写法规范（官方方法论内化版）
+  h3-prompt.md           H3 提示词写法规范（官方方法论内化版，video.model 是 MiniMax H3 时读）
+  seedance2-prompt.md    seedance 提示词写法规范（火山引擎官方指南内化版，video.model 是 seedance 系列时读）
   storyboard-pass.md     切镜：分段规则、导演运镜手感、常见病
   frame.md               分镜图出图的 lingying 调用契约
   video-order.md         下单生视频的 lingying 调用契约
@@ -150,6 +151,6 @@ assets/
 node scripts/selftest.mjs
 ```
 
-296 项断言，覆盖节拍展开 / H3 骨架推导 / 统计与批次 / 质量门逐项击穿 / 配方卡库解析与挂载 / 生产参数查找与两道门 / seed / 渲染（含中英界面）/ 导出。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
+348 项断言，覆盖节拍展开 / 两套骨架的推导与分流 / 统计与批次 / 质量门逐项击穿 / 配方卡库解析与挂载 / 生产参数查找与两道门 / seed / 渲染（含中英界面）/ 导出。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
 
 **只在 macOS + Node 24 上实测过。** 代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但**没验过**。

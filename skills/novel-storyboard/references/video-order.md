@@ -25,7 +25,7 @@ LY=$(find_lingying)
 
 ```json
 {
-  "video": { "model": "MiniMax H3", "aspectRatio": "9:16", "resolution": "768p", "variant": "managed" },
+  "video": { "model": "MiniMax H3", "aspectRatio": "9:16", "resolution": "768p" },
   "segments": [ { "segment": "E01-01", "seconds": 15, "cuts": 5, "pictures": ["E01-01/f1.png", "…"] } ]
 }
 ```
@@ -36,11 +36,12 @@ LY=$(find_lingying)
 | --- | --- | --- |
 | `video.model` | `--model` | 取 `lingying model list` 的 ID 列 |
 | `video.aspectRatio` | `aspect_ratio` | 与分镜图比例一致——`novel-setup` 有一道门盯着 |
-| `video.resolution` | `resolution` | `MiniMax H3 · managed` 是 `768p` / `2K`，**不是 720p / 1080p** |
-| `video.variant` | `metadata.h3_variant` | H3 的必填字段；seedance 全系没有这一项 |
+| `video.resolution` | `resolution` | `MiniMax H3` 是 `768p` / `2K`，**不是 720p / 1080p** |
 | `segments[].seconds` | `duration` | 要折成整数秒，见下 |
 | `segments[].pictures` | `images` | **顺序就是 Picture 序**，f1 在第一个 |
-| `prompt.md` 分隔线以下 | `prompt` | H3 提示词原样，一个字不改 |
+| `prompt.md` 分隔线以下 | `prompt` | 视频提示词原样，一个字不改——骨架在切镜那一步就已经按 `video.model` 写对了 |
+
+`input_schema` 里除了这几个通用字段，有的模型还有**自己特有的配置参数**。它不在生产参数里——`novel-setup` 的能力表按那个参数的 default 值抄枚举，所以照表填的档位与比例，不传它也提交得出去。要用非默认的那一档，就自己往 `--input_data` 里补，并跑 `lingying model get <UUID>` 对一眼那一档收哪些档位与比例。
 
 一行拿到拼好的参数（`duration` 除外，它逐段不同）：
 
@@ -86,7 +87,7 @@ URL=$(printf '%s' "$OUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on
 curl -fsSL -o "$SEG/video.mp4" "$URL"
 ```
 
-`--input_data` 长成这样（JSON **一律用工具拼**，H3 提示词里有引号、换行和整段中文台词，手拼必崩）：
+`--input_data` 长成这样（JSON **一律用工具拼**，视频提示词里有引号、换行和整段中文台词，手拼必崩）：
 
 ```json
 {
@@ -94,14 +95,13 @@ curl -fsSL -o "$SEG/video.mp4" "$URL"
   "aspect_ratio": "9:16",
   "resolution": "768p",
   "duration": 15,
-  "images": ["https://…f1", "https://…f2"],
-  "metadata": { "h3_variant": "managed" }
+  "images": ["https://…f1", "https://…f2"]
 }
 ```
 
 ⚠️ **必须读 `data.status`**，不能在整段 JSON 里搜 `success`——响应里 `"message": "success"` 恒为 success。未完成时退出码也仍然是 0。
 
-**一段大约三分钟**（实测 `MiniMax H3 · managed` 5 秒片用了 196 秒），比出图慢一个量级——所以轮询间隔写 10 秒，不是出图那边的 3 秒。产物带音轨，`768p` 档的 16:9 出来是 1344×768。
+**一段大约三分钟**（实测 `MiniMax H3` 5 秒片用了 196 秒），比出图慢一个量级——所以轮询间隔写 10 秒，不是出图那边的 3 秒。产物带音轨，`768p` 档的 16:9 出来是 1344×768。
 
 ## 整集并发提交
 
@@ -120,7 +120,7 @@ storyboard/
 ├── manifest.json
 ├── E01-01/
 │   ├── f1.png … fN.png     ← 分镜图
-│   ├── prompt.md           ← H3 提示词
+│   ├── prompt.md           ← 视频提示词
 │   └── video.mp4           ← 下单产出
 └── E01-02/…
 ```
@@ -130,9 +130,9 @@ mp4 与 png 一样**建议不进版本控制**——它们随时能按 `prompt.m
 ## 失败与重试
 
 - **单段失败不阻断**：跳过这一段，最后汇总说明哪些没出成、错误码是什么
-- `input validation failed` 多半是 `resolution` 或 `aspect_ratio` 不在该模型（该变体）的枚举里，跑 `novel-setup caps --model <名>` 对一眼
+- `input validation failed` 多半是 `resolution` 或 `aspect_ratio` 不在该模型的枚举里，跑 `novel-setup caps --model <名>` 对一眼
 - 上游生成失败（`UPSTREAM_ERROR`）重提交一次通常就好；**同一段连着失败两次就停下来问**，不要烧钱重试
-- 生成结果不满意**不改提示词就重提交没有意义**——H3 的对齐指令把每张图钉在固定时刻，画面不对多半是分镜图不对，回去重出那一格的图
+- 生成结果不满意**不改提示词就重提交没有意义**——两套骨架都把画面交给分镜图控制（H3 用对齐指令钉时刻，seedance 用身份说明锚定标签），画面不对多半是分镜图不对，回去重出那一格的图
 
 ## 边界
 

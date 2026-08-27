@@ -14,7 +14,7 @@
 
 ```json
 {
-  "video": { "model": "MiniMax H3", "aspectRatio": "9:16", "resolution": "768p", "variant": "managed" },
+  "video": { "model": "MiniMax H3", "aspectRatio": "9:16", "resolution": "768p" },
   "segments": [ { "segment": "E01-01", "seconds": 7, "images": [ { "kind": "character", "ref": "C02", "name": "周亦", "path": "../characters/images/周亦-sheet.png", "role": "identity reference" } ] } ]
 }
 ```
@@ -26,10 +26,11 @@
 | `video.model` | `--model` | 取 `lingying model list` 的 ID 列 |
 | `video.aspectRatio` | `aspect_ratio` | 与设定图比例一致——出这些图时 `novel-characters` / `novel-art` 有门盯着 |
 | `video.resolution` | `resolution` | 档位就是 lingying 的枚举值，原样填 |
-| `video.variant` | `metadata.h3_variant` | 只有 `MiniMax H3` 需要，`seedance` 全系没有这一项，`videos` 命令按模型判断要不要带 |
 | `segments[].seconds` | `duration` | 折算成模型收的整数秒且落进区间，见下 |
 | `segments[].images[].path` | `images` 数组 | 相对路径先本地读取、`upload` 换 URL，**顺序就是 Picture 序**，与 `prompt` 里的编号一一对应 |
 | `prompt.md` 分隔线以下 | `prompt` | 视频提示词原样，一个字不改 |
+
+`input_schema` 里除了这几个通用字段，有的模型还有**自己特有的配置参数**。它不在生产参数里——`novel-setup` 的能力表按那个参数的 default 值抄枚举，所以照表填的档位与比例，`videos` 命令不传它也提交得出去。
 
 ## duration 要折算 ⚠️
 
@@ -64,7 +65,7 @@ creation/
 ## 失败与重试
 
 - **单段失败不阻断**：跳过这一段，最后汇总说明哪些没出成、错误码是什么
-- `input validation failed` 多半是 `resolution` 或 `aspect_ratio` 不在该模型（该变体）的枚举里，跑 `novel-setup caps --model <名>` 对一眼
+- `input validation failed` 多半是 `resolution` 或 `aspect_ratio` 不在该模型的枚举里，跑 `novel-setup caps --model <名>` 对一眼
 - 上游生成失败重提交一次通常就好；**同一段连着失败两次就停下来问**，不要烧钱重试
 - 生成结果不满意**不改提示词就重提交没有意义**——回去检查这一段挂的参考图和提示词里的位置状态描述是否清楚，画面不对多半是这两处没锁住
 

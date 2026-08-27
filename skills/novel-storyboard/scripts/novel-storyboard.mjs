@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
  *   分镜图       ＝ 每个分镜一张关键帧：第 1 个分镜的是主分镜图（钉在
  *                  0.00 秒），其余是子分镜图（各钉在自己的切点时刻）
  *
- * 一段的画面由这串分镜图 + 一条 H3 提示词共同控制：多图对齐指令
+ * 一段的画面由这串分镜图 + 一条视频提示词共同控制：多图对齐指令
  * 把每张图钉在对应秒数上，[Shot k] 的切点时刻和分镜秒数逐一对账。
  * 多切一刀的成本几乎为零，所以不心疼分镜数量，只守节奏。
  */
@@ -110,9 +110,30 @@ export const brief = (list, n = 6) =>
 export const styleIdOf = (board, production = null) =>
   board?.style ?? production?.style ?? DEFAULT_STYLE;
 
-/** 提示词语言同理：没写就继承，默认 en（H3 官方口径）。 */
-export const promptLangOf = (board, production = null) =>
-  board?.promptLang ?? production?.promptLang ?? 'en';
+/** 视频模型：storyboard.json 自己不写就继承生产参数，都没有就按默认模型算。 */
+export const DEFAULT_VIDEO_MODEL = 'MiniMax H3';
+export const videoModelOf = (board, production = null) =>
+  board?.video?.model ?? production?.video?.model ?? DEFAULT_VIDEO_MODEL;
+
+/*
+ * 模型族决定用哪套提示词骨架，**两套骨架不通用**：H3 的 I2VA 靠对齐指令与切点
+ * 时刻把每张分镜图钉在秒数上；seedance 官方明说「对精确时间的支持不稳定，强行
+ * 限制时长可能导致生成结果异常」，它的骨架里根本不许出现时刻。所以骨架不是文案
+ * 偏好，是按 production.json 的 video.model 分流的——选错一套，提示词整段作废。
+ */
+export const PROMPT_FAMILIES = ['h3', 'seedance'];
+export function promptFamilyOf(model) {
+  return /seedance/i.test(String(model ?? '')) ? 'seedance' : 'h3';
+}
+/** 模型族的中文名，报告与门 label 里用。 */
+export const FAMILY_LABEL = { h3: 'MiniMax H3', seedance: 'seedance 系列' };
+
+/**
+ * 提示词语言同理：没写就继承生产参数，都没写就跟着骨架的官方口径走——
+ * H3 官方口径是英文，seedance 官方指南通篇中文术语与中文案例，默认中文。
+ */
+export const promptLangOf = (board, production = null, family = 'h3') =>
+  board?.promptLang ?? production?.promptLang ?? (family === 'seedance' ? 'zh' : 'en');
 
 /** 景别枚举：英文短语必须出现在该分镜的分镜图提示词里。 */
 export const SHOT_SIZES = {
@@ -123,7 +144,8 @@ export const SHOT_SIZES = {
   'extreme-close': { zh: '大特写', phrase: 'extreme close-up' },
 };
 
-/** 运镜枚举：直接用 H3 官方词表，原样写进该分镜的 [Shot k] 段落。 */
+/** 运镜枚举：统一词表（英文词沿用 H3 官方词表，中文词是 seedance 官方术语的词根），
+ *  两套骨架通用——原样写进该分镜自己的 [Shot k] / [镜头 k] 段落。 */
 export const CAMERA_MOVES = {
   'Static Shot': '固定',
   'Push In': '推',
@@ -159,11 +181,12 @@ const CJK = /[㐀-鿿぀-ヿ가-힯]/;
 const r1 = (n) => Math.round(n * 10) / 10;
 
 /* ------------------------------------------------------------------ */
-/* H3 提示词的确定性骨架                                                 */
+/* 骨架之一：H3 提示词（video.model 是 MiniMax H3 时用这套）              */
 /* ------------------------------------------------------------------ */
 /*
- * 结构由 H3 官方规范（h3-prompt-writing skill）定死，而且对齐指令和
- * 切点时刻都能从分镜结构推导出来——所以逐字设门，一个字符都不许漂。
+ * 结构由 H3 官方规范定死（方法论已内化成 references/h3-prompt.md，不依赖
+ * 外部 skill），而且对齐指令和切点时刻都能从分镜结构推导出来——所以逐字
+ * 设门，一个字符都不许漂。选了 seedance 系列的模型走下面那套骨架。
  */
 
 export const H3_I2VA_LINE =
@@ -230,14 +253,16 @@ export function h3Remainder(prompt) {
     .replace(/"[^"\n]*"/g, ' ');
 }
 
-/** 把 h3Prompt 的描述正文按 [镜头 k] / [Shot k] 切成每个分镜自己的段落。 */
-export function h3CutSlices(prompt, cutCount, lang = 'en') {
-  const tk = H3_TOKENS[lang] ?? H3_TOKENS.zh;
-  const h3 = String(prompt ?? '');
-  const bodyStart = h3.indexOf(tk.fields[0]);
-  const bodyEnd = h3.indexOf(tk.fields[1]);
+/**
+ * 把描述正文按 [镜头 k] / [Shot k] 切成每个分镜自己的段落。两套骨架
+ * 共用这一段逻辑，差别只在传进来的 token 表——运镜词的落位检查靠它。
+ */
+function sliceByShots(prompt, cutCount, tk) {
+  const text = String(prompt ?? '');
+  const bodyStart = text.indexOf(tk.fields[0]);
+  const bodyEnd = text.indexOf(tk.fields[1]);
   if (bodyStart < 0) return [];
-  const body = h3.slice(bodyStart, bodyEnd < 0 ? undefined : bodyEnd);
+  const body = text.slice(bodyStart, bodyEnd < 0 ? undefined : bodyEnd);
   const slices = [];
   for (let k = 1; k <= cutCount; k++) {
     const a = body.indexOf(tk.shot(k));
@@ -250,6 +275,84 @@ export function h3CutSlices(prompt, cutCount, lang = 'en') {
   }
   return slices;
 }
+
+/** 把 H3 提示词的描述正文按镜头切片。 */
+export function h3CutSlices(prompt, cutCount, lang = 'en') {
+  return sliceByShots(prompt, cutCount, H3_TOKENS[lang] ?? H3_TOKENS.zh);
+}
+
+/* ------------------------------------------------------------------ */
+/* 骨架之二：seedance 提示词（video.model 是 seedance 系列时用这套）       */
+/* ------------------------------------------------------------------ */
+/*
+ * 学自火山引擎官方《Doubao Seedance 2.0 系列提示词指南》，方法论内化成
+ * references/seedance2-prompt.md。与 H3 那套的三处硬差别，都是官方口径：
+ *
+ *  1. **没有对齐指令、没有切点时刻**——官方原话「模型对精确时间（如 0–3 秒）
+ *     的支持不稳定，强行限制时长可能导致生成结果异常」。分镜秒数照旧留在
+ *     storyboard.json 里折 duration、对配音、做剪辑，只是不进提示词。
+ *  2. 参考图靠**身份说明句 + 全程复用的主体标签**锚定，不靠秒数对齐。
+ *  3. 台词用 `{}`，不用 `<d>` 标签；音效 `<>`、音乐 `（）`、字幕 `【】`。
+ *
+ * 字段名与 novel-creation 那条产线的通用骨架刻意取齐（shots: / ambience:），
+ * 两条产线之间搬提示词不用再翻译一遍字段。
+ */
+
+export const SEEDANCE_TOKENS = {
+  zh: {
+    picture: (k) => `图 ${k} 是`,
+    shot: (k) => `[镜头 ${k}]`,
+    fields: ['镜头描述：', '环境声与配乐：'],
+  },
+  en: {
+    picture: (k) => `Picture ${k} is`,
+    shot: (k) => `[Shot ${k}]`,
+    fields: ['shots:', 'ambience:'],
+  },
+};
+
+/**
+ * 时刻标记：seedance 骨架里出现任何一个都是违规——多半是从 H3 那套抄过来
+ * 忘了删。拦 `00:03.000`、`3.00-second`、`3.00 秒处` 三种写法。
+ */
+export const TIMECODE_RE = /\d{1,2}:\d{2}\.\d{3}|\d+\.\d{2}\s*(?:-second|秒处)/;
+
+/** 把 seedance 提示词的镜头描述正文按镜头切片。 */
+export function seedanceCutSlices(prompt, cutCount, lang = 'zh') {
+  return sliceByShots(prompt, cutCount, SEEDANCE_TOKENS[lang] ?? SEEDANCE_TOKENS.zh);
+}
+
+/** 台词之外的部分——seedance 的台词包在 `{}` 里，画面文字仍用引号。 */
+export function seedanceRemainder(prompt) {
+  return String(prompt ?? '')
+    .replace(/\{[^{}\n]*\}/g, ' ')
+    .replace(/"[^"\n]*"/g, ' ');
+}
+
+/* ------------------------------------------------------------------ */
+/* 两套骨架的统一入口                                                    */
+/* ------------------------------------------------------------------ */
+/*
+ * 段里的提示词字段：新名字是 videoPrompt（模型无关）。老项目写的是
+ * h3Prompt，读的时候认，不强迫回头改一遍 storyboard.json。
+ */
+export const videoPromptOf = (seg) => String(seg?.videoPrompt ?? seg?.h3Prompt ?? '');
+
+/** 按模型族取 token 表。 */
+export const tokensOf = (family, lang) =>
+  family === 'seedance'
+    ? SEEDANCE_TOKENS[lang] ?? SEEDANCE_TOKENS.zh
+    : H3_TOKENS[lang] ?? H3_TOKENS.zh;
+
+/** 按模型族切镜头段落。 */
+export const cutSlicesOf = (prompt, cutCount, lang, family) =>
+  family === 'seedance'
+    ? seedanceCutSlices(prompt, cutCount, lang)
+    : h3CutSlices(prompt, cutCount, lang);
+
+/** 按模型族剥掉台词，剩下的部分交给语言门与禁人名门。 */
+export const remainderOf = (prompt, family) =>
+  family === 'seedance' ? seedanceRemainder(prompt) : h3Remainder(prompt);
 
 /* ------------------------------------------------------------------ */
 /* 剧本节拍展开                                                          */
@@ -505,7 +608,7 @@ export function gateReport(board, ctx = {}) {
   const bad = {
     coverage: [], segCap: [], cutLen: [], fit: [], duration: [], crowd: [],
     id: [], size: [], camera: [], english: [], names: [], refs: [],
-    h3s: [], h3d: [], h3e: [], style: [], recipe: [], pstyle: [], aspect: [],
+    struct: [], dlg: [], plang: [], style: [], recipe: [], pstyle: [], aspect: [],
   };
   // 配方卡库是可选挂载：ctx.recipes 为空就整门跳过（不是「没有 cut 带 recipe」就跳过）
   const recipes = ctx.recipes ?? null;
@@ -515,8 +618,12 @@ export function gateReport(board, ctx = {}) {
   const styleId = styleIdOf(board, production);
   const style = STYLE_PRESETS[styleId];
   if (!style) bad.style.push(`style「${styleId}」不在预设里（${Object.keys(STYLE_PRESETS).join(' / ')}）`);
-  // 提示词语言：默认英文——官方规范的口径（台词仍在 <d> 里保留原文）；'zh' 可切整条中文
-  const promptLang = promptLangOf(board, production);
+  // 视频模型决定用哪套提示词骨架：H3 走 I2VA（对齐指令 + 切点时刻），
+  // seedance 走全模态参考骨架（身份说明 + 主体标签，全程不许出现时刻）
+  const videoModel = videoModelOf(board, production);
+  const family = promptFamilyOf(videoModel);
+  // 提示词语言：没写就跟着骨架的官方口径——H3 默认英文，seedance 默认中文
+  const promptLang = promptLangOf(board, production, family);
 
   // 画风漂了 = 角色是吉卜力、场景是实拍，合成没法看，整套设定图白出
   if (production && board?.style && board.style !== production.style) {
@@ -554,37 +661,61 @@ export function gateReport(board, ctx = {}) {
         bad.segCap.push(`${sid} 共 ${total} 秒`);
       }
 
-      const h3 = String(seg?.h3Prompt ?? '');
-      // H3 结构：首行对齐指令逐字对账（由分镜结构按 promptLang 推导），三字段按序，切点时刻逐个对
-      const tk = H3_TOKENS[promptLang] ?? H3_TOKENS.zh;
-      const wantLine = h3AlignmentLine(cuts, promptLang);
-      if (!h3.trimStart().startsWith(wantLine)) {
-        bad.h3s.push(`${sid} 首行对齐指令和分镜结构对不上（promptLang=${promptLang}）`);
-      } else {
-        const idx = tk.fields.map((f) => h3.indexOf(f));
-        if (idx.some((i) => i < 0) || !(idx[0] < idx[1] && idx[1] < idx[2])) {
-          bad.h3s.push(`${sid} 三个核心字段缺失或顺序不对`);
+      const vp = videoPromptOf(seg);
+      const tk = tokensOf(family, promptLang);
+      if (family === 'seedance') {
+        // seedance 结构：两个字段按序 + 每张分镜图一句身份说明 + 逐镜标记齐全。
+        // 没有对齐指令、没有切点时刻——官方明说限制精确时间会让生成结果异常
+        const idx = tk.fields.map((f) => vp.indexOf(f));
+        if (idx.some((i) => i < 0) || !(idx[0] < idx[1])) {
+          bad.struct.push(`${sid} 缺「${tk.fields.join('」「')}」两个字段，或者顺序不对`);
         } else {
-          const starts = cutStarts(cuts);
-          if (h3.indexOf(tk.shot(1), idx[0]) < 0) bad.h3s.push(`${sid} 描述正文缺 ${tk.shot(1)}`);
-          for (let k = 2; k <= cuts.length; k++) {
-            const mark = tk.cutMark(k, h3CutTime(starts[k - 1]));
-            if (h3.indexOf(mark, idx[0]) < 0) bad.h3s.push(`${sid} 缺「${mark}」——切点时刻必须等于前面分镜秒数的累计`);
+          const head = vp.slice(0, idx[0]);
+          for (let k = 1; k <= cuts.length; k++) {
+            if (!head.includes(tk.picture(k))) {
+              bad.struct.push(`${sid} 的身份说明段缺「${tk.picture(k)}…」——每张分镜图都要先交代身份、给一个全程复用的主体标签`);
+            }
+          }
+          const body = vp.slice(idx[0], idx[1]);
+          for (let k = 1; k <= cuts.length; k++) {
+            if (!body.includes(tk.shot(k))) bad.struct.push(`${sid} 镜头描述缺 ${tk.shot(k)}`);
+          }
+        }
+        const stamp = vp.match(TIMECODE_RE);
+        if (stamp) {
+          bad.struct.push(`${sid} 出现时刻「${stamp[0]}」——seedance 对精确时间的支持不稳定，秒数只留在 storyboard.json 里，不进提示词`);
+        }
+      } else {
+        // H3 结构：首行对齐指令逐字对账（由分镜结构按 promptLang 推导），三字段按序，切点时刻逐个对
+        const wantLine = h3AlignmentLine(cuts, promptLang);
+        if (!vp.trimStart().startsWith(wantLine)) {
+          bad.struct.push(`${sid} 首行对齐指令和分镜结构对不上（promptLang=${promptLang}）`);
+        } else {
+          const idx = tk.fields.map((f) => vp.indexOf(f));
+          if (idx.some((i) => i < 0) || !(idx[0] < idx[1] && idx[1] < idx[2])) {
+            bad.struct.push(`${sid} 三个核心字段缺失或顺序不对`);
+          } else {
+            const starts = cutStarts(cuts);
+            if (vp.indexOf(tk.shot(1), idx[0]) < 0) bad.struct.push(`${sid} 描述正文缺 ${tk.shot(1)}`);
+            for (let k = 2; k <= cuts.length; k++) {
+              const mark = tk.cutMark(k, h3CutTime(starts[k - 1]));
+              if (vp.indexOf(mark, idx[0]) < 0) bad.struct.push(`${sid} 缺「${mark}」——切点时刻必须等于前面分镜秒数的累计`);
+            }
           }
         }
       }
-      const rest = h3Remainder(h3);
+      const rest = remainderOf(vp, family);
       if (promptLang === 'en') {
-        if (CJK.test(rest)) bad.h3e.push(`${sid} 的 h3Prompt 设定英文却在 <d> 台词之外混入了中文`);
+        if (CJK.test(rest)) bad.plang.push(`${sid} 的视频提示词设定英文却在台词之外混入了中文`);
         // 英文提示词禁人名（图像/视频模型对英文语境的人名有偏见）；中文提示词人名放行——身份靠分镜图锚定
         for (const name of banned) {
-          if (rest.includes(name)) bad.names.push(`${sid} 的 h3Prompt 在台词之外出现角色名「${name}」`);
+          if (rest.includes(name)) bad.names.push(`${sid} 的视频提示词在台词之外出现角色名「${name}」`);
         }
       } else if (!CJK.test(rest)) {
-        bad.h3e.push(`${sid} 设定中文提示词（promptLang=${promptLang}），正文却写成了英文`);
+        bad.plang.push(`${sid} 设定中文提示词（promptLang=${promptLang}），正文却写成了英文`);
       }
 
-      const slices = h3CutSlices(h3, cuts.length, promptLang);
+      const slices = cutSlicesOf(vp, cuts.length, promptLang, family);
       const scene = sEp ? sEp.scenes[seg?.sceneIndex - 1] : null;
       if (sEp && !scene) bad.refs.push(`${sid} 的 sceneIndex ${seg?.sceneIndex} 在剧本第 ${ep.ep} 集里不存在`);
       if (scene) {
@@ -607,14 +738,14 @@ export function gateReport(board, ctx = {}) {
           bad.size.push(`${cid} 分镜图提示词缺景别短语「${SHOT_SIZES[cut.size].phrase}」`);
         }
         if (!CAMERA_MOVES[cut?.camera]) {
-          bad.camera.push(`${cid} 运镜「${cut?.camera}」不在 H3 词表里`);
+          bad.camera.push(`${cid} 运镜「${cut?.camera}」不在词表里`);
         } else {
           const slice = slices[ci];
           const term = promptLang === 'en' ? String(cut.camera).toLowerCase() : CAMERA_MOVES[cut.camera];
           if (slice == null) {
-            bad.camera.push(`${cid} 在 h3Prompt 里找不到对应的 [Shot ${ci + 1}] 段落`);
+            bad.camera.push(`${cid} 在视频提示词里找不到对应的 ${tk.shot(ci + 1)} 段落`);
           } else if (!(promptLang === 'en' ? slice.toLowerCase() : slice).includes(term)) {
-            bad.camera.push(`${cid} 的 [Shot ${ci + 1}] 段落缺运镜词「${term}」`);
+            bad.camera.push(`${cid} 的 ${tk.shot(ci + 1)} 段落缺运镜词「${term}」`);
           }
         }
         const frame = String(cut?.frame ?? '');
@@ -657,7 +788,7 @@ export function gateReport(board, ctx = {}) {
           }
         }
 
-        // 引用对账 + 台词装得下 + 台词逐字进 <d>
+        // 引用对账 + 台词装得下 + 台词逐字进提示词
         if (scene) {
           const cast = new Set(scene.characters);
           for (const c of cut?.characters ?? []) {
@@ -673,8 +804,15 @@ export function gateReport(board, ctx = {}) {
             for (const b of scene.beats.slice(from - 1, to)) {
               if (b.kind !== 'line') continue;
               dlg += b.seconds;
-              const re = new RegExp(`<d>\\[[^\\]]+\\]\\s*${b.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*</d>`);
-              if (!re.test(h3)) bad.h3d.push(`${sid} 的 h3Prompt 缺台词「${b.text.slice(0, 12)}…」的 <d> 块`);
+              if (family === 'seedance') {
+                // seedance 的台词符号是 {}，但门只认逐字——包不包得住是写法，漂没漂是事故
+                if (!vp.includes(b.text)) {
+                  bad.dlg.push(`${sid} 的视频提示词缺台词「${b.text.slice(0, 12)}…」——逐字照搬，用 {} 包住`);
+                }
+              } else {
+                const re = new RegExp(`<d>\\[[^\\]]+\\]\\s*${b.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*</d>`);
+                if (!re.test(vp)) bad.dlg.push(`${sid} 的视频提示词缺台词「${b.text.slice(0, 12)}…」的 <d> 块`);
+              }
             }
             if (dlg > cut.seconds) bad.fit.push(`${cid} 台词 ${r1(dlg)} 秒装不进 ${cut.seconds} 秒`);
           }
@@ -744,6 +882,8 @@ export function gateReport(board, ctx = {}) {
     }
   }
 
+  // 门 label 里要写镜头标记的样子（[Shot k] / [镜头 k]），循环里的 tk 出了作用域，这里另取一份
+  const tkOut = tokensOf(family, promptLang);
   const SKIP_SCRIPT = '未提供 script.json，本门跳过（视为通过）';
   const SKIP_NAMES = '未提供 outline/cast，本门跳过（视为通过）';
   const SKIP_SHOTS = '未挂载配方卡库（--shots <卡片目录>），本门跳过（视为通过）';
@@ -757,13 +897,35 @@ export function gateReport(board, ctx = {}) {
   add('crowd', `单个分镜同框 ≤ ${params.maxOnScreen} 人，超了必须带拆解说明`, bad.crowd.length === 0, bad.crowd.join('；'));
   add('segment-id', '段号 E01-01 格式、按顺序连号', bad.id.length === 0, bad.id.join('；'));
   add('size-phrase', '景别短语写进分镜图提示词', bad.size.length === 0, bad.size.join('；'));
-  add('camera-phrase', '运镜用 H3 官方词表，且出现在自己的 [Shot k] 段落里', bad.camera.length === 0, bad.camera.join('；'));
-  add('h3-structure', 'H3 首行对齐指令由分镜结构推导逐字对账，切点时刻逐个对', eps.length > 0 && bad.h3s.length === 0, bad.h3s.join('；'));
-  add('h3-dialogue', '认领节拍的台词逐字进 H3 提示词的 <d> 块', bad.h3d.length === 0, script ? bad.h3d.join('；') : SKIP_SCRIPT);
-  add('h3-lang', `H3 提示词语言与设定一致（promptLang=${promptLang}，正文${promptLang === 'en' ? '全英文' : '中文'}、骨架 token 官方英文格式）`, bad.h3e.length === 0, bad.h3e.join('；'));
+  // 这三道门换个模型就整批不过，逐条列会把详情刷成一堵墙——前几条足够定位
+  add('camera-phrase', `运镜用统一词表，且出现在自己的 ${tkOut.shot('k')} 段落里`, bad.camera.length === 0, brief(bad.camera));
+  // 这三道门查的是同一件事——提示词与分镜结构对不对得上——但对账口径按
+  // production.json 的 video.model 分流：两套骨架的合法形态互不相容
+  add(
+    'prompt-structure',
+    family === 'seedance'
+      ? `视频提示词是 seedance 骨架（${videoModel}）：身份说明逐张齐全、镜头描述逐镜齐全、全程不出现时刻`
+      : `视频提示词是 H3 骨架（${videoModel}）：首行对齐指令由分镜结构推导逐字对账，切点时刻逐个对`,
+    eps.length > 0 && bad.struct.length === 0,
+    brief(bad.struct),
+  );
+  add(
+    'dialogue-verbatim',
+    family === 'seedance'
+      ? '认领节拍的台词逐字进视频提示词（seedance 用 {} 包，门只认逐字）'
+      : '认领节拍的台词逐字进视频提示词的 <d> 块',
+    bad.dlg.length === 0,
+    script ? brief(bad.dlg) : SKIP_SCRIPT,
+  );
+  add(
+    'prompt-lang',
+    `视频提示词语言与设定一致（promptLang=${promptLang}，正文${promptLang === 'en' ? '全英文' : '中文'}）`,
+    bad.plang.length === 0,
+    brief(bad.plang),
+  );
   add('style-phrase', `分镜图风格短语统一（${style ? `${styleId}：${style.phrase}` : '预设无效'}）——同剧不许画风漂`, bad.style.length === 0, bad.style.join('；'));
   add('prompt-english', '分镜图提示词全英文且非空', bad.english.length === 0, bad.english.join('；'));
-  add('prompt-no-names', '英文提示词不含角色名（分镜图提示词恒查；中文 H3 提示词放行）', bad.names.length === 0, banned.length ? bad.names.join('；') : SKIP_NAMES);
+  add('prompt-no-names', '英文提示词不含角色名（分镜图提示词恒查；中文视频提示词放行）', bad.names.length === 0, banned.length ? bad.names.join('；') : SKIP_NAMES);
   add('refs', '场次／人物／道具对账剧本', bad.refs.length === 0, script ? bad.refs.join('；') : SKIP_SCRIPT);
   // 生产参数的两道门：找得到 production.json 就自动开，没有开关——
   // 画风与画幅改了都要整批重出图，这正是这份参数存在的理由
@@ -797,6 +959,10 @@ export function gateReport(board, ctx = {}) {
 export function validateStoryboard(board, ctx = {}) {
   const problems = [];
   const p = (msg) => problems.push(msg);
+  // 写法规范按 production.json 的 video.model 分流——两套骨架的写法互不通用，
+  // 指错一份文档，模型照着写出来的整段提示词都得推倒重来
+  const family = promptFamilyOf(videoModelOf(board, ctx.production ?? null));
+  const guide = family === 'seedance' ? 'seedance2-prompt.md' : 'h3-prompt.md';
   if (!board || typeof board !== 'object') return ['storyboard.json 不是对象'];
 
   if (!String(board.source ?? '').trim()) p('缺少 source（剧名）');
@@ -819,7 +985,9 @@ export function validateStoryboard(board, ctx = {}) {
       const sid = seg?.id ?? '?';
       if (typeof seg?.id !== 'string') p(`${label}有段缺 id`);
       if (!Number.isInteger(seg?.sceneIndex) || seg.sceneIndex < 1) p(`${sid} 缺 sceneIndex（剧本里第几场）`);
-      if (typeof seg?.h3Prompt !== 'string') p(`${sid} 缺 h3Prompt（H3 视频提示词，写法见 references/h3-prompt.md）`);
+      if (typeof seg?.videoPrompt !== 'string' && typeof seg?.h3Prompt !== 'string') {
+        p(`${sid} 缺 videoPrompt（视频提示词，写法见 references/${guide}）`);
+      }
       if (!Array.isArray(seg?.cuts) || seg.cuts.length === 0) {
         p(`${sid} 没有分镜`);
         continue;
@@ -873,13 +1041,16 @@ export function seedFromScript(script, epRange = null) {
 }
 
 /* ------------------------------------------------------------------ */
-/* export — H3 投产包                                                   */
+/* export — 视频投产包                                                  */
 /* ------------------------------------------------------------------ */
 /*
  * 固定投产结构：每段一个文件夹——E01-01/f1.png … fN.png + prompt.md
- * （h3Prompt 原样），根部一份 manifest：按 Picture 序列出该段要挂的
- * 分镜图路径、秒数、缺图标注。提示词就躺在图旁边，整个文件夹拖给
- * H3 就是一次生成。纯函数返回文件清单，落盘在 CLI 层——可测性。
+ * （视频提示词原样），根部一份 manifest：按 Picture 序列出该段要挂的
+ * 分镜图路径、秒数、缺图标注。提示词就躺在图旁边，整个文件夹丢给视频
+ * 模型就是一次生成。纯函数返回文件清单，落盘在 CLI 层——可测性。
+ *
+ * prompt.md 的头部按 production.json 的 video.model 分流：H3 要把每张图
+ * 钉在秒数上，seedance 只按顺序给图、不给时刻（官方口径，见两份写法规范）。
  *
  * 有生产参数就把视频模型、aspect_ratio、resolution 写进两处：manifest 顶层
  * 和每段 prompt.md 的头部。下单时参数就在投产包里，不用回头翻配置。
@@ -891,17 +1062,27 @@ export function exportPack(board, script, { imageExists = () => false, dir = '.'
   let missingTotal = 0;
   const video = production?.video ?? null;
   const videoLine = video
-    ? `生成参数：${video.model || '（未填模型）'} · aspect_ratio ${video.aspectRatio || '（未填）'} · resolution ${video.resolution || '（未填）'}${video.variant ? ` · variant ${video.variant}` : ''}\n\n`
+    ? `生成参数：${video.model || '（未填模型）'} · aspect_ratio ${video.aspectRatio || '（未填）'} · resolution ${video.resolution || '（未填）'}\n\n`
     : '';
+  const family = promptFamilyOf(videoModelOf(board, production));
   for (const ep of board?.episodes ?? []) {
     for (const seg of ep?.segments ?? []) {
-      // prompt.md 头部先说清哪个文件是首帧、每张图钉在第几秒——
-      // 分隔线以下是 h3Prompt 原样，整段复制就能用
+      // prompt.md 头部先说清哪个文件是首帧、以及每张图怎么挂——
+      // 分隔线以下是视频提示词原样，整段复制就能用
       const starts = cutStarts(seg.cuts);
       const mapping = (seg.cuts ?? [])
-        .map((_, i) => `- Picture ${i + 1} = f${i + 1}.png${i === 0 ? '（**首帧**，钉 0.00 秒）' : `（钉 ${starts[i].toFixed(2)} 秒）`}`)
+        .map((_, i) => {
+          if (family === 'seedance') {
+            // seedance 不接受时刻：图只按顺序给，越靠前的越需要精准参考（官方口径）
+            return `- 图 ${i + 1} = f${i + 1}.png${i === 0 ? '（**首帧**，按顺序排在最前）' : ''}`;
+          }
+          return `- Picture ${i + 1} = f${i + 1}.png${i === 0 ? '（**首帧**，钉 0.00 秒）' : `（钉 ${starts[i].toFixed(2)} 秒）`}`;
+        })
         .join('\n');
-      const promptMd = `# ${seg.id} · H3 提示词\n\n${videoLine}首帧 = **f1.png**。图片按 Picture 序号挂载：\n\n${mapping}\n\n---\n\n${seg.h3Prompt ?? ''}\n`;
+      const head = family === 'seedance'
+        ? `首帧 = **f1.png**。分镜图按顺序上传，序号与提示词里的「图 k」一一对应：`
+        : `首帧 = **f1.png**。图片按 Picture 序号挂载：`;
+      const promptMd = `# ${seg.id} · 视频提示词（${FAMILY_LABEL[family]}）\n\n${videoLine}${head}\n\n${mapping}\n\n---\n\n${videoPromptOf(seg)}\n`;
       files.push({ path: `${prefix}${seg.id}/prompt.md`, content: promptMd });
       const pictures = (seg.cuts ?? []).map((_, i) => `${prefix}${seg.id}/f${i + 1}.png`);
       const missing = pictures.filter((rel) => !imageExists(rel));
@@ -941,9 +1122,9 @@ export function slug(name) {
 
 /*
  * 界面文案表：内置 zh / en 两套。语言优先级 --lang > JSON 顶层 lang 字段 > 'zh'，
- * 经 ctx.lang 传给渲染器。只管报告界面标签——与 promptLang（H3 提示词语言）
+ * 经 ctx.lang 传给渲染器。只管报告界面标签——与 promptLang（视频提示词语言）
  * 互相独立：界面切英文不改提示词，提示词切中文不改界面。
- * 数据（H3 提示词、画面摘要、台词、质量门 detail）不在此表，原样透传。
+ * 数据（视频提示词、画面摘要、台词、质量门 detail）不在此表，原样透传。
  */
 /* 门标签与「跳过」提示的英文映射：质量门面板是报告的一部分，出英文报告时
  * 这里做展示层翻译——gateReport 的逻辑与中文诊断文案一行不动（CLI 仍是中文）。
@@ -957,10 +1138,10 @@ const GATE_LABELS_EN = {
   'crowd': 'At most {0} characters on screen per cut; more requires a breakdown note',
   'segment-id': 'Segment IDs in E01-01 format, sequential',
   'size-phrase': 'Shot-size phrase present in the frame prompt',
-  'camera-phrase': 'Camera move from the official H3 vocabulary, inside its own [Shot k] passage',
-  'h3-structure': 'H3 alignment line derived from the cut structure, audited verbatim; cut times match',
-  'h3-dialogue': 'Claimed dialogue appears verbatim inside the H3 <d> blocks',
-  'h3-lang': 'Prompt language matches the promptLang setting',
+  'camera-phrase': 'Camera move from the shared vocabulary, inside its own shot passage',
+  'prompt-structure': 'Video prompt matches the skeleton the mounted video model requires',
+  'dialogue-verbatim': 'Claimed dialogue appears verbatim in the video prompt',
+  'prompt-lang': 'Prompt language matches the promptLang setting',
   'style-phrase': 'Frame-prompt style phrase consistent — one drama, one look',
   'prompt-english': 'Frame prompts are English and non-empty',
   'prompt-no-names': 'English prompts carry no character names',
@@ -1024,8 +1205,8 @@ const I18N = {
     subLabel: (i) => `子分镜 ${i}`,
     frameMissing: (i) => `#${i} 未生成`,
     framePrompt: '分镜图提示词',
-    h3Prompt: 'H3 提示词',
-    h3Section: 'H3 视频提示词',
+    videoPrompt: '视频提示词',
+    videoSection: '视频提示词',
     showSegs: '▾ 展开全部段',
     hideSegs: '▴ 收起',
     copy: '复制', copied: '已复制', copyFailed: '复制失败',
@@ -1085,8 +1266,8 @@ const I18N = {
     subLabel: (i) => `sub-frame ${i}`,
     frameMissing: (i) => `#${i} not generated`,
     framePrompt: 'Frame prompt',
-    h3Prompt: 'H3 prompt',
-    h3Section: 'H3 video prompt',
+    videoPrompt: 'Video prompt',
+    videoSection: 'Video prompt',
     showSegs: '▾ Show all segments',
     hideSegs: '▴ Collapse',
     copy: 'Copy', copied: 'Copied', copyFailed: 'Copy failed',
@@ -1206,7 +1387,7 @@ export function renderMarkdown(board, ctx = {}) {
           summary, (cut.characters ?? []).map(n.char).join(t.listSep),
         ]));
       });
-      out.push('', `**${t.h3Section}**`, '', '```text', seg.h3Prompt ?? '', '```', '');
+      out.push('', `**${t.videoSection}**`, '', '```text', videoPromptOf(seg), '```', '');
     }
   }
 
@@ -1352,10 +1533,10 @@ ${cutRows}
     </ol>
     <div class="ppanel">
       <div class="pp-h">
-        <b>${esc(t.h3Prompt)}</b>
-        <button class="copy" data-copy="${esc(seg.h3Prompt ?? '')}">${esc(t.copy)}</button>
+        <b>${esc(t.videoPrompt)}</b>
+        <button class="copy" data-copy="${esc(videoPromptOf(seg))}">${esc(t.copy)}</button>
       </div>
-      <pre class="pp on">${esc(seg.h3Prompt ?? '')}</pre>
+      <pre class="pp on">${esc(videoPromptOf(seg))}</pre>
     </div>
   </div>
   ${seg.note ? `<p class="seg-note">${esc(seg.note)}</p>` : ''}
@@ -1745,7 +1926,7 @@ const USAGE = `novel-storyboard.mjs — novel-storyboard skill 的确定性工�
          [--html|--md] [--outline] [--art]    分镜图从 ./<段号>/f<切序>.png 找
          [--lang zh|en]                       报告界面语言（默认 zh；未指定时读取 JSON 顶层 lang 字段）
          [--shots <卡片目录>]                  报告的「配方」列显示卡名并标注建议景别／运镜的偏离
-  export <sb.json> --script <script.json>     导出 H3 投产包：每段一个文件夹 <段号>/prompt.md
+  export <sb.json> --script <script.json>     导出视频投产包：每段一个文件夹 <段号>/prompt.md
          [--out .]                            （分镜图 f1..fN.png 同住）+ 根部 manifest.json
   stats                                       读当前目录的 .gates.jsonl，汇总哪道门最常响、
                                               哪道门从没响过（validate/checkup 会自动累积）
@@ -1916,7 +2097,7 @@ function main(argv) {
 
   if (cmd === 'export') {
     const [path] = rest;
-    if (!path) throw new Error('用法：export <storyboard.json> --script <script.json> [--out h3]');
+    if (!path) throw new Error('用法：export <storyboard.json> --script <script.json> [--out <目录>]');
     const board = readJson(path);
     const ctx = loadCtx(rest, resolve(path, '..'));
     if (!ctx.script) throw new Error('分镜离开剧本没有意义——必须给 --script <script.json>');
@@ -1933,7 +2114,7 @@ function main(argv) {
     }
     const segN = pack.manifest.length;
     console.log(`✓ ${segN} 段投产包 → ${resolve(dir)}/（每段一个文件夹：分镜图 + prompt.md；根部 manifest.json）`);
-    if (pack.missingTotal) console.log(`⚠️ 缺 ${pack.missingTotal} 张分镜图，已在 manifest 的 missing 里标注——喂 H3 前先补齐`);
+    if (pack.missingTotal) console.log(`⚠️ 缺 ${pack.missingTotal} 张分镜图，已在 manifest 的 missing 里标注——下单前先补齐`);
     return;
   }
 

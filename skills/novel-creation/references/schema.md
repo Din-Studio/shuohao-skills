@@ -10,12 +10,15 @@
 {
   "source": "收书人",
   "promptLang": "en",
+  "video": { "model": "MiniMax H3" },
   "params": { "maxSegmentSeconds": 15, "minCutSeconds": 2, "maxCutSeconds": 5, "maxOnScreen": 3, "tolerance": 0.15 },
   "episodes": [ { "ep": 1, "segments": [ ... ] } ]
 }
 ```
 
-`promptLang` 可省略（**默认 `en`**，与 `novel-storyboard` 的口径一致——不是因为 H3 要求，是因为「参考图 + 提示词」这条能力跨模型通用，英文提示词兼容面最广）。设成 `zh` 可切整条中文，人名放行。**没有 `style` 字段**——画风一致性完全由参考图本身保证（角色/场景/道具设定图早就按各自 skill 的画风出好了），不需要在提示词里重复交代一遍。
+`video.model` 可省略（默认继承 `production.json` 的 `video.model`，两边都没有就按 `MiniMax H3` 算）——本 skill 的骨架跨模型通用，模型只影响两件事：`promptLang` 的默认值，以及挂 seedance 时那条「全程不许出现精确时刻」的官方硬约束（`prompt-model-fit` 门查）。
+
+`promptLang` 也可省略，默认跟着模型走：挂 seedance 系列默认 `zh`（官方指南通篇中文术语与中文案例），其余默认 `en`（「参考图 + 提示词」这条能力跨模型通用，英文提示词兼容面最广）。两种都能手动切到另一种语言，中文模式人名放行。**没有 `style` 字段**——画风一致性完全由参考图本身保证（角色/场景/道具设定图早就按各自 skill 的画风出好了），不需要在提示词里重复交代一遍。
 
 ## segment（段）
 
@@ -25,7 +28,7 @@
 | `sceneIndex` | int | 这一段在剧本该集的第几场（1 起）。段内全部分镜同场 |
 | `cuts` | cut[] | 段内分镜，按时间顺序。段总秒数 = 分镜秒数之和，**不单独存** |
 | `images` | image[] | **参考图挂载清单**，按 Picture 序（提示词里引用的顺序 = 数组顺序）。见下 |
-| `prompt` | string | **一段一条通用视频提示词**，正文语言跟 `promptLang`（默认英文），结构见 `references/creation-prompt.md` |
+| `prompt` | string | **一段一条通用视频提示词**，正文语言跟 `promptLang`，结构见 `references/creation-prompt.md`（挂 seedance 系列时再加一份 `references/seedance2-prompt.md`） |
 | `note` | string | 备注，可选 |
 
 ## image（参考图挂载）
@@ -47,7 +50,7 @@
 | `beats` | [int, int] | 认领该场第几拍到第几拍（含两端）。**每个节拍必须被恰好一个分镜认领**，按顺序、连续 |
 | `seconds` | number | 分镜时长，2–5 秒——短剧的注意力节奏是硬门。认领节拍的台词秒数必须装得下 |
 | `size` | enum | 景别：`extreme-wide` 大远景 / `wide` 全景 / `medium` 中景 / `close` 特写 / `extreme-close` 大特写。对应的英文短语必须出现在这一切自己的 `[Shot k]` 行里 |
-| `camera` | enum | 运镜，**直接用 H3 官方词表**（原样字符串，跟 `novel-storyboard` 同一张表——这是通用摄影语汇，不是 H3 私有字段）：`Static Shot` `Push In` `Pull Out` `Zoom In/Out` `Pan Left/Right` `Truck Left/Right` `Tilt Up/Down` `Pedestal Up/Down` `Arc Shot` `Tracking Shot` `Shake Slightly/Strongly` `POV` `Roll Clockwise/Counterclockwise`。运镜词同样必须出现在这一切自己的 `[Shot k]` 行里 |
+| `camera` | enum | 运镜，统一词表（原样字符串，英文词沿用 H3 官方词表，跟 `novel-storyboard` 同一张表——这是通用摄影语汇，不是任何一个模型的私有字段）：`Static Shot` `Push In` `Pull Out` `Zoom In/Out` `Pan Left/Right` `Truck Left/Right` `Tilt Up/Down` `Pedestal Up/Down` `Arc Shot` `Tracking Shot` `Shake Slightly/Strongly` `POV` `Roll Clockwise/Counterclockwise`。运镜词同样必须出现在这一切自己的 `[Shot k]` 行里 |
 | `characters` | string[] | 画内人物（C 编号），必须 ⊆ 剧本该场人物；空镜给空数组。> `maxOnScreen` 时必须带 `note` |
 | `props` | string[] | 画内道具（P 编号），必须 ⊆ 剧本该场道具。可省略 |
 | `recipe` | string | 镜头配方卡 id，可选。挂了 `--shots <卡片目录>` 才查（`shot-recipe` 门）。**cut 级不是 segment 级**；**多格配方靠连续同 id 的分镜表达**，不是数组 |

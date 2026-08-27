@@ -4,12 +4,13 @@ version: 1.0.0
 description: |
   给 AI 短剧参考图直出视频：段（一次视频生成，≤15 秒）→ 分镜（段内 2–5 秒的剪切，认领剧本节拍）——
   比 novel-storyboard 少一层：**没有分镜图**，段直接挂载 novel-characters / novel-art 已经生成
-  落盘的角色/场景/道具设定图当参考图，写一条通用视频提示词（不是 H3 私有结构，跨模型通用，
-  写法内化为 references/creation-prompt.md）。从 seed 到下单，不产生任何新的图像生成调用。
+  落盘的角色/场景/道具设定图当参考图，写一条通用视频提示词（不是任何一个模型的私有结构，
+  一套骨架跨模型通用，填法按 production.json 的 video.model 分流；写法内化为
+  references/creation-prompt.md，挂 seedance 系列时再加一份 references/seedance2-prompt.md）。从 seed 到下单，不产生任何新的图像生成调用。
   产出 creation.json + Markdown + 单页评审报告（分镜节奏带 / 分集分镜表 / 参考图挂载单 /
   配音对齐单，含导出 JSON）。
-  16 道质量门全部由脚本确定性检查（其中 1 道读工作目录根的 production.json：段秒数落进对应
-  视频模型的时长区间，没有就明说跳过；第 16 道 shot-recipe 可选：挂上 shot-recipes 卡库才查，
+  17 道质量门全部由脚本确定性检查（其中 2 道读工作目录根的 production.json：段秒数落进对应
+  视频模型的时长区间、提示词与挂的模型口径相符，没有就明说跳过；shot-recipe 可选：挂上 shot-recipes 卡库才查，
   不挂就明说跳过）；export 一键导出投产包（每段提示词 + 挂载的参考图清单），再走 lingying 下单
   生视频（可选）。零依赖、零 npm。
   要精确控镜、愿意多出一层分镜图用 novel-storyboard；要快、直接吃现成设定图用这个。
@@ -46,7 +47,7 @@ metadata:
 | --- | --- | --- |
 | 分镜图这一层 | 有——每切一张关键帧，多图对齐、精确钉秒数 | **没有**——段直接挂载既有设定图 |
 | 出图调用 | 分镜图要真出图（可选） | **零新增出图调用**，从 seed 到下单不生成任何新图像 |
-| 提示词结构 | MiniMax H3 的 I2VA 结构（`<d>` 标签、对齐指令） | 本 skill 自己的通用结构，跨模型通用，不绑定任何一个模型 |
+| 提示词结构 | 骨架按 `video.model` 分流：H3 走 I2VA，seedance 走全模态参考，两套不通用 | 本 skill 自己的通用结构，一套骨架跨模型通用，只有填法按模型加严 |
 | 适合场合 | 要精确控镜、愿意多出一层分镜图、追求正式产出 | 要快、要省，直接拿现成设定图配提示词下单 |
 | 产物落点 | `<工作目录>/storyboard/` | `<工作目录>/creation/`，与 `storyboard/` 平级 |
 
@@ -76,7 +77,7 @@ metadata:
 **script.json 是硬前提**——段离开剧本没有意义，validate/render/export 都必须给 `--script`。其余上游按有则用：
 
 - `--outline` / `--art`：解析参考图路径的名字来源（角色走 outline 的 id→name，场景/道具走 art 的 id→name），开 `refimage-coverage` 门；`--cast`：提示词禁人名检查再加一份别名
-- `--shots <卡片目录>`：**可选**挂载 shot-recipes 的镜头配方卡库（指向 `shot-recipes/references/cards`，只接受目录不接受导出的 JSON），开第 16 道 `shot-recipe` 门。没装 shot-recipes 就别给——本 skill 自包含，不依赖它
+- `--shots <卡片目录>`：**可选**挂载 shot-recipes 的镜头配方卡库（指向 `shot-recipes/references/cards`，只接受目录不接受导出的 JSON），开可选的 `shot-recipe` 门。没装 shot-recipes 就别给——本 skill 自包含，不依赖它
 
 **产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/creation/`——`<剧名>-creation.json`、`<剧名>-creation.md`、`creation-report.html`、`manifest.json`、每段一个的 `E01-0x/` 投产包都在这一格里。工作目录根只住 `production.json`，`characters/`、`art/` 各占自己的一格——**它们的设定图会被本 skill 直接引用，不会被复制进 `creation/`**。用户没指定工作目录就用剧本同级目录，**但段目录这一层不省**。下文的 `<段目录>` 就指 `<工作目录>/creation/`。
 
@@ -106,7 +107,18 @@ node {baseDir}/scripts/novel-creation.mjs seed <script.json> --eps 1-3 > <段目
 
 流程：**先按剧情单元分段**（每段总时长不超过上限、不跨场），**段内切 2–5 秒的分镜**（对话正反打、关键动作插入特写、进场三件套——切镜语法都在 `shot-pass.md`），**段级挂载参考图**（这一段实际入镜的人物/场景/道具设定图，顺序就是提示词的 Picture 序）。
 
-**每段写一条 `prompt`**，照 `{baseDir}/references/creation-prompt.md` 写（本 skill 自己的方法论，**不是 H3 的内化版，不依赖任何外部 skill**）。要点：开头逐张交代参考图身份（`Picture k is …`，k 对应 `images` 数组序号）；`[Shot k]` 行首固定给景别短语 + 运镜短语（沿用 H3 官方运镜词表，作为通用摄影语汇）；认领台词打引号原文引用，一个字不许漂；结尾 1–2 句交代环境声/配乐。**没有对齐指令、没有切点时刻、没有 `<d>` 标签**——这些是给「有精确关键帧钉时间点」的场合用的，本 skill 没有这个前提。
+**每段写一条 `prompt`**，照 `{baseDir}/references/creation-prompt.md` 写（本 skill 自己的方法论，**不是任何一个模型的内化版，不依赖任何外部 skill**）。要点：开头逐张交代参考图身份（英文 `Picture k is …` / 中文 `图 k 是…`，k 对应 `images` 数组序号）；`[Shot k]` 行首固定给景别短语 + 运镜短语（通用摄影语汇）；认领台词打引号原文引用，一个字不许漂；结尾 1–2 句交代环境声/配乐。**没有对齐指令、没有切点时刻、没有 `<d>` 标签**——这些是给「有精确关键帧钉时间点」的场合用的，本 skill 没有这个前提。
+
+**填法要看 `production.json` 的 `video.model`。** 骨架跨模型通用（这是本 skill 与 `novel-storyboard` 的分工），但按哪份规范去填是分流的：
+
+| `video.model` | 读哪份写法规范 | 填法要点 |
+| --- | --- | --- |
+| `MiniMax H3`（两边都没写模型时的默认） | 只读 `creation-prompt.md` | 默认英文，通用骨架照写，没有附加约束 |
+| `seedance2.5` / `seedance2.0` / `seedance2.0 fast` / `seedance2.0 mini` | 再加一份 `{baseDir}/references/seedance2-prompt.md` | 骨架一个字不改，填法按官方口径加严——整条切中文（`promptLang` 默认就是 `zh`）、身份说明句带上全程复用的主体标签、台词用 `{}` 包、收尾段补画质与约束词、**全程不许出现精确时刻**（`prompt-model-fit` 门查这一条） |
+
+seedance 那份还写清了一件必须提前知道的事：**`novel-characters` 落盘的角色设定图是三视图版面，而官方点名多视图素材会加剧人物 ID 漂移与「双胞胎」**——对策与下单时怎么绕开都在里面。
+
+模型也可以写在 `creation.json` 顶层的 `video.model` 里覆盖生产参数。
 
 切完把 `seedScenes` 删掉。
 
@@ -119,11 +131,11 @@ node {baseDir}/scripts/novel-creation.mjs validate <creation.json> \
   [--shots </path/to/cards>]
 ```
 
-16 道质量门全是代码：节拍全覆盖（分镜级，恰好一次、按顺序、连续）、段 0 < 总秒 ≤ 上限（挂了生产参数还要落进对应视频模型的时长区间）、**每切 2–5 秒**、台词装得进分镜、每集总时长在剧本目标 ±15% 内、同框 ≤ 3 人（超了必须带拆解说明）、段号 E01-01 格式连号、景别短语在这一切自己的 [Shot k] 行里、运镜用通用词表且在自己的 [Shot k] 行里、**认领台词逐字出现在 prompt 里**（纯文本匹配，不要求标签）、**提示词语言与设定一致**、提示词正文不含角色名（台词引号内放行）、场次/人物/道具对账剧本、**段内出现的每个人物/场景/道具都能解出一张存在的设定图文件**（缺了点名缺哪张 + 期望路径）、**提示词的身份说明句数量与 `images` 数组长度一致**、镜头配方对账（可选门，见下）。
+17 道质量门全是代码：节拍全覆盖（分镜级，恰好一次、按顺序、连续）、段 0 < 总秒 ≤ 上限（挂了生产参数还要落进对应视频模型的时长区间）、**每切 2–5 秒**、台词装得进分镜、每集总时长在剧本目标 ±15% 内、同框 ≤ 3 人（超了必须带拆解说明）、段号 E01-01 格式连号、景别短语在这一切自己的 [Shot k] 行里、运镜用通用词表且在自己的 [Shot k] 行里、**认领台词逐字出现在 prompt 里**（纯文本匹配，不要求标签）、**提示词语言与设定一致**、提示词正文不含角色名（台词引号内放行）、场次/人物/道具对账剧本、**段内出现的每个人物/场景/道具都能解出一张存在的设定图文件**（缺了点名缺哪张 + 期望路径）、**提示词的身份说明句数量与 `images` 数组长度一致**、**提示词与挂的视频模型口径相符**（挂 seedance 时全程不许出现精确时刻——官方明说限制精确时间会让生成异常；挂 H3 时通用骨架没有附加约束，门会明说这一点）、镜头配方对账（可选门，见下）。
 
 **有违规逐条修，改完重跑，直到通过。**
 
-**第 16 道 `shot-recipe`（可选挂载）**：给了 `--shots` 才查，不给就明说跳过。与 `novel-storyboard` 同一套判定，只是核对目标从「分镜图提示词」换成「这一切自己的 [Shot k] 行」。
+**`shot-recipe`（可选挂载）**：给了 `--shots` 才查，不给就明说跳过。与 `novel-storyboard` 同一套判定，只是核对目标从「分镜图提示词」换成「这一切自己的 [Shot k] 行」。
 
 ### Step 4 — 输出与汇报
 
@@ -147,7 +159,7 @@ node {baseDir}/scripts/novel-creation.mjs export <剧名>-creation.json \
   --script <script.json> --outline <outline.json> --art <art.json> --out .
 ```
 
-`export` 会把生产参数里的视频模型、`aspect_ratio`、`resolution`、`variant` 写进 `manifest.json` 的顶层 `video` 字段；每段 `prompt.md` 头部列出挂载的参考图（身份 + 相对路径），分隔线以下是 `prompt` 原文。**不复制参考图文件**——它们被跨段共用，复制会在磁盘上重复几十份，`manifest.json` 只记相对路径，下单时直接读源文件上传。缺参考图会在 `missingTotal` 与每段的 `missing` 里标注。
+`export` 会把生产参数里的视频模型、`aspect_ratio`、`resolution` 写进 `manifest.json` 的顶层 `video` 字段；每段 `prompt.md` 头部列出挂载的参考图（身份 + 相对路径），分隔线以下是 `prompt` 原文。**不复制参考图文件**——它们被跨段共用，复制会在磁盘上重复几十份，`manifest.json` 只记相对路径，下单时直接读源文件上传。缺参考图会在 `missingTotal` 与每段的 `missing` 里标注。
 
 最终落地：
 
@@ -205,7 +217,7 @@ novel-script     → script.json     （戏：场次、节拍、台词）
 node {baseDir}/scripts/selftest.mjs
 ```
 
-不调模型、不花额度。16 道质量门每一道都有击穿用例，`lib/lingying.mjs` 的下单编排用注入的假 CLI 与假时钟跑完全部路径。改完脚本先跑这个。
+不调模型、不花额度。17 道质量门每一道都有击穿用例，`lib/lingying.mjs` 的下单编排用注入的假 CLI 与假时钟跑完全部路径。改完脚本先跑这个。
 
 ## 自带样例
 
