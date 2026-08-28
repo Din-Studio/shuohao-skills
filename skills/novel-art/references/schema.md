@@ -5,7 +5,6 @@
 ```json
 {
   "source": "渡口",
-  "style": "realistic",
   "scenes": [{
     "id": "S01", "name": "渡船船舱", "primary": true,
     "summary": "设计意图：这个空间讲什么故事……",
@@ -32,9 +31,10 @@
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
 | `source` | 是 | 剧名/书名 |
-| `style` | 是 | `realistic` / `ghibli`，与 novel-characters 的画风同名对齐（内容是环境版，不带皮肤毛孔那套） |
 | `scenes` | 是 | 场景数组 |
 | `props` | 否 | **叙事道具**数组——只收有特写、跨集、承载剧情的（3–8 件为宜），场景陈设归场景锚点。选法见 `prop-pass.md` |
+
+**顶层没有 `style` 字段。**画风住在工作目录根的 `production.json`，`art.json` 里再抄一份就是第二个来源，两个来源必然会漂。跑 `node scripts/novel-art.mjs style` 取这部剧的 `style.scene` 那一块。老产物里还留着这个字段的，`validate` 会点名让删掉。
 
 ## 单个场景（以校验器为准）
 
@@ -79,7 +79,7 @@
 4. 出图提示词（主图/反向/设定图/光照）全部英文
 5. 提示词不含角色名（`validate --cast cast.json` 才查，不给就明说跳过）
 6. 变体引用完整：`variantOf` 指向存在的场景且带 `changes`
-7. 风格与反向词匹配：`realistic` 不禁 photorealistic、`ghibli` 必须禁；`sheet` 必须含渲染句
+7. 画风整块用上：`production.json` 的 `style.scene` 里，`render` 那句原样进 `sheet` 与 `prompt`，`negative` 的每一条进 `negativePrompt`（**场景查全，道具不查**——道具是纯白背景，画风里「环境别太干净」那几条和白底自相矛盾）
 
 道具专属四道：
 

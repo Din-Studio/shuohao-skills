@@ -1,14 +1,16 @@
 ---
 name: novel-characters
-version: 1.16.0
+version: 1.18.0
 description: |
   从小说或短故事里拆出角色表、人物画像、形象提示词、音色提示词，
   并给每个角色出角色设定图（左半身像 + 右全身三视图 + 细节条），产出 JSON + Markdown + 可交互的 report.html。
   报告语言可指定（--lang），默认中文，任意语言都支持；
-  出图风格可指定（--style），默认真人实拍，也可以出吉卜力动画风。
+  画风**不内置任何类型**——它由用户在 novel-setup 那一段填进 production.json 顶层的 style.character，
+  本 skill 整块抄过来用（真人实拍、吉卜力、水墨、黏土定格都行，不用改代码）。
   零依赖、零 npm；出图是一条命令（可选，走 lingying 灵影网关，要它的 api_key）——
   提交、轮询、落盘、断点续传全在脚本里，不靠模型现拼 bash。
-  跑过 novel-setup 的项目会自动读工作目录根的 production.json：画风与设定图画幅两条硬检查，出图模型与尺寸也从那里取。
+  跑过 novel-setup 的项目会自动读工作目录根的 production.json：画风与设定图画幅两条硬检查，出图模型与尺寸也从那里取；
+  顶层 autopilot 为 true 时全程不打断——报告语言、选角人数、归并复核全自己定，做过的决定写进汇报。
   Use when asked to 拆小说角色、分析人物、生成角色卡、character sheets from a novel。
 # 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
 allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
@@ -46,13 +48,13 @@ metadata:
 
 ### Step 0 — 读生产参数（有就必须遵循）
 
-`production.json`（`novel-setup` 的产出）住在工作目录根。**不用挂载，脚本自己找**：`validate` / `render` 会从 cast.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「2 条检查跳过」——不静默。
+`production.json`（`novel-setup` 的产出）住在工作目录根。**不用挂载，脚本自己找**：`validate` / `images` 会从 cast.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「2 条检查跳过」——不静默。
 
 找到了这三样以它为准：
 
 | 字段 | 管什么 |
 | --- | --- |
-| `style` | 画风。cast.json 的 style 与它不一致直接报错——画风漂了，角色和场景合成时不像同一部片 |
+| `style.character` | **画风正文本身**。角色卡没把它整块用上直接报错——画风漂了，角色和场景合成时不像同一部片 |
 | `image.asset.aspectRatio` | 设定图版面画幅，必须出现在每个角色的 `image.sheet` 里 |
 | `image.model` + `image.asset.resolution` | 第 8 步出图用的模型与分辨率档位（档位就是 lingying 收的 `resolution` 枚举值，原样填） |
 
@@ -79,19 +81,36 @@ metadata:
 
 支持的语言不受内置表限制，法语韩语西班牙语都能出完整报告。
 
-### Step 0.5 — 确定画风
+### Step 0.5 — 取画风 ⛔ 不要自己编
 
-**有 `production.json` 就以它的 `style` 为准，这一步只是确认。**没有才问用户：**默认 `realistic`**（真人实拍），想要动画质感就用 `ghibli`（吉卜力式手绘赛璐璐）。
+**本 skill 不内置任何画风，也不问用户画风。**画风是 `novel-setup` 那一段定的，住在工作目录根的 `production.json` 顶层。这一步只是把它取出来：
 
 ```bash
-node {baseDir}/scripts/novel-characters.mjs styles   # 打印预设的完整内容
+node {baseDir}/scripts/novel-characters.mjs style
 ```
 
-读 `{baseDir}/references/style-presets.md`。**换风格是整套换**——每个预设自带 render / surface / lighting / negative / tags 五块，整块取用，不要混搭。
+打印这部剧的 `style.character` 那一块：`render` / `surface` / `lighting` / `negative` / `tags` 五段英文正文。**它们要原样抄进角色卡**——`render` 进 `image.sheet` 与 `image.prompt`，`negative` 的每一条进 `image.negativePrompt`。
 
-最容易搞反的是反向提示词：`realistic` 绝不能禁 `photorealistic`，`ghibli` 必须禁。`validate` 会拦这个。
+命令找不到 `production.json`、或那一块没填，会直接报错。**那时回 `/novel-setup` 定画风，不要自己编一档顶上去**——编出来的那一档只活在这一段，场景与分镜是另一档，合成时对不上。
 
-版面规则（三区、比例、细节让位）**不随风格变**，变的只有渲染质感。画幅由生产参数定，默认 16:9——**成片拍竖屏也不改**，三区版面靠横向铺开，竖过来三视图会被压扁。
+**换风格是整套换**：五块整块取用，不要混搭。详见 `{baseDir}/references/style.md`。
+
+版面规则（三区、比例、细节让位）**不随画风变**，变的只有渲染质感。画幅由生产参数定，默认 16:9——**成片拍竖屏也不改**，三区版面靠横向铺开，竖过来三视图会被压扁。
+
+### Step 0.8 — 自动驾驶（autopilot）
+
+Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` 与 `images` 找到生产参数也会打印一句 `↳ 自动驾驶：开`（`render` 只做语言继承，不打印）——但 Step 0.1 跑在第一条命令之前，所以开工前要自己看一眼。
+
+没有 `production.json`、字段写着 `false` 或者整个没写，就是各步原来的样子。
+
+| 原本 | 自动驾驶下 |
+| --- | --- |
+| Step 0.1 问报告语言 | 按继承取（`--lang` > cast.json 顶层 > `production.json` > 中文），不问；非内置语言的 `ui` 骨架自己翻 |
+| Step 4 `mergeCandidates` 逐条复核 | **自己判**：证据够才合，拿不准就**不合并**——合错了两个人并成一个，比没合更难修。逐条判定结果写进汇报 |
+| Step 5 选角取前 N 位 | 用户没说就取默认 30，不问 |
+| Step 8 出图 | 选中的角色一次出全；拿到图自己扫两眼（左右两栏是不是同一个人、三个全身像是不是等高），不对就 `--force` 重出一次，还不对记进汇报接着往下 |
+
+**转移的是审批权，不是取消检查点**：Step 7 的校验照样要过、出图前照样打印要出多少张、拿到图照样要核对——只是不再等人点头。**替用户做的每一个决定都要写进 Step 10 的汇报**，归并判定与选角人数一条不漏。
 
 ### Step 1 — 定位输入
 
@@ -197,7 +216,7 @@ node {baseDir}/scripts/novel-characters.mjs merge <workdir> --apply merges.json 
 
 ```bash
 node {baseDir}/scripts/novel-characters.mjs assemble <workdir> \
-  --source <书名> --lang <lang> --style <style> \
+  --source <书名> --lang <lang> \
   --out <段目录>/<书名>-cast.json
 ```
 
@@ -211,7 +230,7 @@ node {baseDir}/scripts/novel-characters.mjs assemble <workdir> \
 node {baseDir}/scripts/novel-characters.mjs validate <cast.json> <book.txt>
 ```
 
-记得带上 `--lang`（Step 0.1 定的）。检查：结构、`importance` 枚举、**引文逐字**、**出图提示词不含人名**、**语言分工**（人类字段跟随 `lang`、出图/TTS 提示词永远英文）、**非内置语言必须带 `ui`**，以及生产参数的两条——**画风与 production.json 一致**、**设定图版面画幅与 production.json 一致**（找不到那份文件就明说跳过）。
+记得带上 `--lang`（Step 0.1 定的）。检查：结构、`importance` 枚举、**引文逐字**、**出图提示词不含人名**、**语言分工**（人类字段跟随 `lang`、出图/TTS 提示词永远英文）、**非内置语言必须带 `ui`**，以及生产参数的两条——**画风整块用上**（`render` 原句进了两条提示词、`negative` 一条不落地进了反向词）、**设定图版面画幅与 production.json 一致**（找不到那份文件就明说跳过）。
 
 **有违规就按报错逐条修，改完重跑，直到通过。** 这四类错模型真的会犯——这套检查就是被真实输出打出来的。
 
@@ -296,7 +315,7 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-435 项断言，不调模型、不花额度，覆盖分块 / 归并 / 合成 / 多语言 / 校验 / 生产参数 / 渲染的全部确定性逻辑；出图编排用注入的假 CLI 与假时钟跑完全部路径（提交、轮询、超时、续传、风格参考波次、抠图、凭证前置检查），**不 spawn 进程、不发一个请求**。改完脚本先跑这个。
+439 项断言，不调模型、不花额度，覆盖分块 / 归并 / 合成 / 多语言 / 校验 / 生产参数 / 渲染的全部确定性逻辑；出图编排用注入的假 CLI 与假时钟跑完全部路径（提交、轮询、超时、续传、风格参考波次、抠图、凭证前置检查），**不 spawn 进程、不发一个请求**。改完脚本先跑这个。
 
 ## 自带样例
 

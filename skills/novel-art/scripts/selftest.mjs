@@ -10,14 +10,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   ANCHOR_RANGE,
-  DEFAULT_STYLE,
-  SCENE_STYLE_PRESETS,
-  SUPPORTED_STYLES,
   castNamesOf,
   gateReport,
+  negativeTerms,
   renderHtml,
   renderMarkdown,
-  scenePreset,
   seedFromOutline,
   slug,
   PROP_SCALES,
@@ -29,9 +26,14 @@ import {
   findProduction,
   langOf,
   SKIP_PROD,
+  SKIP_STYLE,
   STAGE_DIR,
   stageDirNote,
+  styleBlockOf,
+  styleLabelOf,
   imageJobsFrom,
+  AUTOPILOT_NOTE,
+  autopilotOf,
 } from './novel-art.mjs';
 import {
   BACKOFF_MS,
@@ -69,16 +71,33 @@ function eq(actual, expected, msg) {
 const clone = () => JSON.parse(JSON.stringify(FIXTURE));
 const gate = (d, id, names = null) => gateReport(d, names).find((g) => g.id === id);
 
-/* ---------------- 画风预设 ---------------- */
+/* ---------------- 画风：没有内置预设，只有从生产参数里读 ---------------- */
+/*
+ * 样例《渡口》是真人实拍，下面这一块就是用户在 novel-setup 那一段填的东西。
+ * 它写在本 skill 自己的夹具里——本 skill 不 import 任何兄弟 skill 的代码。
+ */
 
-eq(DEFAULT_STYLE, 'realistic', '默认真人实拍');
-eq(SUPPORTED_STYLES.join(','), 'realistic,ghibli', '两档画风与 novel-characters 同名对齐');
-ok(!/photorealistic/.test(SCENE_STYLE_PRESETS.realistic.negative), 'realistic 不禁 photorealistic');
-ok(/photorealistic/.test(SCENE_STYLE_PRESETS.ghibli.negative), 'ghibli 必须禁 photorealistic');
-ok(/people/.test(SCENE_STYLE_PRESETS.realistic.negative), 'realistic 预设自带禁人');
-ok(/people/.test(SCENE_STYLE_PRESETS.ghibli.negative), 'ghibli 预设自带禁人');
-ok(!/pore|skin|subsurface/i.test(SCENE_STYLE_PRESETS.realistic.surface), '环境预设不带皮肤毛孔那套——那是角色的');
-eq(scenePreset('nope'), SCENE_STYLE_PRESETS.realistic, '未知风格退回默认');
+const SCENE_STYLE = {
+  render:
+    'Photorealistic live-action film environment, cinematic production design reference, real location realism with natural light and authentic materials, grounded architectural perspective, cinematic depth',
+  surface:
+    'Weathered, lived-in materials rendered with photorealistic fidelity: chipped paint, water stains, patina on metal, worn wood grain, dust in corners and light shafts; fabric and paper props show creases and age; nothing looks factory-new. Atmospheric depth with haze or volumetric light where the space allows',
+  negative:
+    'people, human figures, characters, crowds, silhouettes of people, plastic CG look, oversaturated colours, sterile showroom cleanliness, warped perspective, melted geometry, floating objects, text, watermark, signature',
+  tags: ['photorealistic', 'live-action film environment', 'cinematic production design', 'weathered materials', 'cinematic'],
+};
+const STYLE = { label: { zh: '真人实拍', en: 'Photorealistic live-action' }, phrase: 'cinematic film still', scene: SCENE_STYLE };
+
+eq(styleBlockOf(null), null, '没有生产参数就没有画风——不退回任何一档内置默认');
+eq(styleBlockOf({}), null, '生产参数里没有 style 也是没有画风');
+eq(styleBlockOf({ style: { scene: { render: '   ' } } }), null, '渲染句只有空白算没填');
+eq(styleBlockOf({ style: STYLE }), SCENE_STYLE, '填了就原样给出来');
+eq(styleLabelOf(null), '未填', '没有生产参数就说没填，不编一个名字出来');
+eq(styleLabelOf({ style: STYLE }), '真人实拍', '中文界面取中文名');
+eq(styleLabelOf({ style: STYLE }, 'en'), 'Photorealistic live-action', '英文界面取英文名');
+eq(styleLabelOf({ style: { label: { zh: '水墨' } } }, 'en'), '水墨', '没写英文名就回落中文名');
+eq(negativeTerms('a, people; 3d render').join('|'), 'people|3d render', '反向词按逗号分号拆，太短的丢掉');
+ok(!/pore|subsurface/i.test(SCENE_STYLE.surface), '场景那一块不带皮肤毛孔——那是 style.character 的活');
 
 /* ---------------- slug ---------------- */
 
@@ -90,7 +109,7 @@ eq(slug('a/b:c'), 'a-b-c', '危险字符替换');
 
 const seeded = seedFromOutline(OUTLINE);
 eq(seeded.source, '渡口', 'seed 带书名');
-eq(seeded.style, 'realistic', 'seed 默认画风');
+eq(seeded.style, undefined, 'seed 不写画风——画风一处定死在 production.json，art.json 抄一份只会漂');
 eq(seeded.scenes.length, 3, 'seed 搬全部场景');
 {
   const s01 = seeded.scenes.find((s) => s.id === 'S01');
@@ -144,14 +163,14 @@ ok(castNamesOf({ characters: [] }).length === 0, '空 cast 不炸');
 
 eq(validateArt(FIXTURE, NAMES).length, 0, '自带样例通过校验（含角色名检查）');
 ok(gateReport(FIXTURE, NAMES).every((g) => g.ok), '样例全部质量门通过');
-eq(gateReport(FIXTURE).length, 13, '质量门共 13 道（场景 7 + 道具 4 + 生产参数 2）');
+eq(gateReport(FIXTURE).length, 12, '质量门共 12 道（场景 6 + 道具 4 + 生产参数 2）');
 
 /* ---------------- 生产参数（production.json） ---------------- */
 
 // 样例《渡口》是横屏真人实拍，参数照它配才是全绿基线
 const PRODUCTION = {
   source: '渡口',
-  style: 'realistic',
+  style: STYLE,
   lang: 'zh',
   promptLang: 'en',
   image: {
@@ -171,22 +190,19 @@ ok(gateReport(FIXTURE, NAMES, PRODUCTION).every((g) => g.ok), '样例挂上生�
 // 没挂载就明说跳过，不静默、不装查过
 {
   const gates = gateReport(FIXTURE, NAMES);
-  ok(gates.find((g) => g.id === 'production-style').detail.includes('跳过'), '没有生产参数时画风门明说跳过');
+  ok(gates.find((g) => g.id === 'style-match').detail.includes('跳过'), '没有生产参数时画风门明说跳过');
+  ok(gates.find((g) => g.id === 'style-match').ok, '跳过视为通过——老项目照跑');
   ok(gates.find((g) => g.id === 'sheet-aspect').detail.includes('novel-setup'), '跳过时指路 /novel-setup');
   ok(gates.find((g) => g.id === 'sheet-aspect').ok, '跳过视为通过——老项目照跑');
 }
 
-// production-style 击穿
+// 挂上了参数但画风那一块没填：还是跳过，但两种跳过的原因不一样，说清楚
 {
-  const d = clone();
-  d.style = 'ghibli';
-  ok(!pgate(d, 'production-style').ok, '画风与生产参数不一致击穿 production-style');
-  ok(pgate(d, 'production-style').detail.includes('realistic'), '点名生产参数定的是哪一档');
-}
-{
-  const d = clone();
-  delete d.style;
-  ok(pgate(d, 'production-style').ok, '自己没写画风不算冲突（结构门另有一道管必填）');
+  const half = { ...PRODUCTION, style: { label: { zh: '还没定' }, phrase: '', scene: {} } };
+  const g = pgate(FIXTURE, 'style-match', half);
+  ok(g.ok, '画风没填就跳过，不是拦——填不填是 novel-setup 那一段的门');
+  eq(g.detail, SKIP_STYLE, '跳过的原因是「没填」不是「没挂载」，两句话不一样');
+  ok(g.detail.includes('novel-setup'), '指路回哪一段去填');
 }
 
 // sheet-aspect 击穿：资产图版面写死在 image.sheet 第一句里
@@ -209,7 +225,15 @@ ok(KNOWN_ASPECTS.includes('16:9') && KNOWN_ASPECTS.includes('9:16'), '画幅词�
   const en = renderHtml(FIXTURE, 'en');
   ok(en.includes('no production.json found'), '英文报告把跳过语也翻译了，没漏成中文');
   ok(en.includes('Sheet layout aspect matches the production parameters'), '英文报告有画幅门的标签');
-  ok(en.includes('Style matches the production parameters'), '英文报告有画风门的标签');
+  ok(en.includes('Art style used as one whole block'), '英文报告有画风门的标签');
+  ok(en.includes('Style: (unset)'), '没挂载生产参数时英文报告的画风行说的是「没填」，不编一个默认画风');
+}
+{
+  const en = renderHtml(FIXTURE, 'en', PRODUCTION);
+  ok(en.includes('Style: Photorealistic live-action'), '挂上生产参数后英文报告显示用户填的英文画风名');
+  ok(renderHtml(FIXTURE, 'zh', PRODUCTION).includes('画风：真人实拍'), '中文报告显示中文画风名');
+  ok(renderMarkdown(FIXTURE, 'zh', PRODUCTION).includes('> 画风：真人实拍'), 'Markdown 报告的画风行同样来自生产参数');
+  ok(renderMarkdown(FIXTURE, 'zh', null).includes('> 画风：未填'), '没挂载就说没填');
 }
 {
   eq(brief(['a', 'b']), 'a；b', '没超阈值就原样列');
@@ -301,33 +325,63 @@ eq(ANCHOR_RANGE.join('-'), '3-5', '锚点范围 3–5');
   ok(!gate(d, 'variants').ok, '变体缺 changes 被拦——不说改了什么等于没说');
 }
 
-// G8 风格与反向词匹配
-{
-  const d = clone();
-  d.scenes[0].image.negativePrompt += ', photorealistic, 3d render';
-  ok(!gate(d, 'style-match').ok, 'realistic 禁 photorealistic 被拦——自相矛盾');
-}
-{
-  const d = clone();
-  d.style = 'ghibli';
-  ok(!gate(d, 'style-match').ok, '切 ghibli 后没禁 photorealistic 被拦');
-}
+// G8 画风整块用上（要挂载生产参数才查得动——画风正文住在那里）
 {
   const d = clone();
   d.scenes[0].image.sheet = 'ONE 16:9 landscape canvas, three zones, no people';
-  ok(!gate(d, 'style-match').ok, 'sheet 缺渲染句被拦——画风会飘');
+  ok(!pgate(d, 'style-match').ok, 'sheet 缺渲染句被拦——画风会飘');
 }
 {
   const d = clone();
   d.scenes[0].image.prompt = 'Interior of an old wooden ferry cabin, empty scene with no people';
-  ok(!gate(d, 'style-match').ok, 'prompt 缺渲染句被拦——设定表实拍、单张插画的两张皮');
+  ok(!pgate(d, 'style-match').ok, 'prompt 缺渲染句被拦——设定表一个样、单张插画另一个样的两张皮');
+}
+{
+  const d = clone();
+  d.scenes[0].image.negativePrompt = d.scenes[0].image.negativePrompt.replace(', sterile showroom cleanliness', '');
+  ok(!pgate(d, 'style-match').ok, '反向词少一条被拦——换风格是整套换');
+  ok(pgate(d, 'style-match').detail.includes('sterile showroom cleanliness'), '点名少了哪一条');
+}
+{
+  const d = clone();
+  d.scenes[0].image.negativePrompt += ', lens flare, chromatic aberration';
+  ok(pgate(d, 'style-match').ok, '场景自己额外加反向词不算漂——查的是有没有带全，不是有没有多写');
+}
+{
+  // 道具的反向词不查全：道具参考图是纯白背景，画风里冲着「环境别太干净」去的那几条
+  // 正好和白底自相矛盾。样例里的两件道具本来就没带 sterile showroom cleanliness
+  const d = clone();
+  ok(!/sterile showroom cleanliness/.test(d.props[0].image.negativePrompt), '样例道具确实没带那一条');
+  ok(pgate(d, 'style-match').ok, '道具不查反向词是否带全——它另有禁人、禁手、纯白背景三道门');
+}
+{
+  const d = clone();
+  d.props[0].image.sheet = 'ONE 16:9 landscape canvas, white background, handheld scale';
+  ok(!pgate(d, 'style-match').ok, '道具的渲染句照样要查——画风漂了道具也白出');
+}
+{
+  // 换一档完全不同的画风：整块换掉之后，还写着上一档渲染句的产物必须被拦
+  const inkStyle = {
+    label: { zh: '水墨' },
+    phrase: 'ink wash film still',
+    scene: {
+      render: 'Traditional Chinese ink wash painting of an environment, wet brush on xuan paper',
+      surface: 'Large areas of blank paper, ink tone gradations from bone-dry drag to soaked pooling',
+      negative: 'people, human figures, photorealistic, 3d render, saturated colour, text, watermark',
+      tags: ['ink wash', 'xuan paper', 'monochrome'],
+    },
+  };
+  const g = pgate(clone(), 'style-match', { ...PRODUCTION, style: inkStyle });
+  ok(!g.ok, '产物还是上一档画风，换成水墨后整批被拦——画风没有内置类型，写什么查什么');
+  ok(g.label.includes('水墨'), '门的标签点名现在这部剧定的是哪一档画风');
 }
 
 /* ---------------- validate 结构检查 ---------------- */
 
 ok(validateArt(null).length === 1, 'null 直接报');
 ok(validateArt({}).some((x) => x.includes('source')), '缺书名被拦');
-ok(validateArt({ source: 'x', style: '水墨' }).some((x) => x.includes('style')), '未知画风被拦');
+ok(validateArt({ source: 'x', style: 'realistic' }).some((x) => x.includes('style')), '顶层还留着 style 字段被拦——画风一处定死在 production.json，两个来源必漂');
+ok(!validateArt({ source: 'x' }).some((x) => x.includes('style')), '不写 style 才是对的');
 {
   const d = clone();
   d.scenes[0].id = 'X1';
@@ -414,7 +468,7 @@ ok(/e\.key === 'Escape'/.test(html), 'Esc 关闭弹层');
   ok(withImg.includes('class="zoom" data-src="images/x-sheet.png"'), '出图后图片可点，弹层拿到地址');
   ok(withImg.includes('cursor:zoom-in'), '鼠标提示可放大');
 }
-eq((html.match(/<li class="ok">/g) || []).length, 13, '13 道质量门全 ✓');
+eq((html.match(/<li class="ok">/g) || []).length, 12, '12 道质量门全 ✓');
 ok(html.includes('gatepill pass'), '页眉徽章通过态');
 ok(html.includes('未提供 cast.json'), '报告如实标注角色名检查被跳过');
 
@@ -621,7 +675,7 @@ eq(STAGE_DIR, 'art', '段目录名与端到端工作目录约定一致');
 
 // 生产参数在就以它为准——三个值原样进 input_data，不折算像素
 {
-  const prod = { style: 'realistic', image: { model: 'seedream4', asset: { resolution: '4K', aspectRatio: '4:3' } } };
+  const prod = { image: { model: 'seedream4', asset: { resolution: '4K', aspectRatio: '4:3' } } };
   const { model, inputBase } = imageJobsFrom(FIXTURE, prod);
   eq(model, 'seedream4', '模型取 production.json 的 image.model');
   eq(inputBase.resolution, '4K', '档位是枚举值，原样带上');
@@ -940,5 +994,24 @@ const jobOf = (over = {}) => ({
 }
 
 rmSync(TMP, { recursive: true, force: true });
+
+/* ---------------- 自动驾驶（autopilot） ---------------- */
+/*
+ * 只读的跑法口径：开着本 skill 就把自己那一段一口气跑完，不停下来问用户。
+ * 它不参与任何一道门——门管的是「白出一整批」，跟问不问用户无关。
+ */
+
+ok(autopilotOf({ ...PRODUCTION, autopilot: true }), '开着就是开着');
+eq(autopilotOf({ ...PRODUCTION, autopilot: false }), false, '关着就是关着');
+eq(autopilotOf(PRODUCTION), false, '老项目的生产参数里没有这个字段，按关处理');
+eq(autopilotOf(null), false, '没有生产参数就是关——该问还是要问');
+eq(autopilotOf({ autopilot: 'false' }), false, '字符串 "false" 不算开——JS 里它是真值，只认布尔真值');
+eq(autopilotOf({ autopilot: 'true' }), false, '字符串 "true" 也不算开，写法错了按关处理');
+eq(autopilotOf({ autopilot: 1 }), false, '数字不算开');
+ok(AUTOPILOT_NOTE.includes('不要停下来问用户'), '开着时打印的那句话说清了约束');
+ok(
+  gateReport(FIXTURE, NAMES, { ...PRODUCTION, autopilot: true }).every((g) => g.ok),
+  '打开自动驾驶不影响任何一道门——它改的是跑法，不是参数',
+);
 
 console.log(`✓ ${passed} 项自测全部通过`);

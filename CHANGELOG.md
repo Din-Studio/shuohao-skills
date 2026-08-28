@@ -1,5 +1,234 @@
 # Changelog
 
+## novel-creation 与 novel-storyboard 互相不再当参照物 — 借来的表述全部内化
+
+**novel-creation 1.3.0 · novel-storyboard 1.10.0**
+
+`novel-creation` 的文档与注释里有二十多处拿 `novel-storyboard` 当参照物：「比它少一层」
+「与它同一套判定」「与它同一张表」「从它那边搬提示词最容易带过来的就是……」。手上只有这
+一个 skill 的人读到这些句子，读到的是**指向不存在的东西的指针**——而 skill 必须自包含、
+可以整个拷走，这是仓库的第一条规则。
+
+这一版把它们全部改写成本 skill 自己说得清的表述：
+
+| 原来 | 现在 |
+| --- | --- |
+| 「比 novel-storyboard 少一层」 | 「不出分镜图这一层中间产物」——直接说自己是什么形状 |
+| `shot-recipe` 门「与 novel-storyboard 同一套判定」 | 三条判定逐条写进 `SKILL.md`：id 在卡库里、卡片的必备短语进对应 `[Shot k]` 行、多格配方连排够格数；建议景别与运镜只提示不设门 |
+| README 的「跟 novel-storyboard 怎么选」对照表 | 换成「什么时候用它」：合适与不合适各自说清楚，不靠比较另一个 skill 来定义自己 |
+| 「17 道门 ＝ 它的 18 道 − 4 ＋ 3」 | 直接列本 skill 的 17 道门，分四组写清 |
+| 提示词文档的「跟那套 H3 骨架的边界」 | 「这份骨架刻意没有的四样」——对齐指令、切点时刻、`<d>` 标签、`(S1)` 编号，为什么没有各自写清 |
+| 报告约定的「与 storyboard 同款」「替代 storyboard 的生成批次单」 | 按本 skill 自己的产物描述：段卡嵌的是既有设定图，挂载单回答的是「下单前参考图文件在不在」 |
+| 代码注释的「与 novel-storyboard 逐字相同」「同一个机制」 | 把机制本身写出来：`[Shot k]` 切片由 `shots:` / `ambience:` 夹出来，计秒规则是台词按字数 ÷ 语速、动作按固定秒数 |
+
+反方向的三处也一起改了。`novel-storyboard` 里有三句拿 `novel-creation` 解释自己的字段名
+（「英文 token 与那条产线的骨架刻意取齐」），换成本 skill 自己站得住的说法：**两种语言的
+token 一一对应，切 `promptLang` 只换字段名，切片机制与门的判定不变**——`references/schema.md`、
+`references/seedance2-prompt.md`、`scripts/novel-storyboard.mjs` 的骨架注释各一处。
+
+**行为一个字没变**：两个 skill 的门 id 与判定逻辑、提示词骨架、命令行接口全部照旧，
+novel-creation 的 279 项、novel-storyboard 的 360 项自测原样通过。改的全是文档与注释里
+那些「要去别处才读得懂」的话。
+
+两条产线怎么选，仍然写在仓库根的 `README.md` 里——那是两个 skill 都在场的地方，比写进其中
+一个 skill 里合适。
+
+## novel-creation 补上 H3 填法指南 — 指南按 video.model 动态载入，不再默认某一个模型
+
+**novel-creation 1.2.0**
+
+`novel-creation` 的提示词骨架是跨模型通用的，填法按模型分流。但分流以前只做了一半：
+挂 seedance 系列有一份 `seedance2-prompt.md`，挂 `MiniMax H3` 却是「照通用骨架写完就够了，
+没有附加约束」。**H3 官方指南里有一大半跟有没有关键帧无关**，那半边一直没人搬过来。
+
+新增 `references/h3-prompt.md`（官方 I2VA 指南的内化版，学习来源写在文首）。它**不是**
+`novel-storyboard` 那份的副本——两条产线的前提不同，搬过来的东西也不同：
+
+| H3 官方有的 | novel-creation 搬不搬 |
+| --- | --- |
+| 对齐指令、切点时刻、`<d>` 台词标签、`(S1)` 说话人编号 | **不搬**——参考图是整段共享的身份锚，不钉在某一秒 |
+| 语言分工与禁人名、说话人第一次出现给足辨识信息、画外音的唇形闭合句、声景两个字段怎么收进一个 `ambience:`、运镜写成自然动作句 | **搬**——这些是 H3 对提示词本身的口径，与关键帧无关 |
+
+同时把「读哪份指南」从写死改成**动态载入**：`creation-prompt.md` 现在只定骨架，开头一节
+要求先读这部剧的 `video.model`、再决定读哪一份填法指南；**没收录的模型照通用骨架写，
+不许拿另一族的指南顶上**（两族的语言默认、时刻能不能写、台词用什么符号全不一样）。
+
+代码里新增 `promptGuideOf()`，它比 `promptFamilyOf()` 严一档：归族是「不是 seedance 就算
+h3 族」，但**一个全新的模型不该被塞去读 MiniMax 的官方口径**——解不出指南就返回 `null`。
+`validate` / `checkup` / `export` 找到生产参数会打印一行
+`↳ 视频模型 … → 填法指南 references/…`，`prompt-model-fit` 门的详情也跟着报同一件事。
+
+门的数量没变（17 道），逻辑也没变——**这一档没有确定性硬约束可查，门就明说没有**，
+不假装查了什么。
+
+## 画风交给用户 — 移除内置的 realistic / ghibli，改成 production.json 顶层的一块正文
+
+**novel-setup 1.5.0 · novel-characters 1.18.0 · novel-art 1.9.0 · novel-storyboard 1.9.0**
+
+以前画风是一个两档枚举（`realistic` / `ghibli`），正文分别写死在三个出图 skill 的代码里。
+那样有两个问题，都不是能靠加一档预设解决的：
+
+- **想拍第三种就得改代码。**水墨、黏土定格、80 年代胶片颗粒、赛璐璐——每加一档要动三个仓库文件、
+  三份自测、三份文档。而画风本来就是用户的创作决定，不是这套工具该有主张的地方。
+- **同一档画风的正文存了三份。**`novel-characters` 有角色版，`novel-art` 有环境版，`novel-storyboard`
+  有一句短语，靠「同名对齐」这个口头约定维持一致。改一处漏两处，而漏了不会报错——它只是安静地漂。
+
+现在画风**就是 `production.json` 顶层的 `style` 字段本身**，由用户在 `novel-setup` 那一段填：
+
+```json
+{
+  "style": {
+    "label": { "zh": "水墨", "en": "Ink wash" },
+    "phrase": "ink wash film still",
+    "character": { "render": "…", "surface": "…", "lighting": "…", "negative": "…", "tags": ["…"] },
+    "scene":     { "render": "…", "surface": "…", "negative": "…", "tags": ["…"] }
+  }
+}
+```
+
+**写什么下游就查什么，不用改任何代码。**上面那个水墨的例子是真跑过的：填进去之后，
+三个出图 skill 立刻开始按水墨那套查，还写着上一档渲染句的产物整批被拦。
+
+### 一块画风为什么要分成 character 与 scene
+
+它们是**同一个画风的两种落地**，不是同一段文字。写实的人要毛孔、皮下散射、根根分明的碎发；
+写实的环境要斑驳、水渍、包浆、灰尘。把角色那套带进环境，出来就是四不像——
+这条以前是靠两个 skill 各存一份预设隐式保证的，现在写进了 schema 与 `style-template` 的字段说明。
+
+`scene` 比 `character` 少一块 `lighting`：场景的光照状态（晨雾/正午/夜）是 `novel-art`
+逐个场景自己定的，一个场景可能有三档时段；角色设定图的光照是**版面级**的固定规则
+（左栏方向光给体积、右侧平光好抠图），所以归在画风里。
+
+### 那条写死的知识，改成了不认识任何画风的规则
+
+以前 `novel-characters` 与 `novel-art` 里各有一条：「`realistic` 绝不能禁 `photorealistic`，
+`ghibli` 必须禁」。画风交给用户之后那句话没法再写死——但**它背后的规则可以**：
+
+> 同一个短语既写进 `render`/`surface`/`lighting`/`tags`，又写进 `negative`，就是自相矛盾。
+
+这就是新的 `style-coherent` 门。它不认识任何一档具体画风，却正好复现了原来那两条，
+而且对水墨、黏土定格同样成立。判定按**完整短语**（`negative` 按逗号分号拆成词条，逐条带词边界地找），
+所以 `negative` 里的 `text` 不会被 `surface` 里的 `micro-texture` 命中——误报的门比没有门更坏。
+
+### 门的变化
+
+| skill | 变化 |
+| --- | --- |
+| **novel-setup** | 7 → **9 道**。新增 `style-blocks`（各块填全、`phrase` 是纯 ASCII）与 `style-coherent`（上面那条）。`fields` 里的 `style` 枚举检查改成「是个对象」 |
+| **novel-characters** | 门数不变，但那两条从「核对标签同名」改成**查真东西**：`render` 原句进了 `image.sheet` 与 `image.prompt`，`negative` 的每一条进了 `image.negativePrompt` |
+| **novel-art** | 13 → **12 道**。`production-style`（核对标签）删掉，`style-match` 改成查画风整块用上 |
+| **novel-storyboard** | 19 → **18 道**。`production-style` 删掉——短语只有一处产地，无从不一致 |
+
+**核对标签同名从来没查到过真问题。**标签对上而正文没跟着换，出来还是上一档画风——那才是画风漂的真实样子，
+而旧的门恰恰查不到它。新的门查的就是这个。
+
+### 下游产物不再有顶层 style
+
+`cast.json` / `art.json` / `storyboard.json` 的顶层 `style` 字段**删掉了**。画风正文只有一处产地，
+产物里再抄一份就是第二个来源，两个来源必然会漂。`novel-art` 的 `validate` 会点名让删掉老产物里留着的那个字段。
+
+跟着删掉的还有 `--style` 参数（`novel-characters` 的 `assemble` / `validate`）与两个 `styles` 子命令。
+两个 `styles` 换成了 `style`：**从 `production.json` 读，不是打印内置预设**。
+
+```bash
+node scripts/novel-characters.mjs style   # 打印这部剧的 style.character 那一块
+node scripts/novel-art.mjs style          # 打印 style.scene 那一块
+node scripts/novel-setup.mjs style-template   # 拿空骨架与逐字段说明
+```
+
+### 两种跳过，说法不一样
+
+画风那几道门有两种跳过，混为一谈会让人以为是同一回事：
+
+| 情况 | 门怎么说 |
+| --- | --- |
+| 没找到 `production.json` | 「未找到 production.json（向上 5 层），本门跳过——跑 `/novel-setup` 生成一份可以打开它」 |
+| 找到了但画风那一块没填 | 「production.json 里的 `style.scene` 没填，本门跳过——回 `/novel-setup` 填满它」 |
+
+**画风也是唯一一个没有内置默认值的参数。**其余参数找不到就退回下游自己的内置默认（生图模型、档位、界面语言都有），
+画风没有——它的正文本来就只住在那一份文件里，下游没有一份可退。所以那几道门只能跳过，
+而跳过就要在汇报里说清：这一趟没有任何东西在保证画风不漂。
+
+### 反向词只对场景查全，道具不查
+
+`novel-art` 上的一处例外，是照着自带样例发现的：道具参考图是**纯白背景**的抠图素材，
+而画风里冲着「环境别太干净」去的那几条反向词（`sterile showroom cleanliness` 这类）
+正好和白底自相矛盾。逐条要求道具也带上，拦的是对的做法。
+道具那边的反向词另有三道门管着：禁人、禁手、纯白背景。
+
+### 顺带
+
+- `resolve --for <阶段>` 的 `style` **只给这一段要的那一块**：`characters` 给 `character`、`art` 给 `scene`、
+  `storyboard` 与 `video` 只给 `label` 与 `phrase`。整个画风对象摊开有六七十行，全倒出来会把有用的几行埋掉，
+  也容易让人抄错块
+- `novel-characters/references/style-presets.md` 改名 `style.md`，内容从「两档预设是什么」改写成「画风从哪来」
+- 两份自带样例 `回南天` / `雪线` 填上了完整的画风正文——它们现在是**样例不是选项**：
+  演示一块写满的 `style` 该长什么样，不是「只能在这两个里挑」
+
+## 自动驾驶 — production.json 多一个 autopilot，六个下游 skill 读它决定停不停
+
+**novel-setup 1.4.0 · novel-outline 1.5.0 · novel-characters 1.17.0 · novel-art 1.8.0 ·
+novel-script 1.5.0 · novel-storyboard 1.8.0 · novel-creation 1.1.0**
+
+管线跑完整条要经过六个 skill，每一段都有几处「停下来问用户」：大纲问集数与题材、问完还要等快版骨架拍板；
+角色问画风、问报告语言、归并候选要人复核；分镜出完第一段的图等确认效果；下单前报一次花费等回应。
+一次一次都是对的——**除非用户根本不想被问**。「丢一本小说进去，回来收片子」这个场合下，
+每一次提问都是一次中断，六段加起来能把一趟无人值守的跑动打断十几次。
+
+`production.json` 因此多了一个顶层字段：
+
+```json
+{ "source": "雪线", "autopilot": true, "style": "ghibli", … }
+```
+
+`novel-setup init --autopilot` 打开，默认 `false`。它是这份文件里**唯一一个不管技术参数的字段**——
+不改任何一个下给模型的值，只决定下游遇到「该问用户」时停不停。放进 `production.json` 而不是让用户
+每段说一次，理由和画风、语言一样：**一段问一段不问，比全问还差**。
+
+### 转移的是审批权，不是取消检查点
+
+这条界线是整个功能的重点，六份 SKILL.md 与 README 里都写死了：
+
+| 不受 autopilot 影响 | 为什么 |
+| --- | --- |
+| **质量门照样是门** | `validate` 没过就修到过。门拦的是「白出一整批」，跟问不问用户无关 |
+| **花钱前照样先算账** | 出图与下单的预估花费照样算清楚、照样报出来（打印给用户看），只是不等回应 |
+| **止损照样止损** | 同一段连着失败两次仍然跳过、记进汇报。**不打断不等于无限重试烧钱** |
+
+检查点本身也保留，只是审批人从用户换成 agent：分镜仍然先出第一段的 3–5 张再往后补，只不过
+画风与构图由 agent 自己看；角色设定图出完仍然要核对「左右两栏是不是同一个人」。
+**替用户做的每一个决定都要写进最后的汇报**——这是审批权转移的对价。
+
+### 只认布尔真值
+
+JSON 里写成字符串 `"false"`，在 JavaScript 里是**真值**——那种写法会让一整条管线闷头跑完，
+比不写更坏。所以六个下游各自的 `autopilotOf()` 都是严格比 `=== true`，`novel-setup` 的 `fields`
+门查类型（写了就必须是布尔值）。**整个不写不算违规**：老项目的 `production.json` 里没有这个字段，
+按 `false` 处理，行为与改动前一模一样。
+
+### 落地方式：一句 stderr + 一节 SKILL.md
+
+真正约束 agent 的是文档——所以每个 skill 的 SKILL.md 都加了一节 `Step 0.5 — 自动驾驶`，
+用一张表逐条列出「原本要问什么 / 自动驾驶下怎么办」，不写泛泛的「不要打断」。
+脚本这边只做一件事：找到生产参数且开着，就在 stderr 打印一句
+
+```
+↳ 自动驾驶：开——本段流程一口气跑完，不要停下来问用户；替用户做的决定全部写进最后的汇报
+```
+
+关着不打印（那是原来的样子，没有新信息）。这句话在每次 `validate` / `render` / `export` 都会复现，
+是对文档那一节的持续提醒；但 Step 0 的提问跑在第一条命令之前，所以 SKILL.md 明确要求开工前
+自己看一眼那个字段。
+
+`novel-setup` 自己不受它约束——它是这个字段的产地，成片画幅照样必须问用户。
+
+### 顺带
+
+- `resolve --for <阶段>` 的输出多一个 `autopilot`，`show` 的参数表多一行「自动驾驶」
+- 两份样例把两档各演示一次：《回南天》关、《雪线》开
+- 六个 skill 的自测各加一组断言（含字符串 `"false"` 的击穿用例），六份 SKILL.md/README 里
+  已经漂掉的断言数一并对齐真实值
+
 ## 新增 novel-creation — 参考图直出视频
 
 **novel-creation 1.0.0**

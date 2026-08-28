@@ -77,6 +77,12 @@ node scripts/novel-script.mjs render script.json --html --lang en \
 node scripts/novel-script.mjs slug "渡口"                         # 安全文件名
 ```
 
+## 自动驾驶（autopilot）
+
+工作目录根的 `production.json`（`novel-setup` 的产出）顶层写着 `"autopilot": true` 时，本 skill 的全部流程**一口气跑完**：没有 outline.json 也不问「要不要先跑 novel-outline」，批次之间不停下来等确认，做过的决定全部写进最后的汇报。
+
+**转移的是审批权，不是取消检查点**：10 道门照样要过，写超写欠自己改到落进容差——只是不再等人点头。字段写着 `false`、整个没写、或者根本没有 `production.json`，就是原来的样子（该问就问）。跑 `validate` 时找到生产参数并且开着，会打印一句 `↳ 自动驾驶：开`。
+
 ## 边界
 
 - 不分镜头、无镜号、不写画面生成提示词、不出图——分镜层的活一件不碰
@@ -90,7 +96,7 @@ node scripts/novel-script.mjs slug "渡口"                         # 安全文�
 SKILL.md                 给 agent 读的工作流
 scripts/
   novel-script.mjs       seed / validate / checkup / render / slug
-  selftest.mjs           159 项断言，不调模型
+  selftest.mjs           175 项断言，不调模型
 references/
   schema.md              script.json 结构 + 时长折算规则
   script-pass.md         写戏：硬规则、手感规则、常见病
@@ -107,6 +113,6 @@ assets/
 node scripts/selftest.mjs
 ```
 
-159 项断言，覆盖时长引擎 / 统计 / 质量门逐项击穿 / seed / 生产参数查找 / 渲染（含英文界面）/ 导出。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
+175 项断言，覆盖时长引擎 / 统计 / 质量门逐项击穿 / seed / 生产参数查找 / 渲染（含英文界面）/ 导出。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
 
 **只在 macOS + Node 24 上实测过。** 代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但**没验过**。

@@ -8,7 +8,7 @@
 - **人物画像** — 性别、年龄、身份、外貌、性情、动机、人物弧光、关系网，每条附**原文逐字引文**
 - **形象提示词** — 真人实拍路线，双语出图 prompt + negative prompt + 风格标签，`negative_prompt` 是 lingying 的一等字段，原样填进去
 - **音色提示词** — 音色、音高、语速、口音、情绪，双语 voice-design prompt，直接喂 Qwen3-TTS / ElevenLabs Voice Design
-- **角色设定图** — **每个角色一张**：16:9 分三区，左侧约 34% 证件照式半身像（面部基准）、右上全身三视图、右下关键细节特写条。**画风可选**：默认真人实拍，也可以出吉卜力动画风。白底方便抠图，出图是一条 `images` 命令（可选，走 lingying）
+- **角色设定图** — **每个角色一张**：16:9 分三区，左侧约 34% 证件照式半身像（面部基准）、右上全身三视图、右下关键细节特写条。**画风由 `production.json` 定**，本 skill 不内置任何一档。白底方便抠图，出图是一条 `images` 命令（可选，走 lingying）
 - **关系图谱** — 报告里的一个全景视图：谁跟谁有关系、是什么关系，一眼看完。悬停一个人亮出他的全部关系，点一下跳到那个人的详情
 
 产出 `cast.json` + Markdown + 一个双击就能开的 `report.html`。
@@ -82,27 +82,27 @@ node scripts/novel-characters.mjs seed outline.json > seed.json
 
 两条不跟随语言：**出图和 TTS 提示词永远英文**（引擎吃英文最稳）；**原文引文永远保持原文语言**（翻译了就不是证据了）。
 
-### 出图风格
+### 画风
 
-默认 `realistic`（真人实拍）。想要动画质感：
-
-```
-/novel-characters ./book.txt --style ghibli
-```
-
-| id | 说明 |
-| --- | --- |
-| `realistic` | 真人实拍，皮肤有毛孔和肌理，布料有织纹磨损。默认 |
-| `ghibli` | 吉卜力式手绘赛璐璐，等宽墨线、单层柔和阴影、平涂色块 |
-
-两个可以组合：`--lang ja --style ghibli`。
+**本 skill 不内置任何画风，也没有默认画风。**画风住在工作目录根的 `production.json` 顶层，由用户在 `/novel-setup` 那一段填——真人实拍、吉卜力手绘、水墨、黏土定格、80 年代胶片颗粒都行，**不用改任何代码**。
 
 ```bash
-node scripts/novel-characters.mjs styles          # 看所有预设
-node scripts/novel-characters.mjs styles ghibli   # 看某一个的完整内容
+node scripts/novel-characters.mjs style     # 打印这部剧的 style.character 那一块
 ```
 
-**换风格是整套换**，不是只换一句画风——每个预设自带渲染方式、表面处理、光照、反向提示词、标签五块。详见 [`references/style-presets.md`](references/style-presets.md)。
+那一块有五样东西，出角色卡时**原样抄进去**：
+
+| 块 | 抄到哪 |
+| --- | --- |
+| `render` | `image.sheet` 与 `image.prompt`（两条都要，只抄一条会出成两张皮） |
+| `surface` | 同上 |
+| `lighting` | `image.sheet` |
+| `negative` | `image.negativePrompt`，**一条不落**；角色自己额外要禁的照加 |
+| `tags` | `image.tags` |
+
+`validate` 挂上 `production.json` 就自动查这两条，没有开关。
+
+**换风格是整套换**，不是只换一句画风——五块一起换，不许混搭。详见 [`references/style.md`](references/style.md)。
 
 ## 报告长什么样
 
@@ -123,7 +123,7 @@ node scripts/novel-characters.mjs styles ghibli   # 看某一个的完整内容
 顶栏的「导出 JSON」下载的**就是 `cast.json` 本身的形状**，不是另一套导出格式：
 
 ```json
-{ "source": "…", "lang": "zh", "style": "realistic", "summary": "…", "characters": [ … ] }
+{ "source": "…", "lang": "zh", "summary": "…", "characters": [ … ] }
 ```
 
 所以外部工具改完可以**直接喂回 `render` 重新出报告**，也能过 `validate`。角色卡里的 `sheetImage`（`images/<slug>-sheet.png`）一并带出，拿得到哪张图对应哪个人。
@@ -151,7 +151,7 @@ node scripts/novel-characters.mjs styles ghibli   # 看某一个的完整内容
 | `evidence` 必须是原文**逐字连续**片段 | 防编造。被「他说」断开的对白不许拼接 |
 | 出图 prompt **不许出现人名** | 图像模型对人名偏见极重，会画成它记忆里的角色 |
 | 字段**语言分工** | 人类字段跟随 `--lang`、出图和 TTS 提示词永远英文，模型会漂 |
-| **风格与反向提示词匹配** | `realistic` 不能禁 `photorealistic`、`ghibli` 必须禁，搞反整批图就废 |
+| **画风整块用上** | `production.json` 那一块的渲染句进了两条提示词、反向词一条不落。少一条画风就漂了半步（找不到那份文件就明说跳过） |
 | 结构 + 枚举 | `importance` 只能是那四个值 |
 
 这四条不是拍脑袋定的——是模型输出真的违反过、被校验脚本当场抓住才立起来的。
@@ -174,12 +174,18 @@ node scripts/novel-characters.mjs render cast.json --html       # 出 report.htm
 node scripts/novel-characters.mjs slug "胡二爷"                  # 安全文件名
 ```
 
+## 自动驾驶（autopilot）
+
+工作目录根的 `production.json`（`novel-setup` 的产出）顶层写着 `"autopilot": true` 时，本 skill 的全部流程**一口气跑完**：不问报告语言、不问选角人数，归并候选自己逐条复核（拿不准就不合并），设定图一次出全，做过的决定全部写进最后的汇报。
+
+**转移的是审批权，不是取消检查点**：校验照样要过、出图前照样打印要出多少张、拿到图照样要核对——只是不再等人点头。字段写着 `false`、整个没写、或者根本没有 `production.json`，就是原来的样子（该问就问）。跑 `validate` 时找到生产参数并且开着，会打印一句 `↳ 自动驾驶：开`。
+
 ## 边界
 
 - 单次上限 24 块（净覆盖约 93 万字符）。超了会明确报 `truncated`，**不静默截断**
 - 人类可读字段跟随 `--lang`；出图和 TTS 提示词**永远英文**，那些引擎吃英文最稳，跟报告语言无关
 - 默认取戏份最重的 30 位角色，**每位都出设定图**。一批角色先全部提交再统一轮询，总耗时约等于最慢的那一张——这个编排在脚本里，不靠模型每次重拼。想少出就用 `--only`，或者直接说只要主要角色
-- **同一批角色的画风可能有差异**——各自独立出图。早期用「扁平矢量卡通」时漂得很厉害（同批出成动画感／半写实／水墨写实三种），换成明确的风格预设后好了很多，但不能保证完全一致。在意的话加 `--style-ref auto` 拿第一张当参考图压一压，见 `references/sheet.md`
+- **同一批角色的画风可能有差异**——各自独立出图。早期用「扁平矢量卡通」这种含糊写法时漂得很厉害（同批出成动画感／半写实／水墨写实三种），改成把 `production.json` 那一块画风整块原样抄进每张提示词后好了很多，但不能保证完全一致。在意的话加 `--style-ref auto` 拿第一张当参考图压一压，见 `references/sheet.md`
 
 > ⚠️ **出图要 lingying 的凭证。** `~/.config/lingying/config.json` 里至少要有 `api_key`，挂参考图还要 `assethub_admin_token`。缺了会报「缺少 API_KEY」——如实转述，不要静默跳过：用户以为出了图而实际没出，比明说没出更坏。
 
@@ -190,14 +196,14 @@ SKILL.md                 给 agent 读的工作流
 scripts/
   novel-characters.mjs   chunk / merge / assemble / validate / images / render / slug
   lib/lingying.mjs       出图调用：提交 / 轮询 / 落盘 / 断点续传
-  selftest.mjs           435 项断言，不调模型、不发请求
+  selftest.mjs           439 项断言，不调模型、不发请求
 references/
   roster-pass.md         第一趟：扫描角色
   profile-pass.md        第二趟：生成角色卡（8 条硬规则）
   schema.md              角色卡结构 + 字段语言归属
   sheet.md               设定图的版面与提示词（调用由 images 子命令负责）
   report-style.md        report.html 的设计约定
-  style-presets.md       出图风格预设（realistic / ghibli）
+  style.md               画风从哪来（不内置，读 production.json）
 examples/
   渡口.txt                自带短故事，4 个角色
   渡口-cast.json          产出，同时是校验自检夹具
@@ -212,6 +218,6 @@ examples/
 node scripts/selftest.mjs
 ```
 
-435 项断言，覆盖分块 / 别名归并 / 合成 / 多语言 / 校验 / 生产参数的两条检查 / 渲染，外加出图编排的全部路径（提交、轮询、超时、续传、风格参考波次、抠图）——后者用注入的假 CLI 与假时钟跑，不 spawn 进程、不发请求。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
+439 项断言，覆盖分块 / 别名归并 / 合成 / 多语言 / 校验 / 生产参数的两条检查 / 渲染，外加出图编排的全部路径（提交、轮询、超时、续传、风格参考波次、抠图）——后者用注入的假 CLI 与假时钟跑，不 spawn 进程、不发请求。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
 
 **只在 macOS + Node 24 上实测过。** 代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但**没验过**。

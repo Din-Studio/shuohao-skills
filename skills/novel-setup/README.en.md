@@ -6,12 +6,18 @@ Locks the **production parameters** for an AI short drama — stage zero of the 
 
 It solves exactly one problem: **technical parameters scattered across every image call will drift**. Today's character sheet is 16:9, tomorrow's storyboard frame is 16:9 too — but the show ships vertical. You find out when the frames hit the video model and get cropped on both sides, and by then a full episode of thirty-odd frames is already generated.
 
-Lock them once into a single `production.json` at the work-directory root; the four downstream skills walk up to it before generating images or placing video jobs:
+Lock them once into a single `production.json` at the work-directory root; the six downstream skills walk up to it before generating images or placing video jobs:
 
 ```json
 {
   "source": "回南天",
-  "style": "realistic",
+  "autopilot": false,
+  "style": {
+    "label": { "zh": "真人实拍", "en": "Photorealistic live-action" },
+    "phrase": "cinematic film still",
+    "character": { "render": "…", "surface": "…", "lighting": "…", "negative": "…", "tags": ["…"] },
+    "scene": { "render": "…", "surface": "…", "negative": "…", "tags": ["…"] }
+  },
   "lang": "zh",
   "promptLang": "en",
   "image": {
@@ -34,8 +40,9 @@ Lock them once into a single `production.json` at the work-directory root; the f
 | **Frame resolution · frame aspect** | storyboard frames — each one *is* a frame of the finished show |
 | **Video model** | novel-storyboard's `export` production package |
 | **Video aspect_ratio · video resolution** | the two parameters you pass the video model |
-| **Style** (realistic / ghibli) | the three image skills; drift here and the composite falls apart |
+| **Style** (one block the user writes) | the three image skills; drift here and the composite falls apart |
 | **Report UI language · prompt language** | `render` across all five skills, plus the H3 prompts |
+| **Autopilot** | how the six downstream skills run: switched on, each one runs its stage end to end without stopping |
 
 ## Two aspects, two different things ⚠️
 
@@ -81,19 +88,41 @@ What it catches: shooting `4:3` rules out `nanobanana2` (it does not accept that
 
 Every lingying video model accepts `aspect_ratio: "adaptive"` (let the model pick from the input). **This pipeline cannot use it**: frames are generated as a batch at one fixed ratio, and a ratio chosen per call stops matching across thirty-odd frames in an episode. The `aspect-format` gate rejects it outright.
 
-## Quality gates: 7, all in code
+## Autopilot
+
+One top-level boolean, `false` by default, and the only field here that governs no technical parameter at all — it changes nothing that gets sent to a model, only what downstream does when it would otherwise stop and ask.
+
+```bash
+node scripts/novel-setup.mjs init --aspect 9:16 --autopilot … > <work-dir>/production.json
+```
+
+With it on, each of the six downstream skills runs its own stage **end to end**: no questions, no waiting for sign-off, no decisions handed back. It decides, then lists every decision it made in its final report. This is the "drop a novel in, come back to a cut" mode.
+
+**It transfers approval, it does not remove checkpoints.** Three things are unaffected:
+
+- **Gates stay gates**: `validate` still has to pass. A gate stops a wasted batch, which has nothing to do with whether a human was asked
+- **Money is still costed first**: image and video jobs still print the estimate; they just do not wait for a reply
+- **Loss limits still apply**: two consecutive failures on the same segment still skip it and record it. Not stopping is not the same as retrying forever
+
+**Only a real boolean counts.** Written as the string `"false"`, JavaScript reads it as truthy — that spelling would send a whole pipeline off unattended, which is worse than leaving the field out. So the `fields` gate checks the type. Omitting the field entirely is not a violation: older `production.json` files predate it and are treated as `false`.
+
+`novel-setup` itself is exempt — it produces the field, and the finished-show aspect still has to be asked.
+
+## Quality gates: 9, all in code
 
 Same stance as the other five skills in this repo: **a checklist left to the model's good intentions does not hold**.
 
 | Gate | Rule |
 | --- | --- |
-| Fields present, enums valid | one missing field and downstream reads `undefined`, silently falling back to a default |
+| Fields present, enums valid | one missing field and downstream reads `undefined`, silently falling back to a default; `autopilot`, if written, has to be a boolean |
 | Aspects written as `W:H` | `9-16` will not parse downstream |
 | **Frame aspect = video aspect** | mismatch means the whole batch of frames gets cropped or stretched |
 | Asset sheets are landscape or square | portrait squashes the three-view figures |
 | All three resolution tiers filled | blank means undecided |
 | Video model and parameters valid | model, tier and aspect all have to line up. `MiniMax H3` with `720p` gets rejected by the gateway — by which point the episode's frames are already generated |
 | Tier and aspect accepted by the image model | same reasoning. `nanobanana2` does not take `4:3`; `image-2` at `4K` takes only `16:9` / `9:16` |
+| **Every style block filled in** | the style text is written by the user; one missing block is one missing paragraph downstream |
+| **Style does not contradict itself** | asking for something and banning it in the same breath leaves the model splitting the difference, and the whole batch is wasted |
 
 Every gate has a **breaking test case** in the self-test — proof it actually stops something.
 
@@ -108,14 +137,19 @@ node scripts/novel-setup.mjs init --aspect 9:16 \
   --source 回南天 --video-model "MiniMax H3" --video-resolution 768p \
   > <work-dir>/production.json
 
-# 2. Validate
+# 2. Write the art style (init leaves an empty skeleton; this prints the field-by-field notes)
+node scripts/novel-setup.mjs style-template
+
+# 3. Validate
 node scripts/novel-setup.mjs validate <work-dir>/production.json
 
-# 3. Print a human-readable parameter table
+# 4. Print a human-readable parameter table
 node scripts/novel-setup.mjs show <work-dir>/production.json
 ```
 
 **The finished-show aspect has no default** — vertical and horizontal are two different shows, and guessing wrong costs you every generated asset. It is the one parameter worth an extra flag rather than a default.
+
+**Art style has no default either, and no built-in types.** It used to be a two-value enum (`realistic` / `ghibli`) whose text lived hard-coded inside three separate image skills — wanting ink wash, claymation or 1980s film grain meant editing code, in three places, and missing two of them. Now the style *is* the `style` field: write it once and downstream checks whatever you wrote.
 
 **No HTML report**: this is a dozen-line parameter table, `show` covers it, and one more rendered artifact is just one more thing that can drift.
 
@@ -126,6 +160,8 @@ Full contract in `references/contract.md`. The three-sentence version:
 - **Downstream walks up**: from its own output directory, up to 5 levels, looking for `production.json`. **Downstream does not import this skill's code** — every skill must survive being copied out on its own, so each implements the dozen-line lookup itself.
 - **Not found means it says so and skips**, falling back to built-in defaults while stating which gates were skipped. Pretending to have checked is worse than not checking.
 - **Found means it must be obeyed**, and the line is whether a change forces regeneration: style and aspect are **gates that cannot be bypassed**, and the resolution tier must be carried into the `--input_data` of the image call; report UI language is inherited, not gated.
+- **The art style has exactly one home**: downstream `cast.json` / `art.json` / `storyboard.json` carry no top-level `style` field. A second copy is a second source of truth, and two sources always drift.
+- **`autopilot` governs how it runs**: switched on, the stage runs end to end without stopping and the command prints `↳ 自动驾驶：开`; gates, cost estimates and loss limits are unaffected.
 
 Grab everything one stage needs in a single line:
 
@@ -137,7 +173,11 @@ node scripts/novel-setup.mjs resolve --for storyboard
 {
   "stage": "storyboard",
   "what": "分镜图",
-  "style": "realistic",
+  "style": {
+    "label": { "zh": "真人实拍", "en": "Photorealistic live-action" },
+    "phrase": "cinematic film still"
+  },
+  "autopilot": false,
   "cli": "lingying",
   "model": "nanobanana2",
   "resolution": "2K",
@@ -147,6 +187,8 @@ node scripts/novel-setup.mjs resolve --for storyboard
 ```
 
 `resolution` and `aspectRatio` are the source of truth, verbatim; **`inputData` is the assembled lingying payload** — add a `prompt` (and `images` for references) and it is ready to submit. No skill has to assemble its own wording, which is one more thing that would drift.
+
+`style` carries only the block that stage needs: `--for characters` gets `style.character`, `--for art` gets `style.scene`, the rest get just `label` and `phrase`. For the whole thing, run `style <production.json>`.
 
 Segment duration has its own folding command — video models take an integer number of seconds within a range (5–15 for H3), and a storyboard segment's seconds are neither integer nor guaranteed to land inside it:
 
@@ -170,10 +212,12 @@ novel-storyboard → storyboard.json （how it's shot: cuts, frames, batches）
 
 ## Bundled examples
 
-- `examples/回南天-production.json`: **vertical 9:16**, photorealistic live-action, 2K, English prompts, `nanobanana2` + `MiniMax H3` — the most common AI short-drama shape
-- `examples/雪线-production.json`: **horizontal 16:9**, Ghibli, 4K, Chinese prompts, `image-2` + `seedance2.0` — the other extreme
+- `examples/回南天-production.json`: **vertical 9:16**, photorealistic live-action, 2K, English prompts, `nanobanana2` + `MiniMax H3`, autopilot off — the most common AI short-drama shape
+- `examples/雪线-production.json`: **horizontal 16:9**, Ghibli-like hand-painted, 4K, Chinese prompts, `image-2` + `seedance2.0`, autopilot on — the other extreme
 
-Two aspects, two styles, two tiers, two prompt languages, two image models, two video models, each appearing once — because what this skill delivers *is* the space of valid parameter combinations.
+Two aspects, two styles, two tiers, two prompt languages, two image models, two video models, both autopilot settings, each appearing once — because what this skill delivers *is* the space of valid parameter combinations.
+
+Those two styles are **samples, not options**: they show what a filled-in `style` block looks like (`character` and `scene` written separately, negatives that do not fight the positive blocks), not a menu to pick from.
 
 ## Self-test
 
@@ -181,10 +225,11 @@ Two aspects, two styles, two tiers, two prompt languages, two image models, two 
 node scripts/selftest.mjs
 ```
 
-184 assertions, no model calls, no network, no quota.
+249 assertions, no model calls, no network, no quota.
 
 ## Boundaries
 
 - Does not write story, generate images, or place video jobs — technical parameters only
+- **Ships no built-in art styles and recommends none** — it only guarantees that whatever you write is complete, self-consistent, and checkable downstream
 - **Does not convert tiers to pixels** — lingying takes the tier itself, so that layer no longer exists
 - Creative parameters (episode count, runtime, genre) belong to `novel-outline`

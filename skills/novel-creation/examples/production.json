@@ -1,6 +1,9 @@
 {
   "source": "收书人",
-  "style": "realistic",
+  "style": {
+    "label": { "zh": "真人实拍", "en": "Photorealistic live-action" },
+    "phrase": "cinematic film still"
+  },
   "lang": "zh",
   "promptLang": "en",
   "video": { "model": "MiniMax H3", "aspectRatio": "9:16", "resolution": "768p" }

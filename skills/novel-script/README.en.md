@@ -74,6 +74,12 @@ node scripts/novel-script.mjs render script.json --html --lang en --outline outl
 
 The report UI defaults to Chinese; `--lang en` renders it fully in English.
 
+## Autopilot
+
+When the `production.json` at the work-directory root (produced by `novel-setup`) carries `"autopilot": true`, this skill runs its stage **end to end**: with no outline.json it does not ask whether to run novel-outline first, and it does not pause between batches. Every decision it made goes into the final report.
+
+**It transfers approval, it does not remove checkpoints**: all 10 gates still have to pass and over/under-written episodes still get rewritten into tolerance — it just does not wait for a nod. Written as `false`, left out, or with no `production.json` at all, nothing changes. When `validate` finds the file with the flag on, it prints `↳ 自动驾驶：开`.
+
 ## Limits
 
 - No shots, no shot numbers, no generation prompts, no images — nothing from the storyboard layer
@@ -87,7 +93,7 @@ The report UI defaults to Chinese; `--lang en` renders it fully in English.
 node scripts/selftest.mjs
 ```
 
-159 assertions — timing engine, stats, gate-defeating cases, seed, production-parameter lookup, rendering (both UI languages), export. No model calls, runs in about a second.
+175 assertions — timing engine, stats, gate-defeating cases, seed, production-parameter lookup, rendering (both UI languages), export. No model calls, runs in about a second.
 
 The bundled example (`examples/渡口-script.json`) is a **complete 6-episode script** — 9 scenes, 123 lines, every episode inside the ±15% band, all gates passing against the outline and art fixtures.
 

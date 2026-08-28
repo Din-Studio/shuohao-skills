@@ -1,11 +1,13 @@
 ---
 name: novel-outline
-version: 1.4.0
+version: 1.5.0
 description: |
   把一本小说改编成短剧大纲五件套：改编说明、人物表、爽点表、分集梗概、资产清单，
   产出 outline.json + Markdown + 单页评审报告（KPI 带、关键决策、爽点时间轴、调度矩阵、场景概览、质量门）。
   14 道质量门全部由脚本确定性检查（角色分档上限、主场景上限随集数动态、爽点间隔≤3集、每集钩子悬念必填……），不靠模型自觉；
   支持体检模式：贴一份现成大纲进来，只跑质量门给诊断。
+  跑过 novel-setup 的项目会读工作目录根 production.json 的 autopilot：为 true 时全程不打断——
+  缺的参数自己定、快版骨架不等用户拍板，做过的决定全部写进汇报。
   零依赖、零 API key，用当前会话额度。
   Use when asked to 改编大纲、短剧大纲、拆大纲、小说转短剧、adaptation outline。
 # 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
@@ -57,6 +59,22 @@ metadata:
 **人物表从原文拆**——大纲是角色设定的上游，`characters` 块定下的分档、人物线与来源，下游 `novel-characters` 直接拿去当角色清单，不用再判断一遍谁重要。
 
 例外是用户手上已经有 `cast.json`（此前单独跑过 `novel-characters`）：那就拿来当人物原料，角色、别名、关系都是现成的，不用重拆原文。分档按 `importance` 反向映射：protagonist/major → `lead`，supporting → `support`，minor → `functional`。
+
+### Step 0.5 — 自动驾驶（autopilot）
+
+**开工前先看一眼工作目录根的 `production.json` 顶层 `autopilot`**（`novel-setup` 的产出，从段目录向上最多 5 层找得到）。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` / `checkup` 找到它也会打印一句 `↳ 自动驾驶：开`——但那时 Step 0 已经跑过了，所以这一眼要自己看。
+
+没有 `production.json`、字段写着 `false` 或者整个没写，就是上面那些步骤原来的样子。
+
+| 原本 | 自动驾驶下 |
+| --- | --- |
+| Step 0 必问总集数 × 单集时长 | 用户给了就用；没给自己定（按题材与原文体量取常规值），定了多少写进汇报 |
+| Step 0 必问题材 | 从给到的文本判断，判断依据写进汇报 |
+| **Step 3 三件事摆给用户拍板** | 快版骨架照出、`--stage beats` 照过，**砍了哪条线、合了哪些人、大爆点落第几集自己核对**，写进汇报后直接进 Step 5 |
+| Step 4 吸收用户意见改骨架 | 没有意见可吸收，跳过 |
+| 体检模式缺字段 | 标注缺失，不问用户 |
+
+**转移的是审批权，不是取消检查点**：14 道门照样要过（`validate` 没过就修到过），快版骨架照样要出——只是不再等人点头。**替用户做的每一个决定都要写进最后的汇报**：定了什么、依据是什么，一条不漏。
 
 ### Step 1 — 定位输入
 
@@ -179,7 +197,7 @@ node {baseDir}/scripts/novel-outline.mjs render <outline.json> --html > outline-
 node {baseDir}/scripts/selftest.mjs
 ```
 
-261 项断言，不调模型、不花额度。14 道质量门每一道都有击穿用例——证明它真的会拦。改完脚本先跑这个。
+270 项断言，不调模型、不花额度。14 道质量门每一道都有击穿用例——证明它真的会拦。改完脚本先跑这个。
 
 ## 自带样例
 

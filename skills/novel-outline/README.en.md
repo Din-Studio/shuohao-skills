@@ -69,12 +69,18 @@ novel-outline owns adaptation structure (cutting, merging, beat placement, episo
 
 **The outline sits upstream of the character bible**: the `characters` block already settles who is in, who is out, and who leads, so the character pass works from that roster instead of re-deciding it. The reverse also works — if you already have a `cast.json`, feed it in as character raw material instead of re-reading the source. This skill writes no dialogue, no storyboards, no generation prompts.
 
+## Autopilot
+
+When the `production.json` at the work-directory root (produced by `novel-setup`) carries `"autopilot": true`, this skill runs its stage **end to end**: it does not ask for episode count or genre (it decides and says so), and it does not wait for sign-off on the fast skeleton. Every decision it made goes into the final report.
+
+**It transfers approval, it does not remove checkpoints**: all 14 gates still have to pass and the fast skeleton is still produced — it just does not wait for a nod. Written as `false`, left out, or with no `production.json` at all, nothing changes. When `validate` finds the file with the flag on, it prints `↳ 自动驾驶：开`.
+
 ## Selftest
 
 ```bash
 node scripts/selftest.mjs
 ```
 
-254 assertions — chunking, validation, gate-defeating cases, asset aggregation, production-parameter lookup, rendering (both UI languages), export. No model calls, runs in about a second.
+270 assertions — chunking, validation, gate-defeating cases, asset aggregation, production-parameter lookup, rendering (both UI languages), export. No model calls, runs in about a second.
 
 **Only tested on macOS + Node 24.**

@@ -6,12 +6,18 @@
 
 它解决的问题只有一个：**技术参数散在每一次出图调用里，就必然会漂**。今天出的角色设定图是 16:9，明天出的分镜图还是 16:9，可片子要拍竖屏——这件事要等到把分镜图喂给视频模型、被裁掉两边才发现，那时一集三四十格已经出完了。
 
-一次定死，落成工作目录根的一份 `production.json`，后面四个 skill 出图与下单前向上找到它照着做：
+一次定死，落成工作目录根的一份 `production.json`，后面六个 skill 出图与下单前向上找到它照着做：
 
 ```json
 {
   "source": "回南天",
-  "style": "realistic",
+  "autopilot": false,
+  "style": {
+    "label": { "zh": "真人实拍", "en": "Photorealistic live-action" },
+    "phrase": "cinematic film still",
+    "character": { "render": "…", "surface": "…", "lighting": "…", "negative": "…", "tags": ["…"] },
+    "scene": { "render": "…", "surface": "…", "negative": "…", "tags": ["…"] }
+  },
   "lang": "zh",
   "promptLang": "en",
   "image": {
@@ -34,8 +40,9 @@
 | **分镜图分辨率 · 分镜图比例** | 分镜图——它就是成片的一格 |
 | **生视频模型** | novel-storyboard 的 `export` 投产包 |
 | **视频 aspect_ratio · 视频 resolution** | 下单给视频模型时的两个参数 |
-| **画风**（realistic / ghibli） | 三个出图 skill，漂了合成没法看 |
+| **画风**（用户自己写的一整块） | 三个出图 skill，漂了合成没法看 |
 | **报告界面语言 · 提示词语言** | 五个 skill 的 `render` 与 H3 提示词 |
+| **自动驾驶**（autopilot） | 六个下游 skill 的跑法：开着就一口气跑完不打断 |
 
 ## 两个比例是两件事 ⚠️
 
@@ -81,19 +88,41 @@ node scripts/novel-setup.mjs caps
 
 lingying 的视频模型都收 `aspect_ratio: "adaptive"`（按输入自动挑比例）。**本管线用不了**：分镜图要按同一个比例整批出，比例交给模型临场挑，一集三四十格就对不上了。`aspect-format` 门直接拦掉。
 
-## 质量门：7 道，全是代码
+## 自动驾驶（autopilot）
+
+顶层一个布尔值，默认 `false`，是这份文件里**唯一一个不管技术参数的字段**——它不改任何一个下给模型的值，改的是下游遇到「该问用户」的地方怎么办。
+
+```bash
+node scripts/novel-setup.mjs init --aspect 9:16 --autopilot … > <工作目录>/production.json
+```
+
+打开之后，后面六个 skill 各自把自己那一段**一口气跑完**：不提问、不等拍板、不把选择题抛回去，该做的决定自己做，做过的决定全部写进最后的汇报。适合「丢一本小说进去、回来收片子」的场合。
+
+**转移的是审批权，不是取消检查点**——这三件事不受它影响：
+
+- **质量门照样是门**：`validate` 没过就修到过。门拦的是「白出一整批」，跟问不问用户无关
+- **花钱前照样先算账**：出图与下单的预估花费照样算清楚、照样报出来，只是不等回应就往下走
+- **止损照样止损**：同一段连着失败两次仍然跳过、记进汇报。不打断不等于无限重试烧钱
+
+**只认布尔真值。**JSON 里写成字符串 `"false"` 在 JavaScript 里是真值，那种写法会让一整条管线闷头跑完，比不写更坏——所以 `fields` 门查类型。整个不写不算违规：老项目的 `production.json` 里没有这个字段，按 `false` 处理。
+
+`novel-setup` 自己不受它约束——它是这个字段的产地，成片画幅照样必须问用户。
+
+## 质量门：9 道，全是代码
 
 与仓库里另外五个 skill 同一主张：**checklist 交给模型自觉是靠不住的**。
 
 | 门 | 规则 |
 | --- | --- |
-| 字段齐全、枚举合法 | 少一个字段，下游读到 `undefined` 会静默用回默认值 |
+| 字段齐全、枚举合法 | 少一个字段，下游读到 `undefined` 会静默用回默认值；`autopilot` 写了就必须是布尔值 |
 | 比例都是 `W:H` 写法 | 写成 `9-16` 下游解析不出来 |
 | **分镜图比例 = 视频比例** | 不一致 = 整批分镜图被裁或被拉，白出 |
 | 资产图是横构图或方形 | 竖构图会把设定图的三视图压扁 |
 | 三处分辨率档位都已填 | 没填就等于没定 |
 | 视频模型与参数合法 | 模型、档位、比例三者要对得上。`MiniMax H3` 配 `720p` 会被网关拒，那时整集分镜图已经出完了 |
 | 档位与比例都被生图模型收 | 同上。`nanobanana2` 不收 `4:3`、`image-2` 的 `4K` 只收 `16:9` / `9:16` |
+| **画风各块填全** | 画风正文是用户写的，缺一块下游就少一段提示词 |
+| **画风不自相矛盾** | 一边要一边禁，模型两头讨好，整批图废掉 |
 
 自测里每道门都有**击穿用例**——证明它真的会拦。
 
@@ -108,14 +137,19 @@ node scripts/novel-setup.mjs init --aspect 9:16 \
   --source 回南天 --video-model "MiniMax H3" --video-resolution 768p \
   > <工作目录>/production.json
 
-# 2. 校验
+# 2. 写画风（init 只留了空骨架，这一步拿逐字段说明）
+node scripts/novel-setup.mjs style-template
+
+# 3. 校验
 node scripts/novel-setup.mjs validate <工作目录>/production.json
 
-# 3. 看一张人读的参数表
+# 4. 看一张人读的参数表
 node scripts/novel-setup.mjs show <工作目录>/production.json
 ```
 
 **成片画幅没有默认值**——竖屏和横屏是两条不同的片子，猜错了后果是整批产物重出。这是唯一一个宁可让用户多打一个参数也不能默认的参数。
+
+**画风也没有默认值，而且没有内置类型。**以前它是 `realistic` / `ghibli` 两档写死的枚举，正文分存在三个出图 skill 的代码里——想拍水墨、拍黏土定格、拍胶片颗粒的年代戏只能改代码，改一处还漏两处。现在画风就是 `style` 字段本身，用户写什么下游查什么。
 
 **不出 HTML 报告**：这是一份十来行的参数表，`show` 就够了，多一份要 render 的产物只是多一处会漂的东西。
 
@@ -127,6 +161,8 @@ node scripts/novel-setup.mjs show <工作目录>/production.json
 - **产物各归各的段目录**：`outline/`、`characters/`、`art/`、`script/`、`storyboard/`，根目录只住这份 `production.json`。下游找到它就顺带核对落点，放错了点名该去哪——是提示不是门。
 - **找不到就明说跳过**，照旧用内置默认值，但要在校验输出里说清哪几道门跳过了。装作查过比没查更坏。
 - **找到了就必须遵循**，界线是改了要不要重出图：画风、画幅**设门不可绕过**，出图档位必须带进调用；报告界面语言走继承，不设门。
+- **画风只有这一处产地**：下游的 `cast.json` / `art.json` / `storyboard.json` 顶层没有 `style` 字段。产物里再抄一份就是第二个来源，两个来源必然会漂。
+- **`autopilot` 管的是跑法**：开着就一口气跑完不打断，命令会打印一句 `↳ 自动驾驶：开`；质量门、花费预估、失败止损都不受影响。
 
 一行拿到某一段要的全部参数：
 
@@ -138,7 +174,11 @@ node scripts/novel-setup.mjs resolve --for storyboard
 {
   "stage": "storyboard",
   "what": "分镜图",
-  "style": "realistic",
+  "style": {
+    "label": { "zh": "真人实拍", "en": "Photorealistic live-action" },
+    "phrase": "cinematic film still"
+  },
+  "autopilot": false,
   "cli": "lingying",
   "model": "nanobanana2",
   "resolution": "2K",
@@ -148,6 +188,8 @@ node scripts/novel-setup.mjs resolve --for storyboard
 ```
 
 `resolution` 与 `aspectRatio` 是原样的真源；**`inputData` 是拼好的 lingying 参数**——补一个 `prompt`（要参考图再补 `images`）就能提交。省得每个 skill 各拼各的，拼法一漂就又是一处不一致。
+
+`style` 只给这一段要抄的那一块：`--for characters` 带 `style.character`、`--for art` 带 `style.scene`，其余只有 `label` 与 `phrase`。要看完整的一份跑 `style <production.json>`。
 
 段时长也有一个折算命令——视频模型收的 `duration` 是整数秒且有区间（H3 是 5~15），分镜的段秒数不一定是：
 
@@ -171,10 +213,12 @@ novel-storyboard → storyboard.json （怎么拍：镜头、分镜图、批次�
 
 ## 自带样例
 
-- `examples/回南天-production.json`：**竖屏 9:16** 真人实拍、2K、英文提示词、`nanobanana2` + `MiniMax H3`——AI 短剧最常见的形态
-- `examples/雪线-production.json`：**横屏 16:9** 吉卜力、4K、中文提示词、`image-2` + `seedance2.0`——另一头的极端
+- `examples/回南天-production.json`：**竖屏 9:16** 真人实拍、2K、英文提示词、`nanobanana2` + `MiniMax H3`、自动驾驶关——AI 短剧最常见的形态
+- `examples/雪线-production.json`：**横屏 16:9** 吉卜力、4K、中文提示词、`image-2` + `seedance2.0`、自动驾驶开——另一头的极端
 
-成片画幅两种、画风两档、档位两档、提示词语言两种、生图模型两个、视频模型两个各出现一次——因为这个 skill 交付的就是「参数可以怎么组合」本身。
+成片画幅两种、画风两套、档位两档、提示词语言两种、生图模型两个、视频模型两个、自动驾驶两档各出现一次——因为这个 skill 交付的就是「参数可以怎么组合」本身。
+
+那两套画风**是样例不是选项**：它们演示的是一块写满的 `style` 该长什么样，不是「只能在这两个里挑」。
 
 ## 自测
 
@@ -182,7 +226,7 @@ novel-storyboard → storyboard.json （怎么拍：镜头、分镜图、批次�
 node scripts/selftest.mjs
 ```
 
-184 项断言，不调模型、不碰网络、不花额度。
+249 项断言，不调模型、不碰网络、不花额度。
 
 ## 边界
 

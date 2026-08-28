@@ -20,7 +20,7 @@
 
 ![storyboard-report.html](assets/report.webp)
 
-## 质量门：19 道，全是代码
+## 质量门：18 道，全是代码
 
 与仓库里另外五个 skill 同一主张：**checklist 交给模型自觉是靠不住的**。
 
@@ -38,11 +38,10 @@
 | **提示词结构** | 按 `video.model` 分流对账：H3 查首行对齐指令**由分镜结构推导、逐字对账** + 三字段按序 + 每个 `[Shot k]` 的切点时刻等于前面分镜秒数的累计；seedance 查身份说明逐张齐全 + 逐镜 `[镜头 k]` 齐全 + **全文不出现时刻** |
 | **台词逐字** | 认领的每句台词逐字出现在视频提示词里（H3 要求进 `<d>` 块），改一个标点都过不去 |
 | **提示词语言一致** | 正文语言与 `promptLang` 双向对账：设定中文写成英文、设定英文混进中文，都拦 |
-| **风格短语统一** | `style` 预设（realistic / ghibli，与角色/场景 skill 同名对齐）的英文短语必须出现在每条分镜图提示词里——同剧不许画风漂 |
+| **风格短语统一** | `production.json` 的 `style.phrase` 那句英文短语必须出现在每条分镜图提示词里——同剧不许画风漂。找不到那份文件**明说跳过** |
 | 分镜图提示词卫生 | 全英文非空 |
 | 提示词不含角色名 | 分镜图提示词恒查；视频提示词仅英文模式查（中文放行，身份靠分镜图锚定）。给 `--outline` / `--cast` 才查，不给**明说跳过** |
 | 引用对账 | 场次/人物/道具全部对账剧本该场 |
-| **画风与生产参数一致** | 工作目录根有 `production.json`（`novel-setup` 的产出）就查：`style` 与它不一致直接拦。找不到那份文件**明说跳过** |
 | **分镜图画幅与生产参数一致** | 每条分镜图提示词里的画幅必须是 `image.frame.aspectRatio`——**成片竖屏而提示词写着 16:9，一集三四十格喂给视频模型全被裁掉两边**。找不到那份文件**明说跳过** |
 | **镜头配方**（可选挂载） | 给了 `--shots <卡片目录>` 才查：cut 的 `recipe` id 在卡库里、卡片的每条必备短语出现在该切的分镜图提示词里、多格配方的连排格数够。不给 `--shots` **明说跳过**；给了但全篇没引用配方也明说 |
 
@@ -106,7 +105,7 @@ node scripts/novel-storyboard.mjs validate sb.json \
      --script script.json --outline outline.json --cast cast.json
 node scripts/novel-storyboard.mjs checkup sb.json --script script.json
 node scripts/novel-storyboard.mjs validate sb.json --script script.json \
-     --shots /path/to/cards                                              # 可选：开第 19 道配方门
+     --shots /path/to/cards                                              # 可选：开第 18 道配方门
 node scripts/novel-storyboard.mjs render sb.json --html \
      --script script.json --outline outline.json --art art.json > storyboard-report.html
 node scripts/novel-storyboard.mjs render sb.json --html --lang en \
@@ -115,6 +114,12 @@ node scripts/novel-storyboard.mjs export sb.json --script script.json   # 投产
 ```
 
 `export` 的投产结构固定：**每段一个文件夹** `E01-01/`——分镜图 `f1..fN.png` 和 `prompt.md` 同住（头部的图 ↔ 文件对照表**明确 f1.png 是首帧**，H3 还写明各图钉在第几秒、seedance 只给顺序，分隔线以下是 `videoPrompt` 原样），根部 `manifest.json` 带 Picture 序图清单、切点时刻表、缺图标注。一个段文件夹 = 一次视频生成的全部材料。`manifest.json` 顶层还带着生产参数里的视频模型、`aspect_ratio`、`resolution`——下单时不用回头翻配置。
+
+## 自动驾驶（autopilot）
+
+工作目录根的 `production.json`（`novel-setup` 的产出）顶层写着 `"autopilot": true` 时，本 skill 的全部流程**一口气跑完**：第一段的分镜图出完自己验效果、下单前的花费预估照样报出来但不等回应，做过的决定全部写进最后的汇报。
+
+**转移的是审批权，不是取消检查点**：18 道门照样要过、花费照样先算清楚、同一段连着失败两次照样跳过——**不打断不等于无限重试烧钱**。字段写着 `false`、整个没写、或者根本没有 `production.json`，就是原来的样子（该问就问）。跑 `validate` 时找到生产参数并且开着，会打印一句 `↳ 自动驾驶：开`。
 
 ## 边界
 
@@ -130,7 +135,7 @@ node scripts/novel-storyboard.mjs export sb.json --script script.json   # 投产
 SKILL.md                 给 agent 读的工作流
 scripts/
   novel-storyboard.mjs   seed / validate / checkup / render / export / slug
-  selftest.mjs           348 项断言，不调模型
+  selftest.mjs           360 项断言，不调模型
 references/
   schema.md              storyboard.json 结构 + 时长约束链
   h3-prompt.md           H3 提示词写法规范（官方方法论内化版，video.model 是 MiniMax H3 时读）
@@ -151,6 +156,6 @@ assets/
 node scripts/selftest.mjs
 ```
 
-348 项断言，覆盖节拍展开 / 两套骨架的推导与分流 / 统计与批次 / 质量门逐项击穿 / 配方卡库解析与挂载 / 生产参数查找与两道门 / seed / 渲染（含中英界面）/ 导出。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
+360 项断言，覆盖节拍展开 / 两套骨架的推导与分流 / 统计与批次 / 质量门逐项击穿 / 配方卡库解析与挂载 / 生产参数查找与两道门 / seed / 渲染（含中英界面）/ 导出。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
 
 **只在 macOS + Node 24 上实测过。** 代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但**没验过**。

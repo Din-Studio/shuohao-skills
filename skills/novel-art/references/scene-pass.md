@@ -22,16 +22,20 @@
 
 4. **提示词永远英文，永远空景。**`image.prompt` 里明写 empty scene / no people，`negativePrompt` 必须禁人。**绝不出现角色名、作者名、作品名**——图像模型会把它认识的东西画进去。
 
-5. **风格整套取用。**跑 `node scripts/novel-art.mjs styles` 拿当前风格的 render/surface/negative/tags，`image.sheet` 里整段带上渲染句和表面处理句，不要混搭两种风格。
+5. **画风整套取用。**跑 `node scripts/novel-art.mjs style` 拿这部剧的 `style.scene`（`render` / `surface` / `negative` / `tags`），`image.sheet` 与 `image.prompt` 里整段带上渲染句和表面处理句，`negative` 的每一条进 `negativePrompt`，不要混搭两种画风。
 
 6. **能做变体就别开新景。**AI 生成一个新环境很便宜，但**每多一个独立环境就多一份一致性维护**。outline 里带复用方案的场景（seedNote 会提示），用 `variantOf` + `changes` 挂到母场景上：改时段、换天气、换前景、删道具，桥板细节这类资产直接复用。
 
-7. **不要把角色 skill 的表面处理带进来。**毛孔、皮下散射是皮肤的事；环境的真实感来自**用旧的材质**——掉漆、水渍、包浆、磨白的木纹。预设里写好了，照用。
+7. **不要把角色 skill 的表面处理带进来。**毛孔、皮下散射是皮肤的事——那是 `style.character` 那一块。环境用 `style.scene` 那一块（写实那一档的真实感来自**用旧的材质**：掉漆、水渍、包浆、磨白的木纹）。两块是同一个画风的两种落地，别互相搬。
 
 ## 输入格式
 
 ```
-Style: realistic
+画风（production.json 的 style.scene，整块原样取用）：
+  render: …
+  surface: …
+  negative: …
+  tags: […]
 Scene: S01 渡船船舱（主场景）
 出现集：1–6　承载爽点：悬念钩、身份揭破、反转、收束
 

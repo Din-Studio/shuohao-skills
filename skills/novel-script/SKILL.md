@@ -1,6 +1,6 @@
 ---
 name: novel-script
-version: 1.4.0
+version: 1.5.0
 description: |
   给 AI 短剧写剧本：把 novel-outline 的分集梗概落成结构化的场次 + 节拍流（动作节拍与台词行交替），
   台词逐句带说话人与语气，时长逐集按语速确定性折算。产出 script.json + Markdown + 单页评审报告
@@ -11,6 +11,7 @@ description: |
   角色/场景/光照/道具对账上游……）。
   有 outline.json 就用 seed 预填每集骨架；给 --art 连光照状态一起对账。
   零依赖、零 API key，用当前会话额度。
+  production.json 顶层 autopilot 为 true 时全程不打断——没有大纲也不问、批次之间不等确认，做过的决定写进汇报。
   Use when asked to 写剧本、出剧本、台词、场次、写戏、screenwriting for AI short drama。
 # 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
 allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
@@ -72,6 +73,20 @@ metadata:
 
 - `--outline`：角色引用对账 + 爽点认领检查 + 报告里 C01 显示成人名
 - `--art`：场景/光照状态/道具对账 + 报告里 S01 显示成场景名
+
+### Step 0.5 — 自动驾驶（autopilot）
+
+**开工前先看一眼工作目录根的 `production.json` 顶层 `autopilot`**（`novel-setup` 的产出，从段目录向上最多 5 层找得到）。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` / `checkup` 找到它也会打印一句 `↳ 自动驾驶：开`——但那时 Step 0 已经跑过了，所以这一眼要自己看。
+
+没有 `production.json`、字段写着 `false` 或者整个没写，就是各步原来的样子。
+
+| 原本 | 自动驾驶下 |
+| --- | --- |
+| Step 0 没有 outline.json 就问「要不要先跑 novel-outline」 | 不问：有就用，没有就按现有材料自己定集数与单集分钟数、手建骨架，对账门明说跳过，定了多少写进汇报 |
+| Step 0 一批 ≤ 3 集，小批量出、快拍板 | 批次照旧（改动集中、好回滚），但每批之间不停下来等确认——一路写到用户要的范围为止 |
+| Step 3 有违规逐条修 | 自己改到过门：写超先砍动作节拍再压台词、写欠补冲突不注水，不把「改哪一句」抛回去 |
+
+**转移的是审批权，不是取消检查点**：10 道门照样要过，需要一个美术没登记的光照状态时照样回 `art.json` 补状态而不是绕过门——只是不再等人点头。**替用户做的每一个决定都要写进 Step 4 的汇报**，一条不漏。
 
 ### Step 1 — seed 骨架
 
@@ -159,7 +174,7 @@ seed 吃 outline.json；validate/render 的 `--outline` `--art` 负责对账和�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-166 项断言，不调模型、不花额度。10 道质量门每一道都有击穿用例。改完脚本先跑这个。
+175 项断言，不调模型、不花额度。10 道质量门每一道都有击穿用例。改完脚本先跑这个。
 
 ## 自带样例
 

@@ -15,10 +15,10 @@ import {
 /* 常量                                                                */
 /* ------------------------------------------------------------------ */
 /*
- * 与 novel-storyboard 同一个前提：段（segment）＝ 一次视频生成调用，上限是
- * 视频模型单段时长；分镜（cut）＝ 段内的一次剪切，2–5 秒。**少一层**：没有
- * 分镜图，段直接挂载 novel-characters / novel-art 已经生成落盘的设定图，
- * 写一条通用视频提示词，从 seed 到下单不产生任何新的图像生成调用。
+ * 两层结构：段（segment）＝ 一次视频生成调用，上限是视频模型单段时长；
+ * 分镜（cut）＝ 段内的一次剪切，2–5 秒。分镜下面**没有关键帧这一层**：段直接
+ * 挂载 novel-characters / novel-art 已经生成落盘的设定图，写一条通用视频提示词，
+ * 从 seed 到下单不产生任何新的图像生成调用。
  */
 
 export const DEFAULT_PARAMS = {
@@ -37,9 +37,9 @@ export function paramsOf(doc) {
 /* 生产参数（production.json）                                          */
 /* ------------------------------------------------------------------ */
 /*
- * 这十几行查找逻辑与 novel-storyboard 那边是**有意重复**的：本 skill 必须能
- * 整个拷走单独跑，不 import 任何兄弟 skill 的代码。两边读的是同一份 JSON。
- * 找不到不是错误——照旧用内置默认值，但校验输出里必须明说哪几道门跳过了。
+ * 这十几行查找逻辑在每个消费生产参数的 skill 里都是**有意重复**的：本 skill
+ * 必须能整个拷走单独跑，不 import 任何兄弟 skill 的代码，读的只是工作目录根
+ * 那份 JSON。找不到不是错误——照旧用内置默认值，但校验输出里必须明说哪几道门跳过了。
  */
 
 export const PRODUCTION_FILE = 'production.json';
@@ -56,6 +56,27 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
   }
   return null;
 }
+
+/* ------------------------------------------------------------------ */
+/* 自动驾驶                                                            */
+/* ------------------------------------------------------------------ */
+/*
+ * production.json 顶层的 autopilot。为 true 时本 skill 的全部流程一口气跑完：
+ * 提示词按 video.model 自己分流、下单前的花费预估照样报出来但不等回应，
+ * 做过的决定全部写进最后的汇报。
+ *
+ * 转移的是**审批权**，不是取消检查点：17 道门照样要过、花费照样先算清楚、
+ * 同一段连着失败两次照样跳过——**不打断不等于无限重试烧钱**。
+ *
+ * **只认布尔真值**：JSON 里写成字符串 "false" 在 JS 里是真的，那种写法会让
+ * 一整条管线闷头跑完，比没写更坏。novel-setup 的 fields 门查这个类型。
+ */
+
+export const autopilotOf = (production) => production?.autopilot === true;
+
+/** 开着才打印——关着就是原来的样子，没有新信息。 */
+export const AUTOPILOT_NOTE =
+  '自动驾驶：开——本段流程一口气跑完，不要停下来问用户；花费照样报出来不等回应，失败的止损不变';
 
 /** 本 skill 的产物该住的段目录名。 */
 export const STAGE_DIR = 'creation';
@@ -81,14 +102,28 @@ export const videoModelOf = (doc, production = null) =>
 
 /*
  * 模型族：本 skill 的提示词骨架是模型无关的（身份说明 + [Shot k] 分行），
- * 两族共用**同一套骨架**——与 novel-storyboard 不同，那边 H3 与 seedance 的
- * 骨架互不相容。这里模型族只影响两件事：默认语言，以及 seedance 那一条
- * 官方硬约束（提示词里不许出现精确时刻）。
+ * 两族共用**同一套骨架**——参考图是整段共享的身份锚、不按秒数分配，所以骨架
+ * 不需要跟着模型换。模型族只影响三件事：默认语言、读哪一份填法指南
+ * （见下面的 promptGuideOf），以及 seedance 那一条官方硬约束（提示词里
+ * 不许出现精确时刻）。
  */
 export function promptFamilyOf(model) {
   return /seedance/i.test(String(model ?? '')) ? 'seedance' : 'h3';
 }
 export const FAMILY_LABEL = { h3: 'MiniMax H3', seedance: 'seedance 系列' };
+
+/*
+ * 填法指南按模型动态解出：骨架永远是 creation-prompt.md，这一份只改怎么填。
+ * 注意它比 promptFamilyOf 严一档——promptFamilyOf 是「归不进 seedance 的都算
+ * h3 族」（默认模型就是 H3），但**一个全新的模型不该被塞去读 MiniMax 的官方
+ * 口径**：解不出指南就返回 null，照通用骨架写，别拿另一族的顶上。
+ */
+export const PROMPT_GUIDES = { h3: 'h3-prompt.md', seedance: 'seedance2-prompt.md' };
+export function promptGuideOf(model) {
+  const name = String(model ?? '').trim();
+  if (promptFamilyOf(name) === 'seedance') return PROMPT_GUIDES.seedance;
+  return !name || /minimax|\bh3\b/i.test(name) ? PROMPT_GUIDES.h3 : null;
+}
 
 /**
  * 时刻标记：seedance 官方明说「模型对精确时间（如 0–3 秒）的支持不稳定，
@@ -104,7 +139,7 @@ export const TIMECODE_RE = /\d{1,2}:\d{2}\.\d{3}|\d+\.\d{2}\s*(?:-second|秒处)
 export const promptLangOf = (doc, production = null, family = 'h3') =>
   doc?.promptLang ?? production?.promptLang ?? (family === 'seedance' ? 'zh' : 'en');
 
-/** 景别枚举：短语必须出现在这一切自己的 [Shot k] 行里。与 novel-storyboard 同一张表。 */
+/** 景别枚举：短语必须出现在这一切自己的 [Shot k] 行里。通用摄影语汇，不是任何一个模型的私有字段。 */
 export const SHOT_SIZES = {
   'extreme-wide': { zh: '大远景', phrase: 'extreme wide shot' },
   wide: { zh: '全景', phrase: 'wide shot' },
@@ -183,7 +218,8 @@ export function clampDuration(seconds, model) {
 /*
  * 不是 H3 I2VA 的内化版——没有关键帧图可对齐，没有对齐指令、没有切点时刻、
  * 没有 <d> 标签。结构只做两件事：逐张交代参考图身份、按 [Shot k] 分行。
- * 写法规范见 references/creation-prompt.md。
+ * 骨架规范见 references/creation-prompt.md；**怎么填按 video.model 动态载入**
+ * 对应那一族的指南（promptGuideOf），骨架一个字不改。
  */
 
 export const CREATION_TOKENS = {
@@ -199,8 +235,9 @@ export const CREATION_TOKENS = {
   },
 };
 
-/** 把 prompt 的 [Shot k] 正文按镜头切成每个分镜自己的段落——与 novel-storyboard 的
- *  h3CutSlices 同一个机制，字段名换成本 skill 自己的（shots:/ambience:）。 */
+/** 把 prompt 的 [Shot k] 正文按镜头切成每个分镜自己的段落：正文由 shots: 与 ambience:
+ *  两个固定字段名夹出来，段内再按 [Shot k] 到 [Shot k+1] 切片。逐镜的门（景别、运镜、
+ *  配方必备短语）查的都是各自这一片。 */
 export function promptCutSlices(prompt, cutCount, lang = 'en') {
   const tk = CREATION_TOKENS[lang] ?? CREATION_TOKENS.en;
   const p = String(prompt ?? '');
@@ -230,8 +267,8 @@ export function promptRemainder(prompt) {
 /* 剧本节拍展开                                                          */
 /* ------------------------------------------------------------------ */
 /*
- * 与 novel-script / novel-storyboard 相同的计秒规则，这里刻意重新实现而不是
- * 跨目录 import——每个 skill 必须自包含、可以单独拷走。
+ * 计秒规则与剧本一致（台词按字数 ÷ 语速、动作按固定秒数，参数从 script.params
+ * 继承），这里刻意重新实现而不是跨目录 import——本 skill 必须自包含、可以单独拷走。
  */
 
 const SCRIPT_DEFAULTS = { charsPerSecond: 4.5, actionSeconds: 2.5 };
@@ -267,7 +304,7 @@ export function expandScript(script) {
 export const segSeconds = (segment) => r1((segment?.cuts ?? []).reduce((n, c) => n + (c?.seconds ?? 0), 0));
 
 /* ------------------------------------------------------------------ */
-/* 镜头配方卡库（可选挂载）——与 novel-storyboard 逐字相同                  */
+/* 镜头配方卡库（可选挂载）——只读卡片 frontmatter 的受限字段              */
 /* ------------------------------------------------------------------ */
 
 const RECIPE_FIELDS = new Set(['id', 'name', 'name_en', 'cuts', 'must_phrases', 'sizes', 'cameras']);
@@ -365,15 +402,17 @@ export function resolveReferenceImage(kind, name, workDir = '.', { existsImpl = 
 /* 质量门                                                               */
 /* ------------------------------------------------------------------ */
 /*
- * 17 道门，比 novel-storyboard 少 2 道（19 - 5 + 3）：
- *   去掉 h3-structure / style-phrase / prompt-english / production-style /
- *   frame-aspect——没有关键帧图可对齐，没有分镜图这个产物，画风一致性完全
- *   交给参考图本身，不需要在提示词里重复交代
- *   h3-dialogue → dialogue-verbatim（纯文本子串匹配，不要求 <d> 标签）
- *   h3-lang → prompt-lang（逻辑不变，检查对象从 h3Prompt 换成 prompt）
- *   新增 refimage-coverage（AC3：缺参考图文件时点名缺哪张）、
- *   refimage-labeled（提示词的身份说明句数量与 images 数组长度一致）、
- *   prompt-model-fit（提示词与生产参数挂的视频模型口径相符）
+ * 17 道门，全部确定性可查，分四组：
+ *   结构、时长与对账（8）——coverage / segment-cap / cut-length / dialogue-fit /
+ *     ep-duration / crowd / segment-id / refs
+ *   提示词（5）——size-phrase / camera-phrase / dialogue-verbatim（纯文本子串
+ *     匹配，不要求任何标签）/ prompt-lang / prompt-no-names
+ *   这条路特有的（3）——refimage-coverage（缺参考图文件时点名缺哪张）、
+ *     refimage-labeled（身份说明句数量与 images 数组长度一致）、
+ *     prompt-model-fit（提示词与生产参数挂的视频模型口径相符）
+ *   可选挂载（1）——shot-recipe，给了 --shots 才查，不给就明说跳过
+ * 没有画风短语门与画幅门：不出图，画风一致性完全交给参考图本身，
+ * 不需要在提示词里重复交代一遍。
  */
 
 export function gateReport(doc, ctx = {}) {
@@ -436,8 +475,8 @@ export function gateReport(doc, ctx = {}) {
       const slices = promptCutSlices(prompt, cuts.length, promptLang);
       const tk = CREATION_TOKENS[promptLang] ?? CREATION_TOKENS.en;
 
-      // seedance 的时刻禁令：骨架本来就不写秒数，但从 novel-storyboard 那边
-      // 搬提示词、或者手动加「第 3 秒切到……」都会踩上去
+      // seedance 的时刻禁令：骨架本来就不写秒数，但从多图按秒对齐那套提示词里
+      // 搬东西、或者手动加「第 3 秒切到……」都会踩上去
       if (family === 'seedance') {
         const stamp = prompt.match(TIMECODE_RE);
         if (stamp) {
@@ -564,7 +603,7 @@ export function gateReport(doc, ctx = {}) {
         }
       });
 
-      // 多格配方靠连续同 id 的分镜表达——与 novel-storyboard 一致
+      // 多格配方靠连续同 id 的分镜表达，不是数组
       if (recipes) {
         for (let i = 0; i < cuts.length; ) {
           const rid = cuts[i]?.recipe;
@@ -657,14 +696,20 @@ export function gateReport(doc, ctx = {}) {
   );
   add('refimage-coverage', '段内出现的每个人物/场景/道具都能解出一张存在的设定图文件', bad.refCoverage.length === 0, haveNames ? brief(bad.refCoverage) : SKIP_REFS);
   add('refimage-labeled', '提示词开头的参考图身份说明句数量与 images 数组长度一致', bad.refLabeled.length === 0, bad.refLabeled.join('；'));
-  // 骨架跨模型通用，但填法有一条按模型分流的硬约束——写法见两份规范
+  // 骨架跨模型通用，填法按模型动态载入指南；有确定性硬约束的只有 seedance 那一条，
+  // 其余模型这道门不假装查了什么，只把该读哪份填法指南报出来
+  const guide = promptGuideOf(videoModel);
   add(
     'prompt-model-fit',
     family === 'seedance'
       ? `提示词与挂的视频模型口径相符（${videoModel}：全程不出现精确时刻）`
       : `提示词与挂的视频模型口径相符（${videoModel}）`,
     bad.modelFit.length === 0,
-    family === 'seedance' ? brief(bad.modelFit) : `模型是 ${videoModel}，通用骨架没有附加约束`,
+    family === 'seedance'
+      ? brief(bad.modelFit)
+      : guide
+        ? `模型是 ${videoModel}，没有确定性硬约束可查——填法见 references/${guide}`
+        : `模型是 ${videoModel}，没有这一款的填法指南，照 references/creation-prompt.md 的通用骨架写`,
   );
 
   return gates;
@@ -1643,7 +1688,7 @@ function loadCtx(rest, fromDir = '.') {
 }
 
 /** 找到就报一声，找不到也报一声——静默是最坏的那种。 */
-function announceProduction(ctx, rest, docPath = null) {
+function announceProduction(ctx, rest, docPath = null, doc = null) {
   const which = '视频时长区间比对与产物落点提示';
   if (rest.includes('--no-production')) {
     console.error(`⚠️ --no-production：生产参数的 ${which}跳过`);
@@ -1651,6 +1696,16 @@ function announceProduction(ctx, rest, docPath = null) {
   }
   if (ctx.productionPath) {
     console.error(`↳ 生产参数：${ctx.productionPath}`);
+    // 提示词的填法指南按模型动态载入，所以把「这部剧该读哪份」直接打出来——
+    // 骨架永远是 creation-prompt.md，解不出指南的模型就只照骨架写
+    const model = videoModelOf(doc, ctx.production);
+    const guide = promptGuideOf(model);
+    console.error(
+      guide
+        ? `↳ 视频模型 ${model} → 填法指南 references/${guide}（骨架仍是 references/creation-prompt.md）`
+        : `↳ 视频模型 ${model} 没有对应的填法指南 → 照 references/creation-prompt.md 的通用骨架写`,
+    );
+    if (autopilotOf(ctx.production)) console.error(`↳ ${AUTOPILOT_NOTE}`);
     const note = stageDirNote(docPath, ctx.productionPath);
     if (note) console.error(`⚠️ ${note}`);
   } else console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，${which}跳过——跑 /novel-setup 生成一份可以打开它`);
@@ -1692,9 +1747,9 @@ async function main(argv) {
     if (!ctx.script) throw new Error('段离开剧本没有意义——必须给 --script <script.json>');
     if (!ctx.outline || !ctx.art) console.error('⚠️ 没给 --outline / --art，跳过参考图挂载核对（refimage-coverage）与提示词人名检查');
     ctx.imageExists = (rel) => existsSync(resolve(rel));
-    announceProduction(ctx, rest, path);
+    announceProduction(ctx, rest, path, doc);
 
-    // 不落 .gates.jsonl、不加 stats 子命令——门失败累积目前只在 novel-storyboard 上试验（CLAUDE.md）
+    // 不落 .gates.jsonl、不加 stats 子命令——本 skill 不累积门失败统计，结果只在当次输出里
 
     if (cmd === 'checkup') {
       const gates = gateReport(doc, ctx);
@@ -1752,7 +1807,7 @@ async function main(argv) {
     const ctx = loadCtx(rest, resolve(path, '..'));
     if (!ctx.script) throw new Error('段离开剧本没有意义——必须给 --script <script.json>');
     if (!ctx.outline || !ctx.art) console.error('⚠️ 没给 --outline / --art，参考图路径解不出来，投产包的 images 会是空的');
-    announceProduction(ctx, rest, path);
+    announceProduction(ctx, rest, path, doc);
     const n = namer(ctx);
     const resolveImage = (kind, ref) => {
       const name = n.nameOf(kind, ref);

@@ -14,7 +14,7 @@ Outputs `art.json`, a Markdown report, and a self-contained `art-report.html`. R
 
 ## The quality gates are code
 
-Same stance as the other five skills: **a checklist the model grades itself on is worthless.** Thirteen deterministic gates — anchors 3–5 (scenes and props alike), lighting states ≥1 per scene, people banned in negatives everywhere, all prompts English, no character names (checked with `--cast`, explicitly reported as skipped without it), variant references complete, style matching its negative prompt, plus four prop-specific gates: **states ≥1**, **scale phrase present in prompts**, **hands banned in negatives**, **pure white background in the sheet**, plus two that read the `production.json` at the work-directory root (`novel-setup`'s output): **style matches the production parameters** and **sheet layout aspect matches the production parameters** — both explicitly reported as skipped when that file is absent. The selftest defeats every gate on purpose.
+Same stance as the other five skills: **a checklist the model grades itself on is worthless.** Twelve deterministic gates — anchors 3–5 (scenes and props alike), lighting states ≥1 per scene, people banned in negatives everywhere, all prompts English, no character names (checked with `--cast`, explicitly reported as skipped without it), variant references complete, plus four prop-specific gates: **states ≥1**, **scale phrase present in prompts**, **hands banned in negatives**, **pure white background in the sheet**, plus two that read the `production.json` at the work-directory root (`novel-setup`'s output): **the art style is used as one whole block** (its render sentence in both prompts, every negative term carried over) and **sheet layout aspect matches the production parameters** — both explicitly reported as skipped when that file is absent. The selftest defeats every gate on purpose.
 
 ## The relay
 
@@ -25,7 +25,7 @@ novel-characters → cast.json    (who: character assets)
 novel-art        → art.json     (where & what they hold: art assets)
 ```
 
-`seed <outline.json>` prefills both the scene list and the prop list deterministically, carrying over the episodes each one appears in and the beats it serves; if the outline has no `props`, the prop list is left empty and the model extracts it from the text per `prop-pass.md`. `validate --cast` cross-checks prompts against the character roster. Style presets share names with novel-characters (realistic / ghibli), environment-flavoured.
+`seed <outline.json>` prefills both the scene list and the prop list deterministically, carrying over the episodes each one appears in and the beats it serves; if the outline has no `props`, the prop list is left empty and the model extracts it from the text per `prop-pass.md`. `validate --cast` cross-checks prompts against the character roster. There are no built-in styles: the scene block comes from `production.json`, written during `/novel-setup`. It is the environment-flavoured half of the same style whose other half (`style.character`) the character skill uses.
 
 ## CLI
 
@@ -35,7 +35,7 @@ node scripts/novel-art.mjs validate art.json --cast cast.json
 node scripts/novel-art.mjs checkup art.json
 node scripts/novel-art.mjs render art.json --html             # Chinese report UI (default)
 node scripts/novel-art.mjs render art.json --html --lang en   # English report UI
-node scripts/novel-art.mjs styles
+node scripts/novel-art.mjs style
 ```
 
 ## Image generation (optional)
@@ -50,12 +50,18 @@ Via the **lingying** gateway. One sheet per scene and per prop, both using the *
 
 **The call is code, not documentation.** Arguments never go through a shell (`execFile` takes an array, so quotes and newlines inside prompts arrive intact), only `data.status` is read (the envelope's `message: success` is always success), each sheet times out after 300s instead of looping forever, existing files are skipped, submitted task ids land in `images/.tasks.json` for resume, and variants automatically attach the parent sheet once it is on disk. Layout and prompt rules live in `references/sheet.md`.
 
+## Autopilot
+
+When the `production.json` at the work-directory root (produced by `novel-setup`) carries `"autopilot": true`, this skill runs its stage **end to end**: it does not ask which input to use, it decides the prop list itself, and it generates every scene and prop sheet in one go. Every decision it made goes into the final report.
+
+**It transfers approval, it does not remove checkpoints**: all 12 gates still have to pass and every sheet is still checked against its anchors (no people, no hands, pure white background) — it just does not wait for a nod. Written as `false`, left out, or with no `production.json` at all, nothing changes. When `validate` finds the file with the flag on, it prints `↳ 自动驾驶：开`.
+
 ## Selftest
 
 ```bash
 node scripts/selftest.mjs
 ```
 
-255 assertions — seeding, style presets, gate-defeating cases for all 13 gates, production-parameter lookup and inheritance, rendering (zh/en report UI), export, and the full image-generation flow (submit, poll, timeout, resume, variant ordering, cut-out) against an injected fake CLI and clock. No model calls, no requests, runs in about a second.
+279 assertions — seeding, style lookup, gate-defeating cases for all 12 gates, production-parameter lookup and inheritance, rendering (zh/en report UI), export, and the full image-generation flow (submit, poll, timeout, resume, variant ordering, cut-out) against an injected fake CLI and clock. No model calls, no requests, runs in about a second.
 
 **Only tested on macOS + Node 24.**

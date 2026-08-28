@@ -10,8 +10,6 @@ import { fileURLToPath } from 'node:url';
 import {
   CAMERA_MOVES,
   DEFAULT_PARAMS,
-  DEFAULT_STYLE,
-  STYLE_PRESETS,
   exportPack,
   H3_I2VA_LINE,
   SHOT_SIZES,
@@ -40,6 +38,7 @@ import {
   PRODUCTION_DEPTH,
   PRODUCTION_FILE,
   SKIP_PROD,
+  SKIP_STYLE,
   brief,
   findProduction,
   promptLangOf,
@@ -50,9 +49,12 @@ import {
   seedanceRemainder,
   DEFAULT_VIDEO_MODEL,
   TIMECODE_RE,
-  styleIdOf,
+  stylePhraseOf,
+  styleLabelOf,
   STAGE_DIR,
   stageDirNote,
+  AUTOPILOT_NOTE,
+  autopilotOf,
 } from './novel-storyboard.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -75,10 +77,14 @@ function eq(actual, expected, label) {
 const clone = (x) => structuredClone(x);
 const gate = (doc, id, ctx = CTX) => gateReport(doc, ctx).find((g) => g.id === id);
 
-// 生产参数夹具：样例《渡口》是横屏真人实拍，参数照它配才是全绿基线
+/*
+ * 生产参数夹具：样例《渡口》是横屏真人实拍，参数照它配才是全绿基线。
+ * 画风那一块就是用户在 novel-setup 那一段填的东西——本 skill 没有内置画风，
+ * 只要其中的 phrase，那句必须出现在每条分镜图提示词里。
+ */
 const PRODUCTION = {
   source: '渡口',
-  style: 'realistic',
+  style: { label: { zh: '真人实拍', en: 'Photorealistic live-action' }, phrase: 'cinematic film still' },
   lang: 'zh',
   promptLang: 'en',
   image: {
@@ -148,7 +154,7 @@ eq(paramsOf({ params: { maxCutSeconds: 4 } }).maxCutSeconds, 4, '分镜上限可
 /* ---------------- 质量门：全绿基线 ---------------- */
 
 ok(gateReport(FIXTURE, CTX).every((g) => g.ok), '样例带全部上游全部门通过');
-eq(gateReport(FIXTURE, CTX).length, 19, '十九道门');
+eq(gateReport(FIXTURE, CTX).length, 18, '十八道门');
 {
   const gates = gateReport(FIXTURE, {});
   ok(gates.every((g) => g.ok), '不带上游也通过（对账门跳过）');
@@ -435,7 +441,7 @@ const seedanceDoc = (prompt = SEEDANCE_PROMPT, model = 'seedance2.0') => {
 {
   const doc = seedanceDoc();
   delete doc.video;
-  const prod = { source: '渡口', style: 'realistic', video: { model: 'seedance2.0 fast' } };
+  const prod = { source: '渡口', video: { model: 'seedance2.0 fast' } };
   ok(gate(doc, 'prompt-structure', { ...CTX, production: prod }).ok, '模型从 production.json 继承，骨架跟着切');
   ok(!gate(doc, 'prompt-structure', CTX).ok, '同一份提示词退回默认的 H3 就对不上——分流真的在按模型走');
 }
@@ -485,25 +491,35 @@ ok(seedanceCutSlices(SEEDANCE_PROMPT, 4, 'zh')[3].includes('跟拍'), '第四镜
   ok(!gate(doc, 'refs').ok, '不存在的场次被拦');
 }
 
-// style-phrase — 同剧分镜图画风不许漂
+// style-phrase — 同剧分镜图画风不许漂。短语来自生产参数，没有内置预设
 {
-  eq(DEFAULT_STYLE, 'realistic', '默认真人实拍');
-  ok(STYLE_PRESETS.realistic.phrase && STYLE_PRESETS.ghibli.phrase, '预设带风格短语');
-  const doc = clone(FIXTURE);
-  doc.style = '油画';
-  ok(!gate(doc, 'style-phrase').ok, '不在预设里的风格被拦');
+  eq(stylePhraseOf(PRODUCTION), 'cinematic film still', '短语从生产参数里读');
+  eq(stylePhraseOf(null), null, '没有生产参数就没有短语——不退回任何一档内置默认');
+  eq(stylePhraseOf({ style: { phrase: '  ' } }), null, '只有空白算没填');
+  eq(styleLabelOf(PRODUCTION), '真人实拍', '门的标签用用户填的画风名');
+  eq(styleLabelOf(null), '未填', '没挂载就说没填，不编一个名字出来');
 }
 {
   const doc = clone(FIXTURE);
   doc.episodes[0].segments[0].cuts[0].frame = doc.episodes[0].segments[0].cuts[0].frame.replace('cinematic film still', 'cinematic image');
-  const g = gate(doc, 'style-phrase');
+  const g = gate(doc, 'style-phrase', CTX_P);
   ok(!g.ok, '分镜图提示词缺风格短语被拦');
   ok(g.detail.includes('E01-01#1'), '点名到切');
+  ok(g.label.includes('真人实拍'), '门的标签点名这部剧定的是哪一档画风');
 }
 {
+  // 换一档完全不同的画风：短语跟着换，整批还写着上一档短语的分镜必须被拦
+  const ink = { ...PRODUCTION, style: { label: { zh: '水墨' }, phrase: 'ink wash film still' } };
+  const g = gate(FIXTURE, 'style-phrase', { ...CTX, production: ink });
+  ok(!g.ok, '换成水墨后写实短语不再达标——换风格是整批换，画风没有内置类型');
+  ok(g.detail.includes('ink wash film still'), '点名现在该出现的是哪句短语');
+}
+{
+  // 大小写不敏感：提示词里首字母大写的写法不该被误拦
   const doc = clone(FIXTURE);
-  doc.style = 'ghibli';
-  ok(!gate(doc, 'style-phrase').ok, '换成吉卜力后写实短语不再达标——换风格是整批换');
+  doc.episodes[0].segments[0].cuts[0].frame =
+    doc.episodes[0].segments[0].cuts[0].frame.replace('cinematic film still', 'Cinematic Film Still');
+  ok(gate(doc, 'style-phrase', CTX_P).ok, '短语大小写不同不算漂——误报的门比没有门更坏');
 }
 
 /* ---------------- 镜头配方卡库（可选挂载） ---------------- */
@@ -734,40 +750,32 @@ eq(GATE_LOG, '.gates.jsonl', '日志文件名固定');
 
 // 继承：没写就跟生产参数，写了以自己为准
 {
-  eq(styleIdOf({}, PRODUCTION), 'realistic', 'storyboard.json 没写画风就继承生产参数');
-  eq(styleIdOf({ style: 'ghibli' }, PRODUCTION), 'ghibli', '自己写了画风以自己为准（一致性交给门去查）');
-  eq(styleIdOf({}, null), DEFAULT_STYLE, '两边都没有就退回内置默认');
   eq(promptLangOf({}, { promptLang: 'zh' }), 'zh', '提示词语言同样可继承');
   eq(promptLangOf({}, null), 'en', '提示词语言默认英文——H3 官方口径');
 }
 
-// 全绿基线：样例挂上对得上的生产参数，19 道门全过
+// 全绿基线：样例挂上对得上的生产参数，18 道门全过
 {
   const gates = gateReport(FIXTURE, CTX_P);
   ok(gates.every((g) => g.ok), '样例挂上生产参数仍然全绿');
-  eq(gates.find((g) => g.id === 'production-style').detail, '', '画风门没有抱怨');
+  eq(gates.find((g) => g.id === 'style-phrase').detail, '', '画风门没有抱怨');
   eq(gates.find((g) => g.id === 'frame-aspect').detail, '', '画幅门没有抱怨');
 }
 
 // 没挂载就明说跳过，不静默、不装查过
 {
   const gates = gateReport(FIXTURE, CTX);
-  ok(gates.find((g) => g.id === 'production-style').detail.includes('跳过'), '没有生产参数时画风门明说跳过');
+  ok(gates.find((g) => g.id === 'style-phrase').detail.includes('跳过'), '没有生产参数时画风门明说跳过');
+  ok(gates.find((g) => g.id === 'style-phrase').ok, '跳过视为通过——老项目照跑');
   ok(gates.find((g) => g.id === 'frame-aspect').detail.includes('novel-setup'), '跳过时指路 /novel-setup');
-  ok(gates.find((g) => g.id === 'production-style').ok, '跳过视为通过——老项目照跑');
 }
 
-// production-style 击穿：画风漂了，合成没法看
+// 挂上了参数但画风短语没填：还是跳过，但两种跳过的原因不一样，说清楚
 {
-  const doc = clone(FIXTURE);
-  doc.style = 'ghibli';
-  ok(!gate(doc, 'production-style', CTX_P).ok, '画风与生产参数不一致击穿 production-style');
-  ok(gate(doc, 'production-style', CTX_P).detail.includes('realistic'), '点名生产参数定的是哪一档');
-}
-{
-  const doc = clone(FIXTURE);
-  delete doc.style;
-  ok(gate(doc, 'production-style', CTX_P).ok, '自己没写画风不算冲突——继承，不报错');
+  const half = { ...PRODUCTION, style: { label: { zh: '还没定' }, phrase: '' } };
+  const g = gate(FIXTURE, 'style-phrase', { ...CTX, production: half });
+  ok(g.ok, '画风没填就跳过，不是拦——填不填是 novel-setup 那一段的门');
+  eq(g.detail, SKIP_STYLE, '跳过的原因是「没填」不是「没挂载」，两句话不一样');
 }
 
 // frame-aspect 击穿：竖屏片子却出了一批横屏分镜图
@@ -801,7 +809,8 @@ ok(KNOWN_ASPECTS.includes('16:9') && KNOWN_ASPECTS.includes('9:16'), '画幅词�
   const en = renderHtml(FIXTURE, { ...CTX, lang: 'en' });
   ok(en.includes('no production.json found'), '英文报告把跳过语也翻译了，没漏成中文');
   ok(en.includes('Frame-prompt aspect matches the production parameters'), '英文报告有画幅门的标签');
-  ok(en.includes('Style matches the production parameters'), '英文报告有画风门的标签');
+  ok(en.includes('Frame-prompt style phrase consistent'), '英文报告有画风门的标签');
+  ok(en.includes('style.phrase is empty') === false, '没挂载生产参数时报的是「没找到文件」，不是「没填」');
 }
 ok(!KNOWN_ASPECTS.some((a) => /^\d{2}:\d{2}$/.test(a)), '画幅词表里没有 00:03 这种形状，免得把台词时间戳当画幅');
 
@@ -873,7 +882,7 @@ ok(html.includes('分镜节奏带'), '01 分镜节奏带');
 ok(html.includes('分集分镜表'), '02 分集分镜表');
 ok(html.includes('生成批次单'), '03 生成批次单');
 ok(html.includes('配音对齐单'), '04 配音对齐单');
-ok(html.includes('✓ 质量门 19 / 19'), '页眉徽章全绿');
+ok(html.includes('✓ 质量门 18 / 18'), '页眉徽章全绿');
 ok(html.includes('class="rseg"'), '节奏带按段分组（粗分隔）');
 ok(html.includes('#seg-E01-01'), '节奏带段可跳转');
 ok(html.includes('主分镜图 · #1 未生成'), '主分镜图缺图时显示占位不装有');
@@ -933,7 +942,7 @@ ok(html.includes('老周'), 'html 里 ID 换成名字');
   const en = renderHtml(FIXTURE, { ...CTX, lang: 'en' });
   ok(en.includes('<html lang="en">'), 'en 报告的 html lang 属性跟着语言走');
   ok(en.includes('Export JSON'), 'en 界面：导出按钮英文');
-  ok(en.includes('Quality gates 19 / 19'), 'en 界面：页眉徽章英文');
+  ok(en.includes('Quality gates 18 / 18'), 'en 界面：页眉徽章英文');
   ok(en.includes('Cut rhythm strip'), 'en 界面：节奏带节标题英文');
   ok(en.includes('Segment cards'), 'en 界面：分镜表节标题英文');
   ok(en.includes('Generation batches'), 'en 界面：批次节标题英文');
@@ -1015,5 +1024,26 @@ eq(STAGE_DIR, 'storyboard', '段目录名与端到端工作目录约定一致');
   eq(stageDirNote('/w/渡口-storyboard.json', null), null, '没有 production.json 就无从判断，不猜');
   eq(stageDirNote(null, prod), null, '没有产物路径也不猜');
 }
+
+/* ---------------- 自动驾驶（autopilot） ---------------- */
+/*
+ * 只读的跑法口径：开着本 skill 就把自己那一段一口气跑完——第一段的分镜图出完
+ * 自己验效果、下单前的花费预估照样报出来但不等回应。它不参与任何一道门，
+ * 也不改止损：同一段连着失败两次照样跳过。
+ */
+
+ok(autopilotOf({ ...PRODUCTION, autopilot: true }), '开着就是开着');
+eq(autopilotOf({ ...PRODUCTION, autopilot: false }), false, '关着就是关着');
+eq(autopilotOf(PRODUCTION), false, '老项目的生产参数里没有这个字段，按关处理');
+eq(autopilotOf(null), false, '没有生产参数就是关——该问还是要问');
+eq(autopilotOf({ autopilot: 'false' }), false, '字符串 "false" 不算开——JS 里它是真值，只认布尔真值');
+eq(autopilotOf({ autopilot: 'true' }), false, '字符串 "true" 也不算开，写法错了按关处理');
+eq(autopilotOf({ autopilot: 1 }), false, '数字不算开');
+ok(AUTOPILOT_NOTE.includes('不要停下来问用户'), '开着时打印的那句话说清了约束');
+ok(AUTOPILOT_NOTE.includes('止损'), '那句话同时说清止损不变——不打断不等于无限重试烧钱');
+ok(
+  gateReport(FIXTURE, { ...CTX, production: { ...PRODUCTION, autopilot: true } }).every((g) => g.ok),
+  '打开自动驾驶不影响任何一道门——它改的是跑法，不是参数',
+);
 
 console.log(`✓ ${passed} 项自测全部通过`);

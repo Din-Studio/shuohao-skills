@@ -66,6 +66,27 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
 }
 
 /* ------------------------------------------------------------------ */
+/* 自动驾驶                                                            */
+/* ------------------------------------------------------------------ */
+/*
+ * production.json 顶层的 autopilot。为 true 时本 skill 的全部流程一口气跑完：
+ * 第一段的分镜图出完自己验效果、下单前的花费预估照样报出来但不等回应，
+ * 做过的决定全部写进最后的汇报。
+ *
+ * 转移的是**审批权**，不是取消检查点：18 道门照样要过、花费照样先算清楚、
+ * 同一段连着失败两次照样跳过——**不打断不等于无限重试烧钱**。
+ *
+ * **只认布尔真值**：JSON 里写成字符串 "false" 在 JS 里是真的，那种写法会让
+ * 一整条管线闷头跑完，比没写更坏。novel-setup 的 fields 门查这个类型。
+ */
+
+export const autopilotOf = (production) => production?.autopilot === true;
+
+/** 开着才打印——关着就是原来的样子，没有新信息。 */
+export const AUTOPILOT_NOTE =
+  '自动驾驶：开——本段流程一口气跑完，不要停下来问用户；花费照样报出来不等回应，失败的止损不变';
+
+/* ------------------------------------------------------------------ */
 /* 产物落点                                                            */
 /* ------------------------------------------------------------------ */
 /*
@@ -98,6 +119,8 @@ export const KNOWN_ASPECTS = ['16:9', '9:16', '4:3', '3:4', '1:1', '21:9', '2.39
  * 跳过语提到模块级：英文报告要拿它当查表的键，写死在两处必然会漂。
  */
 export const SKIP_PROD = `未找到 ${PRODUCTION_FILE}（向上 ${PRODUCTION_DEPTH} 层），本门跳过——跑 /novel-setup 生成一份可以打开它`;
+/** 找到了参数文件但画风短语没填——同样是跳过，但原因不一样，说清楚。 */
+export const SKIP_STYLE = `${PRODUCTION_FILE} 里的 style.phrase 没填，本门跳过——回 /novel-setup 填满它`;
 
 /*
  * 画幅这类「错了就是整批错」的门，逐条列会把详情刷成一堵墙——
@@ -106,9 +129,28 @@ export const SKIP_PROD = `未找到 ${PRODUCTION_FILE}（向上 ${PRODUCTION_DEP
 export const brief = (list, n = 6) =>
   list.length <= n ? list.join('；') : `${list.slice(0, n).join('；')}；……等 ${list.length} 处`;
 
-/** 画风：storyboard.json 没写就继承生产参数，两边都写了且不同才是违规。 */
-export const styleIdOf = (board, production = null) =>
-  board?.style ?? production?.style ?? DEFAULT_STYLE;
+/*
+ * 画风：**本 skill 不内置任何画风**，storyboard.json 里也不存一份。
+ * 它住在工作目录根的 production.json 顶层，由用户在 novel-setup 那一段填。
+ * 本 skill 只要其中一样东西——`style.phrase`，那句必须出现在**每条**分镜图
+ * 提示词里的英文短语。同一部剧的分镜图靠它不漂。
+ *
+ * 以前这里是两档写死的预设（realistic / ghibli），外加一道核对 storyboard.json
+ * 与生产参数是否同名的门。同名只是核对了一个标签：标签对上而短语没跟着换，
+ * 出来还是上一档画风。现在短语本身就是真源，一处定死，无从不一致。
+ */
+
+/** 分镜图风格短语；没有生产参数、或没填就返回 null（那道门明说跳过）。 */
+export const stylePhraseOf = (production = null) => {
+  const p = String(production?.style?.phrase ?? '').trim();
+  return p || null;
+};
+
+/** 人读的画风名，门 label 与报告里用。 */
+export const styleLabelOf = (production = null, lang = 'zh') => {
+  const label = production?.style?.label ?? {};
+  return String(label[lang] ?? '').trim() || String(label.zh ?? '').trim() || String(label.en ?? '').trim() || '未填';
+};
 
 /** 视频模型：storyboard.json 自己不写就继承生产参数，都没有就按默认模型算。 */
 export const DEFAULT_VIDEO_MODEL = 'MiniMax H3';
@@ -168,14 +210,6 @@ export const CAMERA_MOVES = {
   'Roll Clockwise': '顺旋',
   'Roll Counterclockwise': '逆旋',
 };
-
-/** 分镜图风格预设：与 novel-characters / novel-art 同名对齐（realistic / ghibli）。
- *  短语必须出现在每条分镜图提示词里——同一部剧的分镜图不许画风漂。 */
-export const STYLE_PRESETS = {
-  realistic: { zh: '真人实拍', phrase: 'cinematic film still' },
-  ghibli: { zh: '吉卜力手绘', phrase: 'hand-painted anime film still' },
-};
-export const DEFAULT_STYLE = 'realistic';
 
 const CJK = /[㐀-鿿぀-ヿ가-힯]/;
 const r1 = (n) => Math.round(n * 10) / 10;
@@ -294,8 +328,8 @@ export function h3CutSlices(prompt, cutCount, lang = 'en') {
  *  2. 参考图靠**身份说明句 + 全程复用的主体标签**锚定，不靠秒数对齐。
  *  3. 台词用 `{}`，不用 `<d>` 标签；音效 `<>`、音乐 `（）`、字幕 `【】`。
  *
- * 字段名与 novel-creation 那条产线的通用骨架刻意取齐（shots: / ambience:），
- * 两条产线之间搬提示词不用再翻译一遍字段。
+ * 字段名两种语言一一对应（shots: / ambience: ←→ 镜头描述： / 环境声与配乐：），
+ * 切 promptLang 只换 token，切片机制与门的判定不变。
  */
 
 export const SEEDANCE_TOKENS = {
@@ -608,16 +642,14 @@ export function gateReport(board, ctx = {}) {
   const bad = {
     coverage: [], segCap: [], cutLen: [], fit: [], duration: [], crowd: [],
     id: [], size: [], camera: [], english: [], names: [], refs: [],
-    struct: [], dlg: [], plang: [], style: [], recipe: [], pstyle: [], aspect: [],
+    struct: [], dlg: [], plang: [], style: [], recipe: [], aspect: [],
   };
   // 配方卡库是可选挂载：ctx.recipes 为空就整门跳过（不是「没有 cut 带 recipe」就跳过）
   const recipes = ctx.recipes ?? null;
   let recipeRefs = 0;
   // 生产参数：找得到就必须遵循（画风、分镜图画幅），找不到那两道门明说跳过
   const production = ctx.production ?? null;
-  const styleId = styleIdOf(board, production);
-  const style = STYLE_PRESETS[styleId];
-  if (!style) bad.style.push(`style「${styleId}」不在预设里（${Object.keys(STYLE_PRESETS).join(' / ')}）`);
+  const stylePhrase = stylePhraseOf(production);
   // 视频模型决定用哪套提示词骨架：H3 走 I2VA（对齐指令 + 切点时刻），
   // seedance 走全模态参考骨架（身份说明 + 主体标签，全程不许出现时刻）
   const videoModel = videoModelOf(board, production);
@@ -625,10 +657,6 @@ export function gateReport(board, ctx = {}) {
   // 提示词语言：没写就跟着骨架的官方口径——H3 默认英文，seedance 默认中文
   const promptLang = promptLangOf(board, production, family);
 
-  // 画风漂了 = 角色是吉卜力、场景是实拍，合成没法看，整套设定图白出
-  if (production && board?.style && board.style !== production.style) {
-    bad.pstyle.push(`storyboard.json 的 style「${board.style}」与生产参数的「${production.style}」不一致`);
-  }
   // 分镜图是喂给视频模型的参考图，画幅差一点整批被裁或被拉
   const frameAspect = production?.image?.frame?.aspectRatio ?? null;
 
@@ -751,8 +779,8 @@ export function gateReport(board, ctx = {}) {
         const frame = String(cut?.frame ?? '');
         if (!frame.trim()) bad.english.push(`${cid} 的分镜图提示词为空`);
         if (CJK.test(frame)) bad.english.push(`${cid} 的分镜图提示词混入了非英文`);
-        if (style && !frame.toLowerCase().includes(style.phrase)) {
-          bad.style.push(`${cid} 的分镜图提示词缺风格短语「${style.phrase}」`);
+        if (stylePhrase && !frame.toLowerCase().includes(stylePhrase.toLowerCase())) {
+          bad.style.push(`${cid} 的分镜图提示词缺风格短语「${stylePhrase}」`);
         }
         // 一切只报一条：画幅错了是整批的事，34 个分镜各报两条只会把详情刷成一堵墙
         if (frameAspect) {
@@ -923,18 +951,17 @@ export function gateReport(board, ctx = {}) {
     bad.plang.length === 0,
     brief(bad.plang),
   );
-  add('style-phrase', `分镜图风格短语统一（${style ? `${styleId}：${style.phrase}` : '预设无效'}）——同剧不许画风漂`, bad.style.length === 0, bad.style.join('；'));
+  add(
+    'style-phrase',
+    `分镜图风格短语统一（${stylePhrase ? `${styleLabelOf(production)}：${stylePhrase}` : '未挂载'}）——同剧不许画风漂`,
+    bad.style.length === 0,
+    stylePhrase ? brief(bad.style) : (production ? SKIP_STYLE : SKIP_PROD),
+  );
   add('prompt-english', '分镜图提示词全英文且非空', bad.english.length === 0, bad.english.join('；'));
   add('prompt-no-names', '英文提示词不含角色名（分镜图提示词恒查；中文视频提示词放行）', bad.names.length === 0, banned.length ? bad.names.join('；') : SKIP_NAMES);
   add('refs', '场次／人物／道具对账剧本', bad.refs.length === 0, script ? bad.refs.join('；') : SKIP_SCRIPT);
-  // 生产参数的两道门：找得到 production.json 就自动开，没有开关——
-  // 画风与画幅改了都要整批重出图，这正是这份参数存在的理由
-  add(
-    'production-style',
-    `画风与生产参数一致（${production ? production.style : '未挂载'}）`,
-    bad.pstyle.length === 0,
-    production ? bad.pstyle.join('；') : SKIP_PROD,
-  );
+  // 生产参数的两道门（style-phrase 与 frame-aspect）：找得到 production.json 就
+  // 自动开，没有开关——画风与画幅改了都要整批重出图，这正是这份参数存在的理由
   add(
     'frame-aspect',
     `分镜图提示词的画幅与生产参数一致（${frameAspect ?? '未挂载'}）——分镜图是喂给视频模型的参考图`,
@@ -1147,7 +1174,6 @@ const GATE_LABELS_EN = {
   'prompt-no-names': 'English prompts carry no character names',
   'refs': 'Scenes / characters / props audited against the script',
   'shot-recipe': 'Referenced recipes exist, their must-phrases are in the frame prompt, multi-cut recipes run long enough',
-  'production-style': 'Style matches the production parameters — one drama, one look',
   'frame-aspect': 'Frame-prompt aspect matches the production parameters — frames are what the video model is conditioned on',
 };
 const GATE_SKIPS_EN = {
@@ -1159,6 +1185,7 @@ const GATE_SKIPS_EN = {
     '未挂载配方卡库（--shots <卡片目录>），本门跳过（视为通过）': 'no recipe card library mounted (--shots <cards dir>) — gate skipped (treated as passing)',
     '本批分镜没有引用配方': 'no cut in this batch references a recipe',
     [SKIP_PROD]: `no ${PRODUCTION_FILE} found (up to ${PRODUCTION_DEPTH} levels up) — gate skipped; run /novel-setup to open it`,
+    [SKIP_STYLE]: `style.phrase is empty in ${PRODUCTION_FILE} — gate skipped; go back to /novel-setup and fill it in`,
 };
 /** 报告里的门文案：英文界面取映射，未命中或中文界面回落原文。 */
 const gateText = (g, lang) => {
@@ -1995,6 +2022,7 @@ function announceProduction(ctx, rest, docPath = null) {
   }
   if (ctx.productionPath) {
     console.error(`↳ 生产参数：${ctx.productionPath}`);
+    if (autopilotOf(ctx.production)) console.error(`↳ ${AUTOPILOT_NOTE}`);
     const note = stageDirNote(docPath, ctx.productionPath);
     if (note) console.error(`⚠️ ${note}`);
   } else console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，${which}跳过——跑 /novel-setup 生成一份可以打开它`);

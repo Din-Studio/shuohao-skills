@@ -20,47 +20,49 @@ import {
 } from './lib/lingying.mjs';
 
 /* ------------------------------------------------------------------ */
-/* 画风预设（环境版）                                                    */
+/* 画风                                                                 */
 /* ------------------------------------------------------------------ */
 /*
- * 与 novel-characters 的两档画风同名对齐（realistic / ghibli），
- * 但内容是环境的表面处理，不是皮肤毛孔——把角色那套带进环境是错的。
- * 换风格是整套换：render / surface / negative / tags 整块取用，不混搭。
+ * **本 skill 不内置任何画风。**以前这里写死两档预设（realistic / ghibli），
+ * 想拍水墨、拍黏土定格、拍胶片颗粒的年代戏就只能改代码，而且同一档画风的正文
+ * 在三个出图 skill 里各存一份，改一处漏两处。
  *
- * 最容易踩的坑与角色 skill 相同：realistic 绝不能禁 photorealistic，
- * ghibli 必须禁。validate 会拦。
+ * 现在画风住在工作目录根的 production.json 顶层，由用户在 novel-setup 那一段填。
+ * 本 skill 要的是其中的 `style.scene` 那一块：render / surface / negative / tags。
+ *
+ * 它与 `style.character` 是**同一个画风的两种落地**，不是同一段文字：
+ * 写实的人要毛孔、皮下散射、根根分明的碎发；写实的环境要斑驳、水渍、包浆。
+ * 把角色那套带进环境，出来就是四不像。
+ *
+ * **换风格是整套换**：四块一起换，不混搭。矛盾本身由 novel-setup 的
+ * style-coherent 门查，本 skill 查的是**设定卡有没有把那一块整块用上**。
  */
 
-export const DEFAULT_STYLE = 'realistic';
+/** 从生产参数里取场景那一块画风；没有生产参数、或那块没填就返回 null。 */
+export function styleBlockOf(production) {
+  const b = production?.style?.scene;
+  if (!b || typeof b !== 'object') return null;
+  return String(b.render ?? '').trim() ? b : null;
+}
 
-export const SCENE_STYLE_PRESETS = {
-  realistic: {
-    label: '真人实拍',
-    render:
-      'Photorealistic live-action film environment, cinematic production design reference, real location realism with natural light and authentic materials, grounded architectural perspective, cinematic depth',
-    surface:
-      'Weathered, lived-in materials rendered with photorealistic fidelity: chipped paint, water stains, patina on metal, worn wood grain, dust in corners and light shafts; fabric and paper props show creases and age; nothing looks factory-new. Atmospheric depth with haze or volumetric light where the space allows',
-    // 这里绝不能禁 photorealistic——一边要真实感一边禁真实感是自相矛盾的
-    negative:
-      'people, human figures, characters, crowds, silhouettes of people, plastic CG look, oversaturated colours, sterile showroom cleanliness, warped perspective, melted geometry, floating objects, text, watermark, signature',
-    tags: ['photorealistic', 'live-action film environment', 'cinematic production design', 'weathered materials', 'cinematic'],
-  },
-
-  ghibli: {
-    label: '吉卜力动画',
-    render:
-      'Hand-painted anime background art in the manner of classic Studio Ghibli films: soft watercolour-and-gouache rendering, clean readable shapes, warm naturalistic palette, gentle painterly edges',
-    surface:
-      'Simplified but affectionate detail: flat colour planes with soft gradations, foliage and clutter grouped into readable clumps, warm light pooling on surfaces; textures suggested with a few brush strokes rather than rendered out; no photographic micro-detail',
-    // 这里反过来，必须禁写实
-    negative:
-      'people, human figures, characters, crowds, photorealistic, 3d render, hyperrealistic texture, harsh contrast, gritty grime, lens effects, text, watermark, signature',
-    tags: ['ghibli-like', 'background art', 'watercolour', 'environment sheet', 'warm palette'],
-  },
+/** 人读的画风名，报告与 CLI 输出里用。 */
+export const styleLabelOf = (production, lang = 'zh') => {
+  const label = production?.style?.label ?? {};
+  const zh = String(label.zh ?? '').trim();
+  const en = String(label.en ?? '').trim();
+  const pick = String(label[lang] ?? '').trim() || zh || en;
+  return pick || (lang === 'en' ? '(unset)' : '未填');
 };
 
-export const SUPPORTED_STYLES = Object.keys(SCENE_STYLE_PRESETS);
-export const scenePreset = (id) => SCENE_STYLE_PRESETS[id] ?? SCENE_STYLE_PRESETS[DEFAULT_STYLE];
+/**
+ * 反向提示词按逗号/分号拆成词条——画风那块的每一条都必须出现在设定卡里，
+ * 场景自己额外加的不受影响。整段比对会把「加了一条自己的」误判成漂了。
+ */
+export const negativeTerms = (text) =>
+  String(text ?? '')
+    .split(/[,;，；]/)
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t.length >= 3);
 
 /* ------------------------------------------------------------------ */
 /* 生产参数（production.json）                                          */
@@ -93,6 +95,26 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
 }
 
 /* ------------------------------------------------------------------ */
+/* 自动驾驶                                                            */
+/* ------------------------------------------------------------------ */
+/*
+ * production.json 顶层的 autopilot。为 true 时本 skill 的全部流程一口气跑完：
+ * 不问画风、不问输入用哪一份、道具收哪几件自己定，做过的决定全部写进最后的汇报。
+ *
+ * 转移的是**审批权**，不是取消检查点：12 道门照样要过、拿到图照样要核对锚点、
+ * 出图前照样打印要出多少张——只是不再等人点头。
+ *
+ * **只认布尔真值**：JSON 里写成字符串 "false" 在 JS 里是真的，那种写法会让
+ * 一整条管线闷头跑完，比没写更坏。novel-setup 的 fields 门查这个类型。
+ */
+
+export const autopilotOf = (production) => production?.autopilot === true;
+
+/** 开着才打印——关着就是原来的样子，没有新信息。 */
+export const AUTOPILOT_NOTE =
+  '自动驾驶：开——本段流程一口气跑完，不要停下来问用户；替用户做的决定全部写进最后的汇报';
+
+/* ------------------------------------------------------------------ */
 /* 产物落点                                                            */
 /* ------------------------------------------------------------------ */
 /*
@@ -122,6 +144,8 @@ export function stageDirNote(docPath, productionPath, stage = STAGE_DIR) {
 export const KNOWN_ASPECTS = ['16:9', '9:16', '4:3', '3:4', '1:1', '21:9', '2.39:1'];
 
 export const SKIP_PROD = `未找到 ${PRODUCTION_FILE}（向上 ${PRODUCTION_DEPTH} 层），本门跳过——跑 /novel-setup 生成一份可以打开它`;
+/** 找到了参数文件但画风那一块没填——同样是跳过，但原因不一样，说清楚。 */
+export const SKIP_STYLE = `${PRODUCTION_FILE} 里的 style.scene 没填，本门跳过——回 /novel-setup 填满它`;
 
 /** 整批错的门逐条列会刷成一堵墙：前几条够定位，后面只报个数。 */
 export const brief = (list, n = 6) =>
@@ -199,7 +223,8 @@ export function seedFromOutline(outline) {
     };
   });
 
-  return { source: outline?.source ?? '', style: DEFAULT_STYLE, scenes, props };
+  // 没有 style 字段：画风一处定死在 production.json，art.json 抄一份只会漂
+  return { source: outline?.source ?? '', scenes, props };
 }
 
 /* ------------------------------------------------------------------ */
@@ -238,16 +263,13 @@ export function gateReport(doc, castNames = null, production = null) {
   const props = Array.isArray(doc?.props) ? doc.props : [];
   const bad = {
     anchors: [], lighting: [], people: [], english: [], names: [], variant: [], style: [],
-    states: [], scale: [], hands: [], whitebg: [], pstyle: [], aspect: [],
+    states: [], scale: [], hands: [], whitebg: [], aspect: [],
   };
   const ids = new Set(scenes.map((s) => s?.id));
-  const style = doc?.style ?? DEFAULT_STYLE;
-  const preset = scenePreset(style);
+  // 画风正文住在生产参数里，没挂载就查不了——那道门会明说跳过，不装查过
+  const preset = styleBlockOf(production);
+  const styleNeg = preset ? negativeTerms(preset.negative) : [];
 
-  // 画风漂了 = 角色是吉卜力、场景是实拍，合成没法看，整套设定图白出
-  if (production && doc?.style && doc.style !== production.style) {
-    bad.pstyle.push(`art.json 的 style「${doc.style}」与生产参数的「${production.style}」不一致`);
-  }
   // 设定图的版面比例写死在 image.sheet 的第一句里，改了参数不改提示词等于没改
   const assetAspect = production?.image?.asset?.aspectRatio ?? null;
 
@@ -311,12 +333,23 @@ export function gateReport(doc, castNames = null, production = null) {
       else if (!thText(s?.changes)) bad.variant.push(`${label} 缺 changes`);
     }
 
-    // 风格与反向词匹配 + sheet 带渲染句
-    const bansRealism = /photorealistic|3d render/i.test(neg);
-    if (style === 'realistic' && bansRealism) bad.style.push(`${label} 禁了 photorealistic`);
-    if (style === 'ghibli' && !bansRealism) bad.style.push(`${label} 没禁 photorealistic`);
-    if (thText(s?.image?.sheet) && !s.image.sheet.includes(preset.render)) bad.style.push(`${label} 的 sheet 缺渲染句`);
-    if (thText(s?.image?.prompt) && !s.image.prompt.includes(preset.render)) bad.style.push(`${label} 的 prompt 缺渲染句`);
+    // 画风整块用上了没有：渲染句原样进两条提示词，反向词一条不落
+    // sheet 与 prompt 分开查——只查 sheet 的话，prompt 里留着上一档画风也照样全绿，
+    // 出来就是设定表一个样、单张插画另一个样的两张皮
+    if (preset) {
+      if (thText(s?.image?.sheet) && !s.image.sheet.includes(preset.render)) bad.style.push(`${label} 的 sheet 缺渲染句`);
+      if (thText(s?.image?.prompt) && !s.image.prompt.includes(preset.render)) bad.style.push(`${label} 的 prompt 缺渲染句`);
+      /*
+       * 反向词只对场景查全，道具不查。
+       * 道具参考图是纯白背景的抠图素材，画风里那些冲着「环境别太干净」去的反向词
+       * （sterile showroom cleanliness 这类）正好和白底自相矛盾——逐条要求道具也带上，
+       * 拦的是对的做法。道具那边的反向词另有三道门管着：禁人、禁手、纯白背景。
+       */
+      if (scenes.includes(s)) {
+        const lost = styleNeg.filter((t) => !String(neg).toLowerCase().includes(t));
+        if (lost.length) bad.style.push(`${label} 的反向词少了「${brief(lost, 3)}」`);
+      }
+    }
   }
 
   // 道具专属的门
@@ -352,19 +385,18 @@ export function gateReport(doc, castNames = null, production = null) {
     castNames?.length ? bad.names.join('；') : '未提供 cast.json，本门跳过（视为通过）',
   );
   add('variants', '变体引用完整（variantOf 存在且带 changes）', bad.variant.length === 0, bad.variant.join('；'));
-  add('style-match', '风格与反向提示词匹配', bad.style.length === 0, bad.style.join('；'));
+  add(
+    'style-match',
+    `画风整块用上（${production ? styleLabelOf(production) : '未挂载'}）`,
+    bad.style.length === 0,
+    preset ? brief(bad.style) : (production ? SKIP_STYLE : SKIP_PROD),
+  );
   add('prop-states', '道具状态至少 1 个且落成提示词', props.length === 0 || bad.states.length === 0, bad.states.join('；'));
   add('prop-scale', '道具尺度参照写进提示词', props.length === 0 || bad.scale.length === 0, bad.scale.join('；'));
   add('prop-hands', '道具参考图无手：反向提示词禁手', props.length === 0 || bad.hands.length === 0, bad.hands.join('；'));
   add('prop-white', '道具设定图纯白背景可抠', props.length === 0 || bad.whitebg.length === 0, bad.whitebg.join('；'));
-  // 生产参数的两道门：找得到 production.json 就自动开，没有开关——
-  // 画风与画幅改了都要整套重出图，这正是这份参数存在的理由
-  add(
-    'production-style',
-    `画风与生产参数一致（${production ? production.style : '未挂载'}）`,
-    bad.pstyle.length === 0,
-    production ? bad.pstyle.join('；') : SKIP_PROD,
-  );
+  // 生产参数的两道门（style-match 与 sheet-aspect）：找得到 production.json 就
+  // 自动开，没有开关——画风与画幅改了都要整套重出图，这正是这份参数存在的理由
   add(
     'sheet-aspect',
     `设定图版面的画幅与生产参数一致（${assetAspect ?? '未挂载'}）`,
@@ -385,7 +417,11 @@ export function validateArt(doc, castNames = null, production = null) {
   if (!doc || typeof doc !== 'object') return ['art.json 不是对象'];
 
   if (!thText(doc.source)) p('缺少 source（剧名/书名）');
-  if (!SUPPORTED_STYLES.includes(doc.style)) p(`style 必须是 ${SUPPORTED_STYLES.join('/')}，实际是 ${JSON.stringify(doc.style)}`);
+  // 顶层没有 style 字段：画风一处定死在 production.json，art.json 抄一份只会漂。
+  // 老产物里留着的那一份点名删掉，别让两个来源并存。
+  if (doc.style !== undefined) {
+    p('顶层不该有 style 字段——画风住在工作目录根的 production.json，这里留一份只会漂，删掉它');
+  }
 
   const scenes = doc.scenes;
   if (!Array.isArray(scenes) || scenes.length === 0) {
@@ -502,12 +538,11 @@ const GATE_LABELS_EN = {
   'english': 'All image prompts in English',
   'no-names': 'Prompts carry no character names',
   'variants': 'Variant references complete (variantOf exists and carries changes)',
-  'style-match': 'Style matches its negative prompt',
+  'style-match': 'Art style used as one whole block (render sentence and negatives)',
   'prop-states': 'At least one prop state, written out as a prompt',
   'prop-scale': 'Prop scale reference written into the prompt',
   'prop-hands': 'No hands in prop plates: negatives ban hands',
   'prop-white': 'Prop sheets on pure white background, cut-out ready',
-  'production-style': 'Style matches the production parameters — one drama, one look',
   'sheet-aspect': 'Sheet layout aspect matches the production parameters',
 };
 const GATE_SKIPS_EN = {
@@ -517,6 +552,7 @@ const GATE_SKIPS_EN = {
     '未提供 outline/cast，本门跳过（视为通过）': 'outline/cast not provided — gate skipped (treated as passing)',
     '未提供 cast.json，本门跳过（视为通过）': 'cast.json not provided — gate skipped (treated as passing)',
     [SKIP_PROD]: `no ${PRODUCTION_FILE} found (up to ${PRODUCTION_DEPTH} levels up) — gate skipped; run /novel-setup to open it`,
+    [SKIP_STYLE]: `style.scene is empty in ${PRODUCTION_FILE} — gate skipped; go back to /novel-setup and fill it in`,
 };
 /** 报告里的门文案：英文界面取映射，未命中或中文界面回落原文。 */
 const gateText = (g, lang) => {
@@ -533,7 +569,7 @@ const I18N = {
     langCode: 'zh',
     kicker: '美术设定集',
     docTitle: (s) => `${s} · 美术设定集`,
-    styleLine: (id) => `画风：${scenePreset(id).label}`,
+    styleLine: (production) => `画风：${styleLabelOf(production, 'zh')}`,
     exportJson: '导出 JSON',
     gates: '质量门',
     gatesPass: '全部通过',
@@ -585,7 +621,7 @@ const I18N = {
     langCode: 'en',
     kicker: 'Art Bible',
     docTitle: (s) => `${s} · Art Bible`,
-    styleLine: (id) => `Style: ${({ realistic: 'photorealistic live-action', ghibli: 'Ghibli-style animation' })[id] ?? id}`,
+    styleLine: (production) => `Style: ${styleLabelOf(production, 'en')}`,
     exportJson: 'Export JSON',
     gates: 'Quality gates',
     gatesPass: 'All passed',
@@ -657,7 +693,7 @@ const mdHead = (cols) => [mdRow(cols), mdRow(cols.map(() => '---'))].join('\n');
 export function renderMarkdown(doc, lang = null, production = null) {
   const t = tOf(langOf(doc, lang, production));
   const props = doc.props ?? [];
-  const out = [`# ${t.docTitle(doc.source)}`, '', `> ${t.styleLine(doc.style)}`, ''];
+  const out = [`# ${t.docTitle(doc.source)}`, '', `> ${t.styleLine(production)}`, ''];
 
   out.push(`## ${t.secList}`, '', mdHead(t.listCols));
   for (const s of doc.scenes) {
@@ -1008,7 +1044,7 @@ td:first-child{font-family:var(--mono);font-size:12px;color:var(--ink-2);white-s
 
 <header class="hd">
   <h1>${esc(doc.source)}</h1>
-  <span class="sub">${esc(t.kicker)} · ${esc(t.styleLine(doc.style))}</span>
+  <span class="sub">${esc(t.kicker)} · ${esc(t.styleLine(production))}</span>
   <span class="right">
     <span class="gatepill ${failed.length ? 'fail' : 'pass'}">${failed.length ? '✗' : '✓'} ${esc(t.gatePill(gates.length - failed.length, gates.length))}</span>
     <button class="expo" data-name="${esc(slug(doc.source))}-art.json">${esc(t.exportJson)}</button>
@@ -1198,7 +1234,8 @@ const USAGE = `novel-art.mjs — novel-art skill 的确定性工具（场景 + �
   render <art.json> [--html|--md] [--lang zh|en]
                                          渲染报告到 stdout（默认 --md）
                                          界面语言优先级：--lang > art.json 顶层 lang 字段 > 中文
-  styles [id]                            打印画风预设的完整内容
+  style [--from <目录>]                   打印这部剧的画风（场景那一块）——写设定卡前先跑它
+                                         画风没有内置预设，正文来自工作目录根的 production.json
   slug <name>                            场景名转安全文件名
 
 render 会自动去 images/<slug>-sheet.png 找图，找到就嵌进报告——**先 images 再 render**。
@@ -1231,6 +1268,7 @@ function announceProduction(p, docPath = null) {
   if (p.off) console.error(`⚠️ --no-production：生产参数的 ${which}跳过`);
   else if (p.path) {
     console.error(`↳ 生产参数：${p.path}`);
+    if (autopilotOf(p.doc)) console.error(`↳ ${AUTOPILOT_NOTE}`);
     const note = stageDirNote(docPath, p.path);
     if (note) console.error(`⚠️ ${note}`);
   } else console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，${which}跳过——跑 /novel-setup 生成一份可以打开它`);
@@ -1276,7 +1314,7 @@ async function main(argv) {
       for (const x of problems) console.error('  ' + x);
       process.exit(1);
     }
-    console.log(`✓ ${doc.scenes.length} 个场景${(doc.props ?? []).length ? ` + ${doc.props.length} 件道具` : ''}全部通过校验（style=${doc.style}）`);
+    console.log(`✓ ${doc.scenes.length} 个场景${(doc.props ?? []).length ? ` + ${doc.props.length} 件道具` : ''}全部通过校验（画风 ${prod.doc ? styleLabelOf(prod.doc) : '未挂载'}）`);
     return;
   }
 
@@ -1379,16 +1417,24 @@ async function main(argv) {
     return;
   }
 
-  if (cmd === 'styles') {
-    const only = rest[0];
-    if (only && !SUPPORTED_STYLES.includes(only)) {
-      throw new Error(`未知风格 ${only}（可用：${SUPPORTED_STYLES.join('/')}）`);
+  if (cmd === 'style') {
+    const from = flag(rest, '--from', '.');
+    const path = flag(rest, '--production') ?? findProduction(from);
+    if (!path) {
+      throw new Error(
+        `从 ${resolve(from)} 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}——画风住在那里，先跑 /novel-setup 定下来`,
+      );
     }
-    const ids = only ? [only] : SUPPORTED_STYLES;
+    console.error(`↳ 生产参数：${path}`);
+    const doc = readJson(path);
+    const block = styleBlockOf(doc);
+    if (!block) {
+      throw new Error(`${path} 里的 style.scene 没填——回 /novel-setup 跑 style-template 拿骨架填满`);
+    }
     console.log(JSON.stringify({
-      default: DEFAULT_STYLE,
-      note: '整块取用不混搭；环境预设与 novel-characters 的角色预设同名对齐但内容不同',
-      presets: Object.fromEntries(ids.map((id) => [id, SCENE_STYLE_PRESETS[id]])),
+      label: styleLabelOf(doc),
+      note: '整块取用不混搭：render / surface 原样进 image.sheet 与 image.prompt，negative 一条不落地进 image.negativePrompt（场景自己额外加的不受影响）。这一块是环境的表面处理，与 style.character 的皮肤毛孔那套是同一个画风的两种落地，别互相搬',
+      scene: block,
     }, null, 2));
     return;
   }

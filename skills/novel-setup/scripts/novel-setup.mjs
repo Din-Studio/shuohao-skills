@@ -139,8 +139,88 @@ export const VIDEO_MODELS = {
   },
 };
 
-export const SUPPORTED_STYLES = ['realistic', 'ghibli'];
 export const SUPPORTED_LANGS = ['zh', 'en'];
+
+/* ------------------------------------------------------------------ */
+/* 画风                                                                 */
+/* ------------------------------------------------------------------ */
+/*
+ * 画风**没有内置类型**。以前这里是一个两档枚举（realistic / ghibli），
+ * 正文分别写死在下游三个 skill 的代码里——想拍水墨、拍黏土定格、拍胶片颗粒的
+ * 年代戏，只能改代码，而且要改三处。所以整档交给用户：production.json 顶层的
+ * `style` 就是画风本身，正文在本段填，下游读它。
+ *
+ * 一部剧一套，三块各有各的用处：
+ *
+ *   phrase     分镜图提示词里必须原样出现的英文短语（如 cinematic film still）
+ *   character  角色设定图那套：render / surface / lighting / negative / tags
+ *   scene      场景与道具设定图那套：render / surface / negative / tags
+ *
+ * character 与 scene 分开，是因为同一个画风落到人身上和落到环境上不是一句话：
+ * 写实的人要毛孔、皮下散射、根根分明的碎发；写实的环境要斑驳、水渍、包浆。
+ * 把人那套带进环境，出来就是四不像。
+ *
+ * 换风格是**整套换**，不是只换一句：render / surface / lighting / negative /
+ * tags 是一整块，混搭必然自相矛盾。style-coherent 门专查这一条。
+ */
+
+/** 画风各块的必填字段。`tags` 是数组，其余是字符串。 */
+export const STYLE_BLOCKS = {
+  character: ['render', 'surface', 'lighting', 'negative', 'tags'],
+  scene: ['render', 'surface', 'negative', 'tags'],
+};
+
+/** 空骨架：init 生成的就是这个，用户逐块填满。 */
+export const emptyStyle = () => ({
+  label: { zh: '', en: '' },
+  phrase: '',
+  character: { render: '', surface: '', lighting: '', negative: '', tags: [] },
+  scene: { render: '', surface: '', negative: '', tags: [] },
+});
+
+/** 人读的画风名；没填就回落到另一种语言，再回落到「未填」。 */
+export const styleLabelOf = (style, lang = 'zh') => {
+  const label = style?.label ?? {};
+  const pick = String(label[lang] ?? '').trim() || String(label.zh ?? '').trim() || String(label.en ?? '').trim();
+  return pick || (lang === 'en' ? '(unset)' : '未填');
+};
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * 反向提示词按逗号/分号拆成词条。
+ * 拆完才查得动「同一个短语既要又不要」——整段比对只会永远为真。
+ */
+export const negativeTerms = (text) =>
+  String(text ?? '')
+    .split(/[,;，；]/)
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t.length >= 3);
+
+/**
+ * 某个词条是否作为**完整短语**出现在文本里。
+ * 带词边界：negative 里的 `text` 不该被 `texture` 命中——那种误报比没有门更烦人。
+ */
+export const mentionsTerm = (haystack, term) =>
+  new RegExp(`(^|[^a-z0-9])${escapeRe(term)}([^a-z0-9]|$)`, 'i').test(String(haystack ?? ''));
+
+/* ------------------------------------------------------------------ */
+/* 自动驾驶                                                            */
+/* ------------------------------------------------------------------ */
+/*
+ * autopilot 为 true 时，下游六个 skill 各自把自己那一段**一口气跑完**：
+ * 不再停下来提问、不等用户拍板、不把选择题抛回去，该做的决定自己做，
+ * 做过的决定全部写进最后的汇报。
+ *
+ * 转移的是**审批权**，不是取消检查点：质量门照样是门，花钱前照样先算账，
+ * 失败的止损照样止损——只是不再等人点头。
+ *
+ * **只认布尔真值**。JSON 里写成字符串 "false"，在 JS 里是真值，
+ * 那种写法比没写更坏；所以这里严格比，缺字段、写错类型都算「关」。
+ * 写错了也不会静默：fields 门查类型。
+ */
+
+export const autopilotOf = (doc) => doc?.autopilot === true;
 
 /** 出图与生视频统一走这个 CLI；skill 只认名字，装在哪由使用方决定。 */
 export const GENERATION_CLI = 'lingying';
@@ -234,13 +314,14 @@ export function clampDuration(seconds, model) {
 export function initProduction({
   aspect,
   source = '',
+  autopilot = false,
   assetResolution = '2K',
   assetAspect = '16:9',
   frameResolution = '2K',
   imageModel = 'nanobanana2',
   videoModel = '',
   videoResolution = '',
-  style = 'realistic',
+  style = null,
   lang = 'zh',
   promptLang = 'en',
 } = {}) {
@@ -253,7 +334,10 @@ export function initProduction({
 
   return {
     source,
-    style,
+    autopilot: autopilot === true,
+    // 画风没有内置类型也没有默认值：给一份空骨架，用户填。
+    // 没填 style-blocks 门会拦，不会静默用回某一档写死的画风。
+    style: style ?? emptyStyle(),
     lang,
     promptLang,
     image: {
@@ -273,13 +357,16 @@ export function initProduction({
 /* 质量门                                                              */
 /* ------------------------------------------------------------------ */
 /*
- * 七道门，全是代码。分两类：
- *   会导致重出图的（比例对不上、档位模型不收、画风漂）——拦；
+ * 九道门，全是代码。分两类：
+ *   会导致重出图的（比例对不上、档位模型不收、画风缺块或自相矛盾）——拦；
  *   只影响阅读的（报告界面语言）——不设门，下游继承就好。
  *
  * 改走 lingying 之后多出来的那道是 model-caps：档位与比例都是模型的**枚举值**，
  * 能在这里查死。以前档位要折成像素、折算规则在使用方的 CLI 里，
  * 所以只能查非空；现在枚举就在 input_schema 里，查得起。
+ *
+ * 画风改成用户填之后多出来的是 style-blocks 与 style-coherent：以前画风是
+ * 两档写死的预设，正文由代码保证；现在正文是用户写的，缺块与自相矛盾都得查。
  */
 
 export function gateReport(doc) {
@@ -299,9 +386,17 @@ export function gateReport(doc) {
     if (!String(asset.aspectRatio ?? '').trim()) bad.push('image.asset.aspectRatio 为空');
     if (!String(frame.resolution ?? '').trim()) bad.push('image.frame.resolution 为空');
     if (!String(frame.aspectRatio ?? '').trim()) bad.push('image.frame.aspectRatio 为空');
-    if (!SUPPORTED_STYLES.includes(doc?.style)) bad.push(`style 要是 ${SUPPORTED_STYLES.join(' / ')}`);
+    // style 的内容归下面两道门查，这里只确认它是个对象——画风已经不是枚举了
+    if (!doc?.style || typeof doc.style !== 'object' || Array.isArray(doc.style)) {
+      bad.push('style 要是一个对象（画风没有内置类型，正文在这一段填；跑 style-template 拿骨架）');
+    }
     if (!SUPPORTED_LANGS.includes(doc?.lang)) bad.push(`lang 要是 ${SUPPORTED_LANGS.join(' / ')}`);
     if (!SUPPORTED_LANGS.includes(doc?.promptLang)) bad.push(`promptLang 要是 ${SUPPORTED_LANGS.join(' / ')}`);
+    // autopilot 可以整个不写（老项目就没有），写了就必须是 JSON 布尔值：
+    // 字符串 "false" 在 JS 里是真值，那种写法会让下游闷头跑完，比没写更坏
+    if (doc?.autopilot !== undefined && typeof doc.autopilot !== 'boolean') {
+      bad.push('autopilot 要是 true / false（JSON 布尔值；写成字符串 "false" 会被当成开着）');
+    }
     add('fields', '字段齐全、枚举合法', bad.length === 0, bad.join('；'));
   }
 
@@ -425,6 +520,73 @@ export function gateReport(doc) {
     add('model-caps', '档位与比例都被生图模型收', bad.length === 0, bad.length ? bad.join('；') : note);
   }
 
+  /* 8 — 画风各块填全（画风已经不是枚举，正文是用户写的，缺块要在这里拦） */
+  {
+    const style = doc?.style;
+    const bad = [];
+    if (!style || typeof style !== 'object' || Array.isArray(style)) {
+      bad.push('style 不是对象');
+    } else {
+      if (!String(style.label?.zh ?? '').trim()) bad.push('style.label.zh 为空（画风的中文名，报告里显示它）');
+      const phrase = String(style.phrase ?? '').trim();
+      if (!phrase) {
+        bad.push('style.phrase 为空（分镜图提示词里必须原样出现的英文短语）');
+      } else if (/[^\x20-\x7e]/.test(phrase)) {
+        bad.push(`style.phrase「${phrase}」含非 ASCII 字符——它要原样进英文分镜图提示词`);
+      }
+      for (const [block, fields] of Object.entries(STYLE_BLOCKS)) {
+        const b = style[block];
+        if (!b || typeof b !== 'object' || Array.isArray(b)) {
+          bad.push(`style.${block} 不是对象`);
+          continue;
+        }
+        for (const f of fields) {
+          if (f === 'tags') {
+            if (!Array.isArray(b.tags) || b.tags.filter((t) => String(t ?? '').trim()).length === 0) {
+              bad.push(`style.${block}.tags 要是非空数组`);
+            }
+          } else if (!String(b[f] ?? '').trim()) {
+            bad.push(`style.${block}.${f} 为空`);
+          }
+        }
+      }
+    }
+    add(
+      'style-blocks',
+      `画风各块填全（${styleLabelOf(doc?.style)}）`,
+      bad.length === 0,
+      bad.length ? `${bad.join('；')}——跑 \`style-template\` 拿骨架，换风格是整套换` : '',
+    );
+  }
+
+  /* 9 — 画风不自相矛盾（正向要的词不许同时出现在反向提示词里） */
+  {
+    /*
+     * 以前这条是写死的知识：「realistic 绝不能禁 photorealistic，ghibli 必须禁」。
+     * 画风交给用户之后那句话没法再写死了，但它背后的规则可以——
+     * **同一个短语既写进 render/surface/tags 又写进 negative，就是自相矛盾**。
+     * 这条不认识任何一档具体画风，却正好复现了原来那两条。
+     */
+    const style = doc?.style;
+    const bad = [];
+    for (const [block] of Object.entries(STYLE_BLOCKS)) {
+      const b = style?.[block];
+      if (!b || typeof b !== 'object') continue;
+      const wanted = [b.render, b.surface, b.lighting, ...(Array.isArray(b.tags) ? b.tags : [])]
+        .filter((v) => typeof v === 'string')
+        .join(' ; ');
+      for (const term of negativeTerms(b.negative)) {
+        if (mentionsTerm(wanted, term)) bad.push(`style.${block} 一边要「${term}」一边把它禁掉了`);
+      }
+    }
+    add(
+      'style-coherent',
+      '画风不自相矛盾（反向词没出现在正向那几块里）',
+      bad.length === 0,
+      bad.length ? `${[...new Set(bad)].join('；')}——换风格是整套换，不是把上一档的 negative 留着` : '',
+    );
+  }
+
   return gates;
 }
 
@@ -447,18 +609,37 @@ export function validateProduction(doc) {
  * 省得各拼各的——拼法一漂就又是一处不一致。
  */
 
+/*
+ * `styleBlock` 是这一段要抄的那一块画风。**只给要的那一块**：整个 style 对象
+ * 摊开有六七十行，而 resolve 的用途是「一行拿到这一段要的参数」，
+ * 把另一块也倒出来只会把有用的那几行埋掉——而且容易让人抄错块。
+ */
 export const STAGES = {
-  characters: { kind: 'asset', what: '角色设定图' },
-  art: { kind: 'asset', what: '场景与道具设定图' },
-  storyboard: { kind: 'frame', what: '分镜图' },
-  video: { kind: 'video', what: '视频生成' },
+  characters: { kind: 'asset', what: '角色设定图', styleBlock: 'character' },
+  art: { kind: 'asset', what: '场景与道具设定图', styleBlock: 'scene' },
+  // 分镜图不抄画风正文，只要那句必须出现在每条提示词里的短语
+  storyboard: { kind: 'frame', what: '分镜图', styleBlock: null },
+  // 视频靠参考图带画风，提示词里不重复交代一遍
+  video: { kind: 'video', what: '视频生成', styleBlock: null },
 };
 
 export function resolveStage(doc, stage) {
   const meta = STAGES[stage];
   if (!meta) throw new Error(`未知阶段 ${stage}（可用：${Object.keys(STAGES).join(' / ')}）`);
 
-  const common = { stage, what: meta.what, style: doc?.style, lang: doc?.lang, cli: GENERATION_CLI };
+  const style = doc?.style ?? {};
+  const common = {
+    stage,
+    what: meta.what,
+    style: {
+      label: style.label ?? {},
+      phrase: style.phrase ?? '',
+      ...(meta.styleBlock ? { [meta.styleBlock]: style[meta.styleBlock] ?? {} } : {}),
+    },
+    lang: doc?.lang,
+    autopilot: autopilotOf(doc),
+    cli: GENERATION_CLI,
+  };
 
   if (meta.kind === 'video') {
     const model = doc?.video?.model ?? '';
@@ -521,9 +702,10 @@ export function renderMarkdown(doc) {
   out.push(`| 生视频模型 | ${dash(doc?.video?.model)} |`);
   out.push(`| 视频 aspect_ratio | ${dash(doc?.video?.aspectRatio)} |`);
   out.push(`| 视频 resolution | ${dash(doc?.video?.resolution)} |`);
-  out.push(`| 画风 | ${dash(doc?.style)} |`);
+  out.push(`| 画风 | ${styleLabelOf(doc?.style)}${dash(doc?.style?.phrase) === '—' ? '' : `（分镜图短语 \`${doc.style.phrase}\`）`} |`);
   out.push(`| 报告界面语言 | ${dash(doc?.lang)} |`);
   out.push(`| 提示词语言 | ${dash(doc?.promptLang)} |`);
+  out.push(`| 自动驾驶 | ${autopilotOf(doc) ? '开（下游跑完整段不打断）' : '关（该问就问）'} |`);
   out.push('');
   out.push(`> 出图与生视频都走 \`${GENERATION_CLI}\`：分辨率与比例是它的**枚举值**，原样填进 \`--input_data\`，提示词里不写像素。`, '');
   out.push('## 质量门', '');
@@ -542,15 +724,20 @@ const USAGE = `novel-setup.mjs — novel-setup skill 的确定性工具（生产
 
   init --aspect <W:H>                    生成 production.json 骨架（打印到 stdout）
        [--source <剧名>]                  成片画幅**没有默认值**，必须显式指定
+       [--autopilot]                     自动驾驶：下游六个 skill 各自把自己那一段
+                                         一口气跑完，不提问、不等拍板（默认关）
        [--asset-resolution <档位>]        资产图分辨率档位，默认 2K
        [--asset-aspect <W:H>]            资产图比例（默认 16:9——设定图版面要横构图）
        [--frame-resolution <档位>]        分镜图分辨率档位，默认 2K
        [--image-model <名>]              默认 nanobanana2
        [--video-model <名>]              视频模型，取 lingying model list 的 ID 列
        [--video-resolution <档位>]        视频分辨率档位（如 768p）
-       [--style realistic|ghibli]        默认 realistic
+       [--style <style.json>]            画风正文；不给就留一份空骨架待填
        [--lang zh|en]                    报告界面语言，默认 zh
        [--prompt-lang zh|en]             H3 提示词语言，默认 en
+  style-template                         打印画风骨架与逐字段说明（填好放进顶层 style）
+  style <production.json>                打印这部剧的画风
+        [--for character|scene]          只打印某一块（下游 skill 抄的就是它）
   validate <production.json>             校验；有违规逐条打印并 exit 1
   checkup <production.json>              只打印质量门 ✓/✗，有未过项 exit 1
   show <production.json> [--md]          人读的参数表
@@ -599,17 +786,70 @@ function main(argv) {
     const doc = initProduction({
       aspect: flag(rest, '--aspect'),
       source: flag(rest, '--source', ''),
+      autopilot: rest.includes('--autopilot'),
       assetResolution: flag(rest, '--asset-resolution', '2K'),
       assetAspect: flag(rest, '--asset-aspect', '16:9'),
       frameResolution: flag(rest, '--frame-resolution', '2K'),
       imageModel: flag(rest, '--image-model', 'nanobanana2'),
       videoModel: flag(rest, '--video-model', ''),
       videoResolution: flag(rest, '--video-resolution', ''),
-      style: flag(rest, '--style', 'realistic'),
+      style: flag(rest, '--style') ? readJson(flag(rest, '--style')) : null,
       lang: flag(rest, '--lang', 'zh'),
       promptLang: flag(rest, '--prompt-lang', 'en'),
     });
     console.log(JSON.stringify(doc, null, 2));
+    if (!flag(rest, '--style')) {
+      console.error('⚠️ 画风留了空骨架——填满顶层 style 再跑 validate（style-template 有逐字段说明）');
+    }
+    return;
+  }
+
+  if (cmd === 'style-template') {
+    console.log(
+      JSON.stringify(
+        {
+          note: '把下面这块填满，整块放进 production.json 的顶层 "style"。画风没有内置类型——写实、吉卜力、水墨、黏土定格都行，但换风格是整套换：render / surface / lighting / negative / tags 一起换，别把上一档的 negative 留着',
+          fields: {
+            'label.zh': '画风的中文名，报告界面显示它（如「真人实拍」）',
+            'label.en': '英文名，出英文报告时显示（可留空，回落到中文）',
+            phrase: '英文小写短语，**每条**分镜图提示词里必须原样出现（如 cinematic film still）——同一部剧的分镜图靠它不漂',
+            'character.render': '角色设定图的渲染方式那句，英文',
+            'character.surface': '皮肤、眼睛、头发、布料怎么处理，英文',
+            'character.lighting': '设定图的光照，英文。设定表要能抠图、要能量比例，这一句得把左右分区交代清楚',
+            'character.negative': '角色设定图的反向提示词，英文逗号分隔',
+            'character.tags': '风格标签数组，英文',
+            'scene.render': '场景与道具设定图的渲染方式那句，英文',
+            'scene.surface': '环境材质怎么处理，英文。**不要把角色那套皮肤毛孔带进来**',
+            'scene.negative': '场景与道具的反向提示词，英文逗号分隔。参考图必须空景，这里要把人禁掉',
+            'scene.tags': '风格标签数组，英文',
+          },
+          style: emptyStyle(),
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  if (cmd === 'style') {
+    const [path] = rest;
+    if (!path) throw new Error('用法：style <production.json> [--for character|scene]');
+    const doc = readJson(path);
+    const only = flag(rest, '--for');
+    if (only && !Object.keys(STYLE_BLOCKS).includes(only)) {
+      throw new Error(`--for 要是 ${Object.keys(STYLE_BLOCKS).join(' / ')}`);
+    }
+    const style = doc?.style ?? {};
+    console.log(
+      JSON.stringify(
+        only
+          ? { label: style.label ?? {}, block: only, ...(style[only] ?? {}) }
+          : style,
+        null,
+        2,
+      ),
+    );
     return;
   }
 
@@ -636,7 +876,7 @@ function main(argv) {
       process.exit(1);
     }
     console.log(
-      `✓ 生产参数全部通过校验（成片 ${doc.video?.aspectRatio} · 分镜图 ${doc.image?.frame?.resolution} · 资产图 ${doc.image?.asset?.resolution} ${doc.image?.asset?.aspectRatio} · 画风 ${doc.style}）`,
+      `✓ 生产参数全部通过校验（成片 ${doc.video?.aspectRatio} · 分镜图 ${doc.image?.frame?.resolution} · 资产图 ${doc.image?.asset?.resolution} ${doc.image?.asset?.aspectRatio} · 画风 ${styleLabelOf(doc?.style)} · 自动驾驶 ${autopilotOf(doc) ? '开' : '关'}）`,
     );
     return;
   }

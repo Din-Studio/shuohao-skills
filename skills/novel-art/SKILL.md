@@ -1,16 +1,19 @@
 ---
 name: novel-art
-version: 1.7.0
+version: 1.9.0
 description: |
   给 AI 短剧出美术设定集（场景 + 叙事道具）：场景的设计意图、一致性锚点、光照时段变体、
   空景提示词；道具的戏剧功能、状态变体、尺度参照、白底无手提示词。
   产出 art.json + Markdown + 单页评审报告（含导出 JSON）。
   为 AI 生成而设计，不是实拍——环境和道具都是生成资产，交付的是让它们跨集长一样的一致性方案；
-  13 道质量门全部由脚本确定性检查（锚点 3–5、无人无手、白底可抠、尺度短语、提示词英文……，
+  12 道质量门全部由脚本确定性检查（锚点 3–5、无人无手、白底可抠、尺度短语、提示词英文……，
   其中 2 道读工作目录根的 production.json：画风与设定图画幅，没有就明说跳过）。
+  画风**不内置任何类型**——它由用户在 novel-setup 那一段填进 production.json 顶层的 style.scene，
+  本 skill 整块抄过来用（真人实拍、吉卜力、水墨、黏土定格都行，不用改代码）。
   有 novel-outline 的 outline.json 就用 seed 预填场景清单与出现集；出图是一条命令（可选，走 lingying 灵影网关）——
   提交、轮询、落盘、断点续传全在脚本里，不靠模型现拼 bash。
   零依赖、零 npm；出图要 lingying 的 api_key。
+  production.json 顶层 autopilot 为 true 时全程不打断——输入、道具清单自己定，做过的决定写进汇报。
   Use when asked to 场景设定、出场景、环境设定集、场景一致性、scene bibles for AI short drama。
 # 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
 allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
@@ -67,7 +70,17 @@ metadata:
 2. 小说原文——自己归纳场景清单（主舞台优先，参考 novel-outline 的主场景上限思路：别贪多）
 3. 用户手写的场景清单
 
-画风：**默认 `realistic`**（真人实拍），动画质感用 `ghibli`。**跟角色 skill 保持同一档**——角色是吉卜力、场景是真人实拍，一半动画一半实拍没法看。跑 `node {baseDir}/scripts/novel-art.mjs styles` 看预设全文，整块取用不混搭。
+**画风不内置、不问用户、不自己编。**它是 `novel-setup` 那一段定的，住在工作目录根的 `production.json` 顶层。取出来：
+
+```bash
+node {baseDir}/scripts/novel-art.mjs style
+```
+
+打印这部剧的 `style.scene` 那一块：`render` / `surface` / `negative` / `tags`。**它们要原样抄进设定卡**——`render` 与 `surface` 进 `image.sheet` 与 `image.prompt`，`negative` 的每一条进 `image.negativePrompt`。
+
+命令找不到 `production.json`、或那一块没填，会直接报错。**那时回 `/novel-setup` 定画风**——自己编一档出来，角色是一个样、场景是另一个样，一半动画一半实拍没法看。
+
+`style.scene` 与 `style.character` 是**同一个画风的两种落地**，不是同一段文字：写实的人要毛孔、皮下散射；写实的环境要斑驳、水渍、包浆。**别把角色那一块搬过来。**
 
 有 cast.json（novel-characters 的产出）也带上——校验「提示词不含角色名」要用。
 
@@ -75,9 +88,23 @@ metadata:
 
 跑过 `novel-setup` 的项目这条是查的：`validate` 找到 `production.json` 就顺带核对落点，放错了会点名该去哪；没找到那份文件就无从判断工作目录根在哪，明说跳过。
 
-**生产参数不用挂载，脚本自己找。** `production.json`（`novel-setup` 的产出）住在工作目录根，`validate` / `render` 都会从 art.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「2 道门跳过」——不静默。
+**生产参数不用挂载，脚本自己找。** `production.json`（`novel-setup` 的产出）住在工作目录根，`validate` / `checkup` / `images` 都会从 art.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「2 道门跳过」——不静默。
 
-找到了画风就以它为准（上面那句「跟角色 skill 保持同一档」由脚本查了），设定图版面的画幅也必须与 `image.asset.aspectRatio` 一致。出图用 `image.model` + `image.asset.resolution`（**档位就是 lingying 收的 `resolution` 枚举值**，原样进 `--input_data`，不折算像素）——**这三个值 `images` 子命令自己读，不用手动挂载**。老项目没有这份文件照跑；临时绕过用 `--no-production`，用了会明说。
+找到了画风就以它为准（渲染句有没有进提示词、反向词有没有带全，由脚本查了），设定图版面的画幅也必须与 `image.asset.aspectRatio` 一致。出图用 `image.model` + `image.asset.resolution`（**档位就是 lingying 收的 `resolution` 枚举值**，原样进 `--input_data`，不折算像素）——**这三个值 `images` 子命令自己读，不用手动挂载**。老项目没有这份文件照跑；临时绕过用 `--no-production`，用了会明说。
+
+### Step 0.5 — 自动驾驶（autopilot）
+
+Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` / `checkup` 与 `images` 找到生产参数也会打印一句 `↳ 自动驾驶：开`（`render` 只做语言继承，不打印）——但 Step 0 跑在第一条命令之前，所以开工前要自己看一眼。
+
+没有 `production.json`、字段写着 `false` 或者整个没写，就是各步原来的样子。
+
+| 原本 | 自动驾驶下 |
+| --- | --- |
+| Step 0 三种输入选哪个 | 按写死的优先级自己选（outline.json > 小说原文 > 用户手写清单），选了哪个写进汇报 |
+| Step 2 叙事道具收哪几件 | 自己定（有特写、跨集、承载剧情，3–8 件），清单与取舍理由写进汇报 |
+| Step 4 出图 | 场景与道具一次出全；拿到图自己核对锚点（全图无人，道具图另加无手、纯白背景），不对就 `--force` 重出一次，还不对记进汇报接着往下 |
+
+**转移的是审批权，不是取消检查点**：12 道门照样要过、拿到图照样要核对锚点——只是不再等人点头。**替用户做的每一个决定都要写进 Step 5 的汇报**，道具取舍一条不漏。
 
 ### Step 1 — seed 骨架（有 outline.json 才有这步）
 
@@ -97,7 +124,7 @@ node {baseDir}/scripts/novel-art.mjs seed <outline.json> > <段目录>/<剧名>-
 - `{baseDir}/references/scene-pass.md` 和 `{baseDir}/references/schema.md`（读它们，照着做）
 - 该场景的骨架 + 原文/大纲里关于这个空间的全部信息
 - **同批其他场景的名字**（空间气质要区分开，别都写成同一种破旧）
-- 画风预设全文（`styles` 命令的输出）
+- 这部剧的画风全文（`style` 命令的输出）
 
 核心要求都在 scene-pass.md 里，最重的三条：锚点要**可画可认可核对**（「补丁船篷」是锚点，「陈旧的氛围」是形容词）；光照状态**从分集反推**，不写用不上的全家桶；**能做变体就别开新景**。
 
@@ -109,7 +136,7 @@ node {baseDir}/scripts/novel-art.mjs seed <outline.json> > <段目录>/<剧名>-
 node {baseDir}/scripts/novel-art.mjs validate <art.json> --cast <cast.json>
 ```
 
-13 道质量门全是代码。场景 + 共用 7 道：锚点 3–5、光照状态 ≥1、**无人**、提示词全英文、不含角色名（给了 --cast 才查）、变体引用完整、风格与反向词匹配。道具专属 4 道：**状态 ≥1**、**尺度短语写进提示词**、**反向词禁手**、**设定图纯白背景**。生产参数 2 道：**画风与生产参数一致**、**设定图版面画幅与生产参数一致**（找不到 production.json 就明说跳过）。
+12 道质量门全是代码。场景 + 共用 6 道：锚点 3–5、光照状态 ≥1、**无人**、提示词全英文、不含角色名（给了 --cast 才查）、变体引用完整。道具专属 4 道：**状态 ≥1**、**尺度短语写进提示词**、**反向词禁手**、**设定图纯白背景**。生产参数 2 道：**画风整块用上**（渲染句进了 `sheet` 与 `prompt`、反向词一条不落地进了场景的反向词）、**设定图版面画幅与生产参数一致**（找不到 production.json 就明说跳过）。
 
 **有违规逐条修，改完重跑，直到通过。**
 
@@ -171,7 +198,7 @@ seed 吃 outline.json 的场景与道具两块（大纲没有 `props` 时道具�
 ## 边界
 
 - 报告界面内置中英（`--lang`，默认中文、或跟 art.json 的 `lang` 字段）；出图提示词永远英文
-- 画风要跟角色 skill 同档，别一半写实一半动画
+- 画风不自己定也不自己编：`style.scene` 从 `production.json` 取，`style.character` 是角色 skill 的，两块别互相搬
 - 出图只走 `images` 子命令——提交、轮询、落盘不再有第二份手写实现。以前那段 bash 拼错的方式比拼对的多：提示词里的引号把 `--input_data` 拆两半、轮询在整段 JSON 里搜 `success` 撞上恒为 success 的 `message`、`while` 循环没有出口
 - 场景数量不设硬上限——上限在 novel-outline 的主场景门那里管；这里管的是每个资产的质量
 - 道具只收叙事道具，3–8 件为宜——每多一件就多一份跨集一致性维护
@@ -182,7 +209,7 @@ seed 吃 outline.json 的场景与道具两块（大纲没有 `props` 时道具�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-255 项断言，不调模型、不花额度。13 道质量门每一道都有击穿用例；出图编排用注入的假 CLI 与假时钟跑完全部路径（提交、轮询、超时、续传、变体波次、抠图），**不 spawn 进程、不发一个请求**。改完脚本先跑这个。
+279 项断言，不调模型、不花额度。12 道质量门每一道都有击穿用例；出图编排用注入的假 CLI 与假时钟跑完全部路径（提交、轮询、超时、续传、变体波次、抠图），**不 spawn 进程、不发一个请求**。改完脚本先跑这个。
 
 ## 自带样例
 

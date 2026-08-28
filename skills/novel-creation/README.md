@@ -2,7 +2,7 @@
 
 # novel-creation
 
-给 AI 短剧**参考图直出视频**：`novel-storyboard` 的并列产线，不是它的替代。前提刻在骨子里：**用户已经有 `novel-characters` / `novel-art` 出好的角色、场景、道具设定图**，有些场合不需要分镜图这一层中间产物，想直接拿这些设定图当参考图、配一条提示词就下单。所以结构比 `novel-storyboard` **少一层**：
+给 AI 短剧**参考图直出视频**。前提刻在骨子里：**用户已经有 `novel-characters` / `novel-art` 出好的角色、场景、道具设定图**，有些场合不需要分镜图这一层中间产物，想直接拿这些设定图当参考图、配一条提示词就下单。所以结构里**没有关键帧这一层**：
 
 ```
 段（segment）＝ 一次视频生成调用，≤ 15 秒（挂了生产参数还要落进对应视频模型的时长区间），不跨场次
@@ -13,25 +13,23 @@
 ```
 
 - **零新增出图调用**——从 `seed` 到 `videos` 提交，本 skill 的任一命令都不调用 `lingying image create`。参考图全部来自 `cast.json` / `art.json` 已落盘的设定图文件
-- **提示词不是任何一个模型的内化版**——没有关键帧图可对齐，就没有对齐指令、没有切点时刻、没有 `<d>` 标签。写法规范是本 skill 自己的方法论（`references/creation-prompt.md`），一套骨架跨模型通用：`lingying model get` 现场查证过，`MiniMax H3` 与 `seedance2.5`/`seedance2.0` 都在顶层暴露通用的 `images: string[]` 字段，「参考图 + 提示词 → 视频」是跨模型的能力，不是 H3 独有。**按模型分流的是填法不是骨架**：挂 seedance 系列时默认语言切中文、并且一个精确时刻都不许写（官方口径，有门查），规范见 `references/seedance2-prompt.md`
+- **提示词骨架不是任何一个模型的内化版**——没有关键帧图可对齐，就没有对齐指令、没有切点时刻、没有 `<d>` 标签。骨架规范是本 skill 自己的方法论（`references/creation-prompt.md`），一套跨模型通用：`lingying model get` 现场查证过，`MiniMax H3` 与 `seedance2.5`/`seedance2.0` 都在顶层暴露通用的 `images: string[]` 字段，「参考图 + 提示词 → 视频」是跨模型的能力，不是 H3 独有
+- **填法按 `video.model` 动态载入指南，骨架一个字不改**——挂 `MiniMax H3` 读 `references/h3-prompt.md`（官方 I2VA 指南里与关键帧无关的那部分：语言分工、说话人怎么交代、画外音的唇形句、声景两个字段怎么收进一个），挂 seedance 系列读 `references/seedance2-prompt.md`（默认语言切中文、一个精确时刻都不许写，有门查），没收录的模型照通用骨架写、不拿另一族顶上。`validate` 会打印这部剧该读哪一份
 - **段级参考图挂载，不复制文件**——`images` 数组直接引用 `../characters/images/…`、`../art/images/…` 的相对路径，这些设定图被跨段共用，复制会在磁盘上重复几十份
 - **出图调用收进代码**——下单走一条 `videos` 命令，提交/轮询/落盘/断点续传全在 `scripts/lib/lingying.mjs` 里（`novel-art`/`novel-characters` 出图那份的移植版），不经过 bash 文档现拼参数
 
 产出 `creation.json` + Markdown + 一个双击就能开的 `creation-report.html`。
 
-## 跟 novel-storyboard 怎么选
+## 什么时候用它
 
-| | novel-storyboard | novel-creation（本 skill） |
-| --- | --- | --- |
-| 分镜图这一层 | 有——每切一张关键帧，多图对齐、精确钉秒数 | **没有**——段直接挂载既有设定图 |
-| 适合场合 | 要精确控镜、愿意多出一层分镜图、追求正式产出 | 要快、要省，直接拿现成设定图配提示词下单 |
-| 产物落点 | `<工作目录>/storyboard/` | `<工作目录>/creation/`，与 `storyboard/` 平级 |
+- **合适**：设定图已经出好，要快、要省，直接拿它们配一条提示词就下单；一集里大部分场次是对话与日常动作，构图靠提示词描述 + 参考图锚定就够
+- **不合适**：要每切一张关键帧精确控镜、要多图按秒对齐——本 skill 没有关键帧这一层，也不打算有
 
-两条产线共享 `production.json` 与 `cast.json`/`art.json`，互不改动对方的代码，按场合二选一，也可以同一集分场次混用。
+本 skill **自包含、可以整个拷走**：只读工作目录里的 `production.json` 与 `cast.json`/`art.json`，不 import 任何兄弟 skill 的代码、不读它们的文档，也不改动它们的产出。
 
 ## 质量门：17 道，全是代码
 
-比 `novel-storyboard` 的 19 道少 2（去掉风格短语、分镜图画幅——没有分镜图这个产物；结构门保留但换成本 skill 自己的骨架），新增 3 道：2 道盯参考图，1 道盯提示词与模型的口径：
+其中 3 道是这条路特有的——2 道盯参考图，1 道盯提示词与挂的模型口径；最后一道 `shot-recipe` 是可选挂载才查：
 
 | 门 | 规则 |
 | --- | --- |
@@ -50,8 +48,8 @@
 | 引用对账 | 场次/人物/道具全部对账剧本该场 |
 | **参考图能解出文件** | 段内出现的每个人物/场景/道具都要能从 `outline`/`art` 解出名字、拼出 `../characters\|art/images/<slug>-sheet.png`，文件不存在点名缺哪张 + 期望路径 |
 | **参考图标注数量一致** | 提示词开头的 `Picture k is …` / `图 k 是…` 身份说明句数量必须与 `images` 数组长度一致 |
-| **提示词与模型口径相符** | 按 `production.json` 的 `video.model` 分流：挂 seedance 系列时提示词里**一个精确时刻都不许有**（官方明说限制精确时间会让生成异常），挂 `MiniMax H3` 时通用骨架没有附加约束，门会明说这一点 |
-| **镜头配方**（可选挂载） | 与 `novel-storyboard` 同一套判定，核对目标换成对应 `[Shot k]` 行 |
+| **提示词与模型口径相符** | 按 `production.json` 的 `video.model` 分流：挂 seedance 系列时提示词里**一个精确时刻都不许有**（官方明说限制精确时间会让生成异常）；其余模型没有确定性硬约束可查，门明说这一点，并把这部剧该读哪份填法指南报出来 |
+| **镜头配方**（可选挂载） | id 在卡库里、卡片的必备短语进对应 `[Shot k]` 行、多格配方连排够格数；建议景别与运镜只提示不设门 |
 
 自测里每道门都有击穿用例。
 
@@ -81,11 +79,17 @@ node ../../scripts/novel-creation.mjs videos manifest.json --dry-run     # 下�
 
 `export` 的投产结构：**每段一个文件夹** `E01-01/`——只有 `prompt.md`（没有分镜图，视频提示词原样，头部列出挂载的参考图身份 + 相对路径），根部 `manifest.json` 带顶层视频参数与每段的参考图清单、缺图标注。
 
+## 自动驾驶（autopilot）
+
+工作目录根的 `production.json`（`novel-setup` 的产出）顶层写着 `"autopilot": true` 时，本 skill 的全部流程**一口气跑完**：提示词按 `video.model` 自己载入填法指南、参考图自己挂、下单前的花费预估照样报出来但不等回应，做过的决定全部写进最后的汇报。
+
+**转移的是审批权，不是取消检查点**：17 道门照样要过、花费照样先算清楚、同一段连着失败两次照样跳过——**不打断不等于无限重试烧钱**。字段写着 `false`、整个没写、或者根本没有 `production.json`，就是原来的样子（该问就问）。跑 `validate` 时找到生产参数并且开着，会打印一句 `↳ 自动驾驶：开`。
+
 ## 边界
 
 - 不写戏不改台词、不出设定图、**不做剪辑合成**；视频生成是可选的最后一步，走 `lingying video create`，产出到每段一个 mp4 为止
 - **零新增出图调用**是硬承诺，不是偏好——参考图必须来自已存在的文件，找不到就是门失败，不会退而求其次去生成一张
-- **不落 `.gates.jsonl`、不加 `stats` 子命令**——门失败累积目前只在 `novel-storyboard` 上试验（见仓库 `CLAUDE.md`）
+- **不落 `.gates.jsonl`、不加 `stats` 子命令**——本 skill 不累积门失败统计，校验结果只在当次输出里
 
 ## 文件
 
@@ -97,7 +101,8 @@ scripts/
   selftest.mjs           自测，不调模型
 references/
   schema.md              creation.json 结构 + 时长约束链
-  creation-prompt.md     视频提示词写法规范（本 skill 自己的方法论，不是任何一个模型的内化版）
+  creation-prompt.md     视频提示词的骨架规范（本 skill 自己的方法论，不是任何一个模型的内化版）
+  h3-prompt.md           video.model 是 MiniMax H3 时的填法（官方 I2VA 指南内化版，只搬与关键帧无关的那部分）
   seedance2-prompt.md    video.model 是 seedance 系列时的加严填法（火山引擎官方指南内化版）
   shot-pass.md           切镜：分段规则、段级参考图挂载、导演运镜手感、常见病
   video-order.md         下单生视频的行为说明（videos 命令内部做什么）

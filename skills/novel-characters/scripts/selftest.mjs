@@ -22,12 +22,12 @@ import {
   renderMarkdown,
   seedFromOutline,
   TIER_TO_IMPORTANCE,
-  STYLE_PRESETS,
-  SUPPORTED_STYLES,
   needsUiTranslation,
+  negativeTerms,
   slug,
-  stylePreset,
   strings,
+  styleBlockOf,
+  styleLabelOf,
   uiTemplate,
   validateCast,
   KNOWN_ASPECTS,
@@ -40,6 +40,8 @@ import {
   stageDirNote,
   imageJobsFrom,
   STYLE_REF_LINE,
+  AUTOPILOT_NOTE,
+  autopilotOf,
 } from './novel-characters.mjs';
 import {
   BACKOFF_MS,
@@ -240,7 +242,7 @@ eq(
 
   ok(seeded.characters.length === outline.characters.length, 'seed 出的角色数跟大纲一致');
   ok(seeded.source === outline.source, 'source 从大纲继承');
-  ok(seeded.style === 'realistic', '画风取默认值，大纲里没有这个信息');
+  ok(seeded.style === undefined, 'seed 不写画风——画风一处定死在 production.json，cast.json 抄一份只会漂');
   ok(seeded.summary === '', 'summary 留空——那是读完原文才写得出来的');
 
   // 分档映射：大纲拍板的轻重，这一层不推翻
@@ -287,11 +289,11 @@ const asm = assembleCast(
     { name: 'C', importance: 'major' },
     { name: 'D', importance: 'major' },
   ],
-  { source: '书', lang: 'zh', style: 'ghibli', summary: '摘要' },
+  { source: '书', lang: 'zh', summary: '摘要' },
 );
 eq(asm.source, '书', 'assemble 带书名');
 eq(asm.lang, 'zh', 'assemble 带语言');
-eq(asm.style, 'ghibli', 'assemble 带画风');
+eq(asm.style, undefined, 'assemble 不写画风——顶层没有这个字段了');
 eq(asm.summary, '摘要', 'assemble 带摘要');
 eq(asm.characters.map((c) => c.name).join(''), 'BCDA', '按 importance 排序，同档保持传入顺序');
 ok(!('ui' in asm), '没有 ui 就不写这个键');
@@ -380,10 +382,29 @@ eq(validateCast(CAST, null).length, 0, '不给原文时跳过引文校验');
 
 /* ---------------- 生产参数（production.json） ---------------- */
 
-// 样例《渡口》是横屏真人实拍，参数照它配才是全绿基线
+/*
+ * 样例《渡口》是横屏真人实拍，参数照它配才是全绿基线。
+ * 画风那一块就是用户在 novel-setup 那一段填的东西——本 skill 没有内置画风，
+ * 这一份写在本 skill 自己的夹具里，不 import 任何兄弟 skill 的代码。
+ */
+const CHARACTER_STYLE = {
+  render:
+    'Photorealistic portrait of a real human actor, live-action film casting reference, highly distinctive individual facial identity, natural human skin and authentic features, cinematic realism, anatomically grounded',
+  surface:
+    'Skin with visible pores and uneven tone, faint capillaries at the nostrils and ear rims, subtle subsurface scattering; eyes with a wet specular highlight, moist lower lid, visible iris fibres and a limbal ring; eyelids and eyebrows slightly asymmetric — no two sides identical; individual flyaway hair strands breaking the silhouette. Fabric with a visible weave, wear and shine at elbows, cuffs and knees, cloth falling with real weight and self-shadowing in the folds',
+  lighting:
+    'LIGHTING IN THE LEFT ZONE ONLY: a soft directional key light from the upper left with gentle falloff, subtle ambient occlusion under the chin, in the eye sockets and where the collar meets the neck, giving the head real volume. LIGHTING IN THE RIGHT ZONES: flat even orthographic lighting with no directional key and no cast shadows, so the figures stay measurable and cleanly cut out',
+  negative:
+    'plastic or waxy skin, over-smoothed airbrushed complexion, poreless doll face, perfectly symmetrical face, dead flat eyes without specular highlight, helmet-like hair with no loose strands, flat untextured fabric with no weave or wear, stiff mannequin posing, extra fingers, malformed hands, text, watermark, signature, busy or patterned background, harsh cast shadows on the backdrop',
+  tags: ['photorealistic', 'live-action', 'character sheet', 'subsurface skin', 'directional key light'],
+};
 const PRODUCTION = {
   source: '渡口',
-  style: 'realistic',
+  style: {
+    label: { zh: '真人实拍', en: 'Photorealistic live-action' },
+    phrase: 'cinematic film still',
+    character: CHARACTER_STYLE,
+  },
   lang: 'zh',
   promptLang: 'en',
   image: {
@@ -397,27 +418,92 @@ const PRODUCTION = {
 eq(PRODUCTION_FILE, 'production.json', '文件名与 novel-setup 一致');
 ok(PRODUCTION_DEPTH >= 3, '向上找的层数够穿过 <工作目录>/<段>/<子目录>');
 eq(findProduction(here, 0), null, '本目录没有就找不到（层数 0）');
-eq(productionProblems(CAST, 'realistic', PRODUCTION).length, 0, '样例挂上生产参数零违规');
-eq(productionProblems(CAST, 'realistic', null).length, 0, '没有生产参数就整体跳过，不是失败');
+eq(productionProblems(CAST, PRODUCTION).length, 0, '样例挂上生产参数零违规');
+eq(productionProblems(CAST, null).length, 0, '没有生产参数就整体跳过，不是失败');
 
-// 画风一致：漂了合成没法看
+/* ---------------- 画风：没有内置预设，只有从生产参数里读 ---------------- */
+
+eq(styleBlockOf(null), null, '没有生产参数就没有画风——不退回任何一档内置默认');
+eq(styleBlockOf({}), null, '生产参数里没有 style 也是没有画风');
+eq(styleBlockOf({ style: { character: { render: '  ' } } }), null, '渲染句只有空白算没填');
+eq(styleBlockOf(PRODUCTION), CHARACTER_STYLE, '填了就原样给出来');
+eq(styleLabelOf(null), '未填', '没有生产参数就说没填，不编一个名字出来');
+eq(styleLabelOf(PRODUCTION), '真人实拍', '中文界面取中文名');
+eq(styleLabelOf(PRODUCTION, 'en'), 'Photorealistic live-action', '英文界面取英文名');
+eq(styleLabelOf({ style: { label: { zh: '水墨' } } }, 'en'), '水墨', '没写英文名就回落中文名');
+eq(negativeTerms('a, extra fingers; text').join('|'), 'extra fingers|text', '反向词按逗号分号拆，太短的丢掉');
+ok(/pore|subsurface/i.test(CHARACTER_STYLE.surface), '角色那一块管的是皮肤毛孔——那是 style.scene 没有的东西');
+
+// 画风没填就跳过，不是拦——填不填是 novel-setup 那一段的门
 {
-  const probs = productionProblems(CAST, 'ghibli', PRODUCTION);
-  eq(probs.length, 1, '画风与生产参数不一致必须报出来');
-  ok(probs[0].includes('realistic') && probs[0].includes('ghibli'), '两边的值都点名');
+  const half = { ...PRODUCTION, style: { label: { zh: '还没定' }, character: {} } };
+  eq(productionProblems(CAST, half).length, 0, '生产参数里画风没填就跳过画风那两条，画幅那条照查');
+}
+
+// 画风整块用上：渲染句原样进两条提示词
+{
+  const cast = JSON.parse(JSON.stringify(CAST));
+  cast[0].image.sheet = 'ONE 16:9 landscape canvas, three zones, no text';
+  const probs = productionProblems(cast, PRODUCTION);
+  eq(probs.length, 1, '设定图提示词缺渲染句必须报出来');
+  ok(probs[0].includes('真人实拍'), '点名生产参数定的是哪一档画风');
+  ok(probs[0].includes(cast[0].name), '点名是哪个角色');
+}
+{
+  const cast = JSON.parse(JSON.stringify(CAST));
+  cast[0].image.prompt = 'A young woman in a dark blue student uniform, 16:9';
+  ok(
+    productionProblems(cast, PRODUCTION)[0].includes('出图提示词'),
+    '单张出图提示词缺渲染句照样报——只查设定图的话，两者会变成两张皮',
+  );
+}
+{
+  const cast = JSON.parse(JSON.stringify(CAST));
+  cast[0].image.negativePrompt = cast[0].image.negativePrompt.replace(', poreless doll face', '');
+  const probs = productionProblems(cast, PRODUCTION);
+  eq(probs.length, 1, '反向词少一条必须报出来——换风格是整套换');
+  ok(probs[0].includes('poreless doll face'), '点名少了哪一条');
+}
+{
+  const cast = JSON.parse(JSON.stringify(CAST));
+  cast[0].image.negativePrompt += ', crossed eyes, lens flare';
+  eq(productionProblems(cast, PRODUCTION).length, 0, '角色自己额外加反向词不算漂——查的是有没有带全，不是有没有多写');
+}
+{
+  // 换一档完全不同的画风：整块换掉之后，还写着上一档渲染句的产物必须被拦
+  const ink = {
+    ...PRODUCTION,
+    style: {
+      label: { zh: '水墨' },
+      phrase: 'ink wash film still',
+      character: {
+        render: 'Traditional Chinese ink wash portrait, wet brush on xuan paper, minimal decisive strokes',
+        surface: 'Flat ink tone with dry-brush edges, no skin texture at all',
+        lighting: 'Even flat light across the whole sheet, no cast shadows',
+        negative: 'photorealistic, 3d render, visible pores, saturated colour, text, watermark',
+        tags: ['ink wash', 'xuan paper', 'character sheet'],
+      },
+    },
+  };
+  const probs = productionProblems(CAST, ink);
+  ok(probs.length > 0, '产物还是上一档画风，换成水墨后被拦——画风没有内置类型，写什么查什么');
+  ok(probs.some((p) => p.includes('水墨')), '点名现在这部剧定的是哪一档画风');
 }
 
 // 设定图画幅一致：版面写死在 image.sheet 第一句里
 {
   const portrait = { ...PRODUCTION, image: { ...PRODUCTION.image, asset: { resolution: '2K', aspectRatio: '9:16' } } };
-  const probs = productionProblems(CAST, 'realistic', portrait);
+  const probs = productionProblems(CAST, portrait);
   eq(probs.length, 1, '生产参数改成竖版资产图，而提示词还写 16:9——必须报');
   ok(probs[0].includes('9:16') && probs[0].includes('16:9'), '两个画幅都点名');
 }
 {
   const cast = JSON.parse(JSON.stringify(CAST));
   cast[0].image.sheet = cast[0].image.sheet.replaceAll('16:9', ''); // 一条提示词里写了两处
-  ok(productionProblems(cast, 'realistic', PRODUCTION)[0].includes('缺画幅'), '漏掉画幅与写错画幅分开报');
+  ok(
+    productionProblems(cast, PRODUCTION).some((p) => p.includes('缺画幅')),
+    '漏掉画幅与写错画幅分开报',
+  );
 }
 ok(KNOWN_ASPECTS.includes('16:9') && KNOWN_ASPECTS.includes('9:16'), '画幅词表覆盖横竖两种主流');
 {
@@ -558,7 +644,7 @@ ok(/scrollHeight <= body\.clientHeight/.test(synHtml), '摘要短到不用折叠
 /* ---------------- 导出 JSON ---------------- */
 
 // 导出的形状就是 cast.json，编辑完要能直接喂回 render
-const expHtml = renderHtml(CAST, '渡口', DOC.summary, 'zh', null, 'ghibli');
+const expHtml = renderHtml(CAST, '渡口', DOC.summary, 'zh');
 ok(expHtml.includes('class="expo"'), '顶栏有导出按钮');
 ok(expHtml.includes('<script type="application/json" id="cast-data">'), '数据内嵌在报告里');
 ok(expHtml.includes('data-name="渡口-cast.json"'), '下载文件名跟着书名走');
@@ -567,12 +653,12 @@ const embedded = expHtml.match(/<script type="application\/json" id="cast-data">
 const round = JSON.parse(embedded.replace(/\\u003c/g, '<'));
 eq(round.source, '渡口', '导出带书名');
 eq(round.lang, 'zh', '导出带语言');
-eq(round.style, 'ghibli', '导出带画风');
+eq(round.style, undefined, '导出里没有画风——它住在 production.json，报告里抄一份只会漂');
 eq(round.summary, DOC.summary, '导出带故事摘要');
 eq(round.characters.length, CAST.length, '导出带全部角色');
 eq(JSON.stringify(round.characters), JSON.stringify(CAST), '角色卡原样导出，没有丢字段');
-eq(validateCast(round.characters, SOURCE, 'zh', 'realistic').length, 0, '导出的数据能直接喂回 validate 并通过');
-ok(validateCast(round.characters, SOURCE, 'zh', 'ghibli').length > 0, '喂回去的确实是真数据——画风说反了照样报错');
+eq(validateCast(round.characters, SOURCE, 'zh').length, 0, '导出的数据能直接喂回 validate 并通过');
+eq(productionProblems(round.characters, PRODUCTION).length, 0, '喂回去的确实是真数据——挂上生产参数画风那两条也全过');
 
 // ⚠️ 正文里一个 </script 就能把数据块提前截断
 const xss = clone();
@@ -776,63 +862,34 @@ ok(
   '细节放不下可延伸到右侧',
 );
 
-/* ---------------- 画风预设 ---------------- */
-
-for (const id of ['realistic', 'ghibli']) ok(SUPPORTED_STYLES.includes(id), `内置 ${id} 预设`);
-eq(stylePreset('nope').render, STYLE_PRESETS.realistic.render, '未知风格退回默认');
-// 每个预设都要五块齐全，缺一块就会跟另一个预设混搭出四不像
-for (const [id, p] of Object.entries(STYLE_PRESETS)) {
-  for (const k of ['render', 'surface', 'lighting', 'negative', 'tags']) {
-    ok(p[k] && p[k].length, `${id} 预设有 ${k}`);
-  }
-  ok(p.label.zh && p.label.en && p.label.ja, `${id} 预设有三语标签`);
-}
-// 这是整件事最容易搞反的地方：两个预设的反向提示词几乎相反
-ok(!/photorealistic|3d render/i.test(STYLE_PRESETS.realistic.negative), 'realistic 不禁写实');
-ok(/photorealistic/i.test(STYLE_PRESETS.ghibli.negative), 'ghibli 必须禁写实');
-// 写实的表面细节在吉卜力里是反效果，两边不能是同一段
-ok(/visible pores/i.test(STYLE_PRESETS.realistic.surface), 'realistic 要毛孔');
-ok(/no pores/i.test(STYLE_PRESETS.ghibli.surface), 'ghibli 明确不要毛孔');
-ok(STYLE_PRESETS.realistic.surface !== STYLE_PRESETS.ghibli.surface, '两个预设的表面处理不同');
-
-// 校验器要能抓住风格与反向提示词搞反
-const wrongStyle = clone();
-ok(
-  validateCast(wrongStyle, SOURCE, 'zh', 'ghibli').some((x) => x.includes('必须禁 photorealistic')),
-  '样例是 realistic，按 ghibli 校验会报错',
-);
-const ghibliish = clone();
-for (const c of ghibliish) c.image.negativePrompt = STYLE_PRESETS.ghibli.negative;
-ok(
-  validateCast(ghibliish, SOURCE, 'zh', 'realistic').some((x) => x.includes('自相矛盾')),
-  'realistic 却禁 photorealistic 会报错',
-);
-eq(validateCast(CAST, SOURCE, 'zh', 'realistic').length, 0, '样例按 realistic 校验通过');
-
-// 同剧角色画风必须一致——模型曾按各自服装/年龄写出四套画风，同框像四个画师
-// 样例已统一，应通过；故意改掉一个角色的 image.style 必须报错；仅空白差异不算不一致
-eq(validateCast(CAST, SOURCE, 'zh', 'realistic').length, 0, '样例四个角色画风统一，校验通过');
+/* ---------------- 同剧角色画风必须一致 ---------------- */
+/*
+ * 这一条与生产参数那一档画风是两件事：那边管的是「整部剧是哪一档画风」，
+ * 这边管的是「同一部剧里四个角色的 image.style 那句人读描述有没有各写各的」。
+ * 模型曾按各自服装/年龄写出四套，同框时像四个画师画的。
+ */
+eq(validateCast(CAST, SOURCE, 'zh').length, 0, '样例四个角色画风统一，校验通过');
 {
   const split = clone();
   split[1].image.style = '吉卜力动画风，明快平涂';
   ok(
-    validateCast(split, SOURCE, 'zh', 'realistic').some((x) => x.includes('画风不一致')),
+    validateCast(split, SOURCE, 'zh').some((x) => x.includes('画风不一致')),
     '同剧角色 image.style 不一致会报错',
   );
 }
 {
   const ws = clone();
   ws[0].image.style = '  真人实拍，冷调低饱和民国配色，晨雾柔光  ';
-  eq(validateCast(ws, SOURCE, 'zh', 'realistic').length, 0, 'image.style 仅空白差异不算不一致');
+  eq(validateCast(ws, SOURCE, 'zh').length, 0, 'image.style 仅空白差异不算不一致');
 }
 
 // 同批角色的提示词不许雷同——模型套同一个模板，两个年龄性别接近的角色会出成同一个人（issue #9）
-eq(validateCast(CAST, SOURCE, 'zh', 'realistic').length, 0, '样例四个角色的提示词差异够大，不误拦');
+eq(validateCast(CAST, SOURCE, 'zh').length, 0, '样例四个角色的提示词差异够大，不误拦');
 {
   const dup = clone();
   dup[1].image.prompt = dup[0].image.prompt;
   ok(
-    validateCast(dup, SOURCE, 'zh', 'realistic').some((x) => x.includes('出图提示词雷同')),
+    validateCast(dup, SOURCE, 'zh').some((x) => x.includes('出图提示词雷同')),
     '两个角色的出图提示词完全相同会报错',
   );
 }
@@ -843,7 +900,7 @@ eq(validateCast(CAST, SOURCE, 'zh', 'realistic').length, 0, '样例四个角色�
     .replace(/nineteen-year-old/g, 'twenty-two-year-old')
     .replace(/navy-blue/g, 'dark green');
   ok(
-    validateCast(near, SOURCE, 'zh', 'realistic').some((x) => x.includes('出图提示词雷同')),
+    validateCast(near, SOURCE, 'zh').some((x) => x.includes('出图提示词雷同')),
     '只改几个词的出图提示词照样被拦',
   );
 }
@@ -851,7 +908,7 @@ eq(validateCast(CAST, SOURCE, 'zh', 'realistic').length, 0, '样例四个角色�
   const dupVoice = clone();
   dupVoice[1].voice.prompt = dupVoice[0].voice.prompt;
   ok(
-    validateCast(dupVoice, SOURCE, 'zh', 'realistic').some((x) => x.includes('音色提示词雷同')),
+    validateCast(dupVoice, SOURCE, 'zh').some((x) => x.includes('音色提示词雷同')),
     '两个角色的音色提示词相同也会报错',
   );
 }
@@ -860,7 +917,7 @@ eq(validateCast(CAST, SOURCE, 'zh', 'realistic').length, 0, '样例四个角色�
   const dupSheet = clone();
   dupSheet[1].image.sheet = dupSheet[0].image.sheet;
   ok(
-    !validateCast(dupSheet, SOURCE, 'zh', 'realistic').some((x) => x.includes('雷同')),
+    !validateCast(dupSheet, SOURCE, 'zh').some((x) => x.includes('雷同')),
     'image.sheet 相同不报错——它的固定排版文本占比太高，设门必然误拦',
   );
 }
@@ -870,7 +927,7 @@ eq(validateCast(CAST, SOURCE, 'zh', 'realistic').length, 0, '样例四个角色�
   tiny[0].image.prompt = 'a man';
   tiny[1].image.prompt = 'a man';
   ok(
-    !validateCast(tiny, SOURCE, 'zh', 'realistic').some((x) => x.includes('出图提示词雷同')),
+    !validateCast(tiny, SOURCE, 'zh').some((x) => x.includes('出图提示词雷同')),
     '词数太少的提示词不参与雷同判定',
   );
 }
@@ -900,7 +957,7 @@ ok(
   const noRender = clone();
   noRender[0].image.prompt = '一句不带渲染句的提示词';
   ok(
-    validateCast(noRender, SOURCE, 'zh', 'realistic').some((x) => x.includes('image.prompt')),
+    validateCast(noRender, SOURCE, 'zh').some((x) => x.includes('image.prompt')),
     'prompt 缺渲染句被拦',
   );
 }
@@ -998,7 +1055,7 @@ eq(STAGE_DIR, 'characters', '段目录名与端到端工作目录约定一致');
 
 // 生产参数在就以它为准——三个值原样进 input_data，不折算像素
 {
-  const prod = { style: 'realistic', image: { model: 'seedream4', asset: { resolution: '4K', aspectRatio: '4:3' } } };
+  const prod = { image: { model: 'seedream4', asset: { resolution: '4K', aspectRatio: '4:3' } } };
   const { model, inputBase } = imageJobsFrom(CAST, prod);
   eq(model, 'seedream4', '模型取 production.json 的 image.model');
   eq(inputBase.resolution, '4K', '档位是枚举值，原样带上');
@@ -1263,5 +1320,25 @@ const jobOf = (over = {}) => ({
 }
 
 rmSync(TMP, { recursive: true, force: true });
+
+/* ---------------- 自动驾驶（autopilot） ---------------- */
+/*
+ * 只读的跑法口径：开着本 skill 就把自己那一段一口气跑完，不停下来问用户。
+ * 它不参与任何一条检查——检查管的是「整套白出」，跟问不问用户无关。
+ */
+
+ok(autopilotOf({ ...PRODUCTION, autopilot: true }), '开着就是开着');
+eq(autopilotOf({ ...PRODUCTION, autopilot: false }), false, '关着就是关着');
+eq(autopilotOf(PRODUCTION), false, '老项目的生产参数里没有这个字段，按关处理');
+eq(autopilotOf(null), false, '没有生产参数就是关——该问还是要问');
+eq(autopilotOf({ autopilot: 'false' }), false, '字符串 "false" 不算开——JS 里它是真值，只认布尔真值');
+eq(autopilotOf({ autopilot: 'true' }), false, '字符串 "true" 也不算开，写法错了按关处理');
+eq(autopilotOf({ autopilot: 1 }), false, '数字不算开');
+ok(AUTOPILOT_NOTE.includes('不要停下来问用户'), '开着时打印的那句话说清了约束');
+eq(
+  productionProblems(CAST, { ...PRODUCTION, autopilot: true }).length,
+  0,
+  '打开自动驾驶不影响那两条检查——它改的是跑法，不是参数',
+);
 
 console.log(`✓ ${passed} 项自测全部通过`);

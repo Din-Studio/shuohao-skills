@@ -1,6 +1,38 @@
 {
   "source": "雪线",
-  "style": "ghibli",
+  "autopilot": true,
+  "style": {
+    "label": {
+      "zh": "吉卜力动画",
+      "en": "Ghibli-like animation"
+    },
+    "phrase": "hand-painted anime film still",
+    "character": {
+      "render": "Hand-painted anime cel illustration in the manner of classic Studio Ghibli feature animation: clean confident ink linework of even weight, simple flat cel shading with a single soft shadow tone, gentle rounded forms, warm naturalistic palette, watercolour-like softness",
+      "surface": "Skin as clean flat tone with one soft shadow shape and a warm blush at the cheeks and nose — no pores, no skin texture, no subsurface detail; large clear expressive eyes with a simple round highlight and flat iris colour; hair drawn as grouped strands and clumps with clean silhouettes rather than individual hairs; clothing in simple flat colour with a few decisive fold lines, no fabric weave and no micro-texture",
+      "lighting": "Even, gentle daylight across the whole sheet with a single soft shadow tone; no dramatic key light, no ambient occlusion, no cast shadows — the flat lighting is part of the style and keeps the figures cleanly cut out",
+      "negative": "photorealistic, 3d render, hyperrealistic skin texture, visible pores, subsurface scattering, harsh contrast, heavy painterly rendering, muddy or desaturated colours, gritty texture overlay, extra fingers, malformed hands, text, watermark, signature, busy or patterned background",
+      "tags": [
+        "ghibli-like",
+        "cel shading",
+        "hand-painted",
+        "character sheet",
+        "flat daylight"
+      ]
+    },
+    "scene": {
+      "render": "Hand-painted anime background art in the manner of classic Studio Ghibli films: soft watercolour-and-gouache rendering, clean readable shapes, warm naturalistic palette, gentle painterly edges",
+      "surface": "Simplified but affectionate detail: flat colour planes with soft gradations, foliage and clutter grouped into readable clumps, warm light pooling on surfaces; textures suggested with a few brush strokes rather than rendered out; no photographic micro-detail",
+      "negative": "people, human figures, characters, crowds, photorealistic, 3d render, hyperrealistic texture, harsh contrast, gritty grime, lens effects, text, watermark, signature",
+      "tags": [
+        "ghibli-like",
+        "background art",
+        "watercolour",
+        "environment sheet",
+        "warm palette"
+      ]
+    }
+  },
   "lang": "zh",
   "promptLang": "zh",
   "image": {

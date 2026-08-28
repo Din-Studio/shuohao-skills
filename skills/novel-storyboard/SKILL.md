@@ -1,6 +1,6 @@
 ---
 name: novel-storyboard
-version: 1.7.0
+version: 1.10.0
 description: |
   给 AI 短剧出分镜：三层结构——段（一次视频生成，≤15 秒）→ 分镜（段内 2–5 秒的剪切，认领剧本节拍）
   → 分镜图（每切一张关键帧：主分镜图钉 0.00 秒，子分镜图钉各自切点）。
@@ -10,9 +10,11 @@ description: |
   references/h3-prompt.md 与 references/seedance2-prompt.md，不依赖外部 skill。
   产出 storyboard.json + Markdown + 单页评审报告（分镜节奏带 / 分集分镜表 / 生成批次单 /
   配音对齐单，含导出 JSON）。分镜图出图拿场景与角色设定图当参考图走 lingying（可选）。
-  19 道质量门全部由脚本确定性检查（其中 2 道读工作目录根的 production.json：画风与分镜图画幅，没有就明说跳过；
-  第 19 道 shot-recipe 可选：挂上 shot-recipes 卡库才查，不挂就明说跳过）；
+  18 道质量门全部由脚本确定性检查（其中 2 道读工作目录根的 production.json：画风短语与分镜图画幅，没有就明说跳过；
+  第 18 道 shot-recipe 可选：挂上 shot-recipes 卡库才查，不挂就明说跳过）；
   export 一键导出投产包（每段提示词 + 按 Picture 序的分镜图清单），再走 lingying 下单生视频（可选）。零依赖、零 npm。
+  production.json 顶层 autopilot 为 true 时全程不打断——第一段分镜图自己验效果、下单花费照样报出来但不等回应；
+  质量门、花费预估、失败止损照旧。
   Use when asked to 分镜、出分镜、镜头表、切镜、storyboard for AI short drama。
 # 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
 allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
@@ -68,7 +70,7 @@ metadata:
 
 - `--outline` / `--cast`：提示词禁人名检查 + 报告里 C01 显示成人名
 - `--art`：报告里 S01 显示成场景名 + 批次单嵌场景设定图
-- `--shots <卡片目录>`：**可选**挂载 shot-recipes 的镜头配方卡库（指向 `shot-recipes/references/cards`，只接受目录不接受导出的 JSON），开第 19 道 `shot-recipe` 门。没装 shot-recipes 就别给——本 skill 自包含，不依赖它
+- `--shots <卡片目录>`：**可选**挂载 shot-recipes 的镜头配方卡库（指向 `shot-recipes/references/cards`，只接受目录不接受导出的 JSON），开第 18 道 `shot-recipe` 门。没装 shot-recipes 就别给——本 skill 自包含，不依赖它
 
 **产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/storyboard/`——`<剧名>-storyboard.json`、`<剧名>-storyboard.md`、`storyboard-report.html`、`manifest.json`、每段一个的 `E01-0x/` 投产包、门失败日志 `.gates.jsonl` 都在这一格里。工作目录根只住 `production.json`（`novel-setup` 的产出），别的 skill 各占自己的一格（`outline/`、`characters/`、`art/`、`script/`）。用户没指定工作目录就用剧本同级目录，**但段目录这一层不省**——合并报告的 `--from` 自动发现就是按段目录名找 JSON 的，平铺在根目录它找不到。下文的 `<段目录>` 就指 `<工作目录>/storyboard/`。
 
@@ -76,16 +78,31 @@ metadata:
 
 跑过 `novel-setup` 的项目落点这条是查的：`validate` 与 `export` 找到 `production.json` 就顺带核对，放错了会点名该去哪；没找到那份文件就无从判断工作目录根在哪，明说跳过。
 
-**生产参数不用挂载，脚本自己找。** `production.json`（`novel-setup` 的产出）住在工作目录根，`validate` / `render` / `export` 都会从 storyboard.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「2 道门跳过」——不静默。
+**生产参数不用挂载，脚本自己找。** `production.json`（`novel-setup` 的产出）住在工作目录根，`validate` / `checkup` / `export` 都会从 storyboard.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「2 道门跳过」——不静默。
 
 找到了就必须遵循两件事，这两件改了都要整批重出图：
 
-- **画风**：storyboard.json 的 `style` 必须与它一致（自己不写就继承）
+- **画风**：本 skill 不内置画风，storyboard.json 里也不存一份。只要 `style.phrase` 那句短语，它必须出现在**每条**分镜图提示词里
 - **分镜图画幅**：每条分镜图提示词里的画幅必须是 `image.frame.aspectRatio`。**成片拍竖屏，分镜图就得是 `9:16`**——写死 `16:9` 出一集三四十格，喂给视频模型全被裁掉两边
 
 出图用 `image.model` + `image.frame.resolution`（**档位就是 lingying 收的 `resolution` 枚举值**，原样进 `--input_data`，不折算像素；一行拿到拼好的参数：`novel-setup resolve --for storyboard`）。老项目没有这份文件照跑，那两道门明说跳过；临时绕过用 `--no-production`，用了会明说。
 
 **一次切几集**：跟剧本的批次走（剧本写到哪就分到哪），默认一批 ≤ 3 集。
+
+### Step 0.5 — 自动驾驶（autopilot）
+
+Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` / `checkup` 与 `export` 找到生产参数也会打印一句 `↳ 自动驾驶：开`（`render` 只做语言继承，不打印）——但 Step 0 跑在第一条命令之前，所以开工前要自己看一眼。
+
+没有 `production.json`、字段写着 `false` 或者整个没写，就是各步原来的样子。
+
+| 原本 | 自动驾驶下 |
+| --- | --- |
+| Step 2 视频提示词按哪套骨架写 | 按 `production.json` 的 `video.model` 自己分流，不问 |
+| **Step 4 先出第一段的整套分镜图给用户看效果** | 顺序不变——还是先出第一段（3–5 张）再往后补，但**由你自己看**：画风与正反打构图对了就接着出，明显不对就重出这一段，不等用户点头 |
+| Step 6 按秒计费，提交前把总秒数与预估花费报给用户 | 照样算清楚、照样报出来（打印给用户看），**不等回应**直接提交 |
+| Step 6 同一段连着失败两次就停下来问 | 不问用户，但**照样停这一段**：跳过并记进汇报。不打断不等于无限重试烧钱 |
+
+**转移的是审批权，不是取消检查点**：18 道门照样要过、花费照样先算清楚、失败的止损照样止损——只是不再等人点头。可选步骤（出图、下单）在自动驾驶下**照跑**，只有依赖缺失（没装 `lingying`）才跳过并明说。**替用户做的每一个决定都要写进 Step 5 的汇报**，第一段效果的判断结论一条不漏。
 
 ### Step 1 — seed 工作底稿
 
@@ -126,11 +143,11 @@ node {baseDir}/scripts/novel-storyboard.mjs validate <storyboard.json> \
   [--shots </path/to/cards>]
 ```
 
-19 道质量门全是代码：节拍全覆盖（分镜级，恰好一次、按顺序、连续）、段 0 < 总秒 ≤ 15、**每切 2–5 秒**、台词装得进分镜、每集总时长在剧本目标 ±15% 内、同框 ≤ 3 人（超了必须带拆解说明）、段号 E01-01 格式连号、景别短语在分镜图提示词里、**风格短语统一**（`style` 预设 realistic/ghibli 与角色/场景 skill 同名对齐，同剧分镜图不许画风漂）、运镜用统一词表且在自己的镜头段落里、**视频提示词的骨架与挂载的视频模型对得上**（H3 查对齐指令与切点时刻逐字对账，seedance 查身份说明逐张齐全、逐镜齐全且全程无时刻）、**认领台词逐字进视频提示词**、**提示词语言与 promptLang 一致**（双向查：中文写成英文、英文混进中文都拦）、分镜图提示词全英文非空、英文提示词不含角色名（中文视频提示词放行）、场次/人物/道具对账剧本、**画风与生产参数一致**、**分镜图画幅与生产参数一致**、**镜头配方对账**（可选门，见下）。
+18 道质量门全是代码：节拍全覆盖（分镜级，恰好一次、按顺序、连续）、段 0 < 总秒 ≤ 15、**每切 2–5 秒**、台词装得进分镜、每集总时长在剧本目标 ±15% 内、同框 ≤ 3 人（超了必须带拆解说明）、段号 E01-01 格式连号、景别短语在分镜图提示词里、**风格短语统一**（`production.json` 的 `style.phrase` 必须出现在每条分镜图提示词里，同剧分镜图不许画风漂）、运镜用统一词表且在自己的镜头段落里、**视频提示词的骨架与挂载的视频模型对得上**（H3 查对齐指令与切点时刻逐字对账，seedance 查身份说明逐张齐全、逐镜齐全且全程无时刻）、**认领台词逐字进视频提示词**、**提示词语言与 promptLang 一致**（双向查：中文写成英文、英文混进中文都拦）、分镜图提示词全英文非空、英文提示词不含角色名（中文视频提示词放行）、场次/人物/道具对账剧本、**分镜图画幅与生产参数一致**、**镜头配方对账**（可选门，见下）。
 
 **有违规逐条修，改完重跑，直到通过。**
 
-**第 19 道 `shot-recipe`（可选挂载）**：给了 `--shots` 才查，不给就明说跳过。cut 上可以写一个可选的 `recipe`（配方卡 id，**cut 级不是 segment 级**，**多格配方靠连续同 id 的分镜表达**，不是数组），门查三条——id 在卡库里、卡片的每条 `must_phrases` 出现在该切的 `frame` 里（两边小写化后 `includes`）、卡片 `cuts` 下限 ≥ 2 时连续同 id 的分镜数不得低于该下限。卡片的**建议景别与运镜不设门**，只在报告的「配方」列和 `checkup` 末尾提示偏离：配方是语汇不是法条，可选挂载的东西一旦变严就没人挂。
+**第 18 道 `shot-recipe`（可选挂载）**：给了 `--shots` 才查，不给就明说跳过。cut 上可以写一个可选的 `recipe`（配方卡 id，**cut 级不是 segment 级**，**多格配方靠连续同 id 的分镜表达**，不是数组），门查三条——id 在卡库里、卡片的每条 `must_phrases` 出现在该切的 `frame` 里（两边小写化后 `includes`）、卡片 `cuts` 下限 ≥ 2 时连续同 id 的分镜数不得低于该下限。卡片的**建议景别与运镜不设门**，只在报告的「配方」列和 `checkup` 末尾提示偏离：配方是语汇不是法条，可选挂载的东西一旦变严就没人挂。
 
 ### Step 4 — 出分镜图（可选）
 
@@ -237,7 +254,7 @@ node {baseDir}/scripts/novel-storyboard.mjs stats
 node {baseDir}/scripts/selftest.mjs
 ```
 
-303 项断言，不调模型、不花额度。19 道质量门每一道都有击穿用例。改完脚本先跑这个。
+360 项断言，不调模型、不花额度。18 道质量门每一道都有击穿用例。改完脚本先跑这个。
 
 ## 自带样例
 

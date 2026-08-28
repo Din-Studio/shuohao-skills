@@ -6,7 +6,7 @@ Feed it a novel or a short story, and get a complete design bible for every char
 
 - **Cast list** — who appears, how central they are, with every name a character is called by folded into one person
 - **Profile** — gender, age, standing, appearance, temperament, motivation, arc, relationships, each backed by **verbatim quotes from the source**
-- **Design prompts** — photorealistic live-action direction, bilingual image prompt + negative prompt + style tags; `negative_prompt` is a first-class lingying field, passed through verbatim
+- **Design prompts** — art direction copied verbatim from the show's style block, bilingual image prompt + negative prompt + style tags; `negative_prompt` is a first-class lingying field, passed through verbatim
 - **Voice prompts** — timbre, pitch, pace, accent, emotion, plus a voice-design prompt for Qwen3-TTS / ElevenLabs Voice Design
 - **A character model sheet** — **one per character**: a 16:9 image in three zones: an ID-photo-style bust on the left (~34%, the reference for the face design), a full-body turnaround top-right, and a strip of key-detail close-ups bottom-right. White background for clean cut-out; generation is a single `images` command (optional, via lingying)
 - **Relationship map** — a whole-cast view inside the report: who is tied to whom, and how. Hover a character to light up every link they are part of, click to jump to their profile
@@ -76,27 +76,27 @@ Chinese, English and Japanese UI strings ship built in. **Any other language wor
 
 Two things never follow the language: **image and TTS prompts stay English** (those engines work best that way), and **source quotes stay in the original language** (translate them and they stop being evidence).
 
-### Image style
+### Art style
 
-`realistic` by default (photorealistic live-action). For an animation look:
-
-```
-/novel-characters ./book.txt --style ghibli
-```
-
-| id | What it is |
-| --- | --- |
-| `realistic` | Photorealistic live-action — skin with pores and texture, fabric with weave and wear. Default |
-| `ghibli` | Ghibli-like hand-painted cel — even ink linework, a single soft shadow tone, flat colour |
-
-They combine: `--lang ja --style ghibli`.
+**This skill ships no built-in styles and has no default one.** The style lives at the top level of `production.json` in the work-directory root, written by the user during `/novel-setup` — photorealistic live-action, Ghibli-like hand-painting, ink wash, claymation, 1980s film grain, whatever. **No code changes.**
 
 ```bash
-node scripts/novel-characters.mjs styles          # list all presets
-node scripts/novel-characters.mjs styles ghibli   # dump one in full
+node scripts/novel-characters.mjs style     # dump this show's style.character block
 ```
 
-**Switching style swaps the whole set**, not just one line — each preset carries its own rendering clause, surface treatment, lighting, negative prompt and tags. See [`references/style-presets.md`](references/style-presets.md).
+The block carries five things, copied **verbatim** into every character card:
+
+| Block | Goes into |
+| --- | --- |
+| `render` | `image.sheet` *and* `image.prompt` (both — copying only one produces two different looks) |
+| `surface` | same |
+| `lighting` | `image.sheet` |
+| `negative` | `image.negativePrompt`, **every term of it**; per-character bans go on top |
+| `tags` | `image.tags` |
+
+`validate` checks this automatically once `production.json` is found — there is no switch.
+
+**Switching style swaps the whole set**, not just one line — five blocks together, no mixing. See [`references/style.md`](references/style.md).
 
 ## What the report looks like
 
@@ -116,7 +116,7 @@ The circular layout is computed in Node and written straight into inline SVG —
 The **Export JSON** button in the top bar downloads exactly the `cast.json` shape — not some separate export format:
 
 ```json
-{ "source": "…", "lang": "zh", "style": "realistic", "summary": "…", "characters": [ … ] }
+{ "source": "…", "lang": "zh", "summary": "…", "characters": [ … ] }
 ```
 
 So an external tool can edit it and **feed it straight back into `render`**, and it still passes `validate`. Each character keeps its `sheetImage` path (`images/<slug>-sheet.png`), so you know which sheet belongs to whom.
@@ -144,7 +144,7 @@ Four hard rules, all checked deterministically by a script rather than trusted t
 | `evidence` must be a **verbatim, contiguous** span of the source | Stops invention. Dialogue split by a narration beat may not be stitched back together |
 | Image prompts must **not contain character names** | Image models bias hard on names and will draw the character they remember instead of yours |
 | **Language split** per field | Human-readable fields follow `--lang`, image and TTS prompts are always English — the model drifts otherwise |
-| **Style matches its negative prompt** | `realistic` must not ban `photorealistic`, `ghibli` must — get it backwards and the whole batch is wasted |
+| **Art style used as one whole block** | the render sentence from `production.json` made it into both prompts and every negative term came along. One missing term is style drift already (skipped, and said so, if the file is not found) |
 | Structure and enums | `importance` is one of exactly four values |
 
 None of these were written up front. Each one exists because real model output violated it and the validator caught it.
@@ -167,12 +167,18 @@ node scripts/novel-characters.mjs render cast.json --html       # build report.h
 node scripts/novel-characters.mjs slug "胡二爷"                  # filesystem-safe name
 ```
 
+## Autopilot
+
+When the `production.json` at the work-directory root (produced by `novel-setup`) carries `"autopilot": true`, this skill runs its stage **end to end**: it does not ask about report language or how many characters to sheet; it reviews the merge candidates itself (when unsure, it leaves them separate) and generates every selected character's sheet in one go. Every decision it made goes into the final report.
+
+**It transfers approval, it does not remove checkpoints**: validation still has to pass, the image step still prints how many sheets it is about to generate, and the results still get checked — it just does not wait for a nod. Written as `false`, left out, or with no `production.json` at all, nothing changes. When `validate` finds the file with the flag on, it prints `↳ 自动驾驶：开`.
+
 ## Limits
 
 - Caps at 24 chunks (~930k characters net of overlap) per run. Beyond that it reports `truncated` explicitly — it does **not** silently drop the tail
 - Human-readable fields follow `--lang`; image and TTS prompts are **always English**, since those engines work best that way regardless of report language
 - The top 30 characters by prominence are profiled by default, and **every one of them gets a sheet** — one call per character, so this is the slowest step on a large cast. The whole batch is submitted before polling starts, so wall-clock is roughly the slowest single sheet — that orchestration lives in the script, not in prompt-assembled bash. Use `--only`, or ask for leads only, if you want it shorter
-- **Art style can still vary across a cast**, since each character is generated independently. It used to drift badly under the old "flat vector cartoon" wording — one run produced anime-ish, semi-realistic and ink-wash results side by side. The explicit style presets fixed most of that, but not all of it. Passing `--style-ref auto` feeds the first sheet back as a reference for the rest, which helps; see `references/sheet.md`
+- **Art style can still vary across a cast**, since each character is generated independently. It used to drift badly under the old "flat vector cartoon" wording — one run produced anime-ish, semi-realistic and ink-wash results side by side. Copying the whole style block from `production.json` verbatim into every prompt fixed most of that, but not all of it. Passing `--style-ref auto` feeds the first sheet back as a reference for the rest, which helps; see `references/sheet.md`
 
 > ⚠️ **Image generation needs lingying credentials.** `~/.config/lingying/config.json` must carry at least `api_key`, plus `assethub_admin_token` if you attach reference images. Missing ones surface as a "缺少 API_KEY" error — report it verbatim rather than skipping silently: believing images were generated when they were not is worse than being told they were not.
 
@@ -183,14 +189,14 @@ SKILL.md                 the workflow the agent reads
 scripts/
   novel-characters.mjs   chunk / merge / assemble / validate / images / render / slug
   lib/lingying.mjs       image generation: submit / poll / save / resume
-  selftest.mjs           435 assertions, never calls a model or the network
+  selftest.mjs           439 assertions, never calls a model or the network
 references/
   roster-pass.md         pass 1: scanning for characters
   profile-pass.md        pass 2: building a character sheet (8 hard rules)
   schema.md              sheet structure and which language each field takes
   sheet.md               model-sheet layout and prompt rules (the call itself is the images subcommand)
   report-style.md        design conventions for report.html
-  style-presets.md       image style presets (realistic / ghibli)
+  style.md               where the art style comes from (not built in — read from production.json)
 examples/
   渡口.txt                bundled short story, 4 characters
   渡口-cast.json          its output, doubling as the validation fixture
@@ -205,6 +211,6 @@ In `examples/渡口.txt` the peddler is only ever referred to by a nickname and 
 node scripts/selftest.mjs
 ```
 
-435 assertions across chunking, alias merging, assembly, localization, validation, the two production-parameter checks, rendering, and the full image-generation flow (submit, poll, timeout, resume, style-reference ordering, cut-out) against an injected fake CLI and clock. No model calls, no requests, no quota, runs in about a second. Run it before anything else after touching the scripts.
+439 assertions across chunking, alias merging, assembly, localization, validation, the two production-parameter checks, rendering, and the full image-generation flow (submit, poll, timeout, resume, style-reference ordering, cut-out) against an injected fake CLI and clock. No model calls, no requests, no quota, runs in about a second. Run it before anything else after touching the scripts.
 
 **Only tested on macOS with Node 24.** There is no platform-specific code, so Linux and older Node releases should be fine, but that is **unverified**.

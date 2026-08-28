@@ -24,7 +24,7 @@
 
 ![art-report.html](assets/report.webp)
 
-## 质量门：13 道，全是代码
+## 质量门：12 道，全是代码
 
 与仓库里另外五个 skill 同一主张：**checklist 交给模型自觉是靠不住的**。
 
@@ -36,12 +36,11 @@
 | 提示词语言 | 全部英文 |
 | 提示词不含角色名 | `validate --cast cast.json` 才查；不给就**明说跳过** |
 | 变体引用完整 | `variantOf` 指向存在的场景且带 `changes` |
-| 风格与反向词匹配 | `realistic` 不禁 photorealistic、`ghibli` 必须禁 |
 | **道具状态** | ≥1 且落成英文提示词 |
 | **道具尺度** | scale 枚举对应的英文短语必须出现在提示词里 |
 | **道具无手** | 反向提示词禁 hands/fingers |
 | **道具白底** | 设定图必须 pure white background |
-| **画风与生产参数一致** | 工作目录根有 `production.json`（`novel-setup` 的产出）就查：`style` 与它不一致直接拦。找不到那份文件**明说跳过** |
+| **画风整块用上** | 工作目录根有 `production.json`（`novel-setup` 的产出）就查：`style.scene` 的渲染句原样进了 `sheet` 与 `prompt`、反向词一条不落地进了场景的反向词。找不到那份文件**明说跳过** |
 | **设定图画幅与生产参数一致** | `image.sheet` 里的版面画幅必须是 `image.asset.aspectRatio`。**资产图和成片画幅是两件事**——成片竖屏，设定图仍然横构图，L 形版面靠横向铺开 |
 
 自测里每道门都有**击穿用例**——证明它真的会拦。
@@ -57,7 +56,7 @@ novel-art        → art.json     （哪里 + 手里拿的：美术资产）
 
 - `seed <outline.json>` 确定性预填场景与道具两张清单，连出现集、承载爽点一起搬；大纲没有 `props` 时道具留空，模型按 `prop-pass.md` 从原文提取
 - `validate --cast <cast.json>` 用角色表查提示词里有没有混进角色名
-- 画风预设与 novel-characters **同名对齐**（realistic / ghibli）但内容是环境版——真实感来自用旧的材质，不是皮肤毛孔
+- 画风不内置：读 `production.json` 的 `style.scene`。它与 `style.character` 是同一个画风的两种落地——环境的真实感来自用旧的材质，不是皮肤毛孔
 
 ## 命令行直接用
 
@@ -67,7 +66,7 @@ node scripts/novel-art.mjs validate art.json --cast cast.json
 node scripts/novel-art.mjs checkup art.json                  # 只跑质量门
 node scripts/novel-art.mjs render art.json --html            # 出报告（界面默认中文）
 node scripts/novel-art.mjs render art.json --html --lang en  # 英文界面报告
-node scripts/novel-art.mjs styles                            # 看画风预设
+node scripts/novel-art.mjs style                             # 看这部剧的画风（场景那一块）
 ```
 
 ## 出图（可选）
@@ -82,14 +81,20 @@ node scripts/novel-art.mjs images art.json --cutout     # 道具再走一次抠�
 
 **调用是代码不是文档。** 参数不经过 shell（`execFile` 收数组，提示词里的引号换行原样抵达）、只读 `data.status`（响应里的 `message: success` 恒为 success）、单张超时 300 秒就跳过、已有产物跳过、提交过的任务写进 `images/.tasks.json` 断点续传、变体等母场景落盘后自动挂参考图。版面与提示词怎么写见 `references/sheet.md`。
 
+## 自动驾驶（autopilot）
+
+工作目录根的 `production.json`（`novel-setup` 的产出）顶层写着 `"autopilot": true` 时，本 skill 的全部流程**一口气跑完**：不问用哪份输入，道具清单自己定，场景与道具设定图一次出全，做过的决定全部写进最后的汇报。
+
+**转移的是审批权，不是取消检查点**：12 道门照样要过、拿到图照样核对锚点（无人、无手、纯白背景）——只是不再等人点头。字段写着 `false`、整个没写、或者根本没有 `production.json`，就是原来的样子（该问就问）。跑 `validate` 时找到生产参数并且开着，会打印一句 `↳ 自动驾驶：开`。
+
 ## 文件
 
 ```
 SKILL.md                 给 agent 读的工作流
 scripts/
-  novel-art.mjs          seed / validate / checkup / images / render / styles / slug
+  novel-art.mjs          seed / validate / checkup / images / render / style / slug
   lib/lingying.mjs       出图调用：提交 / 轮询 / 落盘 / 断点续传
-  selftest.mjs           255 项断言，不调模型、不发请求
+  selftest.mjs           279 项断言，不调模型、不发请求
 references/
   schema.md              art.json 结构 + 硬规则
   scene-pass.md          怎么填场景设定（AI 短剧的思路）
@@ -108,6 +113,6 @@ assets/
 node scripts/selftest.mjs
 ```
 
-185 项断言，覆盖 seed / 画风预设 / 13 道门逐项击穿 / 生产参数查找与继承 / 渲染（中英界面）/ 导出。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
+279 项断言，覆盖 seed / 画风读取 / 12 道门逐项击穿 / 生产参数查找与继承 / 渲染（中英界面）/ 导出。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
 
 **只在 macOS + Node 24 上实测过。** 代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但**没验过**。

@@ -25,6 +25,8 @@ import {
   findProduction,
   STAGE_DIR,
   stageDirNote,
+  AUTOPILOT_NOTE,
+  autopilotOf,
 } from './novel-script.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -453,5 +455,21 @@ eq(STAGE_DIR, 'script', '段目录名与端到端工作目录约定一致');
   eq(stageDirNote('/w/渡口-script.json', null), null, '没有 production.json 就无从判断，不猜');
   eq(stageDirNote(null, prod), null, '没有产物路径也不猜');
 }
+
+/* ---------------- 自动驾驶（autopilot） ---------------- */
+/*
+ * 只读的跑法口径：开着本 skill 就把自己那一段一口气跑完——没有 outline.json
+ * 也不问「要不要先跑 novel-outline」，批次之间不等确认。它不参与任何一道门。
+ */
+
+ok(autopilotOf({ autopilot: true }), '开着就是开着');
+eq(autopilotOf({ autopilot: false }), false, '关着就是关着');
+eq(autopilotOf({ lang: 'zh' }), false, '老项目的生产参数里没有这个字段，按关处理');
+eq(autopilotOf(null), false, '没有生产参数就是关——该问还是要问');
+eq(autopilotOf({ autopilot: 'false' }), false, '字符串 "false" 不算开——JS 里它是真值，只认布尔真值');
+eq(autopilotOf({ autopilot: 'true' }), false, '字符串 "true" 也不算开，写法错了按关处理');
+eq(autopilotOf({ autopilot: 1 }), false, '数字不算开');
+ok(AUTOPILOT_NOTE.includes('不要停下来问用户'), '开着时打印的那句话说清了约束');
+ok(gateReport(FIXTURE, CTX).every((g) => g.ok), '打开自动驾驶与门无关——门查的是剧本本身，样例照样全绿');
 
 console.log(`✓ ${passed} 项自测全部通过`);

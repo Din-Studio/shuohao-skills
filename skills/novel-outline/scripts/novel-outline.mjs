@@ -90,6 +90,27 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
 }
 
 /* ------------------------------------------------------------------ */
+/* 自动驾驶                                                            */
+/* ------------------------------------------------------------------ */
+/*
+ * production.json 顶层的 autopilot。为 true 时本 skill 的全部流程一口气跑完：
+ * Step 0 缺的参数（集数 × 时长、题材）自己定，Step 3 的快版骨架不等用户拍板，
+ * 做过的决定全部写进最后的汇报。
+ *
+ * 转移的是**审批权**，不是取消检查点：14 道门照样要过、快版骨架照样要出、
+ * `--stage beats` 照样要过——只是不再等人点头。
+ *
+ * **只认布尔真值**：JSON 里写成字符串 "false" 在 JS 里是真的，那种写法会让
+ * 一整条管线闷头跑完，比没写更坏。novel-setup 的 fields 门查这个类型。
+ */
+
+export const autopilotOf = (production) => production?.autopilot === true;
+
+/** 开着才打印——关着就是原来的样子，没有新信息。 */
+export const AUTOPILOT_NOTE =
+  '自动驾驶：开——本段流程一口气跑完，不要停下来问用户；替用户做的决定全部写进最后的汇报';
+
+/* ------------------------------------------------------------------ */
 /* 产物落点                                                            */
 /* ------------------------------------------------------------------ */
 /*
@@ -1644,9 +1665,13 @@ function flag(rest, name, fallback = null) {
 function announceStageDir(docPath) {
   const hit = findProduction(resolve(docPath, '..'));
   if (!hit) {
-    console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，产物落点提示跳过——跑 /novel-setup 生成一份可以打开它`);
+    console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，产物落点提示与自动驾驶口径跳过——跑 /novel-setup 生成一份可以打开它`);
     return;
   }
+  // 生产参数坏了不该把校验带崩：这里只取一个跑法口径，读不出来就当没开
+  let production = null;
+  try { production = readJson(hit); } catch { production = null; }
+  if (autopilotOf(production)) console.error(`↳ ${AUTOPILOT_NOTE}`);
   const note = stageDirNote(docPath, hit);
   if (note) console.error(`⚠️ ${note}`);
 }

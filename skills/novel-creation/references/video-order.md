@@ -1,6 +1,6 @@
 # 下单生视频 · videos 命令
 
-`export` 出的投产包（每段一个文件夹的 `prompt.md` + 根部 `manifest.json`）**就是下单的全部材料**。这一步交给 `videos` 命令——提交、轮询、落盘、断点续传全在代码里，不需要现拼 bash（`novel-storyboard` 现在还停留在这一层文档，`novel-creation` 是全新代码，直接照 `novel-art` / `novel-characters` 已经验证过的模式起步）。
+`export` 出的投产包（每段一个文件夹的 `prompt.md` + 根部 `manifest.json`）**就是下单的全部材料**。这一步交给 `videos` 命令——提交、轮询、落盘、断点续传全在代码里，不需要现拼 bash（编排模式照 `novel-art` / `novel-characters` 出图那套已经验证过的写法起步，代码是本 skill 自带的一份，见 `scripts/lib/lingying.mjs`）。
 
 **这是可选的最后一步**：没有 `lingying`、或者想拿投产包去别处下单，跳过即可，前面的产出照常。**剪辑合成不在这个 skill 里**，产出到每段一个 `video.mp4` 为止。
 

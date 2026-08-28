@@ -9,7 +9,6 @@
 ```json
 {
   "source": "渡口",
-  "style": "realistic",
   "promptLang": "zh",
   "video": { "model": "MiniMax H3" },
   "params": { "maxSegmentSeconds": 15, "minCutSeconds": 2, "maxCutSeconds": 5, "maxOnScreen": 3, "tolerance": 0.15 },
@@ -19,7 +18,7 @@
 
 `video.model` 可省略（默认继承 `production.json` 的 `video.model`，两边都没有就按 `MiniMax H3` 算）——**它决定用哪一套提示词骨架**，见下文。
 
-`promptLang` 也可省略，默认跟着骨架的官方口径走：H3 默认 `en`（整条英文、禁角色名，台词在 `<d>[Chinese]` 里保留原文），seedance 默认 `zh`（官方指南通篇中文术语与中文案例，人名放行）。两套都能手动切到另一种语言，但那是偏离官方推荐的备选项。`style` 可省略（默认 `realistic`），预设与角色/场景 skill 同名对齐（`realistic` / `ghibli`），对应的英文短语（如 `cinematic film still`）必须出现在**每条**分镜图提示词里——同一部剧的分镜图不许画风漂，门查。
+`promptLang` 也可省略，默认跟着骨架的官方口径走：H3 默认 `en`（整条英文、禁角色名，台词在 `<d>[Chinese]` 里保留原文），seedance 默认 `zh`（官方指南通篇中文术语与中文案例，人名放行）。两套都能手动切到另一种语言，但那是偏离官方推荐的备选项。**顶层没有 `style` 字段。**画风住在工作目录根的 `production.json`，`storyboard.json` 里再抄一份就是第二个来源，两个来源必然会漂。本 skill 只要其中的 `style.phrase`——那句英文短语（如 `cinematic film still`）必须出现在**每条**分镜图提示词里，门查，大小写不敏感。找不到那份文件、或短语没填，门明说跳过。
 
 ## segment（段）
 
@@ -98,7 +97,7 @@ non_diegetic_music: …（1–3 句，没有就 N/A）
 （段末收一句画质、色调与约束词：面部稳定、无字幕、禁止双胞胎分身……）
 ```
 
-英文模式（`promptLang: 'en'`）的对应 token：`Picture k is` / `shots:` / `ambience:` / `[Shot k]`——与 `novel-creation` 那条产线的通用骨架刻意取齐，两条产线之间搬提示词不用再翻译一遍字段名。
+英文模式（`promptLang: 'en'`）的对应 token：`Picture k is` / `shots:` / `ambience:` / `[Shot k]`——两种语言的 token 一一对应，切语言只换字段名，骨架的形状与门的判定完全不变。
 
 确定性检查的四条：
 

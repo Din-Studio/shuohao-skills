@@ -2,7 +2,7 @@
 
 # novel-creation
 
-**Reference-sheet-to-video for AI short drama** — a sibling production line to `novel-storyboard`, not a replacement. The premise: **you already have character/scene/prop model sheets from `novel-characters` / `novel-art`**, and sometimes you don't need the frame-image layer in between — you just want to mount those sheets as references and order a video with one prompt. So the structure has **one fewer layer** than `novel-storyboard`:
+**Reference-sheet-to-video for AI short drama.** The premise: **you already have character/scene/prop model sheets from `novel-characters` / `novel-art`**, and sometimes you don't need a frame-image layer in between — you just want to mount those sheets as references and order a video with one prompt. So the structure has **no keyframe layer at all**:
 
 ```
 segment ＝ one video-generation call, ≤ 15s (also within the video model's duration range once production
@@ -14,25 +14,23 @@ segment ＝ one video-generation call, ≤ 15s (also within the video model's du
 ```
 
 - **Zero new image-generation calls** — from `seed` through submitting `videos`, no command in this skill ever calls `lingying image create`. References come only from sheet files `cast.json` / `art.json` already produced
-- **The prompt is not an internalized spec of any one model** — there is no keyframe to align, so there is no alignment line, no cut timestamps, no `<d>` tags. The writing convention is this skill's own methodology (`references/creation-prompt.md`), model-agnostic by design: `lingying model get` was checked live and both `MiniMax H3` and `seedance2.5`/`seedance2.0` expose a general `images: string[]` field at the top level — "references + prompt → video" is a cross-model capability, not an H3 exclusive. **What routes on the model is the fill, not the skeleton**: mounting a seedance model flips the default prompt language to Chinese and bans every exact timestamp (official guidance, gated) — see `references/seedance2-prompt.md`
+- **The prompt skeleton is not an internalized spec of any one model** — there is no keyframe to align, so there is no alignment line, no cut timestamps, no `<d>` tags. The skeleton convention is this skill's own methodology (`references/creation-prompt.md`), model-agnostic by design: `lingying model get` was checked live and both `MiniMax H3` and `seedance2.5`/`seedance2.0` expose a general `images: string[]` field at the top level — "references + prompt → video" is a cross-model capability, not an H3 exclusive
+- **The fill guide is loaded dynamically from `video.model`; the skeleton never changes** — with `MiniMax H3` read `references/h3-prompt.md` (the parts of the official I2VA guide that survive without keyframes: language split, how to introduce a speaker, the off-screen-voiceover lip wording, how the two official sound fields collapse into one `ambience:`); with a seedance model read `references/seedance2-prompt.md` (default language flips to Chinese, every exact timestamp banned, gated). A model neither guide covers is written against the general skeleton — no substituting the other family's guide. `validate` prints which guide this drama should use
 - **Segment-level mounts, no file copies** — the `images` array references `../characters/images/…` and `../art/images/…` by relative path; those sheets are shared across dozens of segments, so copying them would duplicate assets on disk many times over
 - **Ordering logic lives in code** — a single `videos` command handles submit/poll/download/resume via `scripts/lib/lingying.mjs` (a port of the image-generation orchestration already used by `novel-art`/`novel-characters`), not a bash doc the model re-improvises each time
 
 Produces `creation.json` + Markdown + a double-clickable `creation-report.html`.
 
-## Choosing between novel-storyboard and novel-creation
+## When to use it
 
-| | novel-storyboard | novel-creation (this skill) |
-| --- | --- | --- |
-| Frame-image layer | Yes — one keyframe per cut, multi-image alignment, precise timestamps | **No** — segments mount existing sheets directly |
-| Best for | Precise shot control, willing to spend one more generation layer on frames, formal deliverables | Fast, cheap, ordering straight off existing sheets |
-| Output location | `<work dir>/storyboard/` | `<work dir>/creation/`, sibling to `storyboard/` |
+- **A fit**: the sheets are already generated, you want speed and low cost — mount them, write one prompt, order; most beats are dialogue and everyday action, so composition is fine with prompt description + reference anchoring
+- **Not a fit**: you want per-cut keyframes and multi-image alignment on exact timestamps — this skill has no keyframe layer, by design
 
-Both lines share `production.json` and `cast.json`/`art.json`, and neither touches the other's code — pick per occasion, or mix them within the same episode.
+The skill is **self-contained and can be copied out whole**: it reads `production.json` and `cast.json`/`art.json` from the work directory, imports no sibling skill's code, reads none of their docs, and never touches their outputs.
 
 ## Quality gates: 17, all scripted
 
-Two fewer than `novel-storyboard`'s 19 (drops style-phrase and frame-aspect — there's no frame-image artifact; the structure gate stays but audits this skill's own skeleton), three new ones: two watch reference sheets, one watches the prompt against the mounted model:
+Three of them are specific to this route — two watch the mounted reference sheets, one watches the prompt against the mounted model; the last one, `shot-recipe`, only runs when a card library is mounted:
 
 | Gate | Rule |
 | --- | --- |
@@ -51,8 +49,8 @@ Two fewer than `novel-storyboard`'s 19 (drops style-phrase and frame-aspect — 
 | Cross-references | Scenes/characters/props audited against the script |
 | **Reference resolves to a file** | Every character/scene/prop appearing in a segment must resolve a name via `outline`/`art` and an existing `../characters\|art/images/<slug>-sheet.png` — missing files are named with their expected path |
 | **Reference label count matches** | The number of `Picture k is …` / `图 k 是…` identity lines at the top of the prompt must match the length of the `images` array |
-| **Prompt fits the mounted model** | Routed on `production.json`'s `video.model`: with a seedance model the prompt must contain **no exact timestamp at all** (the official guide states that pinning exact times destabilizes generation); with `MiniMax H3` the general skeleton carries no extra constraint, and the gate says so |
-| Shot recipe (optional mount) | Same judging as `novel-storyboard`, just checked against the matching `[Shot k]` line |
+| **Prompt fits the mounted model** | Routed on `production.json`'s `video.model`: with a seedance model the prompt must contain **no exact timestamp at all** (the official guide states that pinning exact times destabilizes generation); other models have no deterministic constraint to check, and the gate says so while naming the fill guide this drama should read |
+| Shot recipe (optional mount) | The id exists in the card library, each of the card's must-phrases appears in the matching `[Shot k]` line, and a multi-cut recipe runs for at least the card's cut minimum; suggested shot sizes and camera moves only produce a hint, never a failure |
 
 Every gate has a breaking test case in the self-test suite.
 
@@ -82,11 +80,17 @@ node ../../scripts/novel-creation.mjs videos manifest.json --dry-run
 
 `export` writes one folder per segment (`E01-01/`) with only a `prompt.md` (no frame images — the video prompt verbatim, headed by the mounted references' identities and relative paths), and a root `manifest.json` carrying the video parameters plus each segment's reference list and any missing files.
 
+## Autopilot
+
+When the `production.json` at the work-directory root (produced by `novel-setup`) carries `"autopilot": true`, this skill runs its stage **end to end**: it loads the fill guide for `video.model` itself, mounts the reference sheets itself, and prints the cost estimate before placing video jobs without waiting for a reply. Every decision it made goes into the final report.
+
+**It transfers approval, it does not remove checkpoints**: all 17 gates still have to pass, cost is still computed first, and two consecutive failures on the same segment still skip it — **not stopping is not the same as retrying forever**. Written as `false`, left out, or with no `production.json` at all, nothing changes. When `validate` finds the file with the flag on, it prints `↳ 自动驾驶：开`.
+
 ## Boundaries
 
 - No script or dialogue writing, no asset-sheet generation, **no editing/compositing**; video generation is the optional last step through `lingying video create`, delivering one mp4 per segment
 - **Zero new image-generation calls is a hard promise, not a preference** — references must come from existing files; a missing one is a gate failure, never a fallback that quietly generates a new image
-- **No `.gates.jsonl`, no `stats` subcommand** — gate-failure accumulation is still an experiment scoped to `novel-storyboard` only (see the repo's `CLAUDE.md`)
+- **No `.gates.jsonl`, no `stats` subcommand** — this skill accumulates no gate-failure history; validation results live in that run's output only
 
 ## Files
 
@@ -98,7 +102,8 @@ scripts/
   selftest.mjs           self-test, no model calls
 references/
   schema.md              creation.json shape + the duration-constraint chain
-  creation-prompt.md     video-prompt writing convention (this skill's own method, not a port of any one model's spec)
+  creation-prompt.md     the video-prompt skeleton (this skill's own method, not a port of any one model's spec)
+  h3-prompt.md           fill rules when video.model is MiniMax H3 (port of the official I2VA guide, keyframe-specific parts left out)
   seedance2-prompt.md    tightened fill rules when video.model is a seedance one (port of the Volcengine official guide)
   shot-pass.md           cutting: segmentation rules, segment-level reference mounting, camera feel, common pitfalls
   video-order.md         behavioral description of the videos command

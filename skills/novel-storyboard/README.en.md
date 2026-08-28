@@ -21,7 +21,7 @@ Outputs `storyboard.json`, a Markdown shot list, and a self-contained `storyboar
 
 ![storyboard-report.html](assets/report.webp)
 
-## Nineteen quality gates, all code
+## Eighteen quality gates, all code
 
 Same stance as the other five skills in this repo: **a checklist the model grades itself on is worthless.**
 
@@ -39,7 +39,7 @@ Same stance as the other five skills in this repo: **a checklist the model grade
 | **Prompt structure** | audited against the mounted model: H3 checks that the alignment line is **derived from the cut structure and audited verbatim**, three fields in order, every `[Shot k]` cut time equal to the running sum of prior cut durations; seedance checks one identity sentence per frame, every `[镜头 k]` present, and **no timestamp anywhere** |
 | **Dialogue verbatim** | every claimed line appears verbatim in the video prompt (inside a `<d>` block for H3) — one changed punctuation mark fails |
 | **Prompt language consistency** | prose audited both ways against `promptLang`: Chinese drama written in English fails, English mode mixing Chinese fails |
-| **Style phrase** | the `style` preset's English phrase (realistic / ghibli, name-aligned with the character and art skills) must appear in every frame prompt — one drama, one look |
+| **Style phrase** | the `style.phrase` from `production.json` must appear in every frame prompt — one drama, one look. Explicitly reported as skipped when that file is absent |
 | Frame-prompt hygiene | English-only, non-empty |
 | No character names | frame prompts always; the video prompt only in English mode (Chinese prompts allow names — identity is anchored by the frames). Checked with `--outline` / `--cast`; skipping is **announced** |
 | Reference integrity | scene index / characters / props all audited against the script scene |
@@ -108,6 +108,12 @@ node scripts/novel-storyboard.mjs render sb.json --html --lang en --script scrip
 node scripts/novel-storyboard.mjs export sb.json --script script.json   # per-segment folders: f1..fN.png + prompt.md
 ```
 
+## Autopilot
+
+When the `production.json` at the work-directory root (produced by `novel-setup`) carries `"autopilot": true`, this skill runs its stage **end to end**: it judges the first segment's frames itself instead of showing them for approval, and it prints the cost estimate before placing video jobs without waiting for a reply. Every decision it made goes into the final report.
+
+**It transfers approval, it does not remove checkpoints**: all 18 gates still have to pass, cost is still computed first, and two consecutive failures on the same segment still skip it — **not stopping is not the same as retrying forever**. Written as `false`, left out, or with no `production.json` at all, nothing changes. When `validate` finds the file with the flag on, it prints `↳ 自动驾驶：开`.
+
 ## Limits
 
 - No writing or rewriting dialogue, no design sheets, no video generation or editing
@@ -122,7 +128,7 @@ node scripts/novel-storyboard.mjs export sb.json --script script.json   # per-se
 node scripts/selftest.mjs
 ```
 
-348 assertions — beat expansion, both prompt skeletons and the model-based routing between them, stats and batching, gate-defeating cases, recipe-card parsing and mounting, production-parameter lookup and its two gates, seed, rendering (both report UI languages), export. No model calls, runs in about a second.
+360 assertions — beat expansion, both prompt skeletons and the model-based routing between them, stats and batching, gate-defeating cases, recipe-card parsing and mounting, production-parameter lookup and its two gates, seed, rendering (both report UI languages), export. No model calls, runs in about a second.
 
 The bundled example (`examples/渡口-storyboard.json`) is a complete episode-1 storyboard — 10 segments, 34 cuts claiming all 35 script beats at ~3.5s per cut, 119s against a 120s target, 2 generation batches, every segment carrying a fully audited video prompt (H3 skeleton).
 

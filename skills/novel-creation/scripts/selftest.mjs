@@ -10,6 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   promptFamilyOf,
+  promptGuideOf,
   videoModelOf,
   DEFAULT_VIDEO_MODEL,
   TIMECODE_RE,
@@ -46,6 +47,8 @@ import {
   promptLangOf,
   STAGE_DIR,
   stageDirNote,
+  AUTOPILOT_NOTE,
+  autopilotOf,
 } from './novel-creation.mjs';
 import {
   BACKOFF_MS,
@@ -172,7 +175,7 @@ eq(promptRemainder('no quotes here'), 'no quotes here', '没有引号就原样�
 eq(CREATION_TOKENS.en.pictureToken(2), 'Picture 2 is', '英文身份说明句式');
 eq(CREATION_TOKENS.zh.pictureToken(2), '图 2 是', '中文身份说明句式');
 
-/* ---------------- 剧本节拍展开（与 novel-storyboard 同规则） ---------------- */
+/* ---------------- 剧本节拍展开（台词按字数÷语速、动作按固定秒数） ---------------- */
 
 const expanded = expandScript(SCRIPT);
 eq(expanded.size, 1, '样例剧本只有 1 集');
@@ -204,7 +207,7 @@ eq(referenceImagePath('prop', '旧诗集'), '../art/images/旧诗集-sheet.png',
   eq(resolveReferenceImage('character', '不存在的人', join(EX, 'creation')).exists, false, '不存在就是 false，不猜');
 }
 
-/* ---------------- 镜头配方卡库（与 novel-storyboard 逐字相同的解析器） ---------------- */
+/* ---------------- 镜头配方卡库（只读卡片 frontmatter 的受限字段） ---------------- */
 
 {
   const card = parseCardFields(`---\nid: demo\nname: 示例\ncuts: [2, 3]\nmust_phrases: [a, b]\n---\n正文`);
@@ -225,8 +228,8 @@ ok(gateReport(FIXTURE, CTX_IMG).every((g) => g.ok), '不挂生产参数（用默
 eq(validateCreation(FIXTURE, CTX_IMG_P).length, 0, '样例通过结构 + 质量门校验');
 
 /* ---------------- 填法按 production.json 的 video.model 分流 ---------------- */
-// 骨架是模型无关的（这是本 skill 与 novel-storyboard 的分工），但两件事跟着模型走：
-// 默认语言，以及 seedance 那条官方硬约束——提示词里一个精确时刻都不许有。
+// 骨架是模型无关的（骨架归 references/creation-prompt.md 管），但三件事跟着模型走：
+// 默认语言、读哪一份填法指南，以及 seedance 那条官方硬约束——提示词里一个精确时刻都不许有。
 
 eq(promptFamilyOf('MiniMax H3'), 'h3', 'H3 归 h3 族');
 eq(promptFamilyOf('seedance2.0 mini'), 'seedance', 'seedance 的档位变体同族');
@@ -244,11 +247,27 @@ eq(promptLangOf({ promptLang: 'en' }, null, 'seedance'), 'en', '自己写了 pro
 ok(TIMECODE_RE.test('[Shot 2] At 00:03.000,'), '时刻正则认得 H3 骨架的切点写法');
 ok(!TIMECODE_RE.test('[Shot 2] wide shot, static shot — the door swings open'), '正常镜头行不会被误判成时刻');
 
+// 填法指南动态解出：解不出来的模型不硬塞另一族的官方口径
+eq(promptGuideOf('MiniMax H3'), 'h3-prompt.md', '挂 H3 读 h3-prompt.md');
+eq(promptGuideOf(undefined), 'h3-prompt.md', '没写模型按默认模型算，读 h3-prompt.md');
+eq(promptGuideOf('seedance2.0 fast'), 'seedance2-prompt.md', 'seedance 各档位都读 seedance2-prompt.md');
+eq(promptGuideOf('kling2.1'), null, '没收录的模型解不出指南——照通用骨架写，不拿 H3 那份顶上');
+eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默认语言那一层）');
+
 {
-  // 挂 H3：通用骨架没有附加约束，本门明说这一点，不假装查了什么
+  // 挂 H3：没有确定性硬约束可查，本门明说这一点、并把该读哪份填法指南报出来
   const g = gateReport(FIXTURE, CTX_IMG_P).find((x) => x.id === 'prompt-model-fit');
   ok(g.ok, '挂 MiniMax H3 时本门通过');
-  ok(g.detail.includes('没有附加约束'), 'H3 下明说通用骨架没有附加约束');
+  ok(g.detail.includes('没有确定性硬约束'), 'H3 下明说没有确定性硬约束，不假装查了什么');
+  ok(g.detail.includes('h3-prompt.md'), 'H3 下把填法指南的文件名报出来');
+}
+{
+  // 挂一个没收录的模型：门不拦，但明说没有这一款的填法指南
+  const doc = clone(FIXTURE);
+  doc.video = { model: 'kling2.1' };
+  const g = gateReport(doc, CTX_IMG_P).find((x) => x.id === 'prompt-model-fit');
+  ok(g.ok, '没收录的模型不拦');
+  ok(g.detail.includes('没有这一款的填法指南'), '明说没有对应指南，照通用骨架写');
 }
 {
   // 挂 seedance：夹具本身不含时刻，照样全绿（promptLang 显式保持 en，只测这一道门）
@@ -260,7 +279,7 @@ ok(!TIMECODE_RE.test('[Shot 2] wide shot, static shot — the door swings open')
   ok(g.label.includes('seedance2.0'), '门 label 带上实际挂的模型名');
 }
 {
-  // 从 novel-storyboard 那边搬提示词最容易带过来的东西就是切点时刻
+  // 从多图按秒对齐那套提示词里搬东西，最容易带过来的就是切点时刻
   const doc = clone(FIXTURE);
   doc.video = { model: 'seedance2.0' };
   doc.promptLang = 'en';
@@ -957,5 +976,25 @@ const jobOf = (over = {}) => ({
 }
 
 rmSync(TMP, { recursive: true, force: true });
+
+/* ---------------- 自动驾驶（autopilot） ---------------- */
+/*
+ * 只读的跑法口径：开着本 skill 就把自己那一段一口气跑完——下单前的花费预估
+ * 照样报出来但不等回应。它不参与任何一道门，也不改止损：同一段连着失败两次照样跳过。
+ */
+
+ok(autopilotOf({ ...PRODUCTION, autopilot: true }), '开着就是开着');
+eq(autopilotOf({ ...PRODUCTION, autopilot: false }), false, '关着就是关着');
+eq(autopilotOf(PRODUCTION), false, '样例的生产参数里没有这个字段，按关处理');
+eq(autopilotOf(null), false, '没有生产参数就是关——该问还是要问');
+eq(autopilotOf({ autopilot: 'false' }), false, '字符串 "false" 不算开——JS 里它是真值，只认布尔真值');
+eq(autopilotOf({ autopilot: 'true' }), false, '字符串 "true" 也不算开，写法错了按关处理');
+eq(autopilotOf({ autopilot: 1 }), false, '数字不算开');
+ok(AUTOPILOT_NOTE.includes('不要停下来问用户'), '开着时打印的那句话说清了约束');
+ok(AUTOPILOT_NOTE.includes('止损'), '那句话同时说清止损不变——不打断不等于无限重试烧钱');
+ok(
+  gateReport(FIXTURE, { ...CTX_IMG, production: { ...PRODUCTION, autopilot: true } }).every((g) => g.ok),
+  '打开自动驾驶不影响任何一道门——它改的是跑法，不是参数',
+);
 
 console.log(`✓ ${passed} 项自测全部通过`);
