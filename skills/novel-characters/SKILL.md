@@ -1,6 +1,6 @@
 ---
 name: novel-characters
-version: 1.18.0
+version: 1.19.0
 description: |
   从小说或短故事里拆出角色表、人物画像、形象提示词、音色提示词，
   并给每个角色出角色设定图（左半身像 + 右全身三视图 + 细节条），产出 JSON + Markdown + 可交互的 report.html。
@@ -204,6 +204,7 @@ node {baseDir}/scripts/novel-characters.mjs merge <workdir> --apply merges.json 
 
 每份任务拿到：
 - `{baseDir}/references/profile-pass.md` 和 `{baseDir}/references/schema.md`（读它们，照着做）
+- `{baseDir}/references/realism.md`（真实感怎么落进提示词：姿态、神情、破绽、材质各进哪个字段。**非写实画风只取通用那半边**）
 - **报告语言 `lang`**（Step 0 定的）
 - 该角色归并后的 `name` / `aliases` / `notes` / `quotes`
 - **同批其他角色的名字**（避免长相声线撞车）

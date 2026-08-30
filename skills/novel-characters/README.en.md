@@ -193,6 +193,7 @@ scripts/
 references/
   roster-pass.md         pass 1: scanning for characters
   profile-pass.md        pass 2: building a character sheet (8 hard rules)
+  realism.md             writing realism into the prompts (full recipe for the photoreal style; other styles take only the universal half)
   schema.md              sheet structure and which language each field takes
   sheet.md               model-sheet layout and prompt rules (the call itself is the images subcommand)
   report-style.md        design conventions for report.html

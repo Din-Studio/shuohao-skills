@@ -200,6 +200,7 @@ scripts/
 references/
   roster-pass.md         第一趟：扫描角色
   profile-pass.md        第二趟：生成角色卡（8 条硬规则）
+  realism.md             真实感怎么落进提示词（写实档全套，其余画风只取通用那半边）
   schema.md              角色卡结构 + 字段语言归属
   sheet.md               设定图的版面与提示词（调用由 images 子命令负责）
   report-style.md        report.html 的设计约定

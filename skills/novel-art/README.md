@@ -99,6 +99,7 @@ references/
   schema.md              art.json 结构 + 硬规则
   scene-pass.md          怎么填场景设定（AI 短剧的思路）
   prop-pass.md           怎么选、怎么填叙事道具
+  realism.md             真实感怎么落进提示词（写实档全套，其余画风只取通用那半边）
   sheet.md               设定图的版面与提示词（调用由 images 子命令负责）
   report-style.md        报告的设计约定
 examples/
