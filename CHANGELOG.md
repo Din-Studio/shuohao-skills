@@ -1,5 +1,17 @@
 # Changelog
 
+## 移除 storyboard 模式
+
+**novel-setup 2.0.0**
+
+- 删除 `novel-storyboard` 的 skill、脚本、参考文档、样例与截图。
+- 视频制作统一由 `novel-creation` 执行，保留分段切镜、设定图挂载、模型专用提示词与下单。
+- 合并报告最后一段改为 `creation`，命令行改为 `--creation`；旧 `--storyboard` 参数报错，不静默忽略。
+- 生产参数删除 `image.frame`、`--frame-resolution`、`resolve --for storyboard` 与关键帧比例门，剩余 8 道质量门。旧 JSON 的 `image.frame` 被忽略，不自动迁移旧投产包。
+- `style.phrase` 仍供 Seedance 提示词指南使用，保留；资产图画幅与视频画幅独立校验。
+- 安装器清理指向本仓库的退役软链，不删除真实目录或其他来源的链接。
+- 更新中英文说明与流程图。以下版本记录及固定提交研究保留历史描述，不代表当前可用功能。
+
 ## novel-creation 与 novel-storyboard 互相不再当参照物 — 借来的表述全部内化
 
 **novel-creation 1.3.0 · novel-storyboard 1.10.0**

@@ -1155,7 +1155,7 @@ export function renderMarkdown(doc, ctx = {}) {
 /* render — html                                                       */
 /* ------------------------------------------------------------------ */
 /*
- * 与仓库其余五份报告同一套视觉语言。设计约定见 references/report-style.md。
+ * 与仓库其余四份报告同一套视觉语言。设计约定见 references/report-style.md。
  * 参考图从工作目录下 <kind 对应目录>/images/<slug>-sheet.png 找（imageExists
  * 由 CLI 注入），有就内嵌显示 + 点击放大，没有就显示占位——不猜、不骗。
  */
@@ -1559,7 +1559,7 @@ const L = ${JSON.stringify({ copied: t.copied, failed: t.copyFailed, show: t.sho
 
 document.querySelectorAll('.shmore').forEach((btn) => {
   const zone = btn.previousElementSibling;
-  if (zone.scrollHeight <= 780) {
+  if (zone.scrollHeight > 0 && zone.scrollHeight <= 780) {
     zone.classList.remove('clip');
     btn.remove();
     return;
@@ -1579,7 +1579,7 @@ document.addEventListener('click', (e) => {
     lb.classList.add('on');
     return;
   }
-  if (e.target.closest('#lightbox')) lb.classList.remove('on');
+  if (lb.contains(e.target)) lb.classList.remove('on');
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') lb.classList.remove('on');

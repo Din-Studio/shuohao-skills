@@ -2,7 +2,7 @@
 
 # novel-script
 
-Screenwriting for AI short drama: turns novel-outline's per-episode synopses into scenes and dialogue. The premise is baked in: **the script owns the drama, the storyboard owns the filming.** "Is it gripping" and "how to shoot it" iterate at completely different speeds — dialogue gets rewritten constantly, and binding it to shot breakdowns means re-cutting shots on every line change. So this layer has no shot numbers and no frame prompts; those belong to the storyboard skill one layer down.
+Screenwriting for AI short drama: turns novel-outline's per-episode synopses into scenes and dialogue. The premise is baked in: **the script owns the drama, video creation owns the filming.** "Is it gripping" and "how to shoot it" iterate at completely different speeds — dialogue gets rewritten constantly, and binding it to shot breakdowns means re-cutting shots on every line change. So this layer has no shot numbers and no video prompts or reference mounts; those belong to the video-creation stage one layer down.
 
 One line is held firmly though: **dialogue is structured data, not prose.**
 
@@ -60,7 +60,7 @@ novel-script     → script.json  (the drama: scenes, beats, lines)
 
 `seed <outline.json> --eps 1-3` deterministically prefills each episode's skeleton (target seconds, hook, cliff, claimed beats, candidate scenes and cast). `validate --outline --art` cross-checks characters, beats, and scenes/lighting/props — a lighting state the art bible never registered fails right here. `render --outline --art` displays names instead of raw IDs: **IDs in the data, names on screen.**
 
-One layer down comes the storyboard skill: shot numbers, per-shot duration, first-frame prompts, generation batching.
+One layer down comes `novel-creation`: segments, cuts, video prompts, reference mounts and video ordering.
 
 ## CLI
 
@@ -82,7 +82,7 @@ When the `production.json` at the work-directory root (produced by `novel-setup`
 
 ## Limits
 
-- No shots, no shot numbers, no generation prompts, no images — nothing from the storyboard layer
+- No shots, no shot numbers, no generation prompts, no images — nothing from the video-creation layer
 - Duration is an **estimate, not a stopwatch** — that's what the ±15% tolerance is for; tune `params.charsPerSecond` to your voice-over pace
 - Report UI ships in Chinese and English (`--lang zh|en`, Chinese by default, or the script.json top-level `lang` field); dialogue follows the drama's language
 - Write ≤ 3 episodes per batch — the script is the most-rewritten layer of the whole pipeline

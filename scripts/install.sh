@@ -2,7 +2,7 @@
 # 把本仓库的 skill 软链到 pi、Claude Code 和/或 codex 的 skills 目录。
 # 软链而不是复制：git pull 之后立刻生效。
 #
-#   ./scripts/install.sh              装全部，装到检测到的所有 agent
+#   ./scripts/install.sh              安装全部，安装到检测到的所有 agent
 #   ./scripts/install.sh novel-characters
 #   ./scripts/install.sh --pi         只安装到 pi
 #   ./scripts/install.sh --claude     只安装到 Claude Code
@@ -49,9 +49,18 @@ fi
 
 for target in "${targets[@]}"; do
   mkdir -p "$target"
+  # 清理本仓库安装的退役 skill 软链；其他仓库软链和真实目录不动。
+  retired="$target/novel-storyboard"
+  if [ -L "$retired" ] && [ "$(readlink "$retired")" = "$SKILLS_DIR/novel-storyboard" ]; then
+    rm "$retired"
+    echo "− ${retired}（已移除的 skill）"
+  fi
   for name in "${wanted[@]}"; do
     src="$SKILLS_DIR/$name"
     dst="$target/$name"
+    if [ "$uninstall" -eq 1 ] && [ "$name" = "novel-storyboard" ]; then
+      continue  # 退役软链已在上面按归属检查；无须源目录仍然存在。
+    fi
     if [ ! -f "$src/SKILL.md" ]; then
       echo "✗ $name — 不是一个 skill（缺 SKILL.md）" >&2
       exit 1

@@ -84,7 +84,7 @@ node {baseDir}/scripts/novel-art.mjs style
 
 有 cast.json（novel-characters 的产出）也带上——校验「提示词不含角色名」要用。
 
-**产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/art/`——`<剧名>-art.json`、`<剧名>-art.md`、`art-report.html`、`images/` 都在这一格里。工作目录根只住 `production.json`（`novel-setup` 的产出），别的 skill 各占自己的一格（`outline/`、`characters/`、`script/`、`storyboard/`）。用户没指定工作目录就用大纲同级目录，**但段目录这一层不省**——合并报告的 `--from` 自动发现就是按段目录名找 JSON 的，平铺在根目录它找不到。下文的 `<段目录>` 就指 `<工作目录>/art/`。
+**产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/art/`——`<剧名>-art.json`、`<剧名>-art.md`、`art-report.html`、`images/` 都在这一格里。工作目录根只住 `production.json`（`novel-setup` 的产出），别的 skill 各占自己的一格（`outline/`、`characters/`、`script/`、`creation/`）。用户没指定工作目录就用大纲同级目录，**但段目录这一层不省**——合并报告的 `--from` 自动发现就是按段目录名找 JSON 的，平铺在根目录它找不到。下文的 `<段目录>` 就指 `<工作目录>/art/`。
 
 跑过 `novel-setup` 的项目这条是查的：`validate` 找到 `production.json` 就顺带核对落点，放错了会点名该去哪；没找到那份文件就无从判断工作目录根在哪，明说跳过。
 

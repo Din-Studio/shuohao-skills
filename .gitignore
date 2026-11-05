@@ -17,9 +17,6 @@ bin/
 /script-report.html
 /*-script.json
 /*-script.md
-/storyboard-report.html
-/*-storyboard.json
-/*-storyboard.md
 /creation-report.html
 /*-creation.json
 /*-creation.md
@@ -29,5 +26,5 @@ bin/
 
 .playwright-mcp/
 
-# 门失败累积日志（用户在自己的输出目录里生成的）
+# 历史门失败日志（保留忽略，避免误提交本地产物）
 .gates.jsonl

@@ -410,7 +410,6 @@ const PRODUCTION = {
   image: {
     model: 'nanobanana2',
     asset: { resolution: '2K', aspectRatio: '16:9' },
-    frame: { resolution: '2K', aspectRatio: '16:9' },
   },
   video: { model: 'MiniMax H3', aspectRatio: '16:9', resolution: '768p' },
 };

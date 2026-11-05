@@ -4,6 +4,7 @@
 //   node scripts/selftest.mjs
 
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -61,7 +62,7 @@ eq(parseAspect('21:9').ratio.toFixed(4), '2.3333', '21:9 解析——H3 managed 
 eq(parseAspect('16x9'), null, '比例只认冒号写法');
 eq(parseAspect('16:0'), null, '比例的分母不能是 0');
 eq(parseAspect(''), null, '空串不是比例');
-eq(parseAspect('adaptive'), null, 'adaptive 不是比例——本管线不能用，分镜图要按同一个比例批量出');
+eq(parseAspect('adaptive'), null, 'adaptive 不是比例——本管线不能用，视频需要固定画幅');
 ok(sameRatio(2048 / 1152, 16 / 9), '2048x1152 就是 16:9');
 ok(!sameRatio(4 / 3, 16 / 9), '4:3 不是 16:9');
 
@@ -84,7 +85,7 @@ eq(matchTier('2K', []), null, '空枚举对不上任何东西');
   const caps = imageCaps('nanobanana2', '2K');
   ok(caps.aspectRatios.includes('9:16'), 'nanobanana2 收竖屏');
   ok(caps.aspectRatios.includes('16:9'), 'nanobanana2 收横屏');
-  ok(!caps.aspectRatios.includes('4:3'), 'nanobanana2 不收 4:3——选了 4:3 成片就出不了分镜图');
+  ok(!caps.aspectRatios.includes('4:3'), 'nanobanana2 不收 4:3——资产图不能选择 4:3');
   ok(!caps.restricted, '2K 下没有额外限制');
 }
 {
@@ -144,13 +145,13 @@ eq(clampDuration('大概十秒', 'MiniMax H3').duration, null, '不是数字也�
 
 {
   const d = initProduction({ aspect: '9:16' });
-  eq(d.image.frame.aspectRatio, '9:16', 'init 把成片画幅落到分镜图');
+  eq(d.image.frame, undefined, 'init 不再生成关键帧配置');
   eq(d.video.aspectRatio, '9:16', 'init 把成片画幅落到视频');
   eq(d.image.asset.aspectRatio, '16:9', '资产图默认横构图——设定图版面与成片画幅是两件事');
-  eq(d.image.frame.resolution, '2K', '分镜图档位默认 2K');
+  eq(d.style.phrase, '', '画风短语仍供视频提示词指南使用，初始为空');
   eq(d.image.asset.resolution, '2K', '资产图档位默认 2K');
   eq(d.image.model, 'nanobanana2', '生图模型默认 nanobanana2');
-  eq(d.style.phrase, '', '画风没有默认值也没有内置类型——init 只给空骨架，正文由用户填');
+  eq(d.style.label.zh, '', '画风没有默认值，正文由用户填');
   eq(typeof d.style.character, 'object', '骨架里角色那一块已经占好位');
   eq(typeof d.style.scene, 'object', '骨架里场景那一块也占好位');
   eq(d.lang, 'zh', '报告界面语言默认中文');
@@ -186,15 +187,15 @@ eq(clampDuration('大概十秒', 'MiniMax H3').duration, null, '不是数字也�
   ok(threw, '画幅写法不对也抛错');
 }
 {
-  const d = initProduction({ aspect: '16:9', imageModel: '未知模型', assetResolution: '8K', frameResolution: '8K' });
-  eq(d.image.frame.resolution, '8K', '未知模型与未知档位都原样落盘——表里没有的不是错误');
+  const d = initProduction({ aspect: '16:9', imageModel: '未知模型', assetResolution: '8K' });
+  eq(d.image.asset.resolution, '8K', '未知模型与未知档位都原样落盘——表里没有的不是错误');
   ok(gate(d, 'model-caps').ok, '未知模型的档位比例都跳过检查');
   ok(/不在能力表里/.test(gate(d, 'model-caps').detail), '跳过了要明说，不装查过');
 }
 
 /* ---------------- 自动驾驶 ---------------- */
 /*
- * 下游六个 skill 读到它为 true 就把自己那一段一口气跑完（不提问、不等拍板）。
+ * 下游五个 skill 读到它为 true 就把自己那一段一口气跑完（不提问、不等拍板）。
  * 只认布尔真值：字符串 "false" 在 JS 里是真的，那种写法比没写更坏。
  */
 
@@ -222,7 +223,7 @@ eq(autopilotOf({ autopilot: 1 }), false, '数字不算开');
 {
   const d = clone(); d.autopilot = true;
   eq(validateProduction(d).length, 0, '打开自动驾驶不影响任何一道门——它不改出图参数');
-  ok(resolveStage(d, 'storyboard').autopilot, 'resolve 把自动驾驶一起给下游');
+  ok(resolveStage(d, 'characters').autopilot, 'resolve 把自动驾驶一起给下游');
   ok(resolveStage(d, 'video').autopilot, '下单阶段也拿得到');
 }
 eq(resolveStage(PORTRAIT, 'characters').autopilot, false, '竖屏样例是关着的');
@@ -232,22 +233,22 @@ eq(resolveStage(LANDSCAPE, 'characters').autopilot, true, '横屏样例演示了
 
 eq(validateProduction(PORTRAIT).length, 0, '竖屏样例全部通过');
 eq(validateProduction(LANDSCAPE).length, 0, '横屏样例全部通过');
-eq(PORTRAIT.image.frame.aspectRatio, '9:16', '竖屏样例的分镜图是竖的');
-eq(LANDSCAPE.image.frame.aspectRatio, '16:9', '横屏样例的分镜图是横的');
+eq(PORTRAIT.video.aspectRatio, '9:16', '竖屏样例的视频是竖的');
+eq(LANDSCAPE.video.aspectRatio, '16:9', '横屏样例的视频是横的');
 eq(PORTRAIT.image.asset.aspectRatio, LANDSCAPE.image.asset.aspectRatio, '两份样例的资产图都是横构图');
-ok(PORTRAIT.style.phrase !== LANDSCAPE.style.phrase, '两份样例演示了两种画风——不是从枚举里挑的，是各写各的');
+ok(PORTRAIT.style.character.render !== LANDSCAPE.style.character.render, '两份样例演示了两种画风——不是从枚举里挑的，是各写各的');
 eq(styleLabelOf(PORTRAIT.style), '真人实拍', '竖屏样例的画风名');
 eq(styleLabelOf(LANDSCAPE.style, 'en'), 'Ghibli-like animation', '横屏样例带了英文画风名');
 eq(LANDSCAPE.promptLang, 'zh', '横屏样例演示了中文提示词');
-ok(PORTRAIT.image.frame.resolution !== LANDSCAPE.image.frame.resolution, '两份样例演示了不同档位');
+ok(PORTRAIT.image.asset.resolution !== LANDSCAPE.image.asset.resolution, '两份样例演示了不同档位');
 ok(PORTRAIT.image.model !== LANDSCAPE.image.model, '两份样例演示了两个生图模型');
 ok(PORTRAIT.video.model !== LANDSCAPE.video.model, '两份样例演示了两个视频模型');
 ok(PORTRAIT.video.resolution !== LANDSCAPE.video.resolution, '两份样例演示了两个视频档位');
 ok(PORTRAIT.source !== LANDSCAPE.source, '两份样例是两部不同的剧');
 ok(PORTRAIT.autopilot !== LANDSCAPE.autopilot, '两份样例把自动驾驶的两档各演示一次');
-eq(gateReport(PORTRAIT).length, 9, '一共九道门');
+eq(gateReport(PORTRAIT).length, 8, '一共八道门');
 
-/* ---------------- 九道门，每道都有击穿用例 ---------------- */
+/* ---------------- 八道门，每道都有击穿用例 ---------------- */
 
 // 1 fields
 {
@@ -268,8 +269,8 @@ eq(gateReport(PORTRAIT).length, 9, '一共九道门');
   ok(fails(d, 'fields'), '提示词语言不在枚举里击穿 fields');
 }
 {
-  const d = clone(); d.image.frame.resolution = '';
-  ok(fails(d, 'fields'), '分镜图档位为空击穿 fields');
+  const d = clone(); d.image.asset.resolution = '';
+  ok(fails(d, 'fields'), '资产图档位为空击穿 fields');
 }
 {
   const d = clone(); d.image.asset.aspectRatio = '   ';
@@ -278,7 +279,7 @@ eq(gateReport(PORTRAIT).length, 9, '一共九道门');
 
 // 2 aspect-format
 {
-  const d = clone(); d.image.frame.aspectRatio = '9-16';
+  const d = clone(); d.image.asset.aspectRatio = '9-16';
   ok(fails(d, 'aspect-format'), '比例写法不对击穿 aspect-format');
 }
 {
@@ -291,22 +292,26 @@ eq(gateReport(PORTRAIT).length, 9, '一共九道门');
   ok(/adaptive/.test(gate(d, 'aspect-format').detail), '这道门点名说清 adaptive 为什么不行');
 }
 
-// 3 frame-matches-video —— 核心门
+// 旧字段不再参与校验；视频画幅不受资产图模型限制。
 {
-  const d = clone(); d.video.aspectRatio = '16:9';
-  ok(fails(d, 'frame-matches-video'), '分镜图竖、视频横击穿核心门');
-  ok(/整批白出/.test(gate(d, 'frame-matches-video').detail), '核心门说清了后果');
+  const d = clone();
+  d.image.frame = { aspectRatio: 'invalid', resolution: '' };
+  eq(validateProduction(d).length, 0, '旧分镜图配置被忽略');
+  d.video.aspectRatio = '4:3';
+  eq(validateProduction(d).length, 0, '视频 4:3 不要求 nanobanana2 资产图也支持 4:3');
+  ok(!gateReport(d).some((g) => g.id === 'frame-matches-video'), '不再有关键帧比例门');
 }
+assert.throws(() => resolveStage(PORTRAIT, 'storyboard'), /未知阶段/);
+passed++;
+
+// init 不得静默接受已删除的选项。
 {
-  const d = clone(); d.image.frame.aspectRatio = '4:3';
-  ok(fails(d, 'frame-matches-video'), '分镜图改成 4:3 也击穿核心门');
-}
-{
-  const d = clone(); d.image.asset.aspectRatio = '4:3';
-  ok(gate(d, 'frame-matches-video').ok, '资产图比例与视频无关——它不参与核心门');
+  const r = spawnSync(process.execPath, [join(here, 'novel-setup.mjs'), 'init', '--aspect', '9:16', '--frame-resolution', '2K'], { encoding: 'utf8' });
+  eq(r.status, 1, '旧分镜图选项返回失败');
+  ok(r.stderr.includes('未知选项'), '明确报告旧选项无效');
 }
 
-// 4 asset-landscape
+// 3 asset-landscape
 {
   const d = clone(); d.image.asset.aspectRatio = '9:16';
   ok(fails(d, 'asset-landscape'), '资产图竖构图击穿 asset-landscape');
@@ -317,7 +322,7 @@ eq(gateReport(PORTRAIT).length, 9, '一共九道门');
   ok(gate(d, 'asset-landscape').ok, '方形资产图放行');
 }
 
-// 5 resolution-filled
+// 4 resolution-filled
 {
   const d = clone(); d.video.resolution = '   ';
   ok(fails(d, 'resolution-filled'), '视频分辨率只有空白击穿 resolution-filled');
@@ -325,10 +330,10 @@ eq(gateReport(PORTRAIT).length, 9, '一共九道门');
 {
   const g = gate(PORTRAIT, 'resolution-filled');
   ok(g.ok, '档位填齐了就过');
-  ok(g.detail.includes('768p'), '详情把三处档位摆出来');
+  ok(g.detail.includes('768p'), '详情把两处档位摆出来');
 }
 
-// 6 video-model
+// 5 video-model
 {
   const d = clone(); d.video.model = '';
   ok(fails(d, 'video-model'), '视频模型为空击穿 video-model');
@@ -339,7 +344,7 @@ eq(gateReport(PORTRAIT).length, 9, '一共九道门');
   ok(/768p \/ 2K/.test(gate(d, 'video-model').detail), '点名该用哪两个档位');
 }
 {
-  const d = clone(); d.video.aspectRatio = '21:9'; d.image.frame.aspectRatio = '21:9';
+  const d = clone(); d.video.aspectRatio = '21:9';
   ok(gate(d, 'video-model').ok, 'H3 收 21:9');
 }
 {
@@ -354,9 +359,9 @@ eq(gateReport(PORTRAIT).length, 9, '一共九道门');
 }
 ok(gate(PORTRAIT, 'video-model').detail.includes('5~15'), '过了的时候顺手提醒段时长要折成整数秒');
 
-// 7 model-caps
+// 6 model-caps
 {
-  const d = clone(); d.image.frame.resolution = '8K';
+  const d = clone(); d.image.asset.resolution = '8K';
   ok(fails(d, 'model-caps'), '档位不在生图模型枚举里击穿 model-caps');
 }
 {
@@ -364,18 +369,18 @@ ok(gate(PORTRAIT, 'video-model').detail.includes('5~15'), '过了的时候顺手
   ok(fails(d, 'model-caps'), 'nanobanana2 不收 4:3，资产图写 4:3 击穿 model-caps');
 }
 {
-  const d = clone(LANDSCAPE); d.image.asset.aspectRatio = '4:3'; d.image.frame.aspectRatio = '4:3'; d.video.aspectRatio = '4:3';
+  const d = clone(LANDSCAPE); d.image.asset.aspectRatio = '4:3'; d.video.aspectRatio = '4:3';
   ok(fails(d, 'model-caps'), 'image-2 的 4K 只收 16:9 / 9:16，4:3 击穿 model-caps');
   ok(/只收 16:9 \/ 9:16/.test(gate(d, 'model-caps').detail), '点名 4K 下的限制');
 }
 {
-  const d = clone(LANDSCAPE); d.image.asset.resolution = '2K'; d.image.frame.resolution = '2K';
-  d.image.asset.aspectRatio = '4:3'; d.image.frame.aspectRatio = '4:3'; d.video.aspectRatio = '4:3';
+  const d = clone(LANDSCAPE); d.image.asset.resolution = '2K';
+  d.image.asset.aspectRatio = '4:3'; d.video.aspectRatio = '4:3';
   ok(gate(d, 'model-caps').ok, '同样是 4:3，降到 2K 就合法——限制只在 4K 上');
 }
 ok(gate(LANDSCAPE, 'model-caps').detail.includes('4K 下只收'), '过了的时候也把 4K 的限制摆出来');
 
-// 8 style-blocks —— 画风是用户填的，缺块要拦
+// 7 style-blocks —— 画风是用户填的，缺块要拦
 {
   const d = clone(); d.style = emptyStyle();
   ok(fails(d, 'style-blocks'), '空骨架击穿 style-blocks——没填就是没定，不静默用回某一档写死的画风');
@@ -384,14 +389,6 @@ ok(gate(LANDSCAPE, 'model-caps').detail.includes('4K 下只收'), '过了的时�
 {
   const d = clone(); d.style.label.zh = '';
   ok(fails(d, 'style-blocks'), '画风没有中文名击穿 style-blocks——报告界面要显示它');
-}
-{
-  const d = clone(); d.style.phrase = '';
-  ok(fails(d, 'style-blocks'), '缺分镜图短语击穿 style-blocks——同剧分镜图靠它不漂');
-}
-{
-  const d = clone(); d.style.phrase = '电影感实拍';
-  ok(fails(d, 'style-blocks'), '分镜图短语写成中文击穿 style-blocks——它要原样进英文提示词');
 }
 {
   const d = clone(); d.style.character.lighting = '   ';
@@ -413,7 +410,16 @@ eq(Object.keys(STYLE_BLOCKS).join(','), 'character,scene', '画风分两块：�
 ok(STYLE_BLOCKS.character.includes('lighting'), '角色那块多一个光照——设定表要能抠图能量比例');
 ok(!STYLE_BLOCKS.scene.includes('lighting'), '场景那块没有光照——光照状态是 novel-art 逐个场景自己定的');
 
-// 9 style-coherent —— 正向要的词不许同时出现在反向词里
+{
+  const d = clone(); d.style.phrase = '';
+  ok(fails(d, 'style-blocks'), '缺画风短语仍然拦截——Seedance 指南需要它');
+  d.style.phrase = '电影感';
+  ok(fails(d, 'style-blocks'), '画风短语仍要求英文');
+  eq(resolveStage(PORTRAIT, 'video').style.phrase, PORTRAIT.style.phrase, '视频阶段取得原始画风短语');
+  ok(renderMarkdown(PORTRAIT).includes('| 画风短语 | cinematic film still |'), '参数表保留画风短语');
+}
+
+// 8 style-coherent —— 正向要的词不许同时出现在反向词里
 {
   const d = clone(); d.style.character.negative += ', photorealistic';
   ok(fails(d, 'style-coherent'), '写实画风把 photorealistic 禁掉击穿 style-coherent——一边要真实感一边禁真实感');
@@ -443,18 +449,18 @@ ok(!mentionsTerm('grounded architectural perspective', 'warped perspective'), '�
 /* ---------------- resolve ---------------- */
 
 {
-  const r = resolveStage(PORTRAIT, 'storyboard');
-  eq(r.resolution, '2K', '分镜图阶段拿的是 frame 档位');
-  eq(r.aspectRatio, '9:16', '分镜图阶段拿的是 frame 比例');
-  eq(r.inputData.aspect_ratio, '9:16', 'inputData 用 lingying 的字段名');
+  const r = resolveStage(PORTRAIT, 'characters');
+  eq(r.resolution, '2K', '角色阶段拿的是 asset 档位');
+  eq(r.aspectRatio, '16:9', '角色阶段拿的是 asset 比例');
+  eq(r.inputData.aspect_ratio, '16:9', 'inputData 使用 lingying 的字段名');
   eq(r.inputData.resolution, '2K', '档位原样进 inputData，不折算像素');
   eq(Object.keys(r.inputData).join(','), 'aspect_ratio,resolution', 'inputData 只有这两个键，prompt 由调用方补');
   eq(r.cli, GENERATION_CLI, 'resolve 说清了走哪个 CLI');
   ok(r.command.includes('image create'), '出图阶段给的是 image create');
 }
 {
-  const d = clone(); d.image.frame.resolution = '2k';
-  const r = resolveStage(d, 'storyboard');
+  const d = clone(); d.image.asset.resolution = '2k';
+  const r = resolveStage(d, 'characters');
   eq(r.resolution, '2k', '顶层 resolution 是真源，原样给出');
   eq(r.inputData.resolution, '2K', 'inputData 回填成枚举里的写法——网关只认 2K');
 }
@@ -463,8 +469,8 @@ ok(!mentionsTerm('grounded architectural perspective', 'warped perspective'), '�
   eq(resolveStage(d, 'video').inputData.resolution, '768p', '视频档位同样回填');
 }
 {
-  const d = clone(); d.image.frame.resolution = '8K';
-  eq(resolveStage(d, 'storyboard').inputData.resolution, '8K', '对不上枚举就原样带过去，由网关去拒');
+  const d = clone(); d.image.asset.resolution = '8K';
+  eq(resolveStage(d, 'characters').inputData.resolution, '8K', '对不上枚举就原样带过去，由网关去拒');
 }
 {
   const r = resolveStage(PORTRAIT, 'characters');
@@ -486,18 +492,13 @@ ok(!mentionsTerm('grounded architectural perspective', 'warped perspective'), '�
   eq(r.style.character, undefined, '场景阶段不给角色那一块');
 }
 {
-  const r = resolveStage(PORTRAIT, 'storyboard');
-  eq(Object.keys(r.style).join(','), 'label,phrase', '分镜阶段只要短语——它不抄画风正文');
-  eq(r.style.phrase, 'cinematic film still', '短语原样给出');
-}
-{
   const r = resolveStage(PORTRAIT, 'video');
-  eq(Object.keys(r.style).join(','), 'label,phrase', '下单阶段同样只要短语——画风由参考图带');
+  eq(Object.keys(r.style).join(','), 'label,phrase', '视频阶段保留画风名称与短语供模型指南使用');
 }
 {
   const r = resolveStage({}, 'characters');
   eq(Object.keys(r.style).join(','), 'label,phrase,character', '没填画风也给得出形状，值是空的');
-  eq(r.style.phrase, '', '没填就是空串，不是 undefined——调用方不用判空');
+  eq(Object.keys(r.style.label).length, 0, '没填画风名则返回空对象');
 }
 eq(resolveStage(PORTRAIT, 'art').aspectRatio, '16:9', '场景阶段与角色阶段同用资产图参数');
 {
@@ -519,13 +520,13 @@ eq(resolveStage(PORTRAIT, 'art').aspectRatio, '16:9', '场景阶段与角色阶�
   try { resolveStage(PORTRAIT, 'script'); } catch { threw = true; }
   ok(threw, '不出图的阶段没有出图参数，直接抛错');
 }
-eq(Object.keys(STAGES).join(','), 'characters,art,storyboard,video', '四个消费端');
+eq(Object.keys(STAGES).join(','), 'characters,art,video', '三个消费端');
 
 /* ---------------- 向上查找 ---------------- */
 
 {
   const root = mkdtempSync(join(tmpdir(), 'novel-setup-'));
-  const deep = join(root, 'work', 'storyboard', 'E01-01');
+  const deep = join(root, 'work', 'creation', 'E01-01');
   mkdirSync(deep, { recursive: true });
   writeFileSync(join(root, 'work', PRODUCTION_FILE), JSON.stringify(PORTRAIT));
 
@@ -542,16 +543,16 @@ eq(Object.keys(STAGES).join(','), 'characters,art,storyboard,video', '四个消�
 {
   const md = renderMarkdown(PORTRAIT);
   ok(md.includes('# 生产参数 · 回南天'), '参数表带剧名');
-  ok(md.includes('| 分镜图比例 | 9:16 |'), '参数表列出分镜图比例');
-  ok(md.includes('| 分镜图分辨率 | 2K |'), '档位原样显示，没有像素');
+  ok(!md.includes('分镜图'), '参数表不再列出分镜图参数');
+  ok(md.includes('| 资产图分辨率 | 2K |'), '档位原样显示，没有像素');
   ok(!/参考像素/.test(md), '参数表里不再有参考像素——档位就是下给模型的值');
   ok(md.includes('| 视频 aspect_ratio | 9:16 |'), '参数表用视频模型的字段名');
   ok(md.includes('| 视频 resolution | 768p |'), '视频分辨率原样显示');
   ok(md.includes(GENERATION_CLI), '表下有一句说清出图与生视频走哪个 CLI');
   ok(md.includes('| 自动驾驶 | 关（该问就问） |'), '参数表把自动驾驶摆出来——它决定这一趟会不会停下来问');
   ok(md.includes('## 质量门'), '参数表带质量门');
-  ok(md.includes('| 画风 | 真人实拍（分镜图短语 `cinematic film still`） |'), '参数表把画风名与分镜图短语一起摆出来');
-  ok(md.split('\n').filter((l) => l.startsWith('- ✅')).length === 9, '九道门全绿');
+  ok(md.includes('| 画风 | 真人实拍 |'), '参数表显示画风名称');
+  ok(md.split('\n').filter((l) => l.startsWith('- ✅')).length === 8, '八道门全绿');
 }
 {
   const d = clone(); d.video.model = '';

@@ -88,7 +88,7 @@ metadata:
 
 直接粘正文的先落成 .txt。
 
-**产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/outline/`——`<书名>-outline.json`、`<书名>-outline.md`、`outline-report.html` 都在这一格里。工作目录根只住 `production.json`（`novel-setup` 的产出），别的 skill 各占自己的一格（`characters/`、`art/`、`script/`、`storyboard/`）。用户没指定工作目录就用原书同级目录，**但段目录这一层不省**——合并报告的 `--from` 自动发现就是按段目录名找 JSON 的，平铺在根目录它找不到。下文的 `<段目录>` 就指 `<工作目录>/outline/`。
+**产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/outline/`——`<书名>-outline.json`、`<书名>-outline.md`、`outline-report.html` 都在这一格里。工作目录根只住 `production.json`（`novel-setup` 的产出），别的 skill 各占自己的一格（`characters/`、`art/`、`script/`、`creation/`）。用户没指定工作目录就用原书同级目录，**但段目录这一层不省**——合并报告的 `--from` 自动发现就是按段目录名找 JSON 的，平铺在根目录它找不到。下文的 `<段目录>` 就指 `<工作目录>/outline/`。
 
 分卷摘要、分集片段这类脚手架写进 `<段目录>/.work/`，跑完可以整个删掉，不影响任何交付物。
 

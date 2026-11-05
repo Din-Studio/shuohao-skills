@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
  * 所以下游是从自己的输出目录**向上**找它，不是平级找。
  *
  * 向上找几层：五个 skill 的输出目录是 <work>/art/ 这样的一层，
- * 但用户常常再往下套一层（<work>/storyboard/E01-01/ 里跑 export），
+ * 但用户常常再往下套一层（<work>/creation/E01-01/ 里跑 export），
  * 所以给到 5 层，够用又不至于爬到用户主目录。
  */
 
@@ -146,13 +146,12 @@ export const SUPPORTED_LANGS = ['zh', 'en'];
 /* ------------------------------------------------------------------ */
 /*
  * 画风**没有内置类型**。以前这里是一个两档枚举（realistic / ghibli），
- * 正文分别写死在下游三个 skill 的代码里——想拍水墨、拍黏土定格、拍胶片颗粒的
- * 年代戏，只能改代码，而且要改三处。所以整档交给用户：production.json 顶层的
+ * 正文曾写死在下游的代码里，换风格就得修改代码。所以整档交给用户：production.json 顶层的
  * `style` 就是画风本身，正文在本段填，下游读它。
  *
- * 一部剧一套，三块各有各的用处：
+ * 一部剧一套，两块正文加一条风格概括：
  *
- *   phrase     分镜图提示词里必须原样出现的英文短语（如 cinematic film still）
+ *   phrase     英文画风短语，视频提示词按模型指南使用
  *   character  角色设定图那套：render / surface / lighting / negative / tags
  *   scene      场景与道具设定图那套：render / surface / negative / tags
  *
@@ -208,7 +207,7 @@ export const mentionsTerm = (haystack, term) =>
 /* 自动驾驶                                                            */
 /* ------------------------------------------------------------------ */
 /*
- * autopilot 为 true 时，下游六个 skill 各自把自己那一段**一口气跑完**：
+ * autopilot 为 true 时，下游五个 skill 各自把自己那一段**一口气跑完**：
  * 不再停下来提问、不等用户拍板、不把选择题抛回去，该做的决定自己做，
  * 做过的决定全部写进最后的汇报。
  *
@@ -307,7 +306,7 @@ export function clampDuration(seconds, model) {
 /* ------------------------------------------------------------------ */
 /*
  * 成片画幅**没有默认值**，必须显式传 --aspect。
- * 理由：竖屏和横屏是两条不同的片子，猜错了后果是整批分镜图和视频白出。
+ * 理由：竖屏和横屏是两条不同的片子，猜错了后果是整批视频重出。
  * 这是唯一一个宁可让用户多打一个参数也不能默认的参数。
  */
 
@@ -317,7 +316,6 @@ export function initProduction({
   autopilot = false,
   assetResolution = '2K',
   assetAspect = '16:9',
-  frameResolution = '2K',
   imageModel = 'nanobanana2',
   videoModel = '',
   videoResolution = '',
@@ -328,7 +326,7 @@ export function initProduction({
   const a = parseAspect(aspect);
   if (!a) {
     throw new Error(
-      `--aspect 必须显式给出且形如 9:16 或 16:9（成片画幅没有默认值——猜错了整批分镜图和视频白出）`,
+      `--aspect 必须显式给出且形如 9:16 或 16:9（成片画幅没有默认值——猜错了整批视频重出）`,
     );
   }
 
@@ -343,7 +341,6 @@ export function initProduction({
     image: {
       model: imageModel,
       asset: { resolution: assetResolution, aspectRatio: assetAspect },
-      frame: { resolution: frameResolution, aspectRatio: aspect },
     },
     video: {
       model: videoModel,
@@ -357,7 +354,7 @@ export function initProduction({
 /* 质量门                                                              */
 /* ------------------------------------------------------------------ */
 /*
- * 九道门，全是代码。分两类：
+ * 八道门，全是代码。分两类：
  *   会导致重出图的（比例对不上、档位模型不收、画风缺块或自相矛盾）——拦；
  *   只影响阅读的（报告界面语言）——不设门，下游继承就好。
  *
@@ -375,7 +372,6 @@ export function gateReport(doc) {
 
   const img = doc?.image ?? {};
   const asset = img.asset ?? {};
-  const frame = img.frame ?? {};
   const video = doc?.video ?? {};
 
   /* 1 — 字段齐全且枚举合法 */
@@ -384,8 +380,6 @@ export function gateReport(doc) {
     if (!String(img.model ?? '').trim()) bad.push('image.model 为空');
     if (!String(asset.resolution ?? '').trim()) bad.push('image.asset.resolution 为空');
     if (!String(asset.aspectRatio ?? '').trim()) bad.push('image.asset.aspectRatio 为空');
-    if (!String(frame.resolution ?? '').trim()) bad.push('image.frame.resolution 为空');
-    if (!String(frame.aspectRatio ?? '').trim()) bad.push('image.frame.aspectRatio 为空');
     // style 的内容归下面两道门查，这里只确认它是个对象——画风已经不是枚举了
     if (!doc?.style || typeof doc.style !== 'object' || Array.isArray(doc.style)) {
       bad.push('style 要是一个对象（画风没有内置类型，正文在这一段填；跑 style-template 拿骨架）');
@@ -400,12 +394,11 @@ export function gateReport(doc) {
     add('fields', '字段齐全、枚举合法', bad.length === 0, bad.join('；'));
   }
 
-  /* 2 — 三个比例的写法 */
+  /* 2 — 资产图与视频比例的写法 */
   {
     const bad = [];
     for (const [label, v] of [
       ['image.asset.aspectRatio', asset.aspectRatio],
-      ['image.frame.aspectRatio', frame.aspectRatio],
       ['video.aspectRatio', video.aspectRatio],
     ]) {
       if (!parseAspect(v)) bad.push(`${label}=${v ?? '(空)'} 不是 W:H 写法`);
@@ -414,24 +407,11 @@ export function gateReport(doc) {
       'aspect-format',
       '比例都是 W:H 写法',
       bad.length === 0,
-      bad.length ? `${bad.join('；')}——lingying 的 adaptive 在本管线里不能用：分镜图要按同一个比例批量出，比例交给模型自己挑就对不上了` : '',
+      bad.length ? `${bad.join('；')}——lingying 的 adaptive 在本管线里不能用：成片需要固定画幅，不能让模型逐段选择` : '',
     );
   }
 
-  /* 3 — 分镜图比例必须等于视频比例（核心门） */
-  {
-    const f = parseAspect(frame.aspectRatio);
-    const v = parseAspect(video.aspectRatio);
-    const ok = !!f && !!v && sameRatio(f.ratio, v.ratio);
-    add(
-      'frame-matches-video',
-      '分镜图比例 = 视频比例',
-      ok,
-      ok ? '' : `分镜图 ${frame.aspectRatio ?? '(空)'} vs 视频 ${video.aspectRatio ?? '(空)'} —— 分镜图是喂给视频模型的参考图，比例不一致会被裁切或拉伸，整批白出`,
-    );
-  }
-
-  /* 4 — 资产图不能是竖构图 */
+  /* 3 — 资产图不能是竖构图 */
   {
     const a = parseAspect(asset.aspectRatio);
     const ok = !a || a.ratio >= 1;
@@ -443,21 +423,21 @@ export function gateReport(doc) {
     );
   }
 
-  /* 5 — 三个 resolution 都填了（档位合不合法归第 6、7 道门） */
+  /* 4 — 视频 resolution 已填（资产图非空归 fields，枚举归模型门） */
   {
     const bad = [];
     if (!String(video.resolution ?? '').trim()) bad.push('video.resolution 为空');
     add(
       'resolution-filled',
-      '三处分辨率档位都已填',
+      '资产图与视频分辨率档位都已填',
       bad.length === 0,
       bad.length
         ? bad.join('；')
-        : `资产图 ${asset.resolution ?? '(空)'} · 分镜图 ${frame.resolution ?? '(空)'} · 视频 ${video.resolution}`,
+        : `资产图 ${asset.resolution ?? '(空)'} · 视频 ${video.resolution}`,
     );
   }
 
-  /* 6 — 视频模型与参数合法 */
+  /* 5 — 视频模型与参数合法 */
   {
     const bad = [];
     const model = String(video.model ?? '').trim();
@@ -481,7 +461,7 @@ export function gateReport(doc) {
     add('video-model', '视频模型与参数合法', bad.length === 0, bad.length ? bad.join('；') : note);
   }
 
-  /* 7 — 档位与比例被生图模型收（lingying 的 input_schema 是枚举，查得死） */
+  /* 6 — 档位与比例被生图模型收（lingying 的 input_schema 是枚举，查得死） */
   {
     const model = String(img.model ?? '').trim();
     const entry = IMAGE_MODELS[model];
@@ -490,7 +470,7 @@ export function gateReport(doc) {
     if (model && !entry) {
       note = `${model} 不在能力表里，档位与比例都跳过检查（能力表来自 lingying model get，加一条就自动开始查）`;
     } else if (entry) {
-      for (const [label, slot] of [['资产图', asset], ['分镜图', frame]]) {
+      for (const [label, slot] of [['资产图', asset]]) {
         const res = String(slot?.resolution ?? '').trim();
         const asp = String(slot?.aspectRatio ?? '').trim();
         if (!res || !asp) continue; // 空的归第 1 道门
@@ -509,7 +489,7 @@ export function gateReport(doc) {
         }
       }
       if (!bad.length && !note) {
-        const hit = [asset, frame]
+        const hit = [asset]
           .map((slot) => matchTier(slot?.resolution, entry.resolutions))
           .filter((t) => t && entry.restrict?.[t])
           .map((t) => `${t} 下只收 ${entry.restrict[t].join(' / ')}`);
@@ -520,7 +500,7 @@ export function gateReport(doc) {
     add('model-caps', '档位与比例都被生图模型收', bad.length === 0, bad.length ? bad.join('；') : note);
   }
 
-  /* 8 — 画风各块填全（画风已经不是枚举，正文是用户写的，缺块要在这里拦） */
+  /* 7 — 画风各块填全（画风已经不是枚举，正文是用户写的，缺块要在这里拦） */
   {
     const style = doc?.style;
     const bad = [];
@@ -530,9 +510,9 @@ export function gateReport(doc) {
       if (!String(style.label?.zh ?? '').trim()) bad.push('style.label.zh 为空（画风的中文名，报告里显示它）');
       const phrase = String(style.phrase ?? '').trim();
       if (!phrase) {
-        bad.push('style.phrase 为空（分镜图提示词里必须原样出现的英文短语）');
+        bad.push('style.phrase 为空（视频提示词指南使用的英文画风短语）');
       } else if (/[^\x20-\x7e]/.test(phrase)) {
-        bad.push(`style.phrase「${phrase}」含非 ASCII 字符——它要原样进英文分镜图提示词`);
+        bad.push(`style.phrase「${phrase}」含非 ASCII 字符——请填写英文画风短语`);
       }
       for (const [block, fields] of Object.entries(STYLE_BLOCKS)) {
         const b = style[block];
@@ -559,7 +539,7 @@ export function gateReport(doc) {
     );
   }
 
-  /* 9 — 画风不自相矛盾（正向要的词不许同时出现在反向提示词里） */
+  /* 8 — 画风不自相矛盾（正向要的词不许同时出现在反向提示词里） */
   {
     /*
      * 以前这条是写死的知识：「realistic 绝不能禁 photorealistic，ghibli 必须禁」。
@@ -617,9 +597,7 @@ export function validateProduction(doc) {
 export const STAGES = {
   characters: { kind: 'asset', what: '角色设定图', styleBlock: 'character' },
   art: { kind: 'asset', what: '场景与道具设定图', styleBlock: 'scene' },
-  // 分镜图不抄画风正文，只要那句必须出现在每条提示词里的短语
-  storyboard: { kind: 'frame', what: '分镜图', styleBlock: null },
-  // 视频靠参考图带画风，提示词里不重复交代一遍
+  // 视频靠参考图继承画风；模型指南需要时再以短语补充风格约束
   video: { kind: 'video', what: '视频生成', styleBlock: null },
 };
 
@@ -661,7 +639,7 @@ export function resolveStage(doc, stage) {
     };
   }
 
-  const slot = meta.kind === 'frame' ? doc?.image?.frame : doc?.image?.asset;
+  const slot = doc?.image?.asset;
   const model = doc?.image?.model ?? '';
   const resolution = slot?.resolution ?? '';
   const aspectRatio = slot?.aspectRatio ?? '';
@@ -697,12 +675,11 @@ export function renderMarkdown(doc) {
   out.push(`| 生图模型 | ${dash(img.model)} |`);
   out.push(`| 资产图分辨率 | ${dash(img.asset?.resolution)} |`);
   out.push(`| 资产图比例 | ${dash(img.asset?.aspectRatio)} |`);
-  out.push(`| 分镜图分辨率 | ${dash(img.frame?.resolution)} |`);
-  out.push(`| 分镜图比例 | ${dash(img.frame?.aspectRatio)} |`);
   out.push(`| 生视频模型 | ${dash(doc?.video?.model)} |`);
   out.push(`| 视频 aspect_ratio | ${dash(doc?.video?.aspectRatio)} |`);
   out.push(`| 视频 resolution | ${dash(doc?.video?.resolution)} |`);
-  out.push(`| 画风 | ${styleLabelOf(doc?.style)}${dash(doc?.style?.phrase) === '—' ? '' : `（分镜图短语 \`${doc.style.phrase}\`）`} |`);
+  out.push(`| 画风 | ${styleLabelOf(doc?.style)} |`);
+  out.push(`| 画风短语 | ${dash(doc?.style?.phrase)} |`);
   out.push(`| 报告界面语言 | ${dash(doc?.lang)} |`);
   out.push(`| 提示词语言 | ${dash(doc?.promptLang)} |`);
   out.push(`| 自动驾驶 | ${autopilotOf(doc) ? '开（下游跑完整段不打断）' : '关（该问就问）'} |`);
@@ -724,11 +701,10 @@ const USAGE = `novel-setup.mjs — novel-setup skill 的确定性工具（生产
 
   init --aspect <W:H>                    生成 production.json 骨架（打印到 stdout）
        [--source <剧名>]                  成片画幅**没有默认值**，必须显式指定
-       [--autopilot]                     自动驾驶：下游六个 skill 各自把自己那一段
+       [--autopilot]                     自动驾驶：下游五个 skill 各自把自己那一段
                                          一口气跑完，不提问、不等拍板（默认关）
        [--asset-resolution <档位>]        资产图分辨率档位，默认 2K
        [--asset-aspect <W:H>]            资产图比例（默认 16:9——设定图版面要横构图）
-       [--frame-resolution <档位>]        分镜图分辨率档位，默认 2K
        [--image-model <名>]              默认 nanobanana2
        [--video-model <名>]              视频模型，取 lingying model list 的 ID 列
        [--video-resolution <档位>]        视频分辨率档位（如 768p）
@@ -744,7 +720,7 @@ const USAGE = `novel-setup.mjs — novel-setup skill 的确定性工具（生产
   caps [--model <名>]                    打印某个模型收的档位与比例；不给模型就列全表
   duration <秒> --model <名>              把段秒数折成该模型能收的 duration
   resolve [--from <目录>] --for <阶段>    向上找 production.json，输出该阶段要用的参数
-                                         阶段：characters / art / storyboard / video
+                                         阶段：characters / art / video
   find [--from <目录>]                    只打印找到的 production.json 路径
   models                                 打印内置的生图与生视频模型能力表
 
@@ -783,13 +759,16 @@ function main(argv) {
   }
 
   if (cmd === 'init') {
+    const allowed = new Set(['--aspect', '--source', '--autopilot', '--asset-resolution', '--asset-aspect', '--image-model', '--video-model', '--video-resolution', '--style', '--lang', '--prompt-lang']);
+    for (const arg of rest) {
+      if (arg.startsWith('--') && !allowed.has(arg)) throw new Error(`未知选项 ${arg}`);
+    }
     const doc = initProduction({
       aspect: flag(rest, '--aspect'),
       source: flag(rest, '--source', ''),
       autopilot: rest.includes('--autopilot'),
       assetResolution: flag(rest, '--asset-resolution', '2K'),
       assetAspect: flag(rest, '--asset-aspect', '16:9'),
-      frameResolution: flag(rest, '--frame-resolution', '2K'),
       imageModel: flag(rest, '--image-model', 'nanobanana2'),
       videoModel: flag(rest, '--video-model', ''),
       videoResolution: flag(rest, '--video-resolution', ''),
@@ -812,7 +791,7 @@ function main(argv) {
           fields: {
             'label.zh': '画风的中文名，报告界面显示它（如「真人实拍」）',
             'label.en': '英文名，出英文报告时显示（可留空，回落到中文）',
-            phrase: '英文小写短语，**每条**分镜图提示词里必须原样出现（如 cinematic film still）——同一部剧的分镜图靠它不漂',
+            phrase: '英文画风短语，如 cinematic film still；视频提示词按模型指南使用，Seedance 收尾段据此描述风格',
             'character.render': '角色设定图的渲染方式那句，英文',
             'character.surface': '皮肤、眼睛、头发、布料怎么处理，英文',
             'character.lighting': '设定图的光照，英文。设定表要能抠图、要能量比例，这一句得把左右分区交代清楚',
@@ -876,7 +855,7 @@ function main(argv) {
       process.exit(1);
     }
     console.log(
-      `✓ 生产参数全部通过校验（成片 ${doc.video?.aspectRatio} · 分镜图 ${doc.image?.frame?.resolution} · 资产图 ${doc.image?.asset?.resolution} ${doc.image?.asset?.aspectRatio} · 画风 ${styleLabelOf(doc?.style)} · 自动驾驶 ${autopilotOf(doc) ? '开' : '关'}）`,
+      `✓ 生产参数全部通过校验（成片 ${doc.video?.aspectRatio} · 资产图 ${doc.image?.asset?.resolution} ${doc.image?.asset?.aspectRatio} · 画风 ${styleLabelOf(doc?.style)} · 自动驾驶 ${autopilotOf(doc) ? '开' : '关'}）`,
     );
     return;
   }

@@ -16,8 +16,7 @@
   "promptLang": "en",
   "image": {
     "model": "nanobanana2",
-    "asset": { "resolution": "2K", "aspectRatio": "16:9" },
-    "frame": { "resolution": "2K", "aspectRatio": "9:16" }
+    "asset": { "resolution": "2K", "aspectRatio": "16:9" }
   },
   "video": {
     "model": "MiniMax H3",
@@ -34,15 +33,13 @@
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `source` | string | 剧名，可选。只用来在参数表里显示 |
-| `autopilot` | bool | **自动驾驶**，默认 `false`。为 `true` 时下游六个 skill 各自把自己那一段一口气跑完：不提问、不等拍板、该做的决定自己做。详见下面一节 |
+| `autopilot` | bool | **自动驾驶**，默认 `false`。为 `true` 时下游五个 skill 各自把自己那一段一口气跑完：不提问、不等拍板、该做的决定自己做。详见下面一节 |
 | `style` | object | **画风本身**，由用户在这一段填。没有内置类型，没有默认值。下面单开一节 |
 | `lang` | enum | 报告界面语言 `zh` / `en`。五个 skill 的 `render --lang` 缺省时跟它 |
-| `promptLang` | enum | H3 视频提示词语言 `zh` / `en`。默认 `en`——官方规范口径 |
+| `promptLang` | enum | 视频提示词语言 `zh` / `en`。默认 `en`——官方规范口径 |
 | `image.model` | string | 生图模型，取 `lingying model list --model_type image` 的 ID 列。内置能力表里有的查枚举，没有的明说跳过 |
 | `image.asset.resolution` | string | **资产图分辨率档位**：`1K` / `2K` / `4K`。角色设定图、场景设定图、道具设定图共用 |
 | `image.asset.aspectRatio` | string | **资产图比例**：`W:H`。**必须是横构图或方形** |
-| `image.frame.resolution` | string | **分镜图分辨率档位** |
-| `image.frame.aspectRatio` | string | **分镜图比例**：`W:H`。**必须等于 `video.aspectRatio`** |
 | `video.model` | string | 生视频模型，取 `lingying model list --model_type video` 的 ID 列 |
 | `video.aspectRatio` | string | **视频 aspect_ratio**：`W:H`。这就是成片画幅 |
 | `video.resolution` | string | **视频 resolution 档位**。枚举**逐个模型不同**：`MiniMax H3` 是 `768p` / `2K`，seedance 全系是 `480p` / `720p`（`seedance2.0` 多一档 `1080p`） |
@@ -61,7 +58,7 @@ node scripts/novel-setup.mjs style-template
 | --- | --- |
 | `label.zh` | 画风的中文名，报告界面显示它（如「真人实拍」） |
 | `label.en` | 英文名，出英文报告时显示。可留空，回落到中文名 |
-| `phrase` | 英文小写短语，**每条**分镜图提示词里必须原样出现（如 `cinematic film still`）。同一部剧的分镜图靠它不漂 |
+| `phrase` | 英文画风短语，Seedance 视频提示词指南按它补充收尾风格约束，不是关键帧配置 |
 | `character.render` | 角色设定图的渲染方式那句，英文 |
 | `character.surface` | 皮肤、眼睛、头发、布料怎么处理，英文 |
 | `character.lighting` | 设定图的光照，英文。设定表要能抠图、要能量比例，这一句得把左右分区交代清楚 |
@@ -92,8 +89,7 @@ node scripts/novel-setup.mjs style-template
 | --- | --- | --- |
 | `novel-characters` | `style.character` | 角色卡的 `image.sheet` 与 `image.prompt` 含 `render` 原句，`image.negativePrompt` 带全 `negative` 的每一条 |
 | `novel-art` | `style.scene` | 设定卡同上。反向词只对**场景**查全——道具是纯白背景，画风里「环境别太干净」那几条和白底自相矛盾 |
-| `novel-storyboard` | `style.phrase` | 每条分镜图提示词里原样出现这句（大小写不敏感） |
-| `novel-creation` | 不用 | 画风一致性完全由参考图保证，提示词里不重复交代 |
+| `novel-creation` | `style.phrase`（提示词指南） | 画风由参考图继承，Seedance 收尾段再按指南补充风格约束 |
 
 **下游的产物 JSON 顶层没有 `style` 字段。**画风正文只有这一处产地，产物里再抄一份就是第二个来源，两个来源必然会漂。
 
@@ -108,7 +104,7 @@ node scripts/novel-setup.mjs style <production.json> --for character
 `autopilot` 是唯一一个**不管技术参数、只管跑法**的字段：它不改任何一个下给模型的值，改的是下游 skill 遇到「该问用户」的地方怎么办。
 
 - `false`（默认）：原来的样子。该问就问、该等拍板就等拍板。
-- `true`：下游六个 skill 各自把自己那一段**一口气跑完**——不提问、不等拍板、不把选择题抛回去，该做的决定自己做，做过的决定全部写进最后的汇报。
+- `true`：下游五个 skill 各自把自己那一段**一口气跑完**——不提问、不等拍板、不把选择题抛回去，该做的决定自己做，做过的决定全部写进最后的汇报。
 
 **转移的是审批权，不是取消检查点。**三件事不受它影响，这是它与「无人值守随便跑」的分界线：
 
@@ -124,29 +120,28 @@ node scripts/novel-setup.mjs style <production.json> --for character
 
 ## adaptive 不能用 ⚠️
 
-lingying 的视频模型都收 `aspect_ratio: "adaptive"`（按输入自动挑比例）。**本管线不能用它**：分镜图要按同一个比例整批出，比例交给模型临场挑，一集三四十格就对不上了。`aspect-format` 门直接把 `adaptive` 拦掉。
+能力表中的部分模型支持 `aspect_ratio: "adaptive"`。本管线要求成片画幅固定，避免模型逐段选择不同的比例，因此 `aspect-format` 门仍拒绝 `adaptive`。
 
 ## 两个比例是两件事 ⚠️
 
 最容易误解的一处：**资产图比例和成片画幅无关**。
 
 - **资产图**（角色设定图、场景设定图、道具设定图）是给参考图与人眼看的**设定表**。角色设定图的三区版面、场景与道具设定图的 L 形版面都靠横向铺开，竖过来三视图会被压扁。所以资产图默认 `16:9`，成片拍竖屏也不改。
-- **分镜图**是喂给视频模型的关键帧，**它就是成片的一格**。比例和 `video.aspectRatio` 差一点，参考图就会被裁切或拉伸，一整批分镜图白出。
+- **视频画幅**决定成片比例。参考图是身份与场景设定，不是成片中的一格，因此不要求与资产图比例相等。
 
-`asset-landscape` 与 `frame-matches-video` 两道门分别管这两件事。
+`asset-landscape` 检查资产图版面；`video-model` 独立检查视频画幅。
 
-## 九道质量门
+## 八道质量门
 
 | 门 | 查什么 | 为什么是门 |
 | --- | --- | --- |
 | `fields` | 字段齐全、`style` 是对象、`lang` / `promptLang` 在枚举里、`autopilot` 写了就得是布尔值 | 少一个字段，下游读到 `undefined` 会静默用回默认值；`autopilot` 写成字符串 `"false"` 反而是开着 |
-| `aspect-format` | 三个比例都是 `W:H` 写法 | 写成 `9-16` 下游解析不出来；`adaptive` 也在这里拦掉 |
-| `frame-matches-video` | **分镜图比例 = 视频比例** | 不一致 = 整批分镜图被裁或被拉，白出 |
+| `aspect-format` | 资产图与视频比例都是 `W:H` 写法 | 写成 `9-16` 下游解析不出来；`adaptive` 也在这里拦掉 |
 | `asset-landscape` | 资产图是横构图或方形 | 竖构图会把设定图的三视图压扁 |
-| `resolution-filled` | 三处分辨率档位都已填 | 没填就等于没定 |
-| `video-model` | 视频模型已填，`resolution` 与 `aspect_ratio` 在该模型的枚举里 | 档位写错要到提交那一刻才被网关拒绝，那时整集分镜图已经出完了 |
-| `model-caps` | 资产图与分镜图的档位、比例都被生图模型收 | 同上。**`nanobanana2` 不收 `4:3`、`image-2` 的 `4K` 只收 `16:9` / `9:16`** —— 选错了整批出不来 |
-| `style-blocks` | 画风各块填全、`phrase` 是纯 ASCII | 画风正文是用户写的，缺一块下游就少一段提示词；`phrase` 混进中文就进不了英文分镜图提示词 |
+| `resolution-filled` | 资产图与视频分辨率档位都已填 | 没填就等于没定 |
+| `video-model` | 视频模型已填，`resolution` 与 `aspect_ratio` 在该模型的枚举里 | 提前检查，避免提交时才被网关拒绝 |
+| `model-caps` | 资产图的档位、比例都被生图模型收 | 同上。**`nanobanana2` 不收 `4:3`、`image-2` 的 `4K` 只收 `16:9` / `9:16`** —— 选错了整批出不来 |
+| `style-blocks` | 画风各块填全、`phrase` 为纯 ASCII | 画风正文是用户写的，缺一块下游就少一段提示词 |
 | `style-coherent` | 反向词没出现在 `render` / `surface` / `lighting` / `tags` 里 | 一边要一边禁，模型两头讨好，整批图废掉。**换风格时把上一档的 `negative` 留着**是最常见的形态 |
 
 ## 能力表从哪来
@@ -179,4 +174,4 @@ node scripts/novel-setup.mjs duration 12.5 --model "MiniMax H3"
 # → { "duration": 13, "note": "12.5 秒向上取整到 13 秒" }
 ```
 
-向上取整、夹进区间、动过就说清楚。下单细节见 `novel-storyboard/references/video-order.md`。
+向上取整、夹进区间、动过就说清楚。下游参数交接见本 skill 的 `contract.md`。

@@ -2,22 +2,22 @@
 /**
  * report.mjs —— 把 novel 系列各 skill 的报告合成一张单页，左侧导航切换。
  *
- * 定位：**组装器，不是第六个 skill**。它不 import 任何 skill 的代码，而是调各自的
+ * 定位：**组装器，不是独立 skill**。它不 import 任何 skill 的代码，而是调各自的
  * `render --html` 拿产物再拼装。三条好处：
  *
- *   1. 六个 skill 一行不改，各自仍然独立可跑、可以单独拷走
+ *   1. 五个创作 skill 各自渲染，各自仍然独立可跑、可以单独拷走
  *   2. 各 skill 的加载逻辑（图存在才挂、ctx 组装、语言优先级）只有一份，不在这里重写
  *   3. 某个 skill 改了渲染，这里自动跟上，不会漂
  *
  * 合并要解决三件事，都在这个文件里做，不侵入 skill：
  *
- *   - **样式串味**：五份报告共用 57 个类名，其中 13 个同名不同定义（`.copy` `.kpis`
+ *   - **样式串味**：各报告有同名不同定义的类（`.copy` `.kpis`
  *     `.badge` `.chip` …）。做法是给每份样式的每条选择器加作用域前缀。
- *     已量过：五份报告的 CSS 里**没有任何 `#id` 选择器**，所以只处理类与元素选择器。
+ *     当前报告 CSS 没有 `#id` 选择器，只处理类与元素选择器。
  *   - **脚本串味**：各报告的脚本都是 `document.querySelector('.expo')` 这种全局查询。
  *     合成一页后只会命中第一个——五个导出按钮会全废。做法是给每份脚本套一层
  *     作用域代理，把查询限制在自己的 pane 内。
- *   - **图片路径**：各报告的图相对自己那份 json 的目录（`images/…`、`E01-01/f1.png`）。
+ *   - **图片路径**：各报告的图相对自己那份 json 的目录（`images/…`、`../art/images/…`）。
  *     合成后要按输出文件的位置重算。
  *
  * 用法见 USAGE。
@@ -36,10 +36,10 @@ const skillsDir = resolve(here, '..', 'skills');
 /* ------------------------------------------------------------------ */
 
 /**
- * 顺序照流程图：大纲 → （角色 · 美术 · 剧本）→ 分镜。
+ * 顺序照流程图：大纲 → （角色 · 美术 · 剧本）→ 视频创作。
  *
  * `needs` 是这份报告渲染时要一并喂进去的上游——合并器手上有全部路径，
- * 顺手传给各自的 render，用户不用自己拼一长串参数。分镜的 `--script`
+ * 顺手传给各自的 render，用户不用自己拼一长串参数。视频创作的 `--script`
  * 是硬前提（没有剧本它会直接报错），其余都是可选增强。
  *
  * `dir` 是端到端 demo 工作目录约定里对应的子目录名，`--from` 自动发现时用。
@@ -90,14 +90,14 @@ export const PANES = [
     needs: ['--outline', '--art', '--cast'],
   },
   {
-    id: 'storyboard',
-    skill: 'novel-storyboard',
-    flag: '--storyboard',
-    dir: 'storyboard',
-    label: '分镜',
-    labelEn: 'Storyboard',
-    hint: '段、分镜、首帧',
-    hintEn: 'Segments, cuts, frames',
+    id: 'creation',
+    skill: 'novel-creation',
+    flag: '--creation',
+    dir: 'creation',
+    label: '视频创作',
+    labelEn: 'Creation',
+    hint: '分段、切镜、参考图',
+    hintEn: 'Segments, cuts, references',
     needs: ['--script', '--outline', '--art', '--cast'],
   },
 ];
@@ -258,7 +258,8 @@ export function rebaseAssets(text, fromDir, outDir) {
  * 各报告的脚本都写成 `document.querySelector('.expo')` 这种全局查询——合成一页
  * 之后只会命中第一个面板的那个，其余四个导出按钮直接失效。这里用一个 Proxy 把
  * `document` 换掉：查询类方法限制在自己的 pane 内，`getElementById` 顺手补上
- * id 前缀（所以脚本里的 id 字符串一个都不用改），其余属性与方法原样透传给真的
+ * id 前缀。点击监听绑定面板，键盘监听保留在页面；元素自身的 ID 查询需避免硬编码。
+ * 其余属性与方法原样透传给真的
  * document（`createElement` 这些还要用）。
  *
  * 整段包在 IIFE 里，顺带隔离各报告的顶层 `const`——五份脚本里有重名的。
@@ -269,6 +270,11 @@ var __root=window.document.getElementById(${JSON.stringify(paneId)});
 if(!__root)return;
 var __doc=window.document;
 var document=new Proxy(__doc,{get:function(t,k){
+  if(k==='addEventListener'||k==='removeEventListener')return function(type,listener,options){
+    // 点击事件限定面板；Escape 等键盘事件仍需响应页面焦点。
+    var target=type==='keydown'?t:__root;
+    return target[k](type,listener,options);
+  };
   if(k==='querySelector')return function(s){return __root.querySelector(s);};
   if(k==='querySelectorAll')return function(s){return __root.querySelectorAll(s);};
   if(k==='getElementById')return function(id){
@@ -503,12 +509,12 @@ const USAGE = `report.mjs —— 把 novel 系列各 skill 的报告合成一张
   node scripts/report.mjs --outline o.json --cast c.json … [--out report.html]
 
   --from <目录>      按端到端 demo 工作目录约定自动发现：
-                     outline/ characters/ art/ script/ storyboard/ 各取一份 json
+                     outline/ characters/ art/ script/ creation/ 各取一份 json
   --outline <f>      单独指定某一段的 json，可与 --from 混用（显式的优先）
   --cast <f>
   --art <f>
   --script <f>
-  --storyboard <f>
+  --creation <f>
   --out <f>          输出路径，默认 report.html
   --lang zh|en       外壳与各报告的界面语言，默认 zh
   --title <s>        左上角标题，默认取第一份 json 的 source
@@ -536,6 +542,10 @@ function main(argv) {
   if (!argv.length || argv.includes('-h') || argv.includes('--help')) {
     console.log(USAGE);
     return;
+  }
+  const allowed = new Set(['--from', '--out', '--lang', '--title', ...PANES.map((p) => p.flag)]);
+  for (const arg of argv) {
+    if (arg.startsWith('--') && !allowed.has(arg)) throw new Error(`未知选项 ${arg}`);
   }
   const from = flag(argv, '--from');
   const outPath = resolve(flag(argv, '--out', 'report.html'));
@@ -589,7 +599,7 @@ function main(argv) {
     try {
       title = JSON.parse(readFileSync(first, 'utf8')).source ?? '';
     } catch { /* 读不出来就退回文件名 */ }
-    if (!title) title = basename(first).replace(/[-_](cast|outline|art|script|storyboard)\.json$/i, '').replace(/\.json$/i, '');
+    if (!title) title = basename(first).replace(/[-_](cast|outline|art|script|creation)\.json$/i, '').replace(/\.json$/i, '');
   }
 
   const sub = panes.map((p) => (lang === 'en' ? p.meta.labelEn : p.meta.label)).join(lang === 'en' ? ' · ' : ' · ');

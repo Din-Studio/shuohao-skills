@@ -84,7 +84,7 @@ export const AUTOPILOT_NOTE =
 /* ------------------------------------------------------------------ */
 /*
  * 工作目录约定：每个 skill 的产物归自己的段目录（outline / characters /
- * art / script / storyboard），工作目录根只住 production.json。
+ * art / script / creation），工作目录根只住 production.json。
  *
  * 落点写错了不用重出图，所以这里是提示不是门——但必须说出来：合并报告的
  * `--from` 自动发现是按段目录名找 JSON 的，产物平铺在根目录它就找不到。
@@ -507,7 +507,7 @@ const I18N = {
     sep: '、',
     colon: '：',
     paren: (s) => `（${s}）`,
-    colophon: '剧本由模型依据大纲与美术设定生成，时长与引用由脚本确定性检查。分镜与首帧提示词是下一层的事，不在本报告里。',
+    colophon: '剧本由模型依据大纲与美术设定生成，时长与引用由脚本确定性检查。分镜与视频提示词与参考图挂载是下一层的事，不在本报告里。',
   },
   en: {
     langCode: 'en',
@@ -563,7 +563,7 @@ const I18N = {
     sep: ', ',
     colon: ': ',
     paren: (s) => ` (${s})`,
-    colophon: 'Script written by the model against the outline and art bible; durations and references checked deterministically by script. Storyboarding and first-frame prompts belong to the next layer, not this report.',
+    colophon: 'Script written by the model against the outline and art bible; durations and references checked deterministically by script. Shot planning, video prompts and reference mounts belong to the video-creation stage, not this report.',
   },
 };
 

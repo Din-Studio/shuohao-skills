@@ -119,7 +119,7 @@ export const AUTOPILOT_NOTE =
 /* ------------------------------------------------------------------ */
 /*
  * 工作目录约定：每个 skill 的产物归自己的段目录（outline / characters /
- * art / script / storyboard），工作目录根只住 production.json。
+ * art / script / creation），工作目录根只住 production.json。
  *
  * 落点写错了不用重出图，所以这里是提示不是门——但必须说出来：合并报告的
  * `--from` 自动发现是按段目录名找 JSON 的，产物平铺在根目录它就找不到。

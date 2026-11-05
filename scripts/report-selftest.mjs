@@ -23,10 +23,10 @@ function eq(a, b, msg) { assert.strictEqual(a, b, `${msg} — 期望 ${b}，实�
 
 eq(PANES.length, 5, '五段流水线各一个面板');
 eq(PANES[0].id, 'outline', '大纲排第一——顺序照流程图');
-eq(PANES.at(-1).id, 'storyboard', '分镜排最后');
+eq(PANES.at(-1).id, 'creation', '视频创作排最后');
 ok(new Set(PANES.map((p) => p.id)).size === PANES.length, '面板 id 不重复');
 ok(new Set(PANES.map((p) => p.flag)).size === PANES.length, '参数名不重复');
-ok(PANES.find((p) => p.id === 'storyboard').needs.includes('--script'), '分镜声明了它对剧本的硬依赖');
+ok(PANES.find((p) => p.id === 'creation').needs.includes('--script'), '视频创作声明了它对剧本的硬依赖');
 ok(PANES.find((p) => p.id === 'outline').needs.length === 0, '大纲是起点，不吃上游');
 for (const p of PANES) {
   ok(p.label && p.labelEn && p.hint && p.hintEn, `${p.id} 的中英文案齐全`);
@@ -148,8 +148,8 @@ const DOC = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   ok(b.includes('src="/abs.png"'), '根路径不动');
 }
 {
-  const b = rebaseAssets('<img data-src="E01-01/f1.png" data-img="E01-01/f1.png">', '/demo/storyboard', '/demo');
-  eq((b.match(/storyboard\/E01-01\/f1\.png/g) ?? []).length, 2, 'data-src 与 data-img 都重算');
+  const b = rebaseAssets('<img data-src="../art/images/scene.png" data-img="../art/images/scene.png">', '/demo/creation', '/demo');
+  eq((b.match(/art\/images\/scene\.png/g) ?? []).length, 2, 'data-src 与 data-img 都重算');
 }
 
 /* ---------------- scopeJs ---------------- */

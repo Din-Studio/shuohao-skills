@@ -13,23 +13,22 @@
 
 **AI 短剧制作的 skill 集合**：从一本小说到直接喂生成管线的制作素材——定生产参数、拆角色、排大纲、出场景与道具设定、写剧本、切分镜、参考图直出视频。给 AI 编码 agent 用，**pi、Claude Code、codex 都能跑**。
 
-整条管线长这样——**生产参数先定死画幅与模型，改编大纲收敛结构，剧本、场景、角色三者同步迭代，分镜只做输出不做新决定**：
+整条管线长这样——**生产参数先定死画幅与模型，改编大纲收敛结构，剧本、场景、角色三者同步迭代，视频创作按剧本分段切镜，直接挂载已有设定图**：
 
-<img src="assets/pipeline.webp" alt="AI 短剧制作流程图" width="680">
+<img src="assets/pipeline.svg" alt="AI 短剧制作流程图" width="680">
 
 | Skill | 做什么 |
 | --- | --- |
-| [**novel-setup**](skills/novel-setup) | 定生产参数：生图模型、资产图与分镜图的分辨率档位与比例、生视频模型、视频 aspect_ratio 与 resolution，外加**画风**、两种语言与自动驾驶开关。画风没有内置类型也没有默认值——真人实拍、吉卜力、水墨、黏土定格都行，写进 `style` 就是它，下游三个出图 skill 整块抄过来用。一次落成工作目录根的 `production.json`，后面六个 skill 出图与下单前向上找到它照着做。分辨率与比例存的就是 lingying 的**枚举值**（`2K`、`768p`、`16:9`……），原样填进 `--input_data`，不折算像素；9 道质量门，最值钱的一道是「分镜图比例 = 视频比例」 |
+| [**novel-setup**](skills/novel-setup) | 定生产参数：资产图模型、分辨率与比例，视频模型、画幅与档位，以及画风、语言与自动驾驶开关。写入工作目录根的 `production.json`，供五个创作 skill 读取。资产图与视频画幅独立，8 道质量门全部脚本检查 |
 | [**novel-outline**](skills/novel-outline) | 把一本小说改编成短剧大纲五件套：改编说明、人物表、爽点表、分集梗概、资产清单（含叙事道具表）。14 道质量门全部脚本检查，支持已有大纲的体检模式 |
 | [**novel-characters**](skills/novel-characters) | 把大纲定下的角色做成角色设定集：人物画像、形象提示词、音色提示词、角色设定图。吃 outline.json 预填角色表，报告语言可选，画风整块取自 `production.json`。**出图是一条 `images` 命令**——提交、轮询、落盘、断点续传全在脚本里，`--style-ref auto` 拿第一张压住画风漂移 |
 | [**novel-art**](skills/novel-art) | 给 AI 短剧出美术设定集（场景 + 叙事道具）：一致性锚点、光照与状态变体、尺度参照、无人无手白底提示词。吃 outline.json 预填清单，12 道质量门全部脚本检查。**出图是一条 `images` 命令**——提交、轮询、落盘、断点续传全在脚本里，参数不经过 shell，不靠模型现拼 bash |
 | [**novel-script**](skills/novel-script) | 给 AI 短剧写剧本：场次 + 节拍流（动作与台词交替），逐集时长按语速确定性折算，钩子前 3 拍冷开场兑现是门，台词本按角色聚合带音色提示词直接对接 TTS。10 道质量门全部脚本检查 |
-| [**novel-storyboard**](skills/novel-storyboard) | 给 AI 短剧出分镜：段（一次生成 ≤15 秒）→ 分镜（2–5 秒硬门）→ 分镜图（主图钉 0.00 秒、子图钉各自切点），MiniMax H3 提示词的对齐指令与切点时刻逐字对账；分镜图拿设定图当参考图真出图，export 一键出投产包（顶层带视频参数），再走 `lingying video create` 下单生视频。18 道质量门全部脚本检查 |
-| [**novel-creation**](skills/novel-creation) | `novel-storyboard` 的并列产线：段（一次生成 ≤15 秒）→ 分镜（2–5 秒硬门），**没有分镜图这一层**——段直接挂载 `novel-characters`/`novel-art` 已经生成的设定图当参考图，写一条跨模型通用的视频提示词（不是 H3 专用结构），从 seed 到下单零新增出图调用。要精确控镜用 storyboard，要快、要省用这个。16 道质量门全部脚本检查 |
+| [**novel-creation**](skills/novel-creation) | 参考图直出视频：按剧本分段、切镜，直接挂载已有的角色、场景与道具设定图，不生成中间分镜图。视频提示词按模型选择结构，`export` 输出投产包，`videos` 编排下单、轮询与落盘。16 道质量门全部脚本检查 |
 
-**六个创作 skill 的报告都支持中英双语界面**：默认中文，`render --lang en` 出全英文报告（数据内容保持原文）。界面语言也可以在 `production.json` 里一处定死。
+**五个创作 skill 的报告都支持中英双语界面**：默认中文，`render --lang en` 出全英文报告（数据内容保持原文）。界面语言也可以在 `production.json` 里一处定死。
 
-**要一路跑到底不被打断**，就在 `production.json` 里打开自动驾驶（`novel-setup init --autopilot`）：六个创作 skill 读到 `"autopilot": true` 就各自把自己那一段一口气跑完——不提问、不等拍板，该做的决定自己做，做过的决定全部写进汇报。**转移的是审批权，不是取消检查点**：质量门照样是门、花钱前照样先算账、失败的止损照样止损。默认是关的。
+**要一路跑到底不被打断**，就在 `production.json` 里打开自动驾驶（`novel-setup init --autopilot`）：五个创作 skill 读到 `"autopilot": true` 就各自把自己那一段一口气跑完——不提问、不等拍板，该做的决定自己做，做过的决定全部写进汇报。**转移的是审批权，不是取消检查点**：质量门照样是门、花钱前照样先算账、失败的止损照样止损。默认是关的。
 
 ## 合成一张单页
 
@@ -39,20 +38,21 @@
 node scripts/report.mjs --from <demo目录> --out report.html
 ```
 
-`--from` 按下面的[工作目录约定](#工作目录约定)自动发现五份 json；也可以逐个指定（`--outline` `--cast` `--art` `--script` `--storyboard`）。只跑了角色那一段就只有一个面板，不报错。`production.json` 不参与合成——它是参数不是产物，`novel-setup show` 就够看。
+`--from` 按下面的[工作目录约定](#工作目录约定)自动发现五份 json；也可以逐个指定（`--outline` `--cast` `--art` `--script` `--creation`）。只跑了角色那一段就只有一个面板，不报错。`production.json` 不参与合成——它是参数不是产物，`novel-setup show` 就够看。
 
-它是**组装器，不是独立 skill**：不 import 任何 skill 的代码，而是调各自的 `render --html` 拿产物再拼装。所以五个 skill 一行不改、各自仍然独立可跑、可以单独拷走；某个 skill 改了渲染，这边自动跟上。
+它是**组装器，不是独立 skill**：不 import 任何 skill 的代码，而是调各自的 `render --html` 拿产物再拼装。五个创作 skill 各自提供渲染入口，仍然独立可跑、可以单独拷走；某个 skill 改了渲染，这边自动跟上。
 
 合并时处理三件事——**这三件都在组装器里做，不侵入 skill**：
 
-- **样式串味**。五份报告共用 57 个类名，其中 13 个同名不同定义（`.copy` `.kpis` `.badge` `.chip`……），所以给每份样式的每条选择器加作用域前缀
+- **样式串味**。各报告存在同名不同定义的类（`.copy` `.kpis` `.badge` `.chip`……），所以给每份样式的每条选择器加作用域前缀
 - **脚本串味**。各报告的脚本都是 `document.querySelector('.expo')` 这种全局查询，合成一页后只会命中第一个——五个导出按钮会全废。做法是给每份脚本套一层作用域代理
-- **图片路径**。各报告的图相对自己那份 json 的目录（`images/…`、`E01-01/f1.png`），合成后按输出文件的位置重算
+- **图片路径**。各报告的图相对自己那份 json 的目录（`images/…`、`../art/images/…`），合成后按输出文件的位置重算
 
-默认一次显示一个面板（五份加起来将近六十万字符）。左下角「平铺全部」把所有面板同时展开，Cmd+F 恢复全局搜索。数字键 `1`–`5` 切面板，`#pane-script` 这样的深链可以直接分享到某一屏。
+默认一次显示一个面板。左下角「平铺全部」把所有面板同时展开，Cmd+F 恢复全局搜索。数字键 `1`–`5` 切面板，`#pane-script` 这样的深链可以直接分享到某一屏。
 
 ```bash
-node scripts/report-selftest.mjs   # 92 项断言，不起浏览器
+node scripts/report-selftest.mjs   # 合并器单元测试
+node scripts/pipeline-selftest.mjs # 真实渲染、交互适配与隔离安装测试
 ```
 
 丢一本小说进去，出这五套（技术参数由 `novel-setup` 先定死）：
@@ -73,9 +73,9 @@ node scripts/report-selftest.mjs   # 92 项断言，不起浏览器
 
 ![剧本报告](skills/novel-script/assets/report.webp)
 
-**novel-storyboard · 分镜（分镜节奏带 + 主/子分镜图为 skill 实际生成 + H3 提示词）**
+**novel-creation · 视频创作（分段切镜、参考图挂载、视频提示词与下单）**
 
-![分镜报告](skills/novel-storyboard/assets/report.webp)
+自带《收书人》样例与离线报告渲染，详见 [novel-creation](skills/novel-creation)。
 
 ## 安装
 
@@ -85,7 +85,7 @@ cd shuohao-skills
 ./scripts/install.sh
 ```
 
-自动检测本机装了 pi、Claude Code 还是 codex，把所有 skill **软链**过去——`git pull` 之后立刻生效，不用重装。
+自动检测本机安装了 pi、Claude Code 还是 codex，把所有 skill **软链**过去——`git pull` 之后立刻生效，不需要重新安装。更新到本版本后，请执行一次安装脚本，清理指向本仓库的退役 skill 软链；真实目录与其他来源软链不会删除。
 
 ```bash
 ./scripts/install.sh novel-characters   # 只安装某一个
@@ -102,7 +102,7 @@ ln -s "$PWD/skills/novel-characters" ~/.codex/skills/novel-characters
 ln -s "$PWD/skills/novel-characters" ~/.pi/agent/skills/novel-characters
 ```
 
-**pi 还有第二条路**：把整个仓库当成 pi 包安装，七个 skill 一次全进来，`git pull` 同样立刻生效：
+**pi 还有第二条路**：把整个仓库当成 pi 包安装，六个 skill 一次全进来，`git pull` 同样立刻生效：
 
 ```bash
 pi install /path/to/shuohao-skills                        # 本地目录
@@ -156,14 +156,14 @@ skills/<skill-name>/
 加新 skill 之前，先把全部自测跑一遍：
 
 ```bash
-for f in skills/*/scripts/selftest.mjs; do node "$f"; done
+for f in skills/*/scripts/selftest.mjs scripts/*-selftest.mjs; do node "$f" || exit; done
 ```
 
-没有配 CI——自测足够快（1 秒），本地跑一次比等 CI 更省事。**只在 macOS + Node 24 上验过**；代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但没验。
+没有配 CI——自测足够快（1 秒），本地跑一次比等 CI 更省事。**已在 macOS + Node 22/24 上验证**；代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但没验。
 
 ## 工作目录约定
 
-把一本小说从头跑完五段（角色 → 大纲 → 美术 → 剧本 → 分镜），会产出大量 `*.json` / `*.md` / `*-report.html`。**不要平铺在根目录**，按五个 skill 各建一个目录归档，一眼对应流水线五段：
+把一本小说从头跑完五段（大纲 → 角色 → 美术 → 剧本 → 视频创作），会产出大量 `*.json` / `*.md` / `*-report.html`。**不要平铺在根目录**，按五个 skill 各建一个目录归档，一眼对应流水线五段：
 
 ```
 <demo>/
@@ -172,12 +172,7 @@ for f in skills/*/scripts/selftest.mjs; do node "$f"; done
 ├── characters/    ← novel-characters 产出：<剧>-cast.json / .md / -report.html
 ├── art/           ← novel-art 产出：<剧>-art.json / .md / -report.html
 ├── script/        ← novel-script 产出：<剧>-script.json / .md / -report.html
-├── storyboard/    ← novel-storyboard 产出：<剧>-storyboard.json / .md / -report.html
-│   ├── manifest.json  ← export 产出
-│   ├── E01-01/        ← export 的分镜投产包，每段一个文件夹（prompt.md + f1..fN.png + 下单后的 video.mp4）
-│   ├── E01-02/
-│   └── …
-├── creation/      ← novel-creation 产出（与 storyboard/ 并列，不是叠加的第六段）：<剧>-creation.json / .md / -report.html
+├── creation/      ← novel-creation 产出：<剧>-creation.json / .md / -report.html
 │   ├── manifest.json  ← export 产出（每段的参考图挂载清单，不复制设定图文件）
 │   └── E01-01/…       ← 每段一个文件夹（prompt.md + 下单后的 video.mp4，没有分镜图）
 ├── docs/          ← 自己写的使用说明、PR 草稿等（与机器产物解耦）
@@ -186,15 +181,15 @@ for f in skills/*/scripts/selftest.mjs; do node "$f"; done
 
 约定要点：
 
-- **`production.json` 住在根目录，不进子目录**——它是整部剧共用的技术参数，四个下游 skill 从自己的输出目录**向上最多 5 层**找它。放进某个子目录，别的 skill 就找不到了
+- **`production.json` 住在根目录，不进子目录**——它是整部剧共用的技术参数，五个下游 skill 从自己的输出目录**向上最多 5 层**找它。放进某个子目录，别的 skill 就找不到了
 - **每个 skill 一个目录**，装它自己的 `json` / `md` / `html` 三件套，加新角色/场景只往对应目录放，不污染根目录
-- **分镜的 `manifest.json` 与 `E01-0x/` 投产包一起归 `storyboard/`**，就是 `export --out storyboard` 的原样产出。**段文件夹不要再往下收一层**（例如收进 `segments/`）：分镜报告里的图走相对路径 `<段号>/f<切序>.png`，报告 html 与段文件夹必须同级，多套一层目录，报告里的图会**静默**全变成「未生成」占位——实测把 10 个段文件夹移进 `segments/` 之后，内嵌图从 2 张变 0 张，报告不会报错
+- **视频投产包归 `creation/`**：`manifest.json` 与 `E01-0x/` 同级。参考图仍住在 `characters/images/` 与 `art/images/`，通过相对路径引用，不复制为分镜图。
 - **报告 HTML 可由 `render` 重跑再生，图与视频可按提示词重出**——进版本控制时建议只提交 `json` / `md` / `docs` / `scripts`，报告 HTML 和段文件夹里的 `png` / `mp4` 用 `.gitignore` 排除，保持仓库轻量
 - 用法类文档（如各报告的使用说明）放 `docs/`，与 skill 自动生成的产物分开，方便单独维护
 
 **五个 skill 各自会核对落点**：`validate` 找到 `production.json` 就顺带比对产物在不在自己那一格，放错了点名该去哪。落点写错不用重出图，所以是提示不是门；但不说出来更坏——`--from` 自动发现按段目录名找 JSON，平铺在根目录它一份也找不到。没有 `production.json` 的老项目、单跑某一段的场合无从判断工作目录根在哪，那时明说跳过。
 
-**`novel-creation` 是 `novel-storyboard` 的并列产线，不叠加进这五段流水线**：两者都从 `script.json` 出发，产物分别落 `storyboard/` 与 `creation/`，按场合二选一，也可以同一集分场次混用；`novel-creation` 同样会核对落点，但不接入 `scripts/report.mjs` 的五段合并报告（它有自己的 `render --html`）。
+**`novel-creation` 是剧本之后的视频创作阶段**，接入五段合并报告，也支持独立 `render --html`。合并报告渲染这一阶段需要 `--script`；同时提供 `--outline`、`--art` 与 `--cast` 可补全参考图身份与展示。
 
 > 这套结构来自《渡口》端到端 demo 的实际归档经验，demo 的工作目录在本仓库之外，这里固化成约定，并由五个 skill 各自核对。
 

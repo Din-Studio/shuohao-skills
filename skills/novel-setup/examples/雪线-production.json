@@ -40,10 +40,6 @@
     "asset": {
       "resolution": "4K",
       "aspectRatio": "16:9"
-    },
-    "frame": {
-      "resolution": "4K",
-      "aspectRatio": "16:9"
     }
   },
   "video": {
