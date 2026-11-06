@@ -1,0 +1,15 @@
+{
+  "profileSchemaVersion": 1,
+  "dimension": "pacing",
+  "id": "measured",
+  "version": "1.0.0",
+  "stage": "creation",
+  "guide": "guide.md",
+  "rules": {
+    "cutDuration": {
+      "level": "warn",
+      "minSeconds": 6,
+      "maxSeconds": 15
+    }
+  }
+}

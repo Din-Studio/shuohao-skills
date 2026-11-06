@@ -1,204 +1,114 @@
 ---
 name: novel-outline
-version: 1.5.0
+version: 2.0.0
 description: |
-  把一本小说改编成短剧大纲五件套：改编说明、人物表、爽点表、分集梗概、资产清单，
-  产出 outline.json + Markdown + 单页评审报告（KPI 带、关键决策、爽点时间轴、调度矩阵、场景概览、质量门）。
-  14 道质量门全部由脚本确定性检查（角色分档上限、主场景上限随集数动态、爽点间隔≤3集、每集钩子悬念必填……），不靠模型自觉；
-  支持体检模式：贴一份现成大纲进来，只跑质量门给诊断。
-  跑过 novel-setup 的项目会读工作目录根 production.json 的 autopilot：为 true 时全程不打断——
-  缺的参数自己定、快版骨架不等用户拍板，做过的决定全部写进汇报。
-  零依赖、零 API key，用当前会话额度。
-  Use when asked to 改编大纲、短剧大纲、拆大纲、小说转短剧、adaptation outline。
-# 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
+  创作或改编故事大纲：作品承诺、改编说明、人物与资产、稳定 ID 剧情节点、分集梗概。
+  创作策略通过本地 references 显式选择与应用，不默认密集兑现、悬念集尾或终局胜利。
+  输出 schemaVersion 2 JSON、Markdown 和离线中英报告；支持分卷、分阶段检查、体检与迁移。
+  自动驾驶转移审批权，不取消检查、来源核验和内容评审。
+  Use when asked to 改编大纲、短剧大纲、拆大纲、原创大纲、小说转短剧、adaptation outline。
 allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
 triggers:
   - novel-outline
   - 改编大纲
   - 短剧大纲
-  - 拆大纲
-  - 小说转短剧
   - 大纲体检
   - adaptation outline
 metadata:
   license: Apache-2.0
   requires:
-    bins:
-      - node          # >= 18，只用标准库，无 npm 依赖
-  runtimes:
-    - pi            # 没有子代理：并发步骤在当前会话串行做，产出一致
-    - claude-code
-    - codex
+    bins: [node]
+  runtimes: [pi, claude-code, codex]
 ---
 
-## novel-outline
+# novel-outline
 
-输入一本小说 + 目标参数，输出短剧改编大纲五件套。**四件模型写、一件脚本算**（资产清单从分集数据自动汇总）。
+`{baseDir}` 为本文件目录。脚本是 `{baseDir}/scripts/novel-outline.mjs`，Node 18+ 标准库，无第三方 skill 依赖。所有交付位于 `<工作目录>/outline/`；临时分卷与评审材料位于其中的 `.work/`。JSON 是唯一编辑源，Markdown/HTML 不反向编辑。HTML 不进入版本控制。
 
-`{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/novel-outline.mjs`，零依赖，`node` 直接跑。
+## 职责与边界
 
-**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。
+组织重要事件，不写完整剧本台词、不做分镜、不生成图片。保留改编证据、角色来源与分档、场景和道具。资产汇总必须由 `assets` 计算，不另建顶层手写清单。画幅不能推导节奏，题材标签不能触发代码分支。视觉正文仍来自 production.style，不由创作 profile 替代。
 
-**边界（不做的事）**：不写剧本台词、不做分镜、不出图像/TTS 提示词。梗概是叙述体，出现引号对白就是越界——`validate` 会拦。想从小说拆角色设定（画像/形象提示词/设定图），那是 `novel-characters` 的活。
+## 1. 确认材料、参数与选择
 
----
+读取实际输入；不可凭书名脑补。确认总集数、每集分钟、作品题材描述、原创/忠实/抽核/借壳与用户偏好。角色清单可以从已有项目 JSON 获取，但运行不依赖其他 skill 安装。
 
-### Step 0 — 收参数 ⛔ 缺了不开工
+读取项目根 production.json；不存在时明确独立运行。损坏或不支持的配置不能当作不存在。autopilot 仅在严格布尔 true 时开启：自行作出有依据的选择并逐项汇报，不等待审批，但不跳过检查和评审。
 
-一次问完，别轮流盘问。两件必问 + 两件给默认值待确认：
-
-| 参数 | 处理 |
-| --- | --- |
-| **总集数 × 单集时长** | **必问**，没有合理默认 |
-| **题材** | **必问**，决定爽点类型，猜错整份废 |
-| 改编幅度 | 默认**抽核**（忠实 / 抽核 / 借壳），告知即可 |
-| 已有偏好 | 默认无（想保哪个角色、哪场戏） |
-
-平台阈值不同可以带上 `params.thresholds` 覆盖（默认：主角组 ≤ 5、重要配角 ≤ 10、功能性角色 ≤ 10、爽点间隔 ≤ 3 集）。**主场景上限不用配，随集数自动算**：4 + ⌈集数/10⌉，夹在 5–15（60 集 → 10）。这是 AI 短剧的数——场景是生成的没有搭景钱，放宽换观赏性；显式给 `maxPrimaryScenes` 才覆盖。**短篇（20–30 集）建议收紧角色档的阈值**，默认值是按 60 集以上给的。
-
-**人物表从原文拆**——大纲是角色设定的上游，`characters` 块定下的分档、人物线与来源，下游 `novel-characters` 直接拿去当角色清单，不用再判断一遍谁重要。
-
-例外是用户手上已经有 `cast.json`（此前单独跑过 `novel-characters`）：那就拿来当人物原料，角色、别名、关系都是现成的，不用重拆原文。分档按 `importance` 反向映射：protagonist/major → `lead`，supporting → `support`，minor → `functional`。
-
-### Step 0.5 — 自动驾驶（autopilot）
-
-**开工前先看一眼工作目录根的 `production.json` 顶层 `autopilot`**（`novel-setup` 的产出，从段目录向上最多 5 层找得到）。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` / `checkup` 找到它也会打印一句 `↳ 自动驾驶：开`——但那时 Step 0 已经跑过了，所以这一眼要自己看。
-
-没有 `production.json`、字段写着 `false` 或者整个没写，就是上面那些步骤原来的样子。
-
-| 原本 | 自动驾驶下 |
-| --- | --- |
-| Step 0 必问总集数 × 单集时长 | 用户给了就用；没给自己定（按题材与原文体量取常规值），定了多少写进汇报 |
-| Step 0 必问题材 | 从给到的文本判断，判断依据写进汇报 |
-| **Step 3 三件事摆给用户拍板** | 快版骨架照出、`--stage beats` 照过，**砍了哪条线、合了哪些人、大爆点落第几集自己核对**，写进汇报后直接进 Step 5 |
-| Step 4 吸收用户意见改骨架 | 没有意见可吸收，跳过 |
-| 体检模式缺字段 | 标注缺失，不问用户 |
-
-**转移的是审批权，不是取消检查点**：14 道门照样要过（`validate` 没过就修到过），快版骨架照样要出——只是不再等人点头。**替用户做的每一个决定都要写进最后的汇报**：定了什么、依据是什么，一条不漏。
-
-### Step 1 — 定位输入
-
-材料优先级，写死：
-
-1. 用户点名的**精读章节**
-2. **章节目录 + 简介**
-3. 全文**分卷摘要**（Step 2）
-
-**禁止凭书名脑补内容**——一切判断基于给到的文本。落地手段：`adaptation.keep` 的关键取舍要附 `evidence`（原文逐字片段）。
-
-直接粘正文的先落成 .txt。
-
-**产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/outline/`——`<书名>-outline.json`、`<书名>-outline.md`、`outline-report.html` 都在这一格里。工作目录根只住 `production.json`（`novel-setup` 的产出），别的 skill 各占自己的一格（`characters/`、`art/`、`script/`、`creation/`）。用户没指定工作目录就用原书同级目录，**但段目录这一层不省**——合并报告的 `--from` 自动发现就是按段目录名找 JSON 的，平铺在根目录它找不到。下文的 `<段目录>` 就指 `<工作目录>/outline/`。
-
-分卷摘要、分集片段这类脚手架写进 `<段目录>/.work/`，跑完可以整个删掉，不影响任何交付物。
-
-跑过 `novel-setup` 的项目这条是查的：`validate` 找到 `production.json` 就顺带核对落点，放错了会点名该去哪；没找到那份文件就无从判断工作目录根在哪，明说跳过。
-
-### Step 2 — 分卷摘要（长文本才需要）
-
-**这一步是脚手架，不是交付物**——分卷摘要是给没读过原文的模型压缩用的。两种情况直接跳到 Step 3：
-
-- 短篇，单卷装得下
-- **当前会话已经通读过原文**——不用再压缩一遍，也不用事后补档
-
-长篇且没读过原文：
+读取本地 [schema](references/schema.md)、[策略契约](references/profile-contract.md)、[通用评审](references/review-core.md)。四维选择来自 production.creative.selection；独立模式显式提供完整 selection 文件。既有项目缺少 creative 不自动套入新策略。新创作先建议并确认四维组合，不能隐式默认密集兑现。
 
 ```bash
-node {baseDir}/scripts/novel-outline.mjs chunk <book.txt> <段目录>/.work
+node {baseDir}/scripts/novel-outline.mjs profiles
+node {baseDir}/scripts/novel-outline.mjs profile --selection selection.json
+node {baseDir}/scripts/novel-outline.mjs apply-profile outline.json --production ../production.json
+# 独立模式改为 --selection selection.json
+# 确认预览中每项差异后：
+node {baseDir}/scripts/novel-outline.mjs apply-profile outline.json --production ../production.json --decisions decisions.json --confirm
 ```
 
-按章节标题分卷（默认每卷 15 章，`--per-volume` 可调），识别不出章节就按字数切。打印 `{"volumes": N, ...}`；`truncated: true` 就明确告诉用户尾部没扫到，别闷着。
+读取四个实际加载的指南。所有注册规则整体从中性基线重建；旧覆盖不能自动沿用。需要覆盖时提交完整规则对象，路径见策略契约。应用会备份并原子写入；validate/render 不重新应用。相同版本摘要漂移禁止继续创作：恢复来源，或建立新版本并更新选择后重新应用。缺少本地来源可历史读取，但不能宣称来源已核验。
 
-每卷一份任务：读 `{baseDir}/references/volume-pass.md`，读 `<段目录>/.work/vol-NN.txt`，把卷摘要写到 `<段目录>/.work/summary-NN.json`，只回一句「done NN」。**有子代理就每卷一个、所有调用放在同一条消息里**（Claude Code 的 Task、codex 的 subagent）；**pi 默认不带子代理**，就在当前会话里一卷一卷顺着做，产出一致。
+## 2. 长文本分卷
 
-### Step 3 — 快版骨架 → 用户拍板 ⛔
-
-读 `{baseDir}/references/outline-pass.md` 和 `{baseDir}/references/schema.md`，照着做。产出骨架四块（adaptation / characters / scenes / beats），写成 `<段目录>/<书名>-outline.json`（段目录不存在就先 `mkdir -p`）——**骨架从一开始就落在交付路径上**，后面几步都在同一份文件上加东西，不再搬家。
+短篇或已经完整读过原文可跳过。其余按 [分卷指南](references/volume-pass.md)：
 
 ```bash
-node {baseDir}/scripts/novel-outline.mjs validate <段目录>/<书名>-outline.json --stage beats
+node {baseDir}/scripts/novel-outline.mjs chunk book.txt outline/.work --per-volume 15
 ```
 
-过了 beats 档，**把三件事摆给用户拍板：砍了哪条线、合了哪些人、大爆点落在第几集**。不点头不进 Step 4——快版错了只损失一轮骨架，分集写完才发现方向错，全废。
+优先章节切分，否则按字数并带重叠切分。最多 60 卷；truncated 必须汇报，不冒称全文覆盖。有子代理可分卷并发，没有则串行。逐字证据保留原语言，明确材料缺口。
 
-### Step 4 — 细版骨架
+## 3. 先确立故事，再建立骨架
 
-吸收用户意见改骨架，再过一次 `validate --stage beats`。用户没意见就直接进 Step 5。
+读取 [骨架指南](references/outline-pass.md)。先确认处境、贯穿线索、观众期待和结束意义，再写节点。原创明确声明原创，不伪造原作证据。群像、单元故事与开放结局都合法。
 
-### Step 5 — 分集梗概（分批）
-
-**每批 ≤ 10 集**，有子代理就并发、没有（例如 pi）就在当前会话串行做。每份任务拿到：拍板后的骨架四块、自己负责的集数区间、区间内的爽点，读 `{baseDir}/references/episode-pass.md` 照着写，产出写到 `<段目录>/.work/eps-NN.json`。
-
-合并时按 ep 排序拼进 `<段目录>/<书名>-outline.json` 的 `episodes`。
-
-### Step 6 — 校验 ⛔ 不能跳
+先写 story、adaptation、characters、scenes、可选 props 和有效 params，执行 skeleton。然后加入 beats、endingBeatId 与可选 arcs，执行 beats：
 
 ```bash
-node {baseDir}/scripts/novel-outline.mjs validate <段目录>/<书名>-outline.json
+node {baseDir}/scripts/novel-outline.mjs validate outline.json --stage skeleton
+node {baseDir}/scripts/novel-outline.mjs validate outline.json --stage beats
 ```
 
-14 道质量门全部是代码，不是给你读的清单：主角组 1–5 人、重要配角 ≤ 10、功能性角色 ≤ 10、主场景不超上限（随集数动态，60 集 → 10）、叙事道具 ≤ 8 件、一次性场景有规避方案、爽点间隔 ≤ 3 集无真空、第 1 集有钩子、大爆点不压最后一集、每集三栏齐全、三人同框有拆解、生成难点进预警、引用完整无失业角色无空转场景无零集道具、叙述体无对白。
+快版确认作品承诺、保留/砍掉/合并决定、主要节点与结束位置。用户确认后细化；自动驾驶自行审查并记录决定。阶段通过不等于完整交付通过。
 
-**有违规逐条修，改完重跑，直到通过。**
+## 4. 分批写作
 
-### Step 7 — 输出与汇报
+按 [分集指南](references/episode-pass.md)，每批最多 10 集。默认顺序衔接，传入此前状态、已知信息、未解决问题与后续承诺；只有这些边界明确才并发。
+
+节点所属集号只在 beats[].episode 保存。每集使用 opening/synopsis/ending，禁止继续写 hook/suspense/crowdPlan。仅主要集尾问题进入 Q 计划；required 必须由后续唯一节点解决。默认期限仅用于新建问题，不重写旧问题。sceneIds/characterIds/propIds 只引用已登记资产，人数不等于同框人数。
+
+## 5. 检查与内容评审
 
 ```bash
-cd <段目录>
-node {baseDir}/scripts/novel-outline.mjs render <书名>-outline.json --md   > <书名>-outline.md
-node {baseDir}/scripts/novel-outline.mjs render <书名>-outline.json --html > outline-report.html
+node {baseDir}/scripts/novel-outline.mjs validate outline.json
+node {baseDir}/scripts/novel-outline.mjs checkup outline.json --json
 ```
 
-报告界面默认中文；用户要英文界面就加 `--lang en`（或在 outline.json 顶层写 `lang` 字段，也可以在工作目录根的 `production.json` 里一处定死；优先级 `--lang` > outline.json > production.json > 中文）。只翻译界面文案，数据内容（爽点类型、梗概、质量门文案）原样出。
+基础错误与 error 策略失败阻断；warn 是提醒，不算通过；off 是 policy-disabled 跳过。缺少上游、阶段不完整和不适用分别汇报。制作风险扫描仅提示，不因关键词强迫情节变化。
 
-report 里自带：KPI 带、关键决策（拍板三件事，大爆点列表和角色位统计自动算）、爽点时间轴（空档标在轴上，超阈值变红）、每集调度矩阵、场景概览卡、资产量折算、质量门（✓/✗ 烘进页面，未过弹病灶横幅）、导出 JSON 按钮（下载的就是 outline.json 原样）。
+完整检查后，按 review-core 与四份策略指南进行内容评审，引用具体集号/节点。检查因果、证据、角色选择、重复计数和跨批次状态；不能以字符串不同证明推进，不能以 ID 存在证明事件成立。评审材料存放当前 .work，不新增失败累积日志或永久总分。
 
-汇报一句话说清：几集、几个角色几个场景、爽点分布、报告路径；被截断或有没过的门要明说。
+切换策略后重新检查本阶段、项目选择和已知 script/creation JSON。CLI 重新检查当前产物，并执行已知下游 JSON 的本地接口检查（版本、选择、集号、目标时长与节点认领），发现失效项返回非零。下游完整规则、制作技术及表达校验由各自阶段执行；未执行时应用流程仍未完成，不得宣称联合通过。事件删除或改写必须同步下游认领，不能无差别重编号。
 
-最终落地：
-
-```
-<工作目录>/
-├── production.json                ← novel-setup 的产出，住在根目录
-└── outline/                       ← 本 skill 的全部产出，一格装满
-    ├── <书名>-outline.json
-    ├── <书名>-outline.md
-    ├── outline-report.html        ← 双击就能开
-    └── .work/                     ← 分卷摘要与分集片段，跑完可删
-```
-
----
-
-## 体检模式
-
-用户贴一份**已有大纲**只想要诊断：转成 outline.json（缺的字段问用户或标注缺失），然后：
+## 6. 交付与报告
 
 ```bash
-node {baseDir}/scripts/novel-outline.mjs checkup <outline.json>   # 终端 ✓/✗
-node {baseDir}/scripts/novel-outline.mjs render <outline.json> --html > outline-report.html
+node {baseDir}/scripts/novel-outline.mjs render outline.json --md > outline.md
+node {baseDir}/scripts/novel-outline.mjs render outline.json --html > outline-report.html
+node {baseDir}/scripts/novel-outline.mjs render outline.json --html --lang en > outline-report.en.html
+node {baseDir}/scripts/novel-outline.mjs assets outline.json
 ```
 
-质量门面板就是诊断书。未过的门不阻止渲染——要的就是把病灶摆出来看。
+语言顺序：--lang > 文档 lang > production.lang > zh。只翻译界面，故事原文保持。报告优先作品承诺与当前有效配置，不以兑现密度作为所有作品首页指标。展示节点、分集、阶段、证据、资产矩阵、来源和检查分类。导出 JSON 与输入值一致，不补默认值或评审结论。
 
-## 联动更新
+汇报路径、检查阶段、阻断项/提醒/跳过原因、来源状态、项目对账状态和内容评审是否执行。只有 full 无阻断项才能交付完整本地大纲；独立零退出码不证明联合交付。
 
-用户改了上游就跑一次 `validate`，报错会点名下游哪里断了：合并人物后哪些集还引用着被删的 ID、砍场景后哪些集空转、爽点挪动后哪里出现真空区。**不要靠记忆提示联动，靠校验器。**
+## 迁移与样例
 
-## 边界
+v1 缺版本数据明确拒绝，见 [迁移指南](references/migration.md)。不能只重命名旧字段。
 
-- 单次上限 60 卷（每卷 15 章约 900 章）。超了明确报 `truncated`，不静默截断
-- 阈值是参数不是圣旨：平台不同就用 `params.thresholds` 覆盖，别改代码
-- 报告界面内置中英（`--lang`，默认中文、或跟 outline.json 的 `lang` 字段、或跟 `production.json`）：界面文案与质量门标签翻译，数据内容（爽点类型、梗概、人名）与门的失败详情保持原文
-- 五件套的第五件（资产清单）永远是算出来的，模型手写必漏
-
-## 自测
+自有样例 [旧站时刻](examples/旧站时刻-outline.json) 先有 [故事提案](examples/故事提案.md)，展示渐进累积、无兑现分集、非最终收束、非兑现最终节点和有理由的开放问题。不会借用兄弟正式样例。
 
 ```bash
 node {baseDir}/scripts/selftest.mjs
 ```
-
-270 项断言，不调模型、不花额度。14 道质量门每一道都有击穿用例——证明它真的会拦。改完脚本先跑这个。
-
-## 自带样例
-
-`{baseDir}/examples/渡口-outline.json`：把短故事《渡口》（novel-characters 的自带样例）改编成 6 集 × 2 分钟的微型大纲，四角色三场景四爽点，全部质量门通过。当质量基准，也是自测夹具。

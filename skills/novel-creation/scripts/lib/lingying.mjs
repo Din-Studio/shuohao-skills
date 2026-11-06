@@ -19,6 +19,7 @@
 //
 // 零依赖，Node 18+（用到全局 fetch）。
 
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -240,9 +241,10 @@ export function loadLedger(dir, { readImpl = readFileSync, existsImpl = existsSy
   if (!existsImpl(p)) return {};
   try {
     const j = JSON.parse(readImpl(p, 'utf8'));
-    return j && typeof j === 'object' ? j : {};
-  } catch {
-    return {}; // 台账坏了不该阻断下单，大不了重新提交
+    if (!j || typeof j !== 'object' || Array.isArray(j)) throw new Error('必须为对象');
+    return j;
+  } catch (e) {
+    throw new Error(`任务台账不可读：${p}：${msgOf(e)}；请核实后恢复台账，不能静默重复提交`);
   }
 }
 
@@ -279,6 +281,17 @@ function alreadyDone(dest, { statImpl = statSync, existsImpl = existsSync } = {}
   } catch {
     return false;
   }
+}
+
+const canonical = value => Array.isArray(value) ? value.map(canonical)
+  : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])])) : value;
+const sha256 = value => createHash('sha256').update(value).digest('hex');
+
+/** Identity excludes uploaded URLs (which can expire), but includes ordered local reference bytes. */
+export function inputIdentity(job, {model, inputBase = {}, outDir}) {
+  const images = (job.images ?? []).map(i => ({path:i.path, sha256:sha256(readFileSync(resolve(outDir, i.path)))}));
+  return sha256(JSON.stringify(canonical({model, file:job.file,
+    input:buildInput(job, inputBase, images.map(i => i.path)), images})));
 }
 
 /**
@@ -322,17 +335,39 @@ export async function runBatch(jobs, {
   const ledgerAt = ledgerDir ?? outDir;
   const ledger = loadLedger(ledgerAt);
   const pending = [];
+  const identities = new Map();
   for (const job of jobs) {
     const dest = resolve(outDir, job.file);
-    if (!force && alreadyDone(dest)) {
-      record(job, 'skipped', { detail: '已有产物，跳过（--force 覆盖）' });
+    const previous = ledger[job.key];
+    // Legacy output without a ledger stays untouched, but is not claimed input-verified.
+    if (!force && !previous && alreadyDone(dest)) {
+      record(job, 'skipped', { detail: '已有产物但无输入台账，未核验身份；需要重新生成时使用 --force' });
       continue;
     }
-    pending.push(job);
+    try {
+      const identity = inputIdentity(job, {model, inputBase, outDir});
+      identities.set(job.key, identity);
+      if (!force && previous && previous.inputIdentity !== identity) {
+        record(job, 'failed', {detail:'旧任务／产物输入身份失效或不可核验；请确认模型、提示词、时长和参考图后使用 --force 重新提交'});
+        continue;
+      }
+      if (!force && previous?.status === 'completed' && alreadyDone(dest)) {
+        record(job, 'skipped', {detail:'输入身份匹配，已有产物，跳过（--force 重新提交）'});
+        continue;
+      }
+      if (force) {
+        // Invalidate before any upload/submit: a failed force must never resurrect the old task.
+        ledger[job.key] = {model, file:job.file, inputIdentity:identity, status:'invalidated'};
+        saveLedger(ledgerAt, ledger);
+      }
+      pending.push(job);
+    } catch (e) {
+      record(job, 'failed', {detail:`参考图／输入身份无法核验：${msgOf(e)}`});
+    }
   }
 
   /* --- 参考图整批去重上传（不分波次，视频任务之间没有互相依赖） --- */
-  const localPaths = [...new Set(pending.flatMap((j) => (j.images ?? []).map((i) => i.path)))];
+  const localPaths = [...new Set(pending.filter(j => force || !ledger[j.key]?.taskId).flatMap((j) => (j.images ?? []).map((i) => i.path)))];
   const urlOf = new Map(); // 本地路径 → URL，跨整批任务共用
   const uploadFailed = new Map(); // 本地路径 → 失败原因
   if (localPaths.length) {
@@ -353,7 +388,7 @@ export async function runBatch(jobs, {
       record(job, 'failed', { detail: `参考图 ${badRef.path} 上传失败：${uploadFailed.get(badRef.path)}` });
       return;
     }
-    const reuse = ledger[job.key]?.taskId;
+    const reuse = !force && ledger[job.key]?.taskId;
     if (reuse) {
       // 上次提交过但没拿到视频：接着轮询它，不重复提交
       log(`↻ ${job.name}：接着轮询上次的任务 ${reuse}`);
@@ -363,7 +398,7 @@ export async function runBatch(jobs, {
     const urls = (job.images ?? []).map((i) => urlOf.get(i.path));
     try {
       const taskId = await submitTask({ bin, model, inputData: buildInput(job, inputBase, urls), exec });
-      ledger[job.key] = { taskId, model, file: job.file, submittedAt: now() };
+      ledger[job.key] = { taskId, model, file: job.file, inputIdentity:identities.get(job.key), status: 'pending', submittedAt: now() };
       saveLedger(ledgerAt, ledger); // 提交一个存一个——中断在哪都能续
       log(`→ ${job.name}：已提交 ${taskId}`);
       submitted.push({ job, taskId });
@@ -384,14 +419,14 @@ export async function runBatch(jobs, {
     });
     if (r.status !== 'success') {
       // timeout 的 task_id 留在台账里，重跑接着轮询；failed 的清掉，重跑会重新提交
-      if (r.status === 'failed') delete ledger[job.key];
+      if (r.status === 'failed') ledger[job.key] = {model, file:job.file, inputIdentity:identities.get(job.key), status:'failed'};
       saveLedger(ledgerAt, ledger);
       record(job, r.status, { taskId, detail: r.detail });
       return;
     }
     try {
       const bytes = await downloadTo(r.url, resolve(outDir, job.file), { fetchImpl });
-      delete ledger[job.key]; // 视频落地了，台账里这条的使命就结束了
+      ledger[job.key] = { ...ledger[job.key], status:'completed' }; // 保留当前输入身份，防止变更后复用旧产物
       saveLedger(ledgerAt, ledger);
       record(job, 'ok', { taskId, bytes, url: r.url });
       log(`✓ ${job.name} → ${job.file}（${Math.round(bytes / 1024)} KB）`);

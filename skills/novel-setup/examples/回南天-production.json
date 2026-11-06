@@ -46,5 +46,26 @@
     "model": "MiniMax H3",
     "aspectRatio": "9:16",
     "resolution": "768p"
+  },
+  "creative": {
+    "version": 1,
+    "selection": {
+      "genre": {
+        "id": "slice-of-life",
+        "version": "1.0.0"
+      },
+      "narrativeStyle": {
+        "id": "warm",
+        "version": "1.0.0"
+      },
+      "structure": {
+        "id": "episodic",
+        "version": "1.0.0"
+      },
+      "pacing": {
+        "id": "measured",
+        "version": "1.0.0"
+      }
+    }
   }
 }

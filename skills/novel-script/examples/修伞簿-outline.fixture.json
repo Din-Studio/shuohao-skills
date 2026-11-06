@@ -1,0 +1,260 @@
+{
+  "schemaVersion": 2,
+  "source": "修伞簿",
+  "fixtureScope": "本 skill 自有大纲消费接口夹具；仅声明用于项目身份对账的选择快照，不伪造兄弟 profile 摘要，也不声称这是已通过大纲完整校验的产物。",
+  "creativeContext": {
+    "selection": {
+      "genre": { "id": "life", "version": "1.0.0" },
+      "narrativeStyle": { "id": "warm", "version": "1.0.0" },
+      "structure": { "id": "episodic", "version": "1.0.0" },
+      "pacing": { "id": "measured", "version": "1.0.0" }
+    }
+  },
+  "params": {
+    "episodes": 3,
+    "minutesPerEpisode": 1,
+    "genre": "生活与亲情",
+    "rules": {
+      "payoffCoverage": {
+        "level": "off"
+      },
+      "firstMajor": {
+        "level": "off"
+      },
+      "majorGap": {
+        "level": "off"
+      },
+      "endingPayoff": {
+        "level": "off"
+      },
+      "endingModes": {
+        "level": "off"
+      },
+      "optionalQuestions": {
+        "level": "off"
+      },
+      "stateProgress": {
+        "level": "off"
+      },
+      "arcCoverage": {
+        "level": "off"
+      },
+      "arcPayoff": {
+        "level": "off"
+      }
+    },
+    "defaults": {
+      "questionResolveWithin": null
+    }
+  },
+  "story": {
+    "focusCharacterIds": [
+      "C01"
+    ],
+    "premise": "一把旧伞让修伞人想起离散母亲。",
+    "throughline": "从凭纹路猜认身份转向双方自愿的询问。",
+    "audiencePromise": "在修补小事中看见人的边界与耐心。",
+    "ending": "得到继续谈话的约定，亲缘身份仍然开放。",
+    "endingBeatId": "B06"
+  },
+  "characters": [
+    {
+      "id": "C01",
+      "name": "林禾",
+      "from": "原创",
+      "tier": "lead",
+      "role": "修伞人，寻找母亲但不以纹路认亲"
+    },
+    {
+      "id": "C02",
+      "name": "陈岚",
+      "from": "原创",
+      "tier": "support",
+      "role": "旧伞的主人，守护修伞师傅的隐私"
+    },
+    {
+      "id": "C03",
+      "name": "许秋",
+      "from": "原创",
+      "tier": "support",
+      "role": "曾传授绕线方法的修伞师傅，自愿前来谈话"
+    }
+  ],
+  "scenes": [
+    {
+      "id": "S01",
+      "name": "街角修伞铺",
+      "description": "临街工作台和存放修伞簿的抽屉。"
+    }
+  ],
+  "props": [
+    {
+      "id": "P01",
+      "name": "蓝线旧伞",
+      "beatIds": [
+        "B01",
+        "B02"
+      ]
+    },
+    {
+      "id": "P02",
+      "name": "修伞簿",
+      "beatIds": [
+        "B03",
+        "B06"
+      ]
+    },
+    {
+      "id": "P03",
+      "name": "联系纸条",
+      "beatIds": [
+        "B04",
+        "B05"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "id": "B01",
+      "episode": 1,
+      "position": "early",
+      "kind": "event",
+      "type": "修补识别",
+      "setup": "客户送来旧伞。",
+      "outcome": "林禾发现蓝线绕法与童年记忆相似，但只确认伞骨需要修补。"
+    },
+    {
+      "id": "B02",
+      "episode": 1,
+      "position": "ending",
+      "kind": "turn",
+      "type": "选择询问",
+      "setup": "记忆让林禾想立刻追问旧伞来源。",
+      "outcome": "林禾交还修好的伞，并预约在客户同意后询问修伞人。"
+    },
+    {
+      "id": "B03",
+      "episode": 2,
+      "position": "early",
+      "kind": "pressure",
+      "type": "证据降温",
+      "setup": "林禾期待旧簿能证明某种唯一联系。",
+      "outcome": "旧簿表明同样的手法传授给多人，陈岚拒绝擅自提供私人地址。"
+    },
+    {
+      "id": "B04",
+      "episode": 2,
+      "position": "ending",
+      "kind": "event",
+      "type": "尊重边界",
+      "setup": "林禾不能靠纹路确认身份，也不能越过隐私。",
+      "outcome": "林禾留下自己的联系方式，让对方决定是否见面。"
+    },
+    {
+      "id": "B05",
+      "episode": 3,
+      "position": "early",
+      "kind": "event",
+      "type": "当面核实",
+      "setup": "陈岚转交了林禾的邀请。",
+      "outcome": "许秋自愿前来，确认自己教过这种修伞方法，却未说明亲缘身份。"
+    },
+    {
+      "id": "B06",
+      "episode": 3,
+      "position": "ending",
+      "kind": "payoff",
+      "type": "获得谈话",
+      "weight": "minor",
+      "setup": "林禾想知道身份，却接受对方也需要时间。",
+      "outcome": "双方约定明天继续谈话，林禾只记录约定，不写下未经确认的身份。"
+    }
+  ],
+  "episodes": [
+    {
+      "ep": 1,
+      "opening": "陈岚把一把缠着蓝线的旧伞放到林禾的修伞台上。",
+      "ending": {
+        "mode": "closure",
+        "event": "林禾交还修好的伞，向陈岚预约下一次询问。"
+      },
+      "synopsis": "旧伞勾起记忆，林禾先修伞再征求询问机会。",
+      "characterIds": [
+        "C01",
+        "C02"
+      ],
+      "sceneIds": [
+        "S01"
+      ],
+      "propIds": [
+        "P01"
+      ],
+      "stateChange": {
+        "before": "相信纹路可能是母亲的唯一标记。",
+        "after": "愿意先询问，不把相似当作证据。"
+      }
+    },
+    {
+      "ep": 2,
+      "opening": "林禾翻开修伞簿，发现同样的绕线方法记在不同人的名字旁。",
+      "ending": {
+        "mode": "closure",
+        "event": "陈岚带走林禾自愿留下的联系方式，没有交出许秋的地址。"
+      },
+      "synopsis": "旧簿不能确认身份，林禾尊重客户的隐私边界。",
+      "characterIds": [
+        "C01",
+        "C02"
+      ],
+      "sceneIds": [
+        "S01"
+      ],
+      "propIds": [
+        "P02",
+        "P03"
+      ],
+      "stateChange": {
+        "before": "想通过地址马上找到答案。",
+        "after": "愿意让对方决定是否见面。"
+      }
+    },
+    {
+      "ep": 3,
+      "opening": "许秋来到修伞台前，把陈岚转交的纸条放在桌上。",
+      "ending": {
+        "mode": "open",
+        "event": "许秋答应明天再来谈谈，林禾在修伞簿上写下约定而不是母亲的名字。",
+        "question": {
+          "id": "Q01",
+          "text": "许秋与林禾失散的母亲是什么关系？",
+          "resolution": "optional",
+          "reason": "本次完成的是自愿谈话的开始，身份答案留待双方愿意继续交流。"
+        }
+      },
+      "synopsis": "许秋赴约，双方决定逐步谈起过去。",
+      "characterIds": [
+        "C01",
+        "C03"
+      ],
+      "sceneIds": [
+        "S01"
+      ],
+      "propIds": [
+        "P02",
+        "P03"
+      ],
+      "stateChange": {
+        "before": "担心不认亲就会错过机会。",
+        "after": "接受先谈话，暂不确定身份。"
+      }
+    }
+  ],
+  "adaptation": {
+    "keep": [],
+    "cut": [],
+    "merge": [],
+    "risks": [
+      "原创样例，没有原作证据；修伞纹路不能单独证明身份。"
+    ]
+  }
+}

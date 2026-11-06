@@ -1,0 +1,12 @@
+{
+  "profileSchemaVersion": 1,
+  "dimension": "pacing",
+  "id": "measured",
+  "version": "1.0.0",
+  "stage": "outline",
+  "guide": "guide.md",
+  "rules": {},
+  "defaults": {
+    "questionResolveWithin": null
+  }
+}

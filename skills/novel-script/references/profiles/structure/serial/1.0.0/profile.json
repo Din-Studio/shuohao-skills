@@ -1,0 +1,9 @@
+{
+  "profileSchemaVersion": 1,
+  "dimension": "structure",
+  "id": "serial",
+  "version": "1.0.0",
+  "stage": "script",
+  "guide": "guide.md",
+  "rules": {}
+}

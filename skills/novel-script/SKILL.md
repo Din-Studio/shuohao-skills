@@ -1,181 +1,114 @@
 ---
 name: novel-script
-version: 1.5.0
+version: 2.0.0
 description: |
-  给 AI 短剧写剧本：把 novel-outline 的分集梗概落成结构化的场次 + 节拍流（动作节拍与台词行交替），
-  台词逐句带说话人与语气，时长逐集按语速确定性折算。产出 script.json + Markdown + 单页评审报告
-  （时长仪表 / 分集剧本 / 场次总表 / 按角色聚合的台词本，含导出 JSON）。
-  剧本管戏，分镜管拍——本 skill 不分镜头、无镜号、不写生成提示词，那些是下一层 `novel-creation` 的活。
-  10 道质量门全部由脚本确定性检查（每集时长 ±15%、单句 ≤35 字、说话人合法、钩子悬念落纸、
-  钩子具象前 3 拍内兑现（hookBeat 认领冷开场）、每场至少一个动作节拍、爽点认领、
-  角色/场景/光照/道具对账上游……）。
-  有 outline.json 就用 seed 预填每集骨架；给 --art 连光照状态一起对账。
-  零依赖、零 API key，用当前会话额度。
-  production.json 顶层 autopilot 为 true 时全程不打断——没有大纲也不问、批次之间不等确认，做过的决定写进汇报。
-  Use when asked to 写剧本、出剧本、台词、场次、写戏、screenwriting for AI short drama。
-# 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
+  把分集故事写成结构化场次与节拍流。支持独立创作或 outline v2 严格投影，
+  按稳定节点 ID 认领核心表现范围，核对开场、集尾和上游目标时长。
+  题材、叙事风格、结构、节奏通过本地 profiles 显式选择；不预设密集兑现。
+  输出 JSON、Markdown、离线中英报告。剧本不分镜、不出图、不调用付费模型。
+  Use when asked to 写剧本、台词、场次、写戏、screenwriting、script。
 allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
 triggers:
   - novel-script
   - 剧本
   - 写剧本
-  - 出剧本
-  - 写台词
-  - 场次
-  - 写戏
+  - 台词
   - screenplay
-  - script
 metadata:
   license: Apache-2.0
   requires:
-    bins:
-      - node          # >= 18，只用标准库，无 npm 依赖
-  runtimes:
-    - pi            # 没有子代理：并发步骤在当前会话串行做，产出一致
-    - claude-code
-    - codex
+    bins: [node]
+  runtimes: [pi, claude-code, codex]
 ---
 
-## novel-script
+# novel-script v2
 
-给 AI 短剧写**剧本**。**前提刻在骨子里：剧本管戏，分镜管拍**——「爽不爽」和「怎么拍」是两种迭代节奏，台词要反复推翻重写，绑上镜头分解每改一句都得重排镜头。所以这层只有集、场次、节拍流，没有镜号；镜头、视频提示词与参考图挂载、生成批次都是下一层 `novel-creation` 的活。
+剧本负责人物行为和表达。分镜、镜号、镜头节奏、模型提示词、参考图和生成调度属于视频创作阶段。本 skill 自包含，只交换项目 JSON，不 import 兄弟代码，不读取兄弟样例或第三方 skill。
 
-但有一条底线：**台词必须是结构化数据，不能写成散文**。每句台词是独立条目（说话人 + 台词 + 语气），动作是独立节拍——这是全部确定性检查的地基：
+`{baseDir}` 为本文件所在目录。Node 18+，标准库，无安装依赖。
 
-| 交付 | 解决什么 |
-| --- | --- |
-| 逐集时长预算 | 一集三分钟就是三分钟：台词按语速折算、动作按节拍估时，写超写欠当场拦下，不流到生成环节才发现 |
-| 节拍流（动作 ⇄ 台词） | 台词直接对接 TTS 逐句生成；动作节拍就是画面要发生的事。混成散文两头都喂不进管线 |
-| 每场至少一个动作节拍 | 纯对白的场是广播剧——AI 生成时没有画面可写 |
-| 开场钩子 + 结尾悬念 | 短剧的生死线，每集都要落在纸面；**钩子不是标签是第一拍**——`hookBeat` 认领具象位置，必须落在全集前 3 拍内（冷开场） |
-| 爽点认领 | 大纲说这一集有大爆点，剧本必须有戏认领它——防止改着改着把爆点改丢 |
-| 上游对账 | 场景/光照/道具对 art.json、角色对 outline.json，写了美术没登记的光照状态当场报 |
+## 1. 输入与创作选择
 
-`{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/novel-script.mjs`，零依赖，`node` 直接跑。
+读取工作目录的 `production.json`，或明确声明独立模式。已有项目没有 creative 时不偷偷套用新策略。新项目需确认四维选择；自动驾驶可以代为决定，但必须逐项汇报。画幅、画风和题材不自动决定节奏。
 
-**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。
+读取本地 [schema.md](references/schema.md)、[script-pass.md](references/script-pass.md)、[review-core.md](references/review-core.md) 和 [profile-contract.md](references/profile-contract.md)。
 
-**边界（不做的事）**：不分镜头、无镜号、不写画面生成提示词、不出图、不配乐——视频创作阶段的职责一件不碰。不改大纲结构（砍线合人是 `novel-outline` 的活）；不做角色和场景设定（`novel-characters` / `novel-art` 的活）。
-
----
-
-### Step 0 — 定输入与范围
-
-**outline.json 是剧本的直接上游**（分集梗概、爽点落点、单集时长都在里面），标准流程从它开始。没有的话先问用户是否跑 `novel-outline`；用户坚持直接写，就问清集数与单集分钟数，手建骨架，对账门会明说跳过。
-
-**产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/script/`——`<剧名>-script.json`、`<剧名>-script.md`、`script-report.html` 都在这一格里。工作目录根只住 `production.json`（`novel-setup` 的产出），别的 skill 各占自己的一格（`outline/`、`characters/`、`art/`、`creation/`）。用户没指定工作目录就用大纲同级目录，**但段目录这一层不省**——合并报告的 `--from` 自动发现就是按段目录名找 JSON 的，平铺在根目录它找不到。下文的 `<段目录>` 就指 `<工作目录>/script/`。
-
-跑过 `novel-setup` 的项目这条是查的：`validate` 找到 `production.json` 就顺带核对落点，放错了会点名该去哪；没找到那份文件就无从判断工作目录根在哪，明说跳过。
-
-**一次写几集**：默认一批 ≤ 3 集。剧本是全管线改得最凶的一层，小批量出、快拍板、再往下写。用户明确要全剧也分批产出，每批过一次校验。
-
-顺手带上（都可选，给了才对账/显示名字）：
-
-- `--outline`：角色引用对账 + 爽点认领检查 + 报告里 C01 显示成人名
-- `--art`：场景/光照状态/道具对账 + 报告里 S01 显示成场景名
-
-### Step 0.5 — 自动驾驶（autopilot）
-
-**开工前先看一眼工作目录根的 `production.json` 顶层 `autopilot`**（`novel-setup` 的产出，从段目录向上最多 5 层找得到）。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` / `checkup` 找到它也会打印一句 `↳ 自动驾驶：开`——但那时 Step 0 已经跑过了，所以这一眼要自己看。
-
-没有 `production.json`、字段写着 `false` 或者整个没写，就是各步原来的样子。
-
-| 原本 | 自动驾驶下 |
-| --- | --- |
-| Step 0 没有 outline.json 就问「要不要先跑 novel-outline」 | 不问：有就用，没有就按现有材料自己定集数与单集分钟数、手建骨架，对账门明说跳过，定了多少写进汇报 |
-| Step 0 一批 ≤ 3 集，小批量出、快拍板 | 批次照旧（改动集中、好回滚），但每批之间不停下来等确认——一路写到用户要的范围为止 |
-| Step 3 有违规逐条修 | 自己改到过门：写超先砍动作节拍再压台词、写欠补冲突不注水，不把「改哪一句」抛回去 |
-
-**转移的是审批权，不是取消检查点**：10 道门照样要过，需要一个美术没登记的光照状态时照样回 `art.json` 补状态而不是绕过门——只是不再等人点头。**替用户做的每一个决定都要写进 Step 4 的汇报**，一条不漏。
-
-### Step 1 — seed 骨架
+有上游时读取 outline v2、可选 art/cast。没有上游也可以创作，不要求安装其他 skill；明确哪些对账无法执行。提供损坏或不支持版本的上游必须失败，不能伪装成缺少上游。
 
 ```bash
-mkdir -p <段目录>
-node {baseDir}/scripts/novel-script.mjs seed <outline.json> --eps 1-3 > <段目录>/<剧名>-script.json
+node {baseDir}/scripts/novel-script.mjs profiles
+node {baseDir}/scripts/novel-script.mjs profile --selection selection.json
 ```
 
-确定性搬运：目标秒数（单集分钟 × 60）、钩子、悬念、该集爽点认领、候选场景与人物（进 `seedNote`）。**这些事实不要让模型重新想一遍。** scenes 留空，那才是写戏的活。
+四维全部加载本地匹配版本与指南。不能以相近 profile 替代缺失文件。来源漂移时停止继续创作：恢复原文件，或明确升级选择与版本。历史校验可以按已有有效参数运行，但必须展示来源提醒。
 
-### Step 2 — 逐集写戏
+## 2. 建立骨架并显式应用
 
-每集一份任务，有子代理就并发、没有（例如 pi）就在当前会话串行做，产出一致。每份任务拿到：
-
-- `{baseDir}/references/script-pass.md` 和 `{baseDir}/references/schema.md`（读它们，照着做）
-- 该集的 seed 骨架 + 大纲里这一集的梗概/爽点/人群方案
-- 该集用到的场景卡（art.json 里的锚点、光照状态）与角色信息（性情、说话方式——有 cast.json 更好）
-- **前一集的结尾悬念**（这一集的开场要接得上）
-
-核心要求都在 script-pass.md 里，最重的四条：**动作节拍只写常见动作**（挑担上船、搭手卸担这种 AI 见过千万次的；伸篙一挡、睫毛颤这种精巧动作生成必崩）；**时长预算先于一切**（三分钟一集约 50 个节拍，写完自己跑一遍 validate 看秒数）；台词口语、单句一口气、**谁的话像谁**（有 cast.json 就吃角色的性情与说话方式）；**每集第 1 拍冷开场给钩子的具象**（`hookBeat` 认领，门查位置），结尾一拍必须是悬念。
-
-写完把 `seedNote` 删掉。
-
-### Step 3 — 校验 ⛔ 不能跳
+所有正式产物放入 `<工作目录>/script/`。JSON 是唯一编辑源，Markdown/HTML 是派生视图。
 
 ```bash
-node {baseDir}/scripts/novel-script.mjs validate <script.json> \
-  --outline <outline.json> --art <art.json>
+mkdir -p <工作目录>/script
+node {baseDir}/scripts/novel-script.mjs seed outline.json --eps 1-3 > <工作目录>/script/作品-script.json
+node {baseDir}/scripts/novel-script.mjs apply-profile <工作目录>/script/作品-script.json --production <工作目录>/production.json
+# 审阅预览、冲突、旧覆盖和手工差异，再显式决定：
+node {baseDir}/scripts/novel-script.mjs apply-profile <工作目录>/script/作品-script.json --production <工作目录>/production.json --decisions decisions.json --confirm
 ```
 
-10 道质量门全是代码：每集时长在目标 ±15% 内（台词按 4.5 字/秒折算、动作按 2.5 秒/拍，`params` 可调）、单句台词 ≤ 35 字、说话人在本场人物里或标 `VO`、每集钩子悬念落纸、**钩子具象在全集前 3 拍内兑现**（`hookBeat` 认领，`params.hookWindow` 可调）、每场至少一个动作节拍、动作叙述体不混引号台词、爽点认领、角色对账、场景/光照/道具对账。
+独立模式以 `--selection selection.json` 代替 `--production`。没有 outline 时按 schema 手建骨架：集数和目标时长明确，场次为空，两个位置为 null，未规划上游节点时 beatClaims 为空数组。不伪造上游。
 
-**有违规逐条修，改完重跑，直到通过。** 写超了先砍动作节拍再压台词；写欠了补戏不注水——加冲突不加寒暄。需要一个美术没登记的光照状态时，去 art.json 里补状态再回来，不要绕过门。
+seed 逐字复制 opening 与 ending.mode/event，只按 ID 复制 beatClaims，绝不复制 Q。位置为 null，scenes 为空。seed 不冒充已应用策略，不复制大纲规则或来源摘要。
 
-### Step 4 — 输出与汇报
+应用从中性规则重建，非策略估时参数保持不变。旧覆盖必须选择保留、放弃或重新填写，不能隐式沿用。模块备份并原子写入。确认应用后 CLI 重检本地完整契约；骨架会显示未完成。另运行 `validate --stage skeleton` 只检查骨架阶段。应用不重写故事。
+
+## 3. 逐批写戏
+
+每批最多 3 集。顺序衔接；只有边界状态和跨批承诺明确时才并发。没有子代理时在当前会话顺序完成。
+
+先确定故事，再安排节点，再写场次。读取上游事件 setup/outcome、实际结尾方式和人物状态。flow 是动作与台词的有序序列，不要求机械交替，不强制每场动作数量或连续台词数量。
+
+- 每个上游节点分别认领。核心段按大纲顺序排列、两端包含、互不重叠。
+- 共同铺垫可以在核心段之外；核心段允许同集跨场次。
+- openingBeat 是有效坐标。endBeat 必须指向最后一拍。
+- opening/ending 是计划投影，不能在剧本中同义改写后冒充已对账。正文可以换表达。
+- 上游需要改动时先修订计划，再重新投影。不要通过改标签伪造节点落地。
+
+时长估算不等于真实表演。压缩先处理重复表达、无效过渡和不影响因果的动作，保护证据、人物选择与结果。仍无法容纳则返回大纲调整事件或时长。不执行“写超先删除动作”，不要求开场运动或结尾悬念。
+
+## 4. 基础检查、策略检查与内容评审
 
 ```bash
-cd <段目录>
-node {baseDir}/scripts/novel-script.mjs render <剧名>-script.json --md \
-  --outline <outline.json> --art <art.json> > <剧名>-script.md
-node {baseDir}/scripts/novel-script.mjs render <剧名>-script.json --html \
-  --outline <outline.json> --art <art.json> --cast <cast.json> > script-report.html
-# 英文界面：加 --lang en（默认中文，也可跟 script.json 顶层的 lang 字段，或工作目录根的 production.json）
+node {baseDir}/scripts/novel-script.mjs validate <工作目录>/script/作品-script.json --outline outline.json --art art.json --production <工作目录>/production.json
+node {baseDir}/scripts/novel-script.mjs checkup <工作目录>/script/作品-script.json --outline outline.json --json
 ```
 
-报告含：KPI 带（含台词占比）、时长仪表（每集条形打在目标区间带上，超欠标红）、分集剧本（一排两集，场次信息超过 300px 渐隐截断、点开展开）、场次总表、**台词本**（一排两个，按角色聚合、列表六行高可滚动、整组复制；给了 `--cast` 每个角色组头带**音色提示词**按钮——台词和音色一页配齐直接跑 TTS）、质量门面板、导出 JSON（下载的就是 script.json 原样）。
+基础失败或 error 策略失败返回非零。warn 未满足是提醒，不是通过。off 是 skipped/policy-disabled。缺上游是 skipped/missing-upstream，与关闭规则分开。基础引用、位置、ID、节点范围与目标时长不能通过策略关闭。
 
-汇报一句话说清：几集几场几句台词、预估总时长 vs 目标、哪几集贴着容差边、报告路径；没过的门明说。
+接着按 review-core 与已加载的策略指南评审。引用具体分集、节点、坐标和台词。检查人物动机、因果、信息、节奏、跨批状态与开场集尾的实际表达。Q 由大纲管理；剧本报告按 ep 与 resolves/beatClaims 展示回答位置，不建立第二份问题表。
 
-最终落地：
+内容评审材料放当前工作记录或 `.work/`。不保存永久分数、爆款概率或门失败历史。自动检查不会宣布内容评审通过。
 
-```
-<工作目录>/
-├── production.json                ← novel-setup 的产出，住在根目录
-└── script/                        ← 本 skill 的全部产出，一格装满
-    ├── <剧名>-script.json
-    ├── <剧名>-script.md
-    └── script-report.html         ← 双击就能开
-```
+## 5. 渲染与交付
 
----
-
-## 五个 skill 的接力
-
-```
-novel-setup      → production.json （拿什么拍：模型、画幅、分辨率、画风）
-novel-outline    → outline.json （什么：结构与分集）
-novel-characters → cast.json    （谁：角色资产）
-novel-art        → art.json     （哪里 + 手里拿的：美术资产）
-novel-script     → script.json  （戏：场次、节拍、台词）
+```bash
+node {baseDir}/scripts/novel-script.mjs render <工作目录>/script/作品-script.json --md --outline outline.json > <工作目录>/script/作品-script.md
+node {baseDir}/scripts/novel-script.mjs render <工作目录>/script/作品-script.json --html --outline outline.json --art art.json --cast cast.json > <工作目录>/script/script-report.html
+# 英文界面增加 --lang en
 ```
 
-seed 吃 outline.json；validate/render 的 `--outline` `--art` 负责对账和显示名字。四份 JSON 各自的报告都带导出按钮，改完都能喂回各自的 render/validate。往下一层是 `novel-creation`：镜号、单镜头时长、视频提示词与参考图挂载、参考图挂载单都在那边。
+报告先展示作品承诺、选择快照、有效参数、覆盖与来源，再展示正文、逐拍估算轴、节点计划与实际核心段、Q 回答落点、资产、台词本及检查状态。导出不修改原始 JSON，不写入默认值或评审结论。HTML 不进版本控制。
 
-## 边界
+汇报集数、场次、句数、估时、阻断失败、提醒、跳过项、内容评审状态和产物路径。无 outline 不宣称节点与全剧结局已对账；无 production 不宣称项目选择一致。显式应用后，CLI 自动读取项目中唯一的已知上游，并检查已知 creation 的版本、选择、集号、开场／集尾及实际节拍覆盖；损坏或过期输入返回非零。完整联合交付仍须 creation 自身的模型能力、资产与内容检查。本阶段不 import 下游校验器，也不擅自修改其文件。
 
-- 报告界面内置中英（`--lang`，默认中文、或跟 script.json 的 `lang` 字段、或跟 `production.json`）；台词语言跟剧走
-- 时长是**估算不是秒表**——容差 ±15% 就是为此留的；`params.charsPerSecond` 按配音语速可调
-- `VO` 是画外音统一记号，谁的心声写在 `delivery` 里；台词本里 VO 单独成组
-- 不设每集场次上限——AI 换景不要钱，换景次数只进 KPI 统计不设门
+## 自动驾驶
 
-## 自测
+仅 `production.autopilot === true` 生效。审批权转移，不取消策略确认记录、结构检查、内容评审或止损。批次照旧，逐项决定写入汇报。不调用付费模型。
+
+## 自有样例与自测
+
+先阅读 [故事提案](examples/故事提案.md)。《修伞簿》三个修补单元，前两集没有 payoff，普通集 closure，最终 open，不凭纹路认亲。所有上游 fixture 均在 examples 内本地编写。
 
 ```bash
 node {baseDir}/scripts/selftest.mjs
 ```
 
-175 项断言，不调模型、不花额度。10 道质量门每一道都有击穿用例。改完脚本先跑这个。
-
-## 自带样例
-
-`{baseDir}/examples/渡口-script.json`：《渡口》**全 6 集完整剧本**（9 场 123 句台词，每集冷开场兑现钩子、都落在 120 秒 ±15% 内），对着 novel-outline 与 novel-art 的样例全部质量门通过。当质量基准，也是自测夹具。
+样例与测试不依赖兄弟目录。旧数据按 [迁移指南](references/migration.md) 人工确认后迁移；v1 不再运行时双读。

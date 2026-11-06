@@ -76,25 +76,25 @@ export function preflight({ bin, home = homedir(), needUpload = false, existsImp
   const problems = [];
   if (!bin) {
     problems.push(`PATH 与 ${EXTRA_BIN_DIRS.join(' / ')} 里都没有 ${CLI_NAME}——装上它，或者这一步整个跳过只交提示词`);
-    return { ok: false, problems };
+    return { status: 'skipped', category: 'base', level: 'error', reason: 'missing-upstream', problems };
   }
   const cfgPath = join(home, '.config', CLI_NAME, 'config.json');
   if (!existsImpl(cfgPath)) {
     problems.push(`没有 ${cfgPath}——${CLI_NAME} 的凭证文件，缺了提交必然 401`);
-    return { ok: false, problems };
+    return { status: 'skipped', category: 'base', level: 'error', reason: 'missing-upstream', problems };
   }
   let cfg;
   try {
     cfg = JSON.parse(readImpl(cfgPath, 'utf8'));
   } catch (e) {
     problems.push(`${cfgPath} 不是合法 JSON：${msgOf(e)}`);
-    return { ok: false, problems };
+    return { status: 'skipped', category: 'base', level: 'error', reason: 'missing-upstream', problems };
   }
   if (!cfg?.api_key) problems.push(`${cfgPath} 里没有 api_key`);
   if (needUpload && !cfg?.assethub_admin_token) {
     problems.push(`${cfgPath} 里没有 assethub_admin_token——挂参考图与抠图要上传，没有这个传不上去`);
   }
-  return { ok: problems.length === 0, problems };
+  return { status: problems.length ? 'skipped' : 'pass', category: 'base', level: 'error', ...(problems.length ? { reason: 'missing-upstream' } : {}), problems };
 }
 
 /* ------------------------------------------------------------------ */

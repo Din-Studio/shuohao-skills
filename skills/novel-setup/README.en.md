@@ -2,6 +2,12 @@
 
 # novel-setup
 
+## 3.0.0: creative contract
+
+Record an optional, strict four-dimension creative selection with explicit versions. Initialize with `--selection <selection.json>` (the four-dimension object, not a creative wrapper). No implicit default and no sibling profile lookup. `show` displays identities and versions; `resolve` returns the stage-specific background or selection.
+
+Check objects use `status: pass|fail|skipped`, `category`, and `level`, never an ok boolean. Skips are not passes. Content review is not performed by these checks. See [contract](references/creative-selection.md) and [migration](references/migration.md).
+
 Locks asset-image and video models, resolution tiers, independent aspect ratios, art style, languages and autopilot in one `production.json` at the work-directory root.
 
 **Asset sheets and video frames have different purposes.** Character, scene and prop sheets use landscape or square layouts. The finished video can be vertical. Video creation mounts those sheets directly without generating intermediate keyframes.
@@ -26,7 +32,7 @@ node scripts/novel-setup.mjs show <work-dir>/production.json
 - Set report language with `--lang`, prompt language with `--prompt-lang`. Video creation applies its model-specific prompt rules.
 - Node 18+, standard library only. This skill makes no model calls and produces no HTML report.
 
-## Eight quality gates
+## Nine checks, including creative selection
 
 | Gate | Checks |
 | --- | --- |

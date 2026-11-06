@@ -3,9 +3,24 @@
 // Zero dependencies on purpose: the skill must work in any directory
 // without an npm install. Node 18+ (stdlib only).
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { neutralParams, validateParams, validateSelection, inspectContext, handleCreativeCommand } from './lib/creative.mjs';
+import { shapeProblems, scriptProblems, outlineProblems, reconcile, beatSeconds } from './lib/contracts.mjs';
+export { beatSeconds } from './lib/contracts.mjs';
+export const SKILL_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+export const isBlocking = g => g.status === 'fail' && g.level === 'error' && g.category !== 'source';
+const gateResult = (id, label, errors = [], extra = {}) => ({
+  id, label, category: 'base', level: 'error', status: errors.length ? 'fail' : 'pass',
+  messages: errors, detail: errors.join('；'), ...extra,
+});
+export function checkup(doc, ctx = {}) {
+  const gates = gateReport(doc, ctx);
+  return { gates, blocking: gates.filter(isBlocking).length,
+    warnings: gates.filter(g => g.status === 'fail' && g.level === 'warn').length,
+    skipped: gates.filter(g => g.status === 'skipped').length, contentReview: 'not-performed' };
+}
 import {
   CLI_NAME, DEFAULT_CONCURRENCY, DEFAULT_TIMEOUT_MS,
   findLingying, preflight, runBatch,
@@ -16,21 +31,20 @@ import {
 /* ------------------------------------------------------------------ */
 /*
  * 两层结构：段（segment）＝ 一次视频生成调用，上限是视频模型单段时长；
- * 分镜（cut）＝ 段内的一次剪切，2–5 秒。分镜下面**没有关键帧这一层**：段直接
+ * 分镜（cut）＝ 段内的一次剪切，表达范围由当前策略控制。分镜下面**没有关键帧这一层**：段直接
  * 挂载 novel-characters / novel-art 已经生成落盘的设定图，写一条通用视频提示词，
  * 从 seed 到下单不产生任何新的图像生成调用。
  */
 
 export const DEFAULT_PARAMS = {
   maxSegmentSeconds: 15, // 视频模型单段生成上限（秒）
-  minCutSeconds: 2,      // 单个分镜下限
-  maxCutSeconds: 5,      // 单个分镜上限——3 秒左右是短剧的呼吸
   maxOnScreen: 3,        // 单个分镜同框人数上限，超了必须带拆解说明
   tolerance: 0.15,       // 每集总时长对剧本目标的容差
+  ...neutralParams('creation'),
 };
 
 export function paramsOf(doc) {
-  return { ...DEFAULT_PARAMS, ...(doc?.params ?? {}) };
+  return { ...DEFAULT_PARAMS, ...(doc?.params ?? {}), rules: doc?.params?.rules };
 }
 
 /* ------------------------------------------------------------------ */
@@ -49,7 +63,9 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
   let dir = resolve(fromDir);
   for (let i = 0; i <= depth; i++) {
     const hit = resolve(dir, PRODUCTION_FILE);
-    if (existsSync(hit)) return hit;
+    // lstat detects dangling symlinks; unreadable entries must not become "missing".
+    try { lstatSync(hit); return hit; }
+    catch (e) { if (e.code !== 'ENOENT') throw e; }
     const up = dirname(dir);
     if (up === dir) break; // 到根了
     dir = up;
@@ -65,7 +81,7 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
  * 提示词按 video.model 自己分流、下单前的花费预估照样报出来但不等回应，
  * 做过的决定全部写进最后的汇报。
  *
- * 转移的是**审批权**，不是取消检查点：17 道门照样要过、花费照样先算清楚、
+ * 转移的是**审批权**，不是取消检查点：基础和 error 策略检查照样执行、花费照样先算清楚、
  * 同一段连着失败两次照样跳过——**不打断不等于无限重试烧钱**。
  *
  * **只认布尔真值**：JSON 里写成字符串 "false" 在 JS 里是真的，那种写法会让
@@ -128,9 +144,9 @@ export function promptGuideOf(model) {
 /**
  * 时刻标记：seedance 官方明说「模型对精确时间（如 0–3 秒）的支持不稳定，
  * 强行限制时长可能导致生成结果异常」，所以选了它就一个时刻都不许写。
- * 拦 `00:03.000`、`3.00-second`、`3.00 秒处` 三种写法。
+ * 检查中英数字秒数、区间、相对时刻与冒号时间码；不推断自然语言节奏。
  */
-export const TIMECODE_RE = /\d{1,2}:\d{2}\.\d{3}|\d+\.\d{2}\s*(?:-second|秒处)/;
+export const TIMECODE_RE = /\b(?:at|after|before)\s+(?:the\s+)?(?:second|sec)\s+\d+(?:\.\d+)?|\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?|(?:第\s*)?\d+(?:\.\d+)?\s*(?:[-–—~～至到]\s*\d+(?:\.\d+)?\s*)?(?:秒|[- ]?(?:seconds?|secs?)\b|s\b)/i;
 
 /**
  * 提示词语言：没写就继承生产参数，都没写就跟着模型的官方口径走——
@@ -193,10 +209,10 @@ export const VIDEO_DURATION_BOUNDS = {
   'seedance2.0 mini': { min: 4, max: 15 },
 };
 
-/** 把段秒数折成 lingying 能接受的 duration：向上取整、夹进模型的区间。 */
+/** 合法段秒数向上取整；短段补足下限，超上限拒绝，绝不截短故事。 */
 export function clampDuration(seconds, model) {
   const bounds = VIDEO_DURATION_BOUNDS[model] ?? null;
-  const raw = Number(seconds);
+  const raw = seconds;
   if (!Number.isFinite(raw) || raw <= 0) return { duration: null, note: '段秒数不是正数，折不出 duration' };
   let value = Math.ceil(raw);
   const notes = [];
@@ -206,8 +222,7 @@ export function clampDuration(seconds, model) {
     value = bounds.min;
   }
   if (bounds && value > bounds.max) {
-    notes.push(`超过 ${model} 上限 ${bounds.max} 秒，按 ${bounds.max} 秒下单（这一段本该再拆一次）`);
-    value = bounds.max;
+    return { duration: null, note: `超过 ${model} 上限 ${bounds.max} 秒；请重新拆段、校验并导出，禁止截短下单` };
   }
   return { duration: value, note: notes.join('；') };
 }
@@ -271,11 +286,8 @@ export function promptRemainder(prompt) {
  * 继承），这里刻意重新实现而不是跨目录 import——本 skill 必须自包含、可以单独拷走。
  */
 
-const SCRIPT_DEFAULTS = { charsPerSecond: 4.5, actionSeconds: 2.5 };
-const lineChars = (line) => String(line ?? '').replace(/\s+/g, '').length;
-
 export function expandScript(script) {
-  const p = { ...SCRIPT_DEFAULTS, ...(script?.params ?? {}) };
+  const p = script?.params ?? {};
   const eps = new Map();
   for (const ep of script?.episodes ?? []) {
     const scenes = (ep?.scenes ?? []).map((sc, i) => ({
@@ -285,23 +297,25 @@ export function expandScript(script) {
       characters: sc.characters ?? [],
       props: sc.props ?? [],
       beats: (sc.flow ?? []).map((b, j) => {
+
         const isLine = typeof b?.line === 'string';
         return {
           n: j + 1,
           kind: isLine ? 'line' : 'action',
-          seconds: r1(isLine ? lineChars(b.line) / p.charsPerSecond : p.actionSeconds),
+          seconds: beatSeconds(b, p),
           speaker: isLine ? b.speaker : undefined,
           delivery: isLine ? (b.delivery ?? '') : undefined,
           text: isLine ? b.line : b.action,
         };
       }),
     }));
-    eps.set(ep.ep, { ep: ep.ep, targetSeconds: ep.targetSeconds, scenes });
+    eps.set(ep.ep, { ep: ep.ep, targetSeconds: ep.targetSeconds, opening: ep.opening, ending: ep.ending, openingBeat: ep.openingBeat, endBeat: ep.endBeat, scenes });
   }
   return eps;
 }
 
-export const segSeconds = (segment) => r1((segment?.cuts ?? []).reduce((n, c) => n + (c?.seconds ?? 0), 0));
+export const segSeconds = (segment) => (segment?.cuts ?? []).reduce((n, c) =>
+  Number.isFinite(c?.seconds) && c.seconds > 0 ? n + c.seconds : NaN, 0);
 
 /* ------------------------------------------------------------------ */
 /* 镜头配方卡库（可选挂载）——只读卡片 frontmatter 的受限字段              */
@@ -402,7 +416,7 @@ export function resolveReferenceImage(kind, name, workDir = '.', { existsImpl = 
 /* 质量门                                                               */
 /* ------------------------------------------------------------------ */
 /*
- * 17 道门，全部确定性可查，分四组：
+ * 技术检查与可配置表达规则分开；来源及上游契约另行检查：
  *   结构、时长与对账（8）——coverage / segment-cap / cut-length / dialogue-fit /
  *     ep-duration / crowd / segment-id / refs
  *   提示词（5）——size-phrase / camera-phrase / dialogue-verbatim（纯文本子串
@@ -416,8 +430,54 @@ export function resolveReferenceImage(kind, name, workDir = '.', { existsImpl = 
  */
 
 export function gateReport(doc, ctx = {}) {
+  const errors = shapeProblems(doc);
+  errors.push(...validateParams('creation', doc?.params));
+  if (ctx.production?.video !== undefined && (!ctx.production.video || typeof ctx.production.video !== 'object' || typeof ctx.production.video.model !== 'string' || !ctx.production.video.model.trim())) errors.push('production.video.model 非法');
+  for (const key of ['art','cast']) if (ctx[key] !== undefined) {
+    const arrays = key === 'art' ? ['scenes','props'] : ['characters'];
+    if (!ctx[key] || typeof ctx[key] !== 'object' || Array.isArray(ctx[key]) || arrays.some(a => !Array.isArray(ctx[key][a]) || ctx[key][a].some(x => !x || typeof x !== 'object'))) errors.push(`${key} 上游资产数据非法`);
+  }
+  const gates = [gateResult('fields', '基础字段与当前有效参数', errors)];
+  let upstreamValid = true;
+  for (const [key, validate] of [['script', scriptProblems], ['outline', outlineProblems]]) {
+    if (ctx[key] === undefined) gates.push(gateResult(key + '-contract', key + ' v2 契约', [], {status:'skipped', reason:'missing-upstream'}));
+    else {
+      const issues = validate(ctx[key]); upstreamValid &&= !issues.length;
+      gates.push(gateResult(key + '-contract', key + ' v2 契约', issues));
+    }
+  }
+  try {
+    gates.push(...inspectContext(doc, {skillRoot: SKILL_ROOT, stage:'creation', production:ctx.production})
+      .map(g => ({...g, label:g.id === 'creative-project' ? '项目创作选择对账' : g.id === 'creative-context' ? '策略来源记录' : '本地策略来源', detail:g.message ?? '', messages:[g.message ?? g.id]})));
+  } catch (e) { gates.push(gateResult('creative-context', '策略来源检查', [e.message])); }
+  if (!upstreamValid) return gates;
+  const selectionOf = value => JSON.stringify(Object.entries(value ?? {}).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => [k,v?.id,v?.version]));
+  const expected = ctx.production?.creative?.selection ?? doc?.creativeContext?.selection;
+  const selections = ['script','outline'].map(key => {
+    const id = `${key}-selection`, label = `${key} 创作选择身份对账`;
+    if (ctx[key] === undefined) return gateResult(id, label, [], {status:'skipped', reason:'missing-upstream'});
+    if (ctx[key].creativeContext === undefined) return gateResult(id, label, [], {status:'skipped', reason:'stage-incomplete'});
+    const selection = ctx[key].creativeContext?.selection;
+    const issues = validateSelection(selection).map(m => `${key}: ${m}`);
+    if (expected && selectionOf(selection) !== selectionOf(expected)) issues.push(`${key} 创作选择与当前项目／分镜不一致`);
+    return gateResult(id, label, issues, !issues.length && !expected ? {status:'skipped', reason:'stage-incomplete'} : {});
+  });
+  gates.push(...selections);
+  const selectionErrors = selections.filter(g => g.status === 'fail').flatMap(g => g.messages);
+  const incomplete = selections.find(g => g.status === 'skipped');
+  gates.push(gateResult('upstream-selection', '上游创作选择身份对账', selectionErrors,
+    !selectionErrors.length && incomplete ? {status:'skipped', reason:incomplete.reason} : {}));
+  if (!errors.length) gates.push(gateResult('upstream-intent', '开场／集尾／节点与目标时长对账',
+    reconcile(doc, ctx.script, ctx.outline)));
+  try { gates.push(...technicalGates(doc, ctx)); }
+  catch (e) { gates.push(gateResult('data-shape', '数据形状无法继续检查', [e.message])); }
+  return gates;
+}
+
+function technicalGates(doc, ctx = {}) {
   const gates = [];
-  const add = (id, label, ok, detail = '') => gates.push({ id, label, ok, detail });
+  const add = (id, label, passed, detail = '') => gates.push(gateResult(id, label, passed ? [] : [detail || label], {detail}));
+
   const params = paramsOf(doc);
   const script = ctx.script ?? null;
   const expanded = script ? expandScript(script) : null;
@@ -461,13 +521,13 @@ export function gateReport(doc, ctx = {}) {
       const cuts = seg?.cuts ?? [];
       const total = segSeconds(seg);
 
-      if (!(total > 0) || total > params.maxSegmentSeconds) {
+      if (!Number.isFinite(total) || !(total > 0) || total > params.maxSegmentSeconds) {
         bad.segCap.push(`${sid} 共 ${total} 秒`);
       }
-      if (production?.video?.model) {
-        const bounds = VIDEO_DURATION_BOUNDS[production.video.model];
-        if (bounds && (total < bounds.min || total > bounds.max)) {
-          bad.segCapModel.push(`${sid} 共 ${total} 秒，超出 ${production.video.model} 的时长区间 ${bounds.min}–${bounds.max} 秒`);
+      {
+        const bounds = VIDEO_DURATION_BOUNDS[videoModel];
+        if (bounds && (!Number.isFinite(total) || total < bounds.min || total > bounds.max)) {
+          bad.segCapModel.push(`${sid} 共 ${total} 秒，超出 ${videoModel} 的时长区间 ${bounds.min}–${bounds.max} 秒`);
         }
       }
 
@@ -496,8 +556,13 @@ export function gateReport(doc, ctx = {}) {
 
       // refimage-labeled：images 数组长度必须与提示词开头的身份说明句数量一致
       const images = Array.isArray(seg?.images) ? seg.images : [];
+      for (const img of images) {
+        const source = img.kind === 'character' ? ctx.outline?.characters : img.kind === 'scene' ? ctx.art?.scenes : ctx.art?.props;
+        if (source && !source.some(x => x.id === img.ref)) bad.refCoverage.push(`${sid} 挂载未知参考图 ${img.ref}`);
+      }
       const missingLabel = [];
       for (let k = 1; k <= images.length; k++) {
+
         if (!prompt.includes(tk.pictureToken(k))) missingLabel.push(tk.pictureToken(k));
       }
       const hasExtra = images.length >= 0 && prompt.includes(tk.pictureToken(images.length + 1));
@@ -539,10 +604,12 @@ export function gateReport(doc, ctx = {}) {
         const cid = `${sid}#${ci + 1}`;
         const slice = slices[ci];
 
-        if (!(cut?.seconds >= params.minCutSeconds) || cut.seconds > params.maxCutSeconds) {
+        const rule = doc?.params?.rules?.cutDuration;
+        if (rule && rule.level !== 'off' && (cut?.seconds < rule.minSeconds || cut?.seconds > rule.maxSeconds)) {
           bad.cutLen.push(`${cid} ${cut?.seconds ?? '?'} 秒`);
         }
         if ((cut?.characters ?? []).length > params.maxOnScreen && !String(cut?.note ?? seg?.note ?? '').trim()) {
+
           bad.crowd.push(`${cid} 同框 ${cut.characters.length} 人且没有拆解说明`);
         }
         if (!SHOT_SIZES[cut?.size]) {
@@ -595,7 +662,8 @@ export function gateReport(doc, ctx = {}) {
             let dlg = 0;
             for (const b of scene.beats.slice(from - 1, to)) {
               if (b.kind !== 'line') continue;
-              dlg += b.seconds;
+              if (b.seconds === null) bad.fit.push(`${cid} 台词估时无效，不能按零秒计算`);
+              else dlg += b.seconds;
               if (!prompt.includes(b.text)) bad.dlgVerbatim.push(`${sid} 的 prompt 缺台词「${b.text.slice(0, 12)}…」的原文`);
             }
             if (dlg > cut.seconds) bad.fit.push(`${cid} 台词 ${r1(dlg)} 秒装不进 ${cut.seconds} 秒`);
@@ -658,16 +726,21 @@ export function gateReport(doc, ctx = {}) {
         const total = (ep?.segments ?? []).reduce((n2, s) => n2 + segSeconds(s), 0);
         const lo = sEp.targetSeconds * (1 - params.tolerance);
         const hi = sEp.targetSeconds * (1 + params.tolerance);
-        if (total < lo) bad.duration.push(`${label} 欠 ${r1(lo - total)} 秒（${r1(total)}s / 目标 ${sEp.targetSeconds}s）`);
-        if (total > hi) bad.duration.push(`${label} 超 ${r1(total - hi)} 秒（${r1(total)}s / 目标 ${sEp.targetSeconds}s）`);
+        if (!Number.isFinite(total)) bad.duration.push(`${label} 总秒数无效，不能按零秒计算`);
+        const epsilon = Number.EPSILON * Math.max(1, Math.abs(sEp.targetSeconds), Math.abs(total)) * 4;
+        if (total < lo - epsilon) bad.duration.push(`${label} 欠 ${r1(lo - total)} 秒（${r1(total)}s / 目标 ${sEp.targetSeconds}s）`);
+        if (total > hi + epsilon) bad.duration.push(`${label} 超 ${r1(total - hi)} 秒（${r1(total)}s / 目标 ${sEp.targetSeconds}s）`);
       }
     }
   }
 
-  const SKIP_SCRIPT = '未提供 script.json，本门跳过（视为通过）';
-  const SKIP_NAMES = '未提供 outline/cast，本门跳过（视为通过）';
-  const SKIP_REFS = '未提供 --outline/--art，本门跳过（视为通过）';
-  const SKIP_SHOTS = '未挂载配方卡库（--shots <卡片目录>），本门跳过（视为通过）';
+  gates.push(gateResult('model-capability', '有效模型合法时长区间', bad.segCapModel,
+    VIDEO_DURATION_BOUNDS[videoModel] ? {detail:bad.segCapModel.length ? bad.segCapModel.join('；') : `${videoModel}: ${VIDEO_DURATION_BOUNDS[videoModel].min}–${VIDEO_DURATION_BOUNDS[videoModel].max}s`} : {status:'skipped',reason:'not-applicable',detail:`未知模型 ${videoModel}：合法时长尚未核实，不能宣称已完成技术验收`}));
+
+  const SKIP_SCRIPT = '未提供 script.json，本项跳过，不计为通过';
+  const SKIP_NAMES = '未提供 outline/cast，本项跳过，不计为通过';
+  const SKIP_REFS = '未提供 --outline/--art，本项跳过，不计为通过';
+  const SKIP_SHOTS = '未挂载配方卡库（--shots <卡片目录>），本项跳过，不计为通过';
   const NO_RECIPE = '本批分镜没有引用配方';
 
   add('coverage', '剧本节拍被恰好一次、按顺序、连续认领（分镜级）', bad.coverage.length === 0, script ? bad.coverage.join('；') : SKIP_SCRIPT);
@@ -677,7 +750,11 @@ export function gateReport(doc, ctx = {}) {
     eps.length > 0 && bad.segCap.length === 0 && bad.segCapModel.length === 0,
     [...bad.segCap, ...bad.segCapModel].join('；'),
   );
-  add('cut-length', `每个分镜 ${params.minCutSeconds}–${params.maxCutSeconds} 秒——短剧的注意力节奏`, eps.length > 0 && bad.cutLen.length === 0, bad.cutLen.join('；'));
+  const rule = doc?.params?.rules?.cutDuration;
+  gates.push(gateResult('cut-length', '镜头表达时长 cutDuration', bad.cutLen, {
+    category:'policy', level:rule?.level ?? 'error',
+    ...(rule?.level === 'off' ? {status:'skipped', reason:'policy-disabled'} : {}),
+  }));
   add('dialogue-fit', '认领节拍的台词装得进分镜秒数', bad.fit.length === 0, script ? bad.fit.join('；') : SKIP_SCRIPT);
   add('ep-duration', `每集总时长在剧本目标 ±${Math.round(params.tolerance * 100)}% 内`, bad.duration.length === 0, script ? bad.duration.join('；') : SKIP_SCRIPT);
   add('crowd', `单个分镜同框 ≤ ${params.maxOnScreen} 人，超了必须带拆解说明`, bad.crowd.length === 0, bad.crowd.join('；'));
@@ -694,7 +771,7 @@ export function gateReport(doc, ctx = {}) {
     bad.recipe.length === 0,
     recipes ? (bad.recipe.length ? bad.recipe.join('；') : recipeRefs ? '' : NO_RECIPE) : SKIP_SHOTS,
   );
-  add('refimage-coverage', '段内出现的每个人物/场景/道具都能解出一张存在的设定图文件', bad.refCoverage.length === 0, haveNames ? brief(bad.refCoverage) : SKIP_REFS);
+  add('refimage-coverage', '段内出现的每个人物/场景/道具都能解出一张存在的设定图文件', bad.refCoverage.length === 0, bad.refCoverage.length ? brief(bad.refCoverage) : haveNames ? '' : SKIP_REFS);
   add('refimage-labeled', '提示词开头的参考图身份说明句数量与 images 数组长度一致', bad.refLabeled.length === 0, bad.refLabeled.join('；'));
   // 骨架跨模型通用，填法按模型动态载入指南；有确定性硬约束的只有 seedance 那一条，
   // 其余模型这道门不假装查了什么，只把该读哪份填法指南报出来
@@ -712,6 +789,16 @@ export function gateReport(doc, ctx = {}) {
         : `模型是 ${videoModel}，没有这一款的填法指南，照 references/creation-prompt.md 的通用骨架写`,
   );
 
+  const skip = (ids, reason) => ids.forEach(id => {
+    const g = gates.find(x => x.id === id);
+    if (g) { g.status = 'skipped'; g.reason = reason; g.messages = g.detail ? [g.detail] : []; }
+  });
+  if (!script) skip(['coverage','dialogue-fit','ep-duration','dialogue-verbatim','refs'], 'missing-upstream');
+  if (!banned.length) skip(['prompt-no-names'], 'missing-upstream');
+  if (!haveNames && !bad.refCoverage.length) skip(['refimage-coverage'], 'missing-upstream');
+  if (!recipes) skip(['shot-recipe'], 'missing-upstream');
+  else if (!recipeRefs) skip(['shot-recipe'], 'not-applicable');
+  if (family !== 'seedance') skip(['prompt-model-fit'], 'not-applicable');
   return gates;
 }
 
@@ -720,56 +807,7 @@ export function gateReport(doc, ctx = {}) {
 /* ------------------------------------------------------------------ */
 
 export function validateCreation(doc, ctx = {}) {
-  const problems = [];
-  const p = (msg) => problems.push(msg);
-  if (!doc || typeof doc !== 'object') return ['creation.json 不是对象'];
-
-  if (!String(doc.source ?? '').trim()) p('缺少 source（剧名）');
-  const eps = doc.episodes;
-  if (!Array.isArray(eps) || eps.length === 0) {
-    p('episodes 为空');
-    return problems;
-  }
-  const seen = new Set();
-  for (const ep of eps) {
-    const label = `第 ${ep?.ep ?? '?'} 集`;
-    if (!Number.isInteger(ep?.ep) || ep.ep < 1) p(`${label}的 ep 必须是正整数`);
-    if (seen.has(ep?.ep)) p(`集号 ${ep.ep} 重复`);
-    seen.add(ep?.ep);
-    if (!Array.isArray(ep?.segments) || ep.segments.length === 0) {
-      p(`${label}没有段`);
-      continue;
-    }
-    for (const seg of ep.segments) {
-      const sid = seg?.id ?? '?';
-      if (typeof seg?.id !== 'string') p(`${label}有段缺 id`);
-      if (!Number.isInteger(seg?.sceneIndex) || seg.sceneIndex < 1) p(`${sid} 缺 sceneIndex（剧本里第几场）`);
-      if (typeof seg?.prompt !== 'string') p(`${sid} 缺 prompt（视频提示词，写法见 references/creation-prompt.md）`);
-      if (!Array.isArray(seg?.images)) {
-        p(`${sid} 缺 images（参考图挂载清单，没有就给空数组）`);
-      } else {
-        seg.images.forEach((img, i) => {
-          if (!['character', 'scene', 'prop'].includes(img?.kind)) p(`${sid} 的第 ${i + 1} 张参考图 kind 必须是 character/scene/prop`);
-          if (typeof img?.ref !== 'string' || !img.ref) p(`${sid} 的第 ${i + 1} 张参考图缺 ref（资产编号）`);
-        });
-      }
-      if (!Array.isArray(seg?.cuts) || seg.cuts.length === 0) {
-        p(`${sid} 没有分镜`);
-        continue;
-      }
-      seg.cuts.forEach((cut, ci) => {
-        const cid = `${sid}#${ci + 1}`;
-        if (!Array.isArray(cut?.beats) || cut.beats.length !== 2) p(`${cid} 的 beats 必须是 [起, 止] 两个数`);
-        if (typeof cut?.seconds !== 'number') p(`${cid} 缺 seconds`);
-        if (!Array.isArray(cut?.characters)) p(`${cid} 缺 characters（空镜给空数组）`);
-      });
-    }
-  }
-
-  for (const g of gateReport(doc, ctx)) {
-    if (!g.ok) p(`质量门未过：${g.label}${g.detail ? `（${g.detail}）` : ''}`);
-  }
-  return problems;
+  return gateReport(doc, ctx).filter(isBlocking).flatMap(g => g.messages.length ? g.messages : [g.label]);
 }
 
 /* ------------------------------------------------------------------ */
@@ -777,6 +815,8 @@ export function validateCreation(doc, ctx = {}) {
 /* ------------------------------------------------------------------ */
 
 export function seedFromScript(script, epRange = null) {
+  const errors = scriptProblems(script);
+  if (errors.length) throw new Error(errors.join('；'));
   const expanded = expandScript(script);
   const inRange = (n2) => !epRange || (n2 >= epRange[0] && n2 <= epRange[1]);
   const episodes = [];
@@ -784,6 +824,8 @@ export function seedFromScript(script, epRange = null) {
     if (!inRange(epNo)) continue;
     episodes.push({
       ep: epNo,
+      opening: sEp.opening, ending: structuredClone(sEp.ending),
+      openingBeat: [...sEp.openingBeat], endBeat: [...sEp.endBeat],
       segments: [],
       seedScenes: sEp.scenes.map((sc) => ({
         sceneIndex: sc.sceneIndex,
@@ -801,7 +843,7 @@ export function seedFromScript(script, epRange = null) {
       })),
     });
   }
-  return { source: script?.source ?? '', episodes };
+  return { schemaVersion:2, source: script?.source ?? '', params:structuredClone(DEFAULT_PARAMS), episodes };
 }
 
 /* ------------------------------------------------------------------ */
@@ -829,7 +871,8 @@ export function computeStats(doc, script) {
         cutCount++;
         if (!scene) return;
         const [from, to] = cut.beats ?? [];
-        for (const b of scene.beats.slice((from ?? 1) - 1, to ?? 0)) {
+        if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from || to > scene.beats.length) return;
+        for (const b of scene.beats.slice(from - 1, to)) {
           if (b.kind !== 'line') continue;
           segHasLine = true;
           dialogue.push({ segment: seg.id, cut: ci + 1, ep: ep.ep, speaker: b.speaker, line: b.text, seconds: b.seconds });
@@ -842,8 +885,8 @@ export function computeStats(doc, script) {
       target: sEp?.targetSeconds ?? 0,
       segments: (ep?.segments ?? []).length,
       cuts: cutCount,
-      totalSeconds: r1(total),
-      avgCutSeconds: cutCount ? r1(total / cutCount) : 0,
+      totalSeconds: total,
+      avgCutSeconds: cutCount ? total / cutCount : 0,
       withLines,
     });
   }
@@ -851,12 +894,12 @@ export function computeStats(doc, script) {
   const totals = {
     segments: episodes.reduce((n2, e) => n2 + e.segments, 0),
     cuts: episodes.reduce((n2, e) => n2 + e.cuts, 0),
-    seconds: r1(episodes.reduce((n2, e) => n2 + e.totalSeconds, 0)),
+    seconds: episodes.reduce((n2, e) => n2 + e.totalSeconds, 0),
     targetSeconds: episodes.reduce((n2, e) => n2 + e.target, 0),
     withLines: episodes.reduce((n2, e) => n2 + e.withLines, 0),
     avgCutSeconds: 0,
   };
-  totals.avgCutSeconds = totals.cuts ? r1(totals.seconds / totals.cuts) : 0;
+  totals.avgCutSeconds = totals.cuts ? totals.seconds / totals.cuts : 0;
 
   return { params, episodes, totals, dialogue };
 }
@@ -874,9 +917,10 @@ export function computeStats(doc, script) {
 export function exportPack(doc, script, { resolveImage = () => ({ name: '', path: '', exists: false }), dir = '.', production = null } = {}) {
   const prefix = dir === '.' ? '' : `${dir}/`;
   const files = [];
+
   const manifest = [];
   let missingTotal = 0;
-  const video = production?.video ?? null;
+  const video = production?.video || doc?.video ? {...production?.video, ...doc?.video} : null;
   const videoLine = video
     ? `生成参数：${video.model || '（未填模型）'} · aspect_ratio ${video.aspectRatio || '（未填）'} · resolution ${video.resolution || '（未填）'}\n\n`
     : '';
@@ -921,7 +965,15 @@ export function exportPack(doc, script, { resolveImage = () => ({ name: '', path
 const GATE_LABELS_EN = {
   'coverage': 'Every script beat claimed exactly once, in order, contiguous (cut level)',
   'segment-cap': 'Each segment 0 < total ≤ {1}s (the single-generation cap; also within the video model\'s duration range when production parameters are mounted)',
-  'cut-length': 'Every cut {0}–{1}s — the short-drama attention rhythm',
+  'cut-length': 'Current cutDuration expression rule',
+  'fields': 'Base fields and effective parameters',
+  'script-contract': 'Script v2 consumer contract',
+  'outline-contract': 'Outline v2 consumer contract',
+  'upstream-intent': 'Opening, ending, beat claims and target duration reconciliation',
+  'upstream-selection': 'Upstream creative selection identity',
+  'model-capability': 'Effective video model duration capability',
+  'creative-context': 'Applied creative context',
+  'creative-project': 'Project creative selection reconciliation',
   'dialogue-fit': 'Dialogue of the claimed beats fits within the cut duration',
   'ep-duration': 'Episode total within ±{0}% of the script\'s target',
   'crowd': 'At most {0} characters on screen per cut; more requires a breakdown note',
@@ -938,16 +990,16 @@ const GATE_LABELS_EN = {
   'refimage-labeled': 'The identity lines in the prompt match the length of the images array',
 };
 const GATE_SKIPS_EN = {
-  '未提供 script.json，本门跳过（视为通过）': 'script.json not provided — gate skipped (treated as passing)',
-  '未提供 outline/cast，本门跳过（视为通过）': 'outline/cast not provided — gate skipped (treated as passing)',
-  '未提供 --outline/--art，本门跳过（视为通过）': '--outline/--art not provided — gate skipped (treated as passing)',
-  '未挂载配方卡库（--shots <卡片目录>），本门跳过（视为通过）': 'no recipe card library mounted (--shots <cards dir>) — gate skipped (treated as passing)',
+  '未提供 script.json，本项跳过，不计为通过': 'script.json not provided — gate skipped (not counted as passing)',
+  '未提供 outline/cast，本项跳过，不计为通过': 'outline/cast not provided — gate skipped (not counted as passing)',
+  '未提供 --outline/--art，本项跳过，不计为通过': '--outline/--art not provided — gate skipped (not counted as passing)',
+  '未挂载配方卡库（--shots <卡片目录>），本项跳过，不计为通过': 'no recipe card library mounted (--shots <cards dir>) — gate skipped (not counted as passing)',
   '本批分镜没有引用配方': 'no cut in this batch references a recipe',
   [SKIP_PROD]: `no ${PRODUCTION_FILE} found (up to ${PRODUCTION_DEPTH} levels up) — gate skipped; run /novel-setup to open it`,
 };
 const gateText = (g, lang) => {
   if (lang !== 'en') return { label: g.label, detail: g.detail };
-  const en = GATE_LABELS_EN[g.id];
+  const en = GATE_LABELS_EN[g.id] ?? (g.category === 'source' ? 'Local creative source verification' : undefined);
   const nums = String(g.label).match(/\d+(?:\.\d+)?/g) ?? [];
   const label = en ? en.replace(/\{(\d)\}/g, (m, i) => nums[Number(i)] ?? m) : g.label;
   return { label, detail: GATE_SKIPS_EN[g.detail] ?? g.detail };
@@ -960,12 +1012,12 @@ const I18N = {
     docTitle: (s, a, b) => `${s} · 创作${a === b ? `（第 ${a} 集）` : `（第 ${a}–${b} 集）`}`,
     epRange: (a, b) => (a === b ? `第 ${a} 集` : `第 ${a}–${b} 集`),
     exportJson: '导出 JSON',
-    gatesPass: '全部通过',
+    gatesPass: '无阻断失败；提醒与跳过另列，内容未评审',
     gatesFail: (n2) => `${n2} 项未过`,
     gatePill: (okN, total) => `质量门 ${okN} / ${total}`,
     kpi: {
       segments: '生成段', segmentsSub: (cap) => `一段一次调用，上限 ${cap} 秒`,
-      cuts: '分镜', cutsSub: (avg) => `平均 ${avg} 秒一切`,
+      cuts: '分镜', cutsSub: (avg) => `每个镜头平均 ${avg} 秒`,
       time: '预估总时长', timeSub: (t) => `目标 ${t}`,
       lines: '台词段', linesSub: '其余是纯画面段',
     },
@@ -977,35 +1029,36 @@ const I18N = {
     rhythmNote: '粗分隔 = 生成段边界 · 段宽 = 分镜时长占比 · 颜色越深景别越近',
     segmentsNote: '一段 = 一次生成，直接挂载既有设定图，不产生新的出图调用',
     refsNote: '按段列出挂载的参考图——下单前先看这些文件都在不在',
-    dialogueNote: '自动汇总 · TTS 音频对到哪一段的第几切',
-    epHead: (nSeg, nCut, total, target) => `${nSeg} 段 ${nCut} 切 · 共 ${total} 秒 / 目标 ${target} 秒`,
+    dialogueNote: '自动汇总 · TTS 音频对应生成段及镜头序号',
+    epHead: (nSeg, nCut, total, target) => `${nSeg} 个生成段 ${nCut} 个镜头 · 共 ${total} 秒 / 目标 ${target} 秒`,
     segHead: (total, n2) => `${total} 秒 · ${n2} 个分镜`,
-    secBadge: (secs, n2) => `${secs}s · ${n2} 切`,
-    rhythmVal: (nSeg, nCut, secs) => `${nSeg} 段 ${nCut} 切 · ${secs}s`,
+    secBadge: (secs, n2) => `${secs}s · ${n2} 个镜头`,
+    rhythmVal: (nSeg, nCut, secs) => `${nSeg} 个生成段 ${nCut} 个镜头 · ${secs}s`,
     beatsLabel: (s, from, to) => `第 ${s} 场 ${from === to ? `第 ${from} 拍` : `第 ${from}–${to} 拍`}`,
     refMissing: '未找到设定图',
     promptLabel: '视频提示词',
-    showSegs: '▾ 展开全部段',
+    showSegs: '▾ 展开全部生成段',
     hideSegs: '▴ 收起',
     copy: '复制', copied: '已复制', copyFailed: '复制失败',
-    dialogueCols: ['段 · 切', '说话人', '台词', '台词秒数'],
-    cutCols: ['切', '秒', '景别', '运镜', '配方', '画面', '人物'],
-    refCols: ['段', 'Picture', '身份', '路径'],
+    dialogueCols: ['生成段 · 镜头', '说话人', '台词', '台词秒数'],
+    cutCols: ['镜头', '时长（秒）', '景别', '运镜', '配方', '画面', '人物'],
+    refCols: ['生成段', 'Picture', '身份', '路径'],
     kindLabel: (k) => (k === 'character' ? '角色' : k === 'scene' ? '场景' : '道具'),
     batchLabel: (num) => `批次 ${num}`,
     voiceOver: '画外音',
     listSep: '、',
     sizeName: (size) => SHOT_SIZES[size]?.zh ?? size,
-    cameraLabel: (camera) => `${camera}（${CAMERA_MOVES[camera] ?? '?'}）`,
+    cameraLabel: (camera) => `${camera}（${({'Push In':'推近','Pull Out':'拉远','Pedestal Up':'上升','Pedestal Down':'下降'})[camera] ?? CAMERA_MOVES[camera] ?? '未知'}）`,
     recipeNone: '—',
+
     recipeName: (card, id) => card?.name ?? id,
     recipeDrift: (sizes, cameras) =>
       `配方建议${[sizes.length ? `景别 ${sizes.join(' / ')}` : '', cameras.length ? `运镜 ${cameras.join(' / ')}` : ''].filter(Boolean).join(' · ')}——只提示不设门`,
     speakerLine: (name, text) => `${name}：「${text}」`,
     withLighting: (name, lighting) => (lighting ? `${name}（${lighting}）` : name),
     fmtMin: (sec) => `${Math.floor(sec / 60)} 分 ${Math.round(sec % 60)} 秒`,
-    unitSeg: '段',
-    unitCut: '切',
+    unitSeg: '个生成段',
+    unitCut: '个镜头',
     colophon: '段直接挂载 novel-characters / novel-art 已经生成的设定图，写一条通用视频提示词——从 seed 到下单不产生任何新的图像生成调用。台词、景别、运镜纪律全部由脚本确定性对账。',
   },
   en: {
@@ -1014,7 +1067,7 @@ const I18N = {
     docTitle: (s, a, b) => `${s} · Creation (${a === b ? `Episode ${a}` : `Episodes ${a}–${b}`})`,
     epRange: (a, b) => (a === b ? `Episode ${a}` : `Episodes ${a}–${b}`),
     exportJson: 'Export JSON',
-    gatesPass: 'All passed',
+    gatesPass: 'No blocking failures; warnings and skips listed separately. Content review not performed.',
     gatesFail: (n2) => `${n2} failed`,
     gatePill: (okN, total) => `Quality gates ${okN} / ${total}`,
     kpi: {
@@ -1064,6 +1117,32 @@ const I18N = {
   },
 };
 
+const statusLabel = (g, lang) => lang === 'en'
+  ? (g.status === 'fail' && g.level === 'warn' ? 'Warning' : g.status)
+  : (g.status === 'skipped' ? '跳过' : g.status === 'pass' ? '通过' : g.level === 'warn' ? '提醒' : '失败');
+const summaryText = (gates, lang) => {
+  const n = {pass:gates.filter(g => g.status === 'pass' && g.category !== 'source').length,
+    blocking:gates.filter(isBlocking).length, warnings:gates.filter(g => g.status === 'fail' && g.level === 'warn').length,
+    skipped:gates.filter(g => g.status === 'skipped').length};
+  return lang === 'en' ? `Base/policy passes ${n.pass}; blocking ${n.blocking}; warnings ${n.warnings}; skipped ${n.skipped}. Content review not performed. Timings are estimates, not generated results.`
+    : `基础／策略通过 ${n.pass}；阻断失败 ${n.blocking}；提醒 ${n.warnings}；跳过 ${n.skipped}。内容未评审。时长为估算，不是生成结果。`;
+};
+function reportContext(doc, ctx) {
+  const locate = (ep, pos) => (ep.segments ?? []).flatMap(seg => (seg.cuts ?? []).flatMap((cut, i) =>
+    Array.isArray(pos) && seg.sceneIndex === pos[0] && cut.beats?.[0] <= pos[1] && cut.beats?.[1] >= pos[1] ? [`${seg.id}#${i + 1}`] : []));
+  return {selection:doc.creativeContext?.selection ?? null, projectSelection:ctx.production?.creative?.selection ?? null,
+    effectiveParams:doc.params, overridePaths:doc.creativeContext?.overridePaths ?? [],
+    references:doc.creativeContext?.references ?? [], model:videoModelOf(doc, ctx.production), modelGuide:promptGuideOf(videoModelOf(doc, ctx.production)),
+    story:ctx.outline?.story ?? null,
+    episodes:(doc.episodes ?? []).map(ep => ({ep:ep.ep, opening:ep.opening, openingBeat:ep.openingBeat,
+      openingCuts:locate(ep, ep.openingBeat), ending:ep.ending, endBeat:ep.endBeat, endingCuts:locate(ep, ep.endBeat),
+      upstreamQuestion:ctx.outline?.episodes?.find(e => e.ep === ep.ep)?.ending?.question ?? null,
+      nodes:(ctx.outline?.beats ?? []).filter(b => b.episode === ep.ep).map(b => {
+        const claim = ctx.script?.episodes?.find(e => e.ep === ep.ep)?.beatClaims?.find(c => c.beatId === b.id);
+        return {id:b.id,kind:b.kind,setup:b.setup,outcome:b.outcome,resolves:b.resolves ?? [],claim:claim ?? null,
+          startCuts:claim ? locate(ep,claim.start) : [],endCuts:claim ? locate(ep,claim.end) : []};
+      })}))};
+}
 const tOf = (lang) => {
   if (lang && !I18N[lang]) throw new Error('报告界面语言目前内置 zh / en');
   return I18N[lang ?? 'zh'];
@@ -1094,7 +1173,8 @@ function cutRecipe(cut, recipes, t) {
 function cutBeats(cut, scene) {
   if (!scene) return [];
   const [from, to] = cut.beats ?? [];
-  return scene.beats.slice((from ?? 1) - 1, to ?? 0);
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from || to > scene.beats.length) return [{kind:'invalid',text:'认领区间无效，不能推导实际正文／估时'}];
+  return scene.beats.slice(from - 1, to);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1104,13 +1184,27 @@ function cutBeats(cut, scene) {
 const mdRow = (cells) => `| ${cells.map((c) => String(c ?? '').replace(/\|/g, '\\|')).join(' | ')} |`;
 const mdHead = (cols) => [mdRow(cols), mdRow(cols.map(() => '---'))].join('\n');
 
+function assertReadableVersions(doc, ctx) {
+  if (doc?.schemaVersion !== 2) throw new Error('creation.schemaVersion 必须为 2；迁移见 references/migration.md');
+  for (const [key, validator] of [['script',scriptProblems],['outline',outlineProblems]]) if (ctx[key] !== undefined) {
+    const issues = validator(ctx[key]);
+    if (issues.length) throw new Error(issues.join('；'));
+  }
+  const errors = shapeProblems(doc);
+  if (errors.length) throw new Error(errors.join('；'));
+}
+
 export function renderMarkdown(doc, ctx = {}) {
+  assertReadableVersions(doc, ctx);
   const t = tOf(langOf(doc, ctx));
   const n = namer(ctx, t.voiceOver);
   const expanded = expandScript(ctx.script);
   const stats = computeStats(doc, ctx.script);
   const eps = doc.episodes;
-  const out = [`# ${t.docTitle(doc.source, eps[0]?.ep, eps[eps.length - 1]?.ep)}`, ''];
+  const out = [`# ${t.docTitle(doc.source, eps[0]?.ep, eps[eps.length - 1]?.ep)}`, '',
+    summaryText(gateReport(doc, ctx), t.langCode), '',
+    `## ${t.langCode === 'en' ? 'Effective configuration and upstream intent' : '当前有效配置与上游意图'}`,
+    '', '```json', JSON.stringify(reportContext(doc, ctx), null, 2), '```', ''];
 
   for (const [i, ep] of eps.entries()) {
     const st = stats.episodes[i];
@@ -1131,6 +1225,7 @@ export function renderMarkdown(doc, ctx = {}) {
       out.push(mdHead(t.cutCols));
       seg.cuts.forEach((cut, ci) => {
         const summary = cutBeats(cut, scene)
+
           .map((b) => (b.kind === 'line' ? t.speakerLine(n.char(b.speaker), b.text) : b.text))
           .join(' ');
         const rc = cutRecipe(cut, ctx.recipes, t);
@@ -1147,7 +1242,8 @@ export function renderMarkdown(doc, ctx = {}) {
 
   out.push(`## ${t.secDialogue}`, '', mdHead(t.dialogueCols));
   for (const d of stats.dialogue) out.push(mdRow([`${d.segment}#${d.cut}`, n.char(d.speaker), d.line, d.seconds]));
-  out.push('');
+  out.push('', `## ${t.secGates}`, '');
+  for (const g of gateReport(doc, ctx)) out.push(`- ${statusLabel(g, t.langCode)} [${g.category}/${g.level}${g.reason ? '/' + g.reason : ''}] ${gateText(g, t.langCode).label}: ${gateText(g, t.langCode).detail}`);
   return out.join('\n');
 }
 
@@ -1175,13 +1271,14 @@ function segmentImages(seg, ctx, imageExists) {
 }
 
 export function renderHtml(doc, ctx = {}) {
+  assertReadableVersions(doc, ctx);
   const lang = langOf(doc, ctx);
   const t = tOf(lang);
   const n = namer(ctx, t.voiceOver);
   const expanded = expandScript(ctx.script);
   const stats = computeStats(doc, ctx.script);
   const gates = gateReport(doc, ctx);
-  const failed = gates.filter((g) => !g.ok);
+  const failed = gates.filter(isBlocking);
   const eps = doc.episodes;
   const params = stats.params;
   const fmtMin = t.fmtMin;
@@ -1315,7 +1412,7 @@ ${cards}
   const gateList = `<ul class="gate">
   ${gates
     .map(
-      (g) => `<li class="${g.ok ? 'ok' : 'bad'}"><span class="m">${g.ok ? '✓' : '✗'}</span><span>${esc(gateText(g, t.langCode).label)}${
+      (g) => `<li class="${g.status === 'pass' ? 'ok' : isBlocking(g) ? 'bad' : 'notice'}"><span class="m">${esc(statusLabel(g, lang))}</span><span>${esc(gateText(g, t.langCode).label)} <small>${esc(`${g.category}/${g.level}${g.reason ? ' · ' + g.reason : ''}`)}</small>${
         g.detail ? `<small>${esc(gateText(g, t.langCode).detail)}</small>` : ''
       }</span></li>`,
     )
@@ -1429,6 +1526,7 @@ section.top-sec{margin-top:34px}
 .cut{padding:7px 0;border-bottom:1px solid var(--rule)}
 .cut:first-child{padding-top:11px}
 .cut:last-child{border-bottom:0}
+
 .cut-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
 .cut-h b{font:500 12px/1 var(--mono);color:var(--seal)}
 .cut-t{font:500 10.5px/1.6 var(--mono);color:var(--ink-3)}
@@ -1498,13 +1596,18 @@ td small{display:block;color:var(--ink-3)}
 
 <header class="hd">
   <h1>${esc(doc.source)}</h1>
+
   <span class="sub">${esc(t.kicker)} · ${esc(t.epRange(eps[0]?.ep, eps[eps.length - 1]?.ep))}</span>
   <span class="right">
-    <span class="gatepill ${failed.length ? 'fail' : 'pass'}">${failed.length ? '✗' : '✓'} ${esc(t.gatePill(gates.length - failed.length, gates.length))}</span>
+    <span class="gatepill ${failed.length ? 'fail' : 'pass'}">${failed.length ? '✗' : '✓'} ${esc(t.gatePill(gates.filter(g => g.status === 'pass' && g.category !== 'source').length, gates.filter(g => g.category !== 'source').length))}</span>
     <button class="expo" data-name="${esc(slug(doc.source))}-creation.json">${esc(t.exportJson)}</button>
   </span>
 </header>
 
+<section class="top-sec" id="sec-creative"><h2>${lang === 'en' ? 'Effective configuration and upstream intent' : '当前有效配置与上游意图'}</h2>
+<p>${esc(summaryText(gates, lang))}</p>
+<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(JSON.stringify(reportContext(doc, ctx), null, 2))}</pre>
+</section>
 <div class="kpis">
   <div class="kpi accent"><div class="l">${esc(t.kpi.segments)}</div><div class="v">${stats.totals.segments} <small>${esc(t.unitSeg)}</small></div><div class="d">${esc(t.kpi.segmentsSub(params.maxSegmentSeconds))}</div></div>
   <div class="kpi"><div class="l">${esc(t.kpi.cuts)}</div><div class="v">${stats.totals.cuts} <small>${esc(t.unitCut)}</small></div><div class="d">${esc(t.kpi.cutsSub(stats.totals.avgCutSeconds))}</div></div>
@@ -1619,6 +1722,8 @@ document.querySelector('.expo').addEventListener('click', (e) => {
 
 const USAGE = `novel-creation.mjs — novel-creation skill 的确定性工具（参考图直出视频）
 
+  profiles | profile --selection selection.json
+  apply-profile DOC --production production.json [--overrides overrides.json] [--decisions decisions.json] [--confirm]
   seed <script.json> [--eps 1-3]               从剧本预填节拍工作底稿（打印到 stdout）
   validate <creation.json> --script <script.json>
            [--outline] [--cast] [--art]         校验；有违规逐条打印并 exit 1
@@ -1639,12 +1744,17 @@ validate/render/export/videos 都按参考图的相对路径（../characters/ima
 运行前先 cd 进 <工作目录>/creation/（与 characters/、art/ 平级）。本 skill 不落 .gates.jsonl、不加 stats 子命令。`;
 
 function readJson(path) {
-  return JSON.parse(readFileSync(resolve(path), 'utf8'));
+  const value = JSON.parse(readFileSync(resolve(path), 'utf8'));
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${path} 必须为 JSON 对象，不能作为缺少上游跳过`);
+  return value;
 }
 
 function flag(rest, name, fallback = null) {
   const i = rest.indexOf(name);
-  return i >= 0 && rest[i + 1] ? rest[i + 1] : fallback;
+  if (i < 0) return fallback;
+  if (!rest[i + 1] || rest[i + 1].startsWith('-')) throw new Error(`${name} 缺少参数值`);
+  if (rest.indexOf(name, i + 1) !== -1) throw new Error(`${name} 重复提供`);
+  return rest[i + 1];
 }
 
 /*
@@ -1664,7 +1774,7 @@ function loadShots(dir) {
 function loadCtx(rest, fromDir = '.') {
   const get = (name) => {
     const path = flag(rest, name);
-    return path ? readJson(path) : null;
+    return path ? readJson(path) : undefined;
   };
   const shots = flag(rest, '--shots');
 
@@ -1673,7 +1783,8 @@ function loadCtx(rest, fromDir = '.') {
    * 找到了只影响 segment-cap 门的时长区间比对，没有开关：改了要重下单的
    * 东西不该留后门。--no-production 是给老项目临时绕过用的，用了会明说。
    */
-  let production = null;
+  if (rest.includes('--production') && rest.includes('--no-production')) throw new Error('--production 与 --no-production 互斥');
+  let production;
   let productionPath = null;
   if (!rest.includes('--no-production')) {
     productionPath = flag(rest, '--production') ?? findProduction(fromDir);
@@ -1718,6 +1829,35 @@ function promptBodyOf(md) {
 }
 
 async function main(argv) {
+  if (argv.includes('--production') && argv.includes('--no-production')) throw new Error('--production 与 --no-production 互斥');
+  for (const name of ['--script','--outline','--cast','--art','--shots','--production','--eps','--lang','--out','--only','--timeout','--concurrency']) {
+    if (argv.includes(name)) flag(argv, name);
+  }
+  if (await handleCreativeCommand(argv, {skillRoot:SKILL_ROOT, stage:'creation'})) {
+    if (argv[0] === 'apply-profile' && argv.includes('--confirm')) {
+
+      const doc = readJson(argv[1]);
+      const ctx = loadCtx(argv.slice(2), dirname(resolve(argv[1])));
+      // Application's frozen CLI accepts no upstream flags. Discover only unambiguous
+      // JSON products in this project; never read sibling skill code or references.
+      const projectRoot = ctx.productionPath ? dirname(resolve(ctx.productionPath)) : dirname(dirname(resolve(argv[1])));
+      for (const [key, directory] of [['script','script'],['outline','outline'],['art','art'],['cast','characters']]) {
+        const dir = join(projectRoot, directory);
+        try { lstatSync(dir); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+        const candidates = readdirSync(dir).filter(name => name.endsWith('.json') && !name.startsWith('.') && !/manifest|\.backup|\.bak|\.tmp|\.review/i.test(name)).sort();
+        if (candidates.length === 1) ctx[key] = readJson(join(dir,candidates[0]));
+        else if (candidates.length > 1) throw new Error(`上游 ${key} 不唯一，应用后须显式 validate 对账：${candidates.join(', ')}`);
+      }
+      const manifest = join(dirname(resolve(argv[1])), 'manifest.json');
+      if (existsSync(manifest)) console.error(`已有投产包 ${manifest}：配置变更后须重新导出并核对视频，未自动修改`);
+      ctx.imageExists = rel => existsSync(resolve(dirname(resolve(argv[1])), rel));
+      const result = checkup(doc, ctx);
+      console.error(JSON.stringify({postApplication:result}, null, 2));
+      console.error('应用只更新配置；请重新内容评审并核对已有投产包/视频是否失效。未提供的上游不能宣称已对账。');
+      if (result.blocking) process.exitCode = 1;
+    }
+    return;
+  }
   const [cmd, ...rest] = argv;
 
   if (!cmd || cmd === '-h' || cmd === '--help') {
@@ -1744,7 +1884,6 @@ async function main(argv) {
     if (!path) throw new Error(`用法：${cmd} <creation.json> --script <script.json> [--outline] [--cast] [--art]`);
     const doc = readJson(path);
     const ctx = loadCtx(rest, resolve(path, '..'));
-    if (!ctx.script) throw new Error('段离开剧本没有意义——必须给 --script <script.json>');
     if (!ctx.outline || !ctx.art) console.error('⚠️ 没给 --outline / --art，跳过参考图挂载核对（refimage-coverage）与提示词人名检查');
     ctx.imageExists = (rel) => existsSync(resolve(rel));
     announceProduction(ctx, rest, path, doc);
@@ -1753,9 +1892,9 @@ async function main(argv) {
 
     if (cmd === 'checkup') {
       const gates = gateReport(doc, ctx);
-      for (const g of gates) console.log(`${g.ok ? '✓' : '✗'} ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
-      const failedN = gates.filter((g) => !g.ok).length;
-      console.log(failedN ? `\n✗ ${failedN} 项未过` : '\n✓ 全部通过');
+      for (const g of gates) console.log(`${statusLabel(g, 'zh')} (${g.status}) [${g.category}/${g.level}${g.reason ? '/' + g.reason : ''}] ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
+      const failedN = gates.filter(isBlocking).length;
+      console.log(`\n阻断失败 ${failedN}；提醒 ${gates.filter(g => g.status === 'fail' && g.level === 'warn').length}；跳过 ${gates.filter(g => g.status === 'skipped').length}；内容未评审`);
       if (ctx.recipes) {
         const drifted = [];
         for (const ep of doc?.episodes ?? []) {
@@ -1783,7 +1922,10 @@ async function main(argv) {
       process.exit(1);
     }
     const st = computeStats(doc, ctx.script);
-    console.log(`✓ ${st.episodes.length} 集 / ${st.totals.segments} 段 / ${st.totals.cuts} 个分镜全部通过校验（共 ${st.totals.seconds}s / 目标 ${st.totals.targetSeconds}s）`);
+    console.log(`✓ ${st.episodes.length} 集 / ${st.totals.segments} 段 / ${st.totals.cuts} 个分镜无阻断失败（共 ${st.totals.seconds}s / 目标 ${st.totals.targetSeconds}s）`);
+    const gates = gateReport(doc, ctx);
+    console.log(summaryText(gates, 'zh'));
+    for (const g of gates.filter(g => g.status !== 'pass')) console.log(`${statusLabel(g, 'zh')} [${g.category}/${g.level}${g.reason ? '/' + g.reason : ''}] ${g.label}: ${g.detail}`);
     return;
   }
 
@@ -1792,7 +1934,6 @@ async function main(argv) {
     if (!path) throw new Error('用法：render <creation.json> --script <script.json> [--html|--md] [--lang zh|en] [--outline] [--art]');
     const doc = readJson(path);
     const ctx = loadCtx(rest, resolve(path, '..'));
-    if (!ctx.script) throw new Error('段离开剧本没有意义——必须给 --script <script.json>');
     const langFlag = flag(rest, '--lang');
     if (langFlag) ctx.lang = langFlag;
     ctx.imageExists = (rel) => existsSync(resolve(rel));
@@ -1805,9 +1946,12 @@ async function main(argv) {
     if (!path) throw new Error('用法：export <creation.json> --script <script.json> [--out .]');
     const doc = readJson(path);
     const ctx = loadCtx(rest, resolve(path, '..'));
-    if (!ctx.script) throw new Error('段离开剧本没有意义——必须给 --script <script.json>');
     if (!ctx.outline || !ctx.art) console.error('⚠️ 没给 --outline / --art，参考图路径解不出来，投产包的 images 会是空的');
     announceProduction(ctx, rest, path, doc);
+    if (!ctx.script) throw new Error('导出投产包必须提供 --script；独立校验不等于可投产');
+    ctx.imageExists = rel => existsSync(resolve(rel));
+    const problems = validateCreation(doc, ctx);
+    if (problems.length) throw new Error(`投产前检查失败：${problems.join('；')}`);
     const n = namer(ctx);
     const resolveImage = (kind, ref) => {
       const name = n.nameOf(kind, ref);
@@ -1852,12 +1996,16 @@ async function main(argv) {
     const durationNotes = [];
     const jobs = segs.map((s) => {
       const mdPath = resolve(outDir, s.prompt);
-      const md = existsSync(mdPath) ? readFileSync(mdPath, 'utf8') : '';
+      const md = readFileSync(mdPath, 'utf8');
+      const prompt = promptBodyOf(md);
+      if (!prompt) throw new Error(`${s.segment} 提示词为空`);
+      if (promptFamilyOf(video.model) === 'seedance' && TIMECODE_RE.test(prompt)) throw new Error(`${s.segment} seedance 提示词禁止精确时刻／秒数区间`);
       const { duration, note } = clampDuration(s.seconds, video.model);
+      if (duration === null) throw new Error(`${s.segment}：${note}`);
       if (note) durationNotes.push(`${s.segment}：${note}`);
       return {
         key: s.segment, name: s.segment, file: `${s.segment}/video.mp4`,
-        prompt: promptBodyOf(md), duration,
+        prompt, duration,
         images: (s.images ?? []).map((i) => ({ path: i.path })),
       };
     });

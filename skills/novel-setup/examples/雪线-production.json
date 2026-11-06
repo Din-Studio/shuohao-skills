@@ -46,5 +46,26 @@
     "model": "seedance2.0",
     "aspectRatio": "16:9",
     "resolution": "1080p"
+  },
+  "creative": {
+    "version": 1,
+    "selection": {
+      "genre": {
+        "id": "mystery",
+        "version": "1.0.0"
+      },
+      "narrativeStyle": {
+        "id": "restrained",
+        "version": "1.0.0"
+      },
+      "structure": {
+        "id": "serial",
+        "version": "1.0.0"
+      },
+      "pacing": {
+        "id": "gradual",
+        "version": "1.0.0"
+      }
+    }
   }
 }

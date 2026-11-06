@@ -1,12 +1,12 @@
 ---
 name: novel-art
-version: 1.10.0
+version: 2.0.0
 description: |
   给 AI 短剧出美术设定集（场景 + 叙事道具）：场景的设计意图、一致性锚点、光照时段变体、
   空景提示词；道具的戏剧功能、状态变体、尺度参照、白底无手提示词。
   产出 art.json + Markdown + 单页评审报告（含导出 JSON）。
   为 AI 生成而设计，不是实拍——环境和道具都是生成资产，交付的是让它们跨集长一样的一致性方案；
-  12 道质量门全部由脚本确定性检查（锚点 3–5、无人无手、白底可抠、尺度短语、提示词英文……，
+  资产检查全部由脚本确定性执行（锚点 3–5、无人无手、白底可抠、尺度短语、提示词英文……，
   其中 2 道读工作目录根的 production.json：画风与设定图画幅，没有就明说跳过）。
   画风**不内置任何类型**——它由用户在 novel-setup 那一段填进 production.json 顶层的 style.scene，
   本 skill 整块抄过来用（真人实拍、吉卜力、水墨、黏土定格都行，不用改代码）。
@@ -40,6 +40,12 @@ metadata:
     - codex
 ---
 
+## 2.0.0 创作契约与迁移
+
+seed 只接受显式 `outline.schemaVersion: 2`。只读取 production 中 genre/narrativeStyle 作为背景，不加载 profile，不新增应用流程或 creativeContext，不伪造摘要。本地 profile 缺失不影响资产阶段。缺 production 的历史读取仅跳过上游对账；提供损坏上游或缺视觉正文的 production 必须失败。出图仍须合法视觉正文及制作参数。
+
+检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-background.md) 和 [迁移说明](references/migration.md)。
+
 ## novel-art
 
 给 AI 短剧出**美术设定集**：场景 + 叙事道具。**前提刻在骨子里：这是 AI 生成，不是实拍**——没有堪景搭景置景采买，环境和道具都是要被生成几十次还得长一样的资产，所以交付物全部围绕一致性：
@@ -50,7 +56,7 @@ metadata:
 | 光照时段变体 | AI 换时段是重新生成不是重新打灯，每个状态落成完整提示词 |
 | 空景出图提示词 | 环境和角色是两层资产，参考图里混进人，一致性全毁 |
 | 变体机制（variantOf） | 生成新景便宜，但变体复用母场景资产更一致 |
-| 道具状态变体 | 皮箱的合上与打开是两张参考图——道具有状态弧，场景没有 |
+| 道具状态变体 | 铁盒的合上与打开是两张参考图——道具有状态弧，场景没有 |
 | 道具尺度参照 | AI 经常把手持道具画成家具尺寸，提示词必须带尺度短语 |
 | 道具白底无手 | 道具图要被贴进各种镜头，必须可抠；拿着道具的手是最常见污染 |
 
@@ -66,8 +72,8 @@ metadata:
 
 三种输入，优先级从高到低：
 
-1. **outline.json**（novel-outline 的产出）——最优，场景清单、出现集、承载爽点、复用方案都是现成的
-2. 小说原文——自己归纳场景清单（主舞台优先，参考 novel-outline 的主场景上限思路：别贪多）
+1. **outline.json**（novel-outline 的产出）——最优，场景清单、出现集、关联剧情节点、复用方案都是现成的
+2. 小说原文——自己归纳场景清单（主舞台优先，依照项目明确的资产预算控制数量，不依赖其他 skill 指南）
 3. 用户手写的场景清单
 
 **画风不内置、不问用户、不自己编。**它是 `novel-setup` 那一段定的，住在工作目录根的 `production.json` 顶层。取出来：
@@ -90,11 +96,11 @@ node {baseDir}/scripts/novel-art.mjs style
 
 **生产参数不用挂载，脚本自己找。** `production.json`（`novel-setup` 的产出）住在工作目录根，`validate` / `checkup` / `images` 都会从 art.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「2 道门跳过」——不静默。
 
-找到了画风就以它为准（渲染句有没有进提示词、反向词有没有带全，由脚本查了），设定图版面的画幅也必须与 `image.asset.aspectRatio` 一致。出图用 `image.model` + `image.asset.resolution`（**档位就是 lingying 收的 `resolution` 枚举值**，原样进 `--input_data`，不折算像素）——**这三个值 `images` 子命令自己读，不用手动挂载**。老项目没有这份文件照跑；临时绕过用 `--no-production`，用了会明说。
+找到了画风就以它为准（渲染句有没有进提示词、反向词有没有带全，由脚本查了），设定图版面的画幅也必须与 `image.asset.aspectRatio` 一致。出图用 `image.model` + `image.asset.resolution`（**档位就是 lingying 收的 `resolution` 枚举值**，原样进 `--input_data`，不折算像素）——**这三个值 `images` 子命令自己读，不用手动挂载**。历史报告没有这份文件时可以独立读取；`--no-production` 只跳过上游对账，不提供出图默认值。出图前必须补齐视觉正文与制作参数。
 
 ### Step 0.5 — 自动驾驶（autopilot）
 
-Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` / `checkup` 与 `images` 找到生产参数也会打印一句 `↳ 自动驾驶：开`（`render` 只做语言继承，不打印）——但 Step 0 跑在第一条命令之前，所以开工前要自己看一眼。
+Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` / `checkup` 与 `images` 找到生产参数也会打印一句 `↳ 自动驾驶：开启`（`render` 只做语言继承，不打印）——但 Step 0 跑在第一条命令之前，所以开工前要自己看一眼。
 
 没有 `production.json`、字段写着 `false` 或者整个没写，就是各步原来的样子。
 
@@ -104,7 +110,7 @@ Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时�
 | Step 2 叙事道具收哪几件 | 自己定（有特写、跨集、承载剧情，3–8 件），清单与取舍理由写进汇报 |
 | Step 4 出图 | 场景与道具一次出全；拿到图自己核对锚点（全图无人，道具图另加无手、纯白背景），不对就 `--force` 重出一次，还不对记进汇报接着往下 |
 
-**转移的是审批权，不是取消检查点**：12 道门照样要过、拿到图照样要核对锚点——只是不再等人点头。**替用户做的每一个决定都要写进 Step 5 的汇报**，道具取舍一条不漏。
+**转移的是审批权，不是取消检查点**：确定性检查照样要过、拿到图照样要核对锚点——只是不再等人点头。**替用户做的每一个决定都要写进 Step 5 的汇报**，道具取舍一条不漏。
 
 ### Step 1 — seed 骨架（有 outline.json 才有这步）
 
@@ -113,7 +119,7 @@ mkdir -p <段目录>
 node {baseDir}/scripts/novel-art.mjs seed <outline.json> > <段目录>/<剧名>-art.json
 ```
 
-确定性搬运：场景 id/名称/主场景标记/出现集/承载爽点，带复用方案的场景会有 `seedNote` 提示做成变体。**这些事实不要让模型重新想一遍。**
+确定性搬运：场景 id/名称/主场景标记/出现集/关联剧情节点，带复用方案的场景会有 `seedNote` 提示做成变体。**这些事实不要让模型重新想一遍。**
 
 没有 outline.json 就自己按 `references/schema.md` 建清单。
 
@@ -129,7 +135,7 @@ node {baseDir}/scripts/novel-art.mjs seed <outline.json> > <段目录>/<剧名>-
 
 核心要求都在 scene-pass.md 里，最重的三条：锚点要**可画可认可核对**（「补丁船篷」是锚点，「陈旧的氛围」是形容词）；光照状态**从分集反推**，不写用不上的全家桶；**能做变体就别开新景**。
 
-**叙事道具优先吃大纲**：`outline.json` 从 1.1.0 起带 `props`，`seed` 会把道具表连同「承载什么」「托起哪几个爽点」「哪几集出现」一起搬过来，这一层只填设计字段（尺度、锚点、状态变体、白底提示词）。**大纲没有 props 就从原文提取**，那时这步是模型的活：只收**有特写、跨集出现、承载剧情**的，通常 3–8 件，跟主角数量一个量级。每件按 `references/prop-pass.md` 填：戏剧功能、锚点、状态变体、尺度、白底无手提示词；磨损怎么写得可核对，见 `references/realism.md` 第 4 节。皮箱这种「跟人走的道具」就该在这——塞进场景锚点和角色画像都不对。
+**叙事道具优先吃大纲**：`outline.json` v2 的可选 `props`，`seed` 会把道具表连同「承载什么」「关联哪些剧情节点」「哪几集出现」一起搬过来，这一层只填设计字段（尺度、锚点、状态变体、白底提示词）。**大纲没有 props 就从原文提取**，那时这步是模型的活：只收**有特写、跨集出现、承载剧情**的，通常 3–8 件，跟主角数量一个量级。每件按 `references/prop-pass.md` 填：戏剧功能、锚点、状态变体、尺度、白底无手提示词；磨损怎么写得可核对，见 `references/realism.md` 第 4 节。留言板这种「跟人走的道具」就该在这——塞进场景锚点和角色画像都不对。
 
 ### Step 3 — 校验 ⛔ 不能跳
 
@@ -137,7 +143,7 @@ node {baseDir}/scripts/novel-art.mjs seed <outline.json> > <段目录>/<剧名>-
 node {baseDir}/scripts/novel-art.mjs validate <art.json> --cast <cast.json>
 ```
 
-12 道质量门全是代码。场景 + 共用 6 道：锚点 3–5、光照状态 ≥1、**无人**、提示词全英文、不含角色名（给了 --cast 才查）、变体引用完整。道具专属 4 道：**状态 ≥1**、**尺度短语写进提示词**、**反向词禁手**、**设定图纯白背景**。生产参数 2 道：**画风整块用上**（渲染句进了 `sheet` 与 `prompt`、反向词一条不落地进了场景的反向词）、**设定图版面画幅与生产参数一致**（找不到 production.json 就明说跳过）。
+资产检查全是代码，另含字段/引用与 production 完整性检查。场景 + 共用 6 道：锚点 3–5、光照状态 ≥1、**无人**、提示词全英文、不含角色名（给了 --cast 才查）、变体引用完整。道具专属 4 道：**状态 ≥1**、**尺度短语写进提示词**、**反向词禁手**、**设定图纯白背景**。生产参数 2 道：**画风整块用上**（渲染句进了 `sheet` 与 `prompt`、反向词一条不落地进了场景的反向词）、**设定图版面画幅与生产参数一致**（找不到 production.json 就明说跳过）。
 
 **有违规逐条修，改完重跑，直到通过。**
 
@@ -161,9 +167,11 @@ node {baseDir}/scripts/novel-art.mjs images <剧名>-art.json
 
 ```bash
 cd <段目录>
-node {baseDir}/scripts/novel-art.mjs render <剧名>-art.json --md   > <剧名>-art.md
-node {baseDir}/scripts/novel-art.mjs render <剧名>-art.json --html > art-report.html
+node {baseDir}/scripts/novel-art.mjs render <剧名>-art.json --cast ../characters/<剧名>-cast.json --md   > <剧名>-art.md
+node {baseDir}/scripts/novel-art.mjs render <剧名>-art.json --cast ../characters/<剧名>-cast.json --html > art-report.html
 ```
+
+`render` 与 `validate/checkup` 读取相同的 `--cast` 上游并执行禁名检查。独立运行没有角色文件时省略 `--cast`，报告明确跳过；已经提供但损坏或不可读的角色文件必须失败。
 
 报告界面默认中文；用户要英文界面就加 `--lang en`（或在 art.json 顶层写 `"lang": "en"`，也可以在 `production.json` 里一处定死；优先级 `--lang` > art.json > production.json > 中文）。`render` 自动去 `images/<slug>-sheet.png` 找图（场景和道具都找），**先出图再 render**。报告含：KPI 带、场景清单、场景设定卡、道具清单、道具设定卡（锚点核对表 / 状态变体 / 提示词包全带复制按钮）、质量门面板、导出 JSON（下载的就是 art.json 原样）。
 
@@ -210,8 +218,10 @@ seed 吃 outline.json 的场景与道具两块（大纲没有 `props` 时道具�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-279 项断言，不调模型、不花额度。12 道质量门每一道都有击穿用例；出图编排用注入的假 CLI 与假时钟跑完全部路径（提交、轮询、超时、续传、变体波次、抠图），**不 spawn 进程、不发一个请求**。改完脚本先跑这个。
+278 项原功能断言与新增契约回归，不调模型、不花额度。每类资产检查都有击穿用例；出图编排用注入的假 CLI 与假时钟跑完全部路径（提交、轮询、超时、续传、变体波次、抠图），**只启动本地 Node CLI 子进程，不访问网关、不发网络请求**。改完脚本先跑这个。
 
 ## 自带样例
 
-`{baseDir}/examples/渡口-art.json`：《渡口》三场景 + 两件叙事道具（旧皮箱、县衙旧砚）的完整设定，全部质量门通过（含对着 novel-characters 样例 cast 的角色名检查）。当质量基准，也是自测夹具。
+`{baseDir}/examples/雨棚留言-art.json`：《雨棚留言》三场景 + 两件叙事道具（旧留言板、夹纸铁盒）的完整设定，全部质量门通过（角色名检查使用本 skill 自有夹具）。当质量基准，也是自测夹具。
+
+正式样例先阅读 `examples/雨棚留言-故事提案.md`（schema 阅读者从 skill 根目录定位）。独立水池场景不要求 reusePlan；节点关联包含 event 和 turn，不伪造 payoff。当前资产不含真实生成图片。

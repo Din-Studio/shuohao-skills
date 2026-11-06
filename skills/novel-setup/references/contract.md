@@ -36,6 +36,10 @@
 
 临时分卷摘要与候选角色卡放各阶段自己的 `.work/`。报告 HTML 可以重新渲染，不进入版本控制。
 
+## 创作选择
+
+先读 [creative-selection.md](creative-selection.md)。setup 记录四维选择，不加载任何 profile。outline/script 消费四维，creation 按本阶段契约加载 genre/narrativeStyle/pacing 并记录 structure；characters/art 只记录 genre/narrativeStyle 背景，不新增 creativeContext。本地 profile 缺失不影响资产阶段，也不允许伪造来源摘要。
+
 ## 参数消费者
 
 | 阶段 | 读取内容 | 行为 |
@@ -56,7 +60,7 @@
 - 生成调用必须带上 `image.model`、`image.asset.resolution` 和资产图比例。
 - 视频画幅独立读取 `video.aspectRatio`，不得拿它限制资产图模型。
 
-找不到参数文件，或找到文件但画风块未填，必须区分说明。下游没有默认画风可回退。空画风应先返回本阶段补齐，不能把“跳过检查”称为“校验通过”。
+找不到参数文件可跳过历史上游对账；找到文件但画风块未填必须失败。下游没有默认画风可回退。空画风应先返回本阶段补齐，不能把“跳过检查”称为“校验通过”。
 
 ### 自动驾驶
 
@@ -86,9 +90,9 @@ node scripts/novel-setup.mjs resolve --for video
 
 可加 `--from <目录>` 指定查找起点。阶段只有 `characters`、`art`、`video`。
 
-- 角色阶段返回 `style.label`、`style.phrase` 与 `style.character`。
-- 美术阶段返回 `style.label`、`style.phrase` 与 `style.scene`。
-- 视频阶段返回画风名称与短语，不返回角色或环境正文。
+- 角色阶段返回 `style.label`、`style.phrase` 与 `style.character`，另返回仅含 genre/narrativeStyle 的 creativeBackground（若有选择）。
+- 美术阶段返回 `style.label`、`style.phrase` 与 `style.scene`，背景范围同角色阶段。
+- 视频阶段返回画风名称与短语及完整 creative（若有选择），不返回角色或环境正文。
 - `resolution` 与 `aspectRatio` 保留配置原值，`inputData.resolution` 规范化为已知枚举的大小写。
 - 视频返回 `durationRange`；逐段 `duration` 不在这里固定。
 

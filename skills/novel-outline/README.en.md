@@ -1,86 +1,47 @@
 [中文](README.md) · **English**
 
-# novel-outline
+# novel-outline v2
 
-Feed it a novel plus target parameters, and get a five-piece short-drama adaptation outline:
+Turn a novel or an original proposal into a story promise, adaptation decisions, cast and assets, stable-ID beats, episode synopses, and computed asset inventories.
 
-- **Adaptation notes** — one-line core, keep/cut/merge tables, risk plans, and decision conclusions (`cutNote` "this means…" / `mergeNote` lead-roster rationale), with key decisions backed by **verbatim quotes from the source**
-- **Cast table** — tiered by asset weight: leads ≤ 5, named supporting ≤ 10, functional roles ≤ 10 (a face, not a name — labelled by function), each carrying a **← change record** (who they map to in the book, who got merged in)
-- **Beat table** — major/minor beats pinned to episodes, gaps ≤ 3 episodes, no dead zones
-- **Per-episode synopses** — three mandatory fields per episode: synopsis + hook + suspense; narrative prose only, quoted dialogue counts as out of scope
-- **Asset list** — **computed by script, never hand-written by the model**: scene/character usage, reuse plans for one-off scenes, production-risk warnings
+A stable workflow supports replaceable genre, narrative-style, structure and pacing references. Dense-payoff serials, gradual mysteries and measured episodic stories use the same schema and validator. Suspense endings, frequent payoffs and a triumphant finale are not universal requirements.
 
-Outputs `outline.json`, a Markdown report, and a self-contained `outline-report.html`:
+## Features
 
-![outline-report.html](assets/report.webp)
+- Self-contained Node 18+ tools and local guides; no sibling-skill imports or example dependencies.
+- Explicit schemaVersion 2; event/pressure/turn/payoff beats, suspense/closure/open endings and optional non-overlapping arcs.
+- IDs, references, explicit question deadlines and unique later resolutions remain mandatory regardless of policy.
+- off/warn/error policy levels; separate base, policy, source and content-review results.
+- Explicit profile previews and application, complete-object overrides, backups and atomic writes. Validation and rendering never reapply templates.
+- Retained adaptation evidence, cast tiers, configurable asset budgets, batches of at most 10 episodes and chapter/text chunking capped at 60 volumes.
+- Offline Chinese/English HTML and Markdown, beat timeline/table, expandable episodes, dispatch matrix, and unchanged input JSON values for export.
 
-## The quality gates are code
-
-The core stance of this skill: **a checklist the model grades itself on is worthless.** All 14 gates are deterministic checks in `validate`, not prose for the model to read — per-tier cast caps (leads 1–5, supporting ≤ 10, functional ≤ 10), a narrative-prop cap (≤ 8; `props` is optional and the gate says so when absent), a primary-scene cap that **scales with episode count** (4 + ⌈episodes/10⌉ clamped to 5–15 — tuned for AI production, where scenes are generated and the cap guards consistency assets rather than set-building money), reuse plans for one-off scenes, beat gaps, episode-1 hook, major-beat timing, three-fields-per-episode, crowd-scene plans, risk keywords flagged, reference integrity (no jobless characters, no unused scenes, no unused props, no dangling IDs), and no quoted dialogue in synopses.
-
-Why tiers instead of one flat cap: a flat cap conflates *who the audience must remember* with *how many consistent faces production must maintain*. The lead cap guards screen time and memory; the support/functional caps guard **AI character-asset cost** — and the asset list converts tiers into workload automatically (leads → full model sheets, supporting → bust references, functional → prompt-only). Unnamed extras stay off the table entirely. Functional roles legitimately have no arc — the doctor is there to stitch a wound.
-
-Thresholds are parameters (`params.thresholds`), not constants — different platforms want different beat cadences. The selftest **defeats every single gate on purpose** to prove each one actually blocks.
-
-## The most valuable rule in the flow
-
-The skeleton (cut lines / merge characters / place beats) ships as a **quick draft for sign-off first** — which lines died, who got merged, which episode carries the big payoff. Only after the user nods does episode writing begin, and that's enforced as a stage gate (`validate --stage beats`), not a promise. Episodes are then written in batches of ≤ 10; writing 60 in one go always collapses in the back half.
-
-## The report
-
-Reports render with a Chinese UI by default; pass `--lang en` for a fully English report (or set a top-level `lang` field in `outline.json` — the flag wins). The UI and the quality-gate labels are translated; data content — beat types, synopses, names — stays exactly as authored, and so do the detail strings of a failing gate. In English mode the quality-gate labels are translated too (thresholds kept as computed); failing-gate details and all data stay as authored.
+## Commands
 
 ```bash
+node scripts/novel-outline.mjs profiles
+node scripts/novel-outline.mjs profile --selection selection.json
+node scripts/novel-outline.mjs apply-profile outline.json --selection selection.json
+node scripts/novel-outline.mjs apply-profile outline.json --selection selection.json --decisions decisions.json --confirm
+node scripts/novel-outline.mjs validate outline.json --stage skeleton
+node scripts/novel-outline.mjs validate outline.json --stage beats
+node scripts/novel-outline.mjs validate outline.json
+node scripts/novel-outline.mjs checkup outline.json --json
 node scripts/novel-outline.mjs render outline.json --html --lang en > outline-report.html
-```
-
-A single-page, 1600px-wide review document — everything laid flat and Cmd+F-able:
-
-- **KPI band**: episodes, beats, tiered cast, primary scenes, production risks, adaptation mode — six stat tiles up front
-- **Beat rhythm**: chart/table tabs — the story timeline by default (filled majors, lighter minors, **dead gaps annotated right on the axis**, rust-red past the threshold, wrapping every 20 episodes), one click to the detail table
-- **Per-episode cards** in three columns, first three shown by default with a fade-out and an expand button; each card carries beat capsules, hook/suspense fields, and scene/cast/risk tags
-- **Scene overview**: one card per scene — ghost episode numbers top-right, a presence strip, beats carried, cast seen or the reuse plan
-- **Key decisions**: the three sign-off items on paper — which lines were cut (with a "this means…" conclusion), who got merged (cast-slot counts and the lead roster are **computed**), and where the major beats land (auto-listed from the beat table, first/final tagged)
-- **Dispatch matrix**: characters and scenes on one grid — read a column top-to-bottom and you have that episode's requirements
-- **Asset conversion**: cast tiers, scene environments, and production risks converted into prep workload — all computed
-- **Quality gates**: header badge, a failure banner when anything fails, and the full ✓/✗ list at the end — baked in by the script
-- **Export JSON** downloads `outline.json` verbatim — edit and feed it straight back into `render` / `validate`
-- **Built-in Chinese and English UI** — Chinese by default, `--lang en` for English
-- All graphics are inline SVG/CSS with a validator-checked palette; zero external resources, opens offline
-
-## Checkup mode
-
-Have an outline already and just want a diagnosis?
-
-```bash
-node scripts/novel-outline.mjs checkup outline.json
-node scripts/novel-outline.mjs render outline.json --html > outline-report.html
-```
-
-Failing gates don't block rendering — showing the problems is the point.
-
-## Long texts
-
-An 800k-character novel doesn't fit in context. `chunk` splits by chapter headings into volumes (15 chapters each by default), each volume summarised concurrently, then merged. Caps at 60 volumes and reports `truncated` explicitly — it never drops the tail silently. Key decisions must point back at the source (`keep[].evidence`, verbatim) — **no inventing content from the title**.
-
-## Relationship to novel-characters
-
-novel-outline owns adaptation structure (cutting, merging, beat placement, episodes); novel-characters owns character design (profiles, image/voice prompts, model sheets).
-
-**The outline sits upstream of the character bible**: the `characters` block already settles who is in, who is out, and who leads, so the character pass works from that roster instead of re-deciding it. The reverse also works — if you already have a `cast.json`, feed it in as character raw material instead of re-reading the source. This skill writes no dialogue, no storyboards, no generation prompts.
-
-## Autopilot
-
-When the `production.json` at the work-directory root (produced by `novel-setup`) carries `"autopilot": true`, this skill runs its stage **end to end**: it does not ask for episode count or genre (it decides and says so), and it does not wait for sign-off on the fast skeleton. Every decision it made goes into the final report.
-
-**It transfers approval, it does not remove checkpoints**: all 14 gates still have to pass and the fast skeleton is still produced — it just does not wait for a nod. Written as `false`, left out, or with no `production.json` at all, nothing changes. When `validate` finds the file with the flag on, it prints `↳ 自动驾驶：开`.
-
-## Selftest
-
-```bash
+node scripts/novel-outline.mjs render outline.json --md > outline.md
+node scripts/novel-outline.mjs assets outline.json
+node scripts/novel-outline.mjs chunk book.txt outline/.work --per-volume 15
 node scripts/selftest.mjs
 ```
 
-270 assertions — chunking, validation, gate-defeating cases, asset aggregation, production-parameter lookup, rendering (both UI languages), export. No model calls, runs in about a second.
+Use --production production.json instead of --selection in project mode. Validation and rendering discover production.json upwards or accept an explicit path. Language priority: CLI, document, project, Chinese. Deliverables belong under outline/; generated HTML is not versioned.
 
-**Only tested on macOS + Node 24.**
+A policy switch rebuilds registered parameters without changing story, episode count, duration or budgets. The CLI rechecks the local document and known script/creation JSON interfaces: versions, selections, episodes, durations and claims. Invalid or stale downstream data causes a nonzero exit after application. Full downstream validation and semantic review remain unperformed; the application workflow is still incomplete. Same-version source drift requires restoration or a version upgrade, not acceptance of a new digest.
+
+## Original example and migration
+
+[Old Station Timetable](examples/旧站时刻-outline.json) is this skill's own story: a retiring station uncovers a missing arrival record and an older false attribution. Its [story proposal](examples/故事提案.md) precedes the beats. It includes no-payoff episodes, a non-final closure, a non-payoff final beat and a justified optional question.
+
+Unversioned v1 input is rejected. The migration helper carries structure only; it does not infer beat semantics or mechanically rename old hooks. See [migration](references/migration.md), [schema/API](references/schema.md), [profile contract](references/profile-contract.md), [workflow](SKILL.md) and [review](references/review-core.md).
+
+Warnings are not passes. Independent success is not joint delivery. Structural checks do not prove story quality, and asset estimates are not generated production results.

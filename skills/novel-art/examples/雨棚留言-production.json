@@ -1,0 +1,67 @@
+{
+  "source": "雨棚留言",
+  "creative": {
+    "version": 1,
+    "selection": {
+      "genre": {
+        "id": "slice-of-life",
+        "version": "1.0.0"
+      },
+      "narrativeStyle": {
+        "id": "warm",
+        "version": "1.0.0"
+      },
+      "structure": {
+        "id": "episodic",
+        "version": "1.0.0"
+      },
+      "pacing": {
+        "id": "measured",
+        "version": "1.0.0"
+      }
+    }
+  },
+  "style": {
+    "label": {
+      "zh": "真人实拍",
+      "en": "Live action"
+    },
+    "phrase": "natural live-action film still",
+    "character": {
+      "render": "Live-action character reference with natural proportions and a distinct face.",
+      "surface": "Visible fabric weave, natural skin variation and individually identifiable hair.",
+      "lighting": "Soft upper-left portrait light in the left panel; even orthographic light in the right panels.",
+      "negative": "extra fingers, malformed hands, text, watermark",
+      "tags": [
+        "live-action",
+        "character reference"
+      ]
+    },
+    "scene": {
+      "render": "Photorealistic live-action film environment, cinematic production design reference, real location realism with natural light and authentic materials, grounded architectural perspective, cinematic depth",
+      "surface": "Weathered, lived-in materials rendered with photorealistic fidelity: chipped paint, water stains, patina on metal, worn wood grain, dust in corners and light shafts; fabric and paper props show creases and age; nothing looks factory-new. Atmospheric depth with haze or volumetric light where the space allows",
+      "negative": "people, human figures, characters, crowds, silhouettes of people, plastic CG look, oversaturated colours, sterile showroom cleanliness, warped perspective, melted geometry, floating objects, text, watermark, signature",
+      "tags": [
+        "photorealistic",
+        "live-action",
+        "cinematic production design",
+        "weathered materials"
+      ]
+    }
+  },
+  "image": {
+    "model": "nanobanana2",
+    "asset": {
+      "resolution": "2K",
+      "aspectRatio": "16:9"
+    }
+  },
+  "video": {
+    "model": "MiniMax H3",
+    "aspectRatio": "16:9",
+    "resolution": "768p"
+  },
+  "lang": "zh",
+  "promptLang": "en",
+  "autopilot": false
+}

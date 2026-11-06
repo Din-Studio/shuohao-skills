@@ -17,16 +17,30 @@ Here is the whole pipeline — **the production parameters lock the aspect and t
 
 | Skill | What it does |
 | --- | --- |
-| [**novel-setup**](skills/novel-setup/README.en.md) | Locks asset-image and video models, resolution tiers and independent aspect ratios, plus art style, languages and autopilot. Writes `production.json` at the work-directory root for the five creative skills. All 8 quality gates are script-checked |
-| [**novel-outline**](skills/novel-outline/README.en.md) | Adapts a novel into a five-piece short-drama outline: adaptation notes, cast, beats, per-episode synopses, asset list (including a narrative-prop table). All 14 quality gates are script-checked; includes a checkup mode for existing outlines |
+| [**novel-setup**](skills/novel-setup/README.en.md) | Locks asset-image and video models, resolution tiers and independent aspect ratios, plus art style, languages and autopilot. Writes `production.json` at the work-directory root for the five creative skills. Creative selection is explicit and independent of aspect ratio |
+| [**novel-outline**](skills/novel-outline/README.en.md) | Defines the audience promise, stable story beats, episode endings, optional arcs and assets. Payoff frequency and ending requirements come from explicitly selected profiles |
 | [**novel-characters**](skills/novel-characters/README.en.md) | Turns the cast the outline settled on into a character bible: profiles, design prompts, voice prompts, model sheets. Seeds the roster from outline.json; report language is configurable and the art style is copied whole from `production.json` |
-| [**novel-art**](skills/novel-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; all 12 quality gates script-checked |
-| [**novel-script**](skills/novel-script/README.en.md) | Screenwriting for AI short drama: scenes + beat flow (action beats alternating with dialogue lines), per-episode duration deterministically estimated from reading speed, a gated cold-open hook in the first 3 beats, a per-character line book with voice prompts that feeds straight into TTS. All 10 quality gates script-checked |
-| [**novel-creation**](skills/novel-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` submits, polls and downloads video jobs. All 16 quality gates are script-checked |
+| [**novel-art**](skills/novel-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; base contracts and production parameters are checked |
+| [**novel-script**](skills/novel-script/README.en.md) | Writes scenes and beat flow, claims outline beats by stable ID, locates openings and endings, and reconciles upstream target duration. Opening windows and line length are policy rules; estimated time is not measured performance |
+| [**novel-creation**](skills/novel-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` submits, polls and downloads video jobs. Shot-expression policies and model limits are checked separately |
 
-**Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for a fully English report (data content stays as authored). The UI language can also be settled once in `production.json`.
+**Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for English interface labels (story content and raw diagnostics retain their original language). The UI language can also be settled once in `production.json`.
 
 **To run the whole thing without interruptions**, switch on autopilot in `production.json` (`novel-setup init --autopilot`): reading `"autopilot": true`, each of the five creative skills runs its own stage end to end — no questions, no waiting for sign-off, deciding for itself and listing every decision in its final report. **It transfers approval, it does not remove checkpoints**: gates stay gates, money is still costed first, and loss limits still apply. Off by default.
+
+## Creative profiles and version boundaries
+
+Genre, narrative style, structure and pacing are four independent selections in `production.json.creative`. Visual prose remains in `production.json.style`. Vertical framing does not imply fast pacing. The initial combinations cover dense-payoff serials, gradual serial mysteries and measured episodic life stories.
+
+Outline, script and creation each provide `profiles`, `profile` and `apply-profile`. Profiles are local JSON plus Markdown under each skill's `references/profiles/`. They execute no code and need no sibling skill. Application previews changes and requires explicit decisions for old overrides, then backs up and atomically replaces the stage parameters. Validation and rendering never reapply templates. Same-version source drift allows historical inspection, but continued creation requires restoring the source or explicitly upgrading its version.
+
+```bash
+node skills/novel-outline/scripts/novel-outline.mjs profiles
+node skills/novel-outline/scripts/novel-outline.mjs apply-profile outline/story-outline.json --production production.json
+# Review differences and explicit override decisions before adding --confirm.
+```
+
+**Breaking data change:** outline and script require `schemaVersion: 2`. Back up old files and follow each skill's migration guide; node meaning, endings and actual-text claims require human or model review, not mechanical renaming. Existing projects without `creative` acquire no implicit policy. Base checks, policy errors/warnings, disabled or missing-upstream skips and content review remain separate. Standalone success does not establish joint delivery.
 
 ## One page for the whole pipeline
 
@@ -36,7 +50,7 @@ The five stage reports can be merged into a single page with a left-hand nav —
 node scripts/report.mjs --from <demo-dir> --out report.html
 ```
 
-`--from` discovers the five json files using the [working-directory layout](#working-directory-layout); you can also point at each one directly (`--outline` `--cast` `--art` `--script` `--creation`). Ran only the character pass? You get one pane, no error.
+`--from` discovers the five json files using the [working-directory layout](#working-directory-layout); you can also point at each one directly (`--outline` `--cast` `--art` `--script` `--creation`). Ran only the character pass? You get one pane. Ambiguous automatic discovery requires an explicit file path. Failed renderers are named in the report and cause a nonzero exit code.
 
 It is an **assembler, not a separate skill**: it imports no skill code, it shells out to each skill's own `render --html` and stitches the results. The five creative skills provide their own renderers, still run standalone, and are still copyable on their own — and when a skill changes its rendering, this picks it up for free.
 
@@ -53,7 +67,7 @@ node scripts/report-selftest.mjs   # assembler unit tests
 node scripts/pipeline-selftest.mjs # real rendering, interaction adapters, isolated install tests
 ```
 
-Point it at a novel and you get all five:
+The following screenshots show historical interfaces. Render the local samples for the current report UI:
 
 **novel-outline · short-drama adaptation outline**
 
@@ -158,10 +172,10 @@ Two hard requirements:
 Run every self-test before adding a skill:
 
 ```bash
-for f in skills/*/scripts/selftest.mjs scripts/*-selftest.mjs; do node "$f" || exit; done
+for f in skills/*/scripts/*selftest.mjs scripts/*-selftest.mjs; do node "$f" || exit; done
 ```
 
-There is no CI — the self-tests run in about a second, so running them locally beats waiting on a pipeline. **Only tested on macOS with Node 24**; there is no platform-specific code, so Linux and older Node releases should be fine, but that is unverified.
+There is no CI. Run the local tests, including three-combination integration, policy switching and isolated-copy checks. **Only tested on macOS with Node 24**; there is no platform-specific code, so Linux and older Node releases should be fine, but that is unverified.
 
 ## Working-directory layout
 

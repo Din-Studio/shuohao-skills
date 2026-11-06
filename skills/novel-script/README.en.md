@@ -1,100 +1,70 @@
 [中文](README.md) · **English**
 
-# novel-script
+# novel-script 2.0
 
-Screenwriting for AI short drama: turns novel-outline's per-episode synopses into scenes and dialogue. The premise is baked in: **the script owns the drama, video creation owns the filming.** "Is it gripping" and "how to shoot it" iterate at completely different speeds — dialogue gets rewritten constantly, and binding it to shot breakdowns means re-cutting shots on every line change. So this layer has no shot numbers and no video prompts or reference mounts; those belong to the video-creation stage one layer down.
+Turn story plans into scenes and structured dialogue. No shot lists, images or generation prompts. Genre, narrative style, structure and pacing are explicit local profile choices, not universal cold-open or cliffhanger requirements.
 
-One line is held firmly though: **dialogue is structured data, not prose.**
+## v2 contract
 
-- **Beat flow** — every scene is an alternating sequence of action beats and dialogue lines: one event per action beat (narrative prose), every line carrying its speaker and delivery note. Lines feed straight into per-line TTS; action beats are what the picture has to do
-- **Per-episode time budget** — dialogue converts at reading speed (4.5 chars/sec by default), action at a fixed per-beat estimate (2.5s). Every episode must land within ±15% of target. **A three-minute episode is three minutes** — overruns are caught here, not in the generation pipeline
-- **Hook + cliffhanger** — on paper for every episode, and **the hook is the first beat, not a label**: `hookBeat` claims its concrete image, gated to the episode's first 3 beats (cold open); beats promised by the outline must be claimed by actual scenes
-- **Voice-over convention** — `VO` marks inner voice and narration, whose voice goes in the delivery note; the line book groups VO separately
+- Explicit `schemaVersion: 2`. Legacy data is rejected; follow the local [migration guide](references/migration.md).
+- Neutral `opening/openingBeat/ending/endBeat`.
+- Seed copies opening and ending.mode/event exactly. It never copies Q plans. Scenes stay empty and all unwritten positions stay null.
+- `beatClaims` identifies every upstream B ID, in outline order, with inclusive, valid, non-overlapping core ranges. Cross-scene ranges and shared setup outside the ranges are supported.
+- With an outline, episode identity, projected intent and `targetSeconds = minutesPerEpisode × 60` are reconciled again. Timing tolerance cannot relax that equality.
+- Every beat, opening, claim and ending uses one unrounded cumulative estimate. Display rounding does not affect validation. Estimates are not measured performances.
 
-Outputs `script.json`, a Markdown script, and a self-contained `script-report.html`:
+## Profiles and checks
 
-![script-report.html](assets/report.webp)
+Local JSON/Markdown profiles are discovered by scanning. No genre-ID branches. Only explicit application changes effective parameters; validation and rendering never reapply templates.
 
-## Ten quality gates, all code
+`params.rules.openingWindow` and `lineLength` support off/warn/error. Off objects contain only level. A warning is a failed policy check, not a pass, but does not block. Base contract failures and error-level policy failures block. Profiles cannot disable identity, reference, coordinate or upstream-target checks.
 
-Same stance as the other three skills in this repo: **a checklist the model grades itself on is worthless.**
-
-| Gate | Rule |
-| --- | --- |
-| **Episode duration** | estimate within ±15% of `targetSeconds` (speed, per-beat seconds and tolerance all tunable via `params`) |
-| Line length | ≤ 35 chars — a line you can't say in one breath can't be generated either |
-| Speaker legality | speaker must be in the scene's cast, or explicitly `VO` |
-| Hook & cliff on paper | `hook` / `cliff` required per episode |
-| **Hook lands in the first 3 beats** | `hookBeat` claims where the hook's concrete image appears — the cold open is a gate, not a habit, so the hook and the actual opening can never drift apart |
-| **At least one action beat per scene** | a dialogue-only scene is radio drama — nothing for the picture to do |
-| Narrative action | no quoted dialogue inside action beats — lines only live in dialogue entries |
-| Beats claimed | every beat the outline pins to this episode must be claimed (checked with `--outline`; skipping is **announced**, never silent) |
-| Character refs | scene casts must exist in the outline (with `--outline`) |
-| Scene refs | scene exists, **lighting state is registered in the art bible**, props exist (with `--art`) |
-
-The selftest **defeats every gate on purpose** to prove each one actually blocks.
-
-## The report
-
-**Reports render with a Chinese UI by default; pass `--lang en` for a fully English report** (or set a top-level `"lang": "en"` in script.json — `--lang` wins when both are given). In English mode the quality-gate labels are translated too (thresholds kept as computed); failing-gate details and all data stay as authored.
-
-A single-page, 1600px-wide review document:
-
-- **KPI band**: episodes / estimated total vs target / line count / dialogue ratio / average scene length — scene changes are a statistic, not a gate; AI scene changes are free
-- **Duration gauge**: one bar per episode, dialogue and action stacked, laid over the target-range band; overruns and shortfalls called out in red with exact seconds
-- **The script itself**: the main body, **two episodes per row**. Episode header (estimate / hook / cliff / claimed beats) always visible; the scene area clips at 300px with a fade and toggles open per episode; per-line copy buttons on hover
-- **Scene table**: every scene × setting × lighting × cast × estimated seconds — computed, never hand-written
-- **Line book**: **two blocks per row**, all dialogue grouped by character, each list six rows tall with its own scrollbar, with episode/scene references and a copy-all button; with `--cast`, each character header also carries a **voice-prompt** copy button — lines and voice design on one page, straight into TTS
-- **Quality gates** panel + header badge + **Export JSON** (downloads `script.json` verbatim — edit and feed it straight back into `render` / `validate`)
-- All graphics inline CSS/SVG, zero external resources, opens offline
-
-## The relay
-
-```
-novel-setup      → production.json (what you shoot with: model, aspect, resolution, style)
-novel-outline    → outline.json (what)
-novel-characters → cast.json    (who)
-novel-art        → art.json     (where + what's in their hands)
-novel-script     → script.json  (the drama: scenes, beats, lines)
-```
-
-`seed <outline.json> --eps 1-3` deterministically prefills each episode's skeleton (target seconds, hook, cliff, claimed beats, candidate scenes and cast). `validate --outline --art` cross-checks characters, beats, and scenes/lighting/props — a lighting state the art bible never registered fails right here. `render --outline --art` displays names instead of raw IDs: **IDs in the data, names on screen.**
-
-One layer down comes `novel-creation`: segments, cuts, video prompts, reference mounts and video ordering.
+Checks expose pass/fail/skipped, not ok. Missing upstream, disabled policies and incomplete stages stay distinct. Historical source drift is reported without rewriting parameters or hashes. Content review is separate and never fabricated by the renderer.
 
 ## CLI
 
+Node 18+, standard library only.
+
 ```bash
-node scripts/novel-script.mjs seed outline.json --eps 1-3
-node scripts/novel-script.mjs validate script.json --outline outline.json --art art.json
-node scripts/novel-script.mjs checkup script.json
-node scripts/novel-script.mjs render script.json --html --outline outline.json --art art.json --cast cast.json > script-report.html
-node scripts/novel-script.mjs render script.json --html --lang en --outline outline.json --art art.json > script-report.html
+node scripts/novel-script.mjs profiles
+node scripts/novel-script.mjs profile --selection examples/selection.json
+node scripts/novel-script.mjs seed examples/修伞簿-outline.fixture.json --eps 1-3
+node scripts/novel-script.mjs validate examples/修伞簿-script.json \
+  --outline examples/修伞簿-outline.fixture.json --art examples/修伞簿-art.fixture.json
+node scripts/novel-script.mjs checkup examples/修伞簿-script.json --json
+node scripts/novel-script.mjs render examples/修伞簿-script.json --html --lang en \
+  --outline examples/修伞簿-outline.fixture.json --art examples/修伞簿-art.fixture.json \
+  --cast examples/修伞簿-cast.fixture.json > /tmp/script-report.html
 ```
 
-The report UI defaults to Chinese; `--lang en` renders it fully in English.
+Production artifacts belong in `<workdir>/script/`, with production.json at the project root. The bundled production fixture is test input, not a deployed project root.
 
-## Autopilot
+```bash
+node scripts/novel-script.mjs apply-profile <workdir>/script/story-script.json --production <workdir>/production.json
+node scripts/novel-script.mjs apply-profile <workdir>/script/story-script.json --production <workdir>/production.json --decisions decisions.json --confirm
+```
 
-When the `production.json` at the work-directory root (produced by `novel-setup`) carries `"autopilot": true`, this skill runs its stage **end to end**: with no outline.json it does not ask whether to run novel-outline first, and it does not pause between batches. Every decision it made goes into the final report.
+Review differences and unresolved decisions first. Decisions use full rule paths and keep/drop values. Overrides contain full rule objects. Confirmation backs up and atomically writes the artifact, then checks the current script. It does not rewrite the story. Recheck known downstream creation artifacts separately.
 
-**It transfers approval, it does not remove checkpoints**: all 10 gates still have to pass and over/under-written episodes still get rewritten into tolerance — it just does not wait for a nod. Written as `false`, left out, or with no `production.json` at all, nothing changes. When `validate` finds the file with the flag on, it prints `↳ 自动驾驶：开`.
+Standalone application uses `--selection selection.json` instead of production. Skeleton checks use `--stage skeleton`; success is not full delivery. Missing outline/art skips only dependent reconciliation. Supplied corrupt or unreadable files fail.
 
-## Limits
+## Reports
 
-- No shots, no shot numbers, no generation prompts, no images — nothing from the video-creation layer
-- Duration is an **estimate, not a stopwatch** — that's what the ±15% tolerance is for; tune `params.charsPerSecond` to your voice-over pace
-- Report UI ships in Chinese and English (`--lang zh|en`, Chinese by default, or the script.json top-level `lang` field); dialogue follows the drama's language
-- Write ≤ 3 episodes per batch — the script is the most-rewritten layer of the whole pipeline
+Offline HTML and Markdown show the audience promise, selection snapshot, effective parameters, overrides, sources, actual script, per-beat estimated timeline, upstream setup/outcome beside claimed text, Q answer locations, assets and line books.
 
-## Selftest
+HTML includes Chinese/English UI, responsive layout, collapsible scripts, coordinate links, copy buttons, optional supplied voice prompts and print support. Authored content and diagnostics keep their original language. JSON export preserves the input without inserting defaults or review claims. Generated HTML is not versioned.
+
+## Own story and tests
+
+[The Umbrella Repair Ledger](examples/故事提案.md) follows a repairer who recognizes a familiar knot but chooses consent-based conversation rather than claiming kinship from a pattern. Three episodes, six scenes, thirty lines. Targets are 60 seconds each; estimates are approximately 61.1 / 62.2 / 65.1 seconds. The first two episodes have no payoff beats and close their local tasks; the final ending stays open.
+
+All outline/art/cast/production fixtures are authored locally. No sibling samples or runtime imports. The old screenshot is not v2 verification evidence.
 
 ```bash
 node scripts/selftest.mjs
+node scripts/profile-selftest.mjs
 ```
 
-175 assertions — timing engine, stats, gate-defeating cases, seed, production-parameter lookup, rendering (both UI languages), export. No model calls, runs in about a second.
+Tests cover strict projection, claim failures, opening/ending coordinates, exact target reconciliation, rule severity, standalone mode, three profile combinations, source inspection, bilingual reports, export safety, real CLI exit codes and isolated copying. No paid calls or real image/video generation.
 
-The bundled example (`examples/渡口-script.json`) is a **complete 6-episode script** — 9 scenes, 123 lines, every episode inside the ±15% band, all gates passing against the outline and art fixtures.
-
-**Only tested on macOS + Node 24.**
+See [SKILL.md](SKILL.md), [schema](references/schema.md) and [content review](references/review-core.md).

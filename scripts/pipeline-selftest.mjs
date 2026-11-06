@@ -26,11 +26,13 @@ try {
   for (const lang of ['zh', 'en']) {
     const out = join(temp, `merged-${lang}.html`);
     const r = report('--from', sample, '--out', out, '--lang', lang);
-    eq(r.status, 0, r.stderr);
-    // creation 自带上游文件只是身份/节拍夹具，不是其他 skill 的完整报告输入。
-    ok(r.stdout.includes('1 个面板'), 'creation 的独立样例渲染视频创作面板');
+    // creation 自有上游是消费接口夹具，不是完整角色／美术设定。
+    // 部分消费者可渲染错误报告，部分拒绝不完整上游；均不得静默冒充成功。
+    eq(r.status, 1, '不完整上游面板使合并命令返回非零');
+    ok(/[1-5] 个面板/.test(r.stdout), '仍交付可渲染面板；完整五面板另以各自正式样例及联合 fixture 验证');
     const html = readFileSync(out, 'utf8');
     ok(html.includes('id="pane-creation"'), 'creation 接入合并报告');
+    ok(html.includes(lang === 'en' ? 'Unavailable pane:' : '面板未生成：'), '无法渲染的资产面板在正文中明确标注');
     ok(!html.includes('pane-storyboard'), '不存在旧面板');
     ok(html.includes('id="creation--creation-data"'), 'creation 导出数据带作用域');
     ok(html.includes(lang === 'en' ? '>Creation<' : '>视频创作<'), '导航语言正确');
@@ -44,16 +46,31 @@ try {
     }
   }
 
-  // 合并器的技术兼容测试：各 renderer 使用自己的完整夹具，不声称是同一部剧的剧情验收。
-  const fixture = (skill, file) => join(root, 'skills', skill, 'examples', file);
+  // 不同正式故事不得被组合成伪联合交付。完整五面板正例在三组合联合测试中。
+  const fixture = (skill, suffix) => {
+    const stories = { 'novel-script': '修伞簿', 'novel-outline': '旧站时刻', 'novel-art': '雨棚留言', 'novel-characters': '渡口' };
+    return join(root, 'skills', skill, 'examples', stories[skill] + suffix);
+  };
   const explicit = report('--creation', join(sample, 'creation/收书人-creation.json'),
-    '--script', fixture('novel-script', '渡口-script.json'),
-    '--outline', fixture('novel-outline', '渡口-outline.json'),
-    '--art', fixture('novel-art', '渡口-art.json'),
-    '--cast', fixture('novel-characters', '渡口-cast.json'), '--out', join(temp, 'explicit.html'));
-  eq(explicit.status, 0, explicit.stderr);
-  ok(explicit.stdout.includes('5 个面板'), '显式参数可渲染全部阶段');
-  const partial = report('--cast', fixture('novel-characters', '渡口-cast.json'), '--out', join(temp, 'partial.html'));
+    '--script', fixture('novel-script', '-script.json'),
+    '--outline', fixture('novel-outline', '-outline.json'),
+    '--art', fixture('novel-art', '-art.json'),
+    '--cast', fixture('novel-characters', '-cast.json'), '--out', join(temp, 'explicit.html'));
+  eq(explicit.status, 1, '不同故事的上游投影不匹配，必须报告失败');
+  const mixed = readFileSync(join(temp, 'explicit.html'), 'utf8');
+  ok(mixed.includes('面板未生成：novel-script'), '不同故事组合不能伪装成剧本联合通过');
+  ok(mixed.includes('id="pane-creation"'), '其他可渲染面板仍然保留');
+  const urlTextArt = JSON.parse(readFileSync(fixture('novel-art', '-art.json'), 'utf8'));
+  urlTextArt.scenes[0].summary += ' 资料路径记作 url(images/reference.png)，这是正文。';
+  urlTextArt.exportNote = 'url(../original.png)';
+  const urlTextFile = join(temp, 'url-text-art.json'); writeFileSync(urlTextFile, JSON.stringify(urlTextArt));
+  const urlTextResult = report('--art', urlTextFile, '--out', join(temp, 'url-text.html'));
+  eq(urlTextResult.status, 0, urlTextResult.stderr);
+  const urlTextHtml = readFileSync(join(temp, 'url-text.html'), 'utf8');
+  const embeddedArt = urlTextHtml.match(/<script type="application\/json" id="art--art-data">([\s\S]*?)<\/script>/)[1];
+  assert.deepEqual(JSON.parse(embeddedArt), urlTextArt); passed++;
+  ok(urlTextHtml.includes('资料路径记作 url(images/reference.png)'), '真实美术正文中的路径文本不被显示层改写');
+  const partial = report('--cast', fixture('novel-characters', '-cast.json'), '--out', join(temp, 'partial.html'));
   eq(partial.status, 0, partial.stderr);
   ok(partial.stdout.includes('1 个面板'), '单阶段渲染保持可用');
   const retired = report('--storyboard', 'old.json', '--cast', join(sample, 'characters/收书人-cast.json'), '--out', join(temp, 'retired.html'));
@@ -107,6 +124,17 @@ try {
   const button = { textContent: '复制', dataset: { copy: 'prompt' } };
   await clicks[1]({ target: { closest: () => button }, preventDefault() {} });
   eq(clipboardCalls, 1, '当前面板复制只调用一次');
+
+  // 实际大纲 renderer 的后半集定位，在合并报告重命名ID之后仍能展开并定位。
+  const outlineRendered = run(process.execPath, [join(root, 'skills/novel-outline/scripts/novel-outline.mjs'), 'render', fixture('novel-outline', '-outline.json'), '--html']);
+  eq(outlineRendered.status, 0, outlineRendered.stderr);
+  const locateCode = splitDoc(outlineRendered.stdout).scripts.join('\n').match(/function locateEpisode\(hash\)\{[\s\S]*?\n\}/)?.[0];
+  ok(locateCode, '实际 renderer 包含分集定位逻辑');
+  const locationState = { expanded: false, scrolled: false };
+  const episodeTarget = { scrollIntoView() { locationState.scrolled = true; ok(locationState.expanded, '先展开后滚动'); } };
+  const locationWindow = { document: { getElementById: () => ({ querySelector: selector => selector === '#outline--ep-6' ? episodeTarget : null }) }, state: locationState };
+  new Function('window', scopeJs(`function expandEpisodes(){window.state.expanded=true;}\n${locateCode}\nlocateEpisode('#outline--ep-6');`, 'pane-outline', 'outline--'))(locationWindow);
+  ok(locationState.scrolled, '带作用域的第6集链接执行真实定位函数');
 
   // 两个面板共享 document 时，点击监听仍各自归属，互不复制对方内容。
   const events = { a: [], b: [] };

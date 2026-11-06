@@ -1,6 +1,6 @@
 ---
 name: novel-characters
-version: 1.19.0
+version: 2.0.0
 description: |
   从小说或短故事里拆出角色表、人物画像、形象提示词、音色提示词，
   并给每个角色出角色设定图（左半身像 + 右全身三视图 + 细节条），产出 JSON + Markdown + 可交互的 report.html。
@@ -36,6 +36,12 @@ metadata:
     - codex
 ---
 
+## 2.0.0 创作契约与迁移
+
+seed 只接受显式 `outline.schemaVersion: 2`。只读取 production 中 genre/narrativeStyle 作为背景，不加载 profile，不新增应用流程或 creativeContext，不伪造摘要。本地 profile 缺失不影响资产阶段。缺 production 的历史读取仅跳过上游对账；提供损坏上游或缺视觉正文的 production 必须失败。出图仍须合法视觉正文及制作参数。
+
+检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-background.md) 和 [迁移说明](references/migration.md)。
+
 ## novel-characters
 
 输入一篇小说/短故事，输出每个角色的：人物画像、形象提示词、音色提示词、角色设定图。
@@ -58,7 +64,7 @@ metadata:
 | `image.asset.aspectRatio` | 设定图版面画幅，必须出现在每个角色的 `image.sheet` 里 |
 | `image.model` + `image.asset.resolution` | 第 8 步出图用的模型与分辨率档位（档位就是 lingying 收的 `resolution` 枚举值，原样填） |
 
-`lang` 也可以从它继承（优先级 `--lang` > cast.json 顶层 > production.json > 中文）。老项目没有这份文件照跑；临时绕过用 `--no-production`，用了会明说。
+`lang` 也可以从它继承（优先级 `--lang` > cast.json 顶层 > production.json > 中文）。历史报告没有这份文件时可以独立读取；`--no-production` 只跳过上游对账，不提供出图默认值。出图前必须补齐视觉正文与制作参数。
 
 ### Step 0.1 — 确定报告语言
 
@@ -95,11 +101,11 @@ node {baseDir}/scripts/novel-characters.mjs style
 
 **换风格是整套换**：五块整块取用，不要混搭。详见 `{baseDir}/references/style.md`。
 
-版面规则（三区、比例、细节让位）**不随画风变**，变的只有渲染质感。画幅由生产参数定，默认 16:9——**成片拍竖屏也不改**，三区版面靠横向铺开，竖过来三视图会被压扁。
+版面规则（三区、比例、细节让位）**不随画风变**，变的只有渲染质感。画幅读取 `production.image.asset.aspectRatio`，允许合法横向或方形比例——**成片拍竖屏也不改**，三区版面靠横向铺开，竖过来三视图会被压扁。
 
 ### Step 0.8 — 自动驾驶（autopilot）
 
-Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` 与 `images` 找到生产参数也会打印一句 `↳ 自动驾驶：开`（`render` 只做语言继承，不打印）——但 Step 0.1 跑在第一条命令之前，所以开工前要自己看一眼。
+Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` 与 `images` 找到生产参数也会打印一句 `↳ 自动驾驶：开启`（`render` 只做语言继承，不打印）——但 Step 0.1 跑在第一条命令之前，所以开工前要自己看一眼。
 
 没有 `production.json`、字段写着 `false` 或者整个没写，就是各步原来的样子。
 
@@ -237,14 +243,14 @@ node {baseDir}/scripts/novel-characters.mjs validate <cast.json> <book.txt>
 
 ### Step 8 — 出图（可选，每个角色都出）
 
-**每个角色一张**，用 `image.sheet`，落到 `./images/<slug>-sheet.png`。出图模型与档位由命令自己从 `production.json` 取（`image.model` / `image.asset.resolution` / `image.asset.aspectRatio` 原样进 `--input_data`，**提示词里一个像素都不写**）。一张横构图内部左右分栏（画幅按 `image.asset.aspectRatio`，默认 16:9）：
+**每个角色一张**，用 `image.sheet`，落到 `./images/<slug>-sheet.png`。出图模型与档位由命令自己从 `production.json` 取（`image.model` / `image.asset.resolution` / `image.asset.aspectRatio` 原样进 `--input_data`，**提示词里一个像素都不写**）。一张横向或方形画布内部左右分栏（画幅按 `production.image.asset.aspectRatio`）：
 
 ```
 ┌──────────┬────────────────────────────┐
 │  半身像   │   正视    侧视    背视       │
 │ （证件照） ├────────────────────────────┤
 │  面部基准  │  细节 · 细节 · 细节 · 细节   │
-│   ~34%   │            16:9            │
+│   ~34%   │        生产参数画幅        │
 └──────────┴────────────────────────────┘
 ```
 
@@ -316,7 +322,7 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-439 项断言，不调模型、不花额度，覆盖分块 / 归并 / 合成 / 多语言 / 校验 / 生产参数 / 渲染的全部确定性逻辑；出图编排用注入的假 CLI 与假时钟跑完全部路径（提交、轮询、超时、续传、风格参考波次、抠图、凭证前置检查），**不 spawn 进程、不发一个请求**。改完脚本先跑这个。
+439 项断言，不调模型、不花额度，覆盖分块 / 归并 / 合成 / 多语言 / 校验 / 生产参数 / 渲染的全部确定性逻辑；出图编排用注入的假 CLI 与假时钟跑完全部路径（提交、轮询、超时、续传、风格参考波次、抠图、凭证前置检查），**只启动本地 Node CLI 子进程，不访问网关、不发网络请求**。改完脚本先跑这个。
 
 ## 自带样例
 

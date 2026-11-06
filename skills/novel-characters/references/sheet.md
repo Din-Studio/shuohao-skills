@@ -62,8 +62,7 @@ lingying 的 `resolution` 与 `aspect_ratio` 是 `input_schema` 里的枚举字�
 `4K`、`16:9` / `9:16` / …），是结构化字段，不是提示词的一部分。它们已经被 `novel-setup`
 的能力表校验过一遍，这里不维护第二份枚举表。
 
-找不到 `production.json` 就按 `nanobanana2` + `2K` + `16:9` 出，命令会警告，汇报里要
-说清。提交报 `input validation failed` 时错误信息会指向 `novel-setup caps --model <名>`。
+找不到 `production.json` 时可以阅读历史报告，但必须停止出图并补齐生产参数，不能猜测模型、档位或画幅。提交报 `input validation failed` 时错误信息会指向 `novel-setup caps --model <名>`。
 
 `negative_prompt` 是 `input_schema` 里的一等字段，`cast.json` 里的反向提示词由命令
 原样填进去，**不要再往正向提示词里塞「no …」**。两个生图模型都收这个字段。
@@ -139,3 +138,7 @@ lingying 的两个生图模型都不出透明底，但网关上有现成的抠�
 产物路径由 `slug`（中文会保留）算出，`images` 与 `render` 用的是**同一个函数**——
 所以两边永远对得上。`render` 会自动去 `images/<slug>-sheet.png` 找图，找到就嵌进
 report.html，**先出图再 render**。
+
+## 创作与制作参数分离
+
+本地 profile 是否安装不影响资产阶段，不加载 profile、不生成摘要。出图仍必须提供 production 的完整视觉正文、模型、分辨率和资产画幅，不能由创作背景或 CLI 默认值代替。缺制作参数时生成任务报错。参考图挂载、变体/风格参考顺序与抠图流程不变。

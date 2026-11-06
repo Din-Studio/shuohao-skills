@@ -1,0 +1,9 @@
+{
+  "profileSchemaVersion": 1,
+  "dimension": "genre",
+  "id": "drama",
+  "version": "1.0.0",
+  "stage": "outline",
+  "guide": "guide.md",
+  "rules": {}
+}

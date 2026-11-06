@@ -1,0 +1,30 @@
+{
+  "profileSchemaVersion": 1,
+  "dimension": "structure",
+  "id": "serial-cliff",
+  "version": "1.0.0",
+  "stage": "outline",
+  "guide": "guide.md",
+  "rules": {
+    "endingModes": {
+      "level": "error",
+      "nonFinal": [
+        "suspense"
+      ],
+      "final": [
+        "closure"
+      ]
+    },
+    "optionalQuestions": {
+      "level": "error",
+      "allow": false
+    },
+    "arcCoverage": {
+      "level": "error"
+    },
+    "arcPayoff": {
+      "level": "error",
+      "minWeight": "major"
+    }
+  }
+}

@@ -3,6 +3,7 @@
 // 不调用任何模型，不花额度，跑一次 < 1 秒。
 //   node scripts/selftest.mjs
 
+import './contracts-selftest.mjs';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -233,10 +234,8 @@ eq(
 /* ---------------- seedFromOutline（大纲是角色的上游） ---------------- */
 
 {
-  // 拿真实的 outline 样例当夹具。这个函数的契约就是「吃 novel-outline 的产出」，
-  // 手捏一份假 outline 测不到真实的字段形状。novel-art 与 novel-script 的自测
-  // 读的是同一份文件，同仓库上游样例共享是既有做法。
-  const outlinePath = join(here, '..', '..', 'novel-outline', 'examples', '渡口-outline.json');
+  // 本 skill 自有上游投影夹具，不读取兄弟正式样例。
+  const outlinePath = join(examples, '渡口-outline-v2.json');
   const outline = JSON.parse(readFileSync(outlinePath, 'utf8'));
   const seeded = seedFromOutline(outline);
 
@@ -272,12 +271,8 @@ eq(
   const problems = validateCast(seeded.characters, null);
   ok(problems.length > 0, 'seed 产出是骨架不是成品，直接 validate 会报缺字段');
 
-  // 空大纲不炸
-  ok(seedFromOutline({}).characters.length === 0, '空大纲返回空角色表，不抛异常');
-  ok(seedFromOutline(null).source === '', 'null 也不炸');
-  // tier 缺失或不认识时给一个安全的中间档，不是崩掉
-  ok(seedFromOutline({ characters: [{ name: '张三' }] }).characters[0].importance === 'supporting',
-    'tier 缺失时退到 supporting，不抛异常也不给最高档');
+  for (const bad of [{}, null, { ...outline, schemaVersion: 1 }, { ...outline, characters: [{ name: '张三' }] }])
+    throws(() => seedFromOutline(bad), /outline v2/, '损坏或旧版上游必须拒绝');
 }
 
 /* ---------------- assembleCast ---------------- */
@@ -436,7 +431,7 @@ ok(/pore|subsurface/i.test(CHARACTER_STYLE.surface), '角色那一块管的是�
 // 画风没填就跳过，不是拦——填不填是 novel-setup 那一段的门
 {
   const half = { ...PRODUCTION, style: { label: { zh: '还没定' }, character: {} } };
-  eq(productionProblems(CAST, half).length, 0, '生产参数里画风没填就跳过画风那两条，画幅那条照查');
+  ok(productionProblems(CAST, half).length > 0, '提供了 production 却缺画风必须失败，不能跳过');
 }
 
 // 画风整块用上：渲染句原样进两条提示词
@@ -493,8 +488,8 @@ ok(/pore|subsurface/i.test(CHARACTER_STYLE.surface), '角色那一块管的是�
 {
   const portrait = { ...PRODUCTION, image: { ...PRODUCTION.image, asset: { resolution: '2K', aspectRatio: '9:16' } } };
   const probs = productionProblems(CAST, portrait);
-  eq(probs.length, 1, '生产参数改成竖版资产图，而提示词还写 16:9——必须报');
-  ok(probs[0].includes('9:16') && probs[0].includes('16:9'), '两个画幅都点名');
+  eq(probs.length, 2, '竖向资产参数及提示词不一致均报错');
+  ok(probs.some(p => p.includes('9:16') && p.includes('16:9')), '两个画幅都点名');
 }
 {
   const cast = JSON.parse(JSON.stringify(CAST));
@@ -1034,11 +1029,11 @@ eq(STAGE_DIR, 'characters', '段目录名与端到端工作目录约定一致');
 /* ---------------- 出图任务：从文档搬运 ---------------- */
 
 {
-  const { model, inputBase, jobs, problems } = imageJobsFrom(CAST);
+  const { model, inputBase, jobs, problems } = imageJobsFrom(CAST, PRODUCTION);
   eq(problems.length, 0, '自带样例能直接排出出图任务');
-  eq(model, DEFAULT_IMAGE_MODEL, '没有生产参数就用兜底模型');
-  eq(inputBase.aspect_ratio, DEFAULT_ASPECT, '没有生产参数就用兜底画幅');
-  eq(inputBase.resolution, DEFAULT_RESOLUTION, '没有生产参数就用兜底档位');
+  eq(model, DEFAULT_IMAGE_MODEL, '显式生产参数提供模型');
+  eq(inputBase.aspect_ratio, DEFAULT_ASPECT, '显式生产参数提供画幅');
+  eq(inputBase.resolution, DEFAULT_RESOLUTION, '显式生产参数提供档位');
   eq(jobs.length, CAST.length, '每个角色一张，不按 importance 筛');
   eq(jobs[0].prompt, CAST[0].image.sheet, '提示词取 image.sheet，不是 image.prompt');
   eq(jobs[0].negativePrompt, CAST[0].image.negativePrompt, '反向词单独带上');
@@ -1069,7 +1064,7 @@ eq(STAGE_DIR, 'characters', '段目录名与端到端工作目录约定一致');
   ok(jobs[1].prompt.includes(STYLE_REF_LINE), '挂了参考图就要补一句风格匹配，否则模型不知道拿它做什么');
   ok(!jobs[0].prompt.includes(STYLE_REF_LINE), '基准角色的提示词不动');
 
-  const named = imageJobsFrom(CAST, null, { styleRef: CAST[1].name });
+  const named = imageJobsFrom(CAST, PRODUCTION, { styleRef: CAST[1].name });
   eq(named.jobs[1].refFrom, null, '指名谁谁就是基准');
   eq(named.jobs[0].refFrom, CAST[1].name, '其余角色挂指名的那个');
 
@@ -1282,14 +1277,14 @@ const jobOf = (over = {}) => ({
 
 // 凭证问题在提交之前一次说完
 {
-  eq(preflight({ bin: null }).ok, false, '没装 CLI 就整步跳过，不假装能出图');
+  eq(preflight({ bin: null }).status, 'skipped', '没装 CLI 就整步跳过，不假装能出图');
   const home = join(TMP, 'home');
   mkdirSync(join(home, '.config', CLI_NAME), { recursive: true });
   writeFileSync(join(home, '.config', CLI_NAME, 'config.json'), JSON.stringify({}));
-  eq(preflight({ bin: '/x/lingying', home }).ok, false, '没有 api_key 提交必然 401——提交前就说');
+  eq(preflight({ bin: '/x/lingying', home }).status, 'skipped', '没有 api_key 提交必然 401——提交前就说');
   writeFileSync(join(home, '.config', CLI_NAME, 'config.json'), JSON.stringify({ api_key: 'k' }));
-  eq(preflight({ bin: '/x/lingying', home }).ok, true, '有 api_key 就能出图');
-  eq(preflight({ bin: '/x/lingying', home, needUpload: true }).ok, false, '挂风格参考与抠图另要 assethub_admin_token');
+  eq(preflight({ bin: '/x/lingying', home }).status, 'pass', '有 api_key 就能出图');
+  eq(preflight({ bin: '/x/lingying', home, needUpload: true }).status, 'skipped', '挂风格参考与抠图另要 assethub_admin_token');
 }
 
 // 白底转透明：走抠图模型，另存文件名

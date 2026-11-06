@@ -24,6 +24,7 @@ import {
   exportPack,
   expandScript,
   gateReport,
+  isBlocking,
   kindOfId,
   loadRecipes,
   parseCardFields,
@@ -59,8 +60,18 @@ import {
   buildInput,
   pickData,
   preflight,
-  runBatch,
+  runBatch as runBatchImpl,
 } from './lib/lingying.mjs';
+
+// Fake uploads still read real local bytes for input-identity checks. These are
+// inert test bytes, not generated images, and never leave the isolated directory.
+async function runBatch(jobs, options) {
+  for (const job of jobs) for (const image of job.images ?? []) {
+    const path = resolve(options.outDir, image.path);
+    if (!existsSync(path)) { mkdirSync(dirname(path), {recursive:true}); writeFileSync(path, 'FAKE REFERENCE BYTES'); }
+  }
+  return runBatchImpl(jobs, options);
+}
 
 const here = dirname(fileURLToPath(import.meta.url));
 const EX = join(here, '..', 'examples');
@@ -118,7 +129,7 @@ eq(STAGE_DIR, 'creation', '段目录名与工作目录约定一致');
 eq(slug('陈叙'), '陈叙', '中文名保留');
 eq(slug('a/b:c'), 'a-b-c', '危险字符替换');
 eq(paramsOf({}).maxSegmentSeconds, DEFAULT_PARAMS.maxSegmentSeconds, '默认段上限 15 秒');
-eq(paramsOf({ params: { maxCutSeconds: 4 } }).maxCutSeconds, 4, '分镜上限可调');
+eq(paramsOf(FIXTURE).rules.cutDuration.level, 'warn', '镜头表达使用当前有效规则');
 
 /* ---------------- 时长边界与折算 ---------------- */
 
@@ -141,8 +152,8 @@ eq(VIDEO_DURATION_BOUNDS['MiniMax H3'].max, 15, 'H3 上限 15 秒');
 }
 {
   const r = clampDuration(20, 'MiniMax H3');
-  eq(r.duration, 15, '超过上限按上限下单');
-  ok(r.note.includes('本该再拆一次'), '备注提示这段该拆');
+  eq(r.duration, null, '超过上限拒绝下单');
+  ok(r.note.includes('重新拆段'), '错误要求重新拆段');
 }
 {
   const r = clampDuration(6.2, '未知模型');
@@ -154,7 +165,7 @@ eq(VIDEO_DURATION_BOUNDS['MiniMax H3'].max, 15, 'H3 上限 15 秒');
   eq(r.duration, null, '非正数折不出 duration');
 }
 eq(clampDuration(4, 'seedance2.5').duration, 4, 'seedance2.5 下限 4 秒');
-eq(clampDuration(31, 'seedance2.5').duration, 30, 'seedance2.5 上限 30 秒');
+eq(clampDuration(31, 'seedance2.5').duration, null, 'seedance2.5 超过上限拒绝');
 
 /* ---------------- 提示词骨架：切片与引号剥离 ---------------- */
 
@@ -181,12 +192,14 @@ const expanded = expandScript(SCRIPT);
 eq(expanded.size, 1, '样例剧本只有 1 集');
 const e1 = expanded.get(1);
 eq(e1.scenes.length, 1, '第 1 集只有 1 场');
-eq(e1.scenes[0].beats.length, 9, '这场戏共 9 拍');
+eq(e1.scenes[0].beats.length, 10, '增加可听见的姐妹关系确认后共 10 拍');
+eq(e1.scenes[0].beats[9].text, '晚晚，这是姐姐当年写给你的。', '核心辨认以可表演台词表达');
+ok(FIXTURE.episodes[0].segments[3].prompt.includes('晚晚，这是姐姐当年写给你的。'), '末镜保留确认台词');
 eq(e1.scenes[0].beats[0].kind, 'action', '第 1 拍是动作');
 eq(e1.scenes[0].beats[0].seconds, 2.5, '动作按 2.5 秒计');
-eq(e1.scenes[0].beats[1].seconds, 2.7, '台词按字数/语速折算——12 字 / 4.5 字每秒');
+eq(e1.scenes[0].beats[1].seconds, 12 / 4.5, '台词按字数/语速折算——12 字 / 4.5 字每秒');
 eq(e1.scenes[0].beats[4].seconds, 2, '9 字台词折算 2 秒整');
-eq(e1.scenes[0].beats[5].seconds, 3.1, '14 字台词折算 3.1 秒');
+eq(e1.scenes[0].beats[5].seconds, 14 / 4.5, '14 字台词估时不提前舍入');
 eq(e1.scenes[0].beats[1].speaker, 'C02', '台词带说话人');
 eq(e1.targetSeconds, 30, '目标秒数带出来');
 eq(expandScript(null).size, 0, '空剧本不崩');
@@ -220,11 +233,11 @@ eq(CARDS.size, 1, '最小卡片夹具一张');
 ok(CARDS.get('insert-beat').must_phrases.includes('close-up'), '真实卡片的必备短语读得出来');
 eq(loadRecipes(join(here, '../不存在的目录')).size, 0, '目录不存在不崩');
 
-/* ---------------- 夹具本身：全绿基线 ---------------- */
+/* ---------------- 夹具本身：无阻断基线，保留提醒与跳过 ---------------- */
 
-eq(gateReport(FIXTURE, CTX_IMG_P).length, 17, '十七道门');
-ok(gateReport(FIXTURE, CTX_IMG_P).every((g) => g.ok), '样例挂全部上游 + 生产参数全部门通过');
-ok(gateReport(FIXTURE, CTX_IMG).every((g) => g.ok), '不挂生产参数（用默认 15 秒上限）同样通过');
+ok(gateReport(FIXTURE, CTX_IMG_P).length > 17, '基础、策略与来源分开检查');
+ok(gateReport(FIXTURE, CTX_IMG_P).every((g) => !isBlocking(g)), '样例挂全部上游 + 生产参数无阻断失败');
+ok(gateReport(FIXTURE, CTX_IMG).every((g) => !isBlocking(g)), '不挂生产参数时按默认模型检查，无阻断失败');
 eq(validateCreation(FIXTURE, CTX_IMG_P).length, 0, '样例通过结构 + 质量门校验');
 
 /* ---------------- 填法按 production.json 的 video.model 分流 ---------------- */
@@ -257,7 +270,7 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
 {
   // 挂 H3：没有确定性硬约束可查，本门明说这一点、并把该读哪份填法指南报出来
   const g = gateReport(FIXTURE, CTX_IMG_P).find((x) => x.id === 'prompt-model-fit');
-  ok(g.ok, '挂 MiniMax H3 时本门通过');
+  eq(g.status, 'skipped', 'MiniMax H3 没有该项确定性规则，明确跳过');
   ok(g.detail.includes('没有确定性硬约束'), 'H3 下明说没有确定性硬约束，不假装查了什么');
   ok(g.detail.includes('h3-prompt.md'), 'H3 下把填法指南的文件名报出来');
 }
@@ -266,7 +279,7 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   const doc = clone(FIXTURE);
   doc.video = { model: 'kling2.1' };
   const g = gateReport(doc, CTX_IMG_P).find((x) => x.id === 'prompt-model-fit');
-  ok(g.ok, '没收录的模型不拦');
+  ok(g.status !== 'fail', '没收录的模型不拦');
   ok(g.detail.includes('没有这一款的填法指南'), '明说没有对应指南，照通用骨架写');
 }
 {
@@ -275,7 +288,7 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   doc.video = { model: 'seedance2.0' };
   doc.promptLang = 'en';
   const g = gateReport(doc, CTX_IMG_P).find((x) => x.id === 'prompt-model-fit');
-  ok(g.ok, '挂 seedance 时样例提示词本来就没有时刻，照样通过');
+  ok(g.status !== 'fail', '挂 seedance 时样例提示词本来就没有时刻，照样通过');
   ok(g.label.includes('seedance2.0'), '门 label 带上实际挂的模型名');
 }
 {
@@ -286,26 +299,26 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   const seg = doc.episodes[0].segments[0];
   seg.prompt = seg.prompt.replace('[Shot 2]', '[Shot 2] At 00:03.000,');
   const g = gateReport(doc, CTX_IMG_P).find((x) => x.id === 'prompt-model-fit');
-  ok(!g.ok, 'seedance 下提示词里写死时刻被拦');
+  ok(g.status === 'fail', 'seedance 下提示词里写死时刻被拦');
   ok(g.detail.includes('00:03.000'), '点名是哪一处时刻');
-  ok(gateReport(doc, CTX_IMG_P).find((x) => x.id === 'prompt-lang').ok, '同一份提示词的其余门不受影响');
+  ok(gateReport(doc, CTX_IMG_P).find((x) => x.id === 'prompt-lang').status !== 'fail', '同一份提示词的其余门不受影响');
 }
 {
   // 同一处时刻，挂回 H3 就不拦——这道门是真的按模型走的
   const doc = clone(FIXTURE);
   const seg = doc.episodes[0].segments[0];
   seg.prompt = seg.prompt.replace('[Shot 2]', '[Shot 2] At 00:03.000,');
-  ok(gateReport(doc, CTX_IMG_P).find((x) => x.id === 'prompt-model-fit').ok, '挂 H3 时同一处时刻不拦');
+  ok(gateReport(doc, CTX_IMG_P).find((x) => x.id === 'prompt-model-fit').status !== 'fail', '挂 H3 时同一处时刻不拦');
 }
 
 {
   const stats = computeStats(FIXTURE, SCRIPT);
   eq(stats.totals.segments, 4, '样例四段');
   eq(stats.totals.cuts, 9, '样例九个分镜');
-  eq(stats.totals.seconds, 30, '总秒数');
+  eq(stats.totals.seconds, 32, '镜头计划32秒，包含末镜确认台词');
   eq(stats.totals.targetSeconds, 30, '目标秒数');
-  eq(stats.dialogue.length, 3, '三句台词全部对到段和切');
-  eq(stats.totals.withLines, 2, '两段带台词，其余是纯画面段');
+  eq(stats.dialogue.length, 4, '四句台词全部对到段和切');
+  eq(stats.totals.withLines, 3, '三段带台词，包括最终确认关系的一句');
   ok(stats.dialogue.every((d) => /^E01-\d{2}$/.test(d.segment) && d.cut >= 1), '对齐单带段号和切序');
 }
 
@@ -313,7 +326,7 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
 
 {
   const gates = gateReport(FIXTURE, {});
-  ok(gates.every((g) => g.ok), '不带任何上游也通过（对账门全部跳过视为通过）');
+  ok(gates.every((g) => !isBlocking(g)), '不带任何上游也通过（缺少上游明确跳过，不计为通过）');
   ok(gates.find((g) => g.id === 'coverage').detail.includes('跳过'), 'script 缺失时 coverage 明说跳过');
   ok(gates.find((g) => g.id === 'dialogue-verbatim').detail.includes('跳过'), 'script 缺失时 dialogue-verbatim 明说跳过');
   ok(gates.find((g) => g.id === 'refimage-coverage').detail.includes('跳过'), '没给 outline/art 时 refimage-coverage 明说跳过');
@@ -322,7 +335,7 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
 {
   // 有 script 但没有 imageExists 注入：refimage-coverage 默认全 false，必须点名缺哪张
   const g = gate(FIXTURE, 'refimage-coverage', CTX);
-  ok(!g.ok, '不注入 imageExists 时默认查不到文件，门必须失败——不能默认放行');
+  ok(g.status === 'fail', '不注入 imageExists 时默认查不到文件，门必须失败——不能默认放行');
   ok(g.detail.includes('周亦') && g.detail.includes('期望'), '点名具体缺哪张、期望路径');
 }
 
@@ -333,14 +346,14 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].cuts[0].beats = [2, 2];
-  ok(!gate(d, 'coverage').ok, '第 1 拍没人认领被拦');
+  ok(gate(d, 'coverage').status === 'fail', '第 1 拍没人认领被拦');
   ok(gate(d, 'coverage').detail.includes('没人认领'), '点名到拍');
 }
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments = d.episodes[0].segments.filter((s) => s.id !== 'E01-02');
   d.episodes[0].segments.forEach((s, i) => { s.id = `E01-0${i + 1}`; });
-  ok(!gate(d, 'coverage').ok, '整场缺一段的拍没人认领被拦');
+  ok(gate(d, 'coverage').status === 'fail', '整场缺一段的拍没人认领被拦');
 }
 
 // segment-cap（基础上限 + 挂载生产参数后的模型区间）
@@ -348,7 +361,7 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].cuts[0].seconds = 15;
   const g = gate(d, 'segment-cap');
-  ok(!g.ok, '段超 15 秒被拦');
+  ok(g.status === 'fail', '段超 15 秒被拦');
   ok(g.detail.includes('E01-01'), '点名到段');
 }
 {
@@ -357,23 +370,25 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   d.episodes[0].segments[1].cuts[0].seconds = 1;
   d.episodes[0].segments[1].cuts[1].seconds = 2;
   d.episodes[0].segments[1].prompt = d.episodes[0].segments[1].prompt; // 秒数改动不影响本门文本核对
-  const gBase = gate(d, 'segment-cap', CTX_IMG); // 不挂生产参数：3 秒 ≤ 15，过
-  ok(gBase.ok, '不挂生产参数时只查上限，3 秒的段不拦');
+  const gBase = gate(d, 'segment-cap', CTX_IMG); // 默认 H3 仍然检查合法区间
+  ok(gBase.status === 'fail', '不挂生产参数仍按有效默认模型检查，3 秒的段被拦');
   const gProd = gate(d, 'segment-cap', CTX_IMG_P); // 挂了生产参数：3 秒 < H3 下限 5 秒
-  ok(!gProd.ok, '挂了生产参数后，段秒数低于该视频模型下限也被拦');
+  ok(gProd.status === 'fail', '挂了生产参数后，段秒数低于该视频模型下限也被拦');
   ok(gProd.detail.includes('MiniMax H3') && gProd.detail.includes('时长区间'), '点名模型与区间');
 }
 
-// cut-length
+// cut-length：仅在明确 error 时阻断
 {
   const d = clone(FIXTURE);
+  d.params.rules.cutDuration = {level:'error', minSeconds:2, maxSeconds:5};
   d.episodes[0].segments[0].cuts[0].seconds = 1;
-  ok(!gate(d, 'cut-length').ok, '分镜短于 2 秒被拦');
+  ok(gate(d, 'cut-length').status === 'fail', '分镜短于 2 秒被拦');
 }
 {
   const d = clone(FIXTURE);
+  d.params.rules.cutDuration = {level:'error', minSeconds:2, maxSeconds:5};
   d.episodes[0].segments[0].cuts[0].seconds = 6;
-  ok(!gate(d, 'cut-length').ok, '分镜超 5 秒被拦');
+  ok(gate(d, 'cut-length').status === 'fail', '分镜超 5 秒被拦');
 }
 
 // dialogue-fit
@@ -381,7 +396,7 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].cuts[1].seconds = 2; // 台词 2.7 秒装不进 2 秒的切
   const g = gate(d, 'dialogue-fit');
-  ok(!g.ok, '台词装不进分镜秒数被拦');
+  ok(g.status === 'fail', '台词装不进分镜秒数被拦');
   ok(g.detail.includes('E01-01#2'), '点名到切');
 }
 
@@ -390,30 +405,30 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].cuts[0].seconds = 4;
   d.episodes[0].segments[0].cuts[1].seconds = 2; // 段从 7 秒缩到 6 秒，全集缩到 29 秒（未超 15%）
-  ok(gate(d, 'ep-duration').ok, '小幅偏差在容差内不拦');
+  ok(gate(d, 'ep-duration').status !== 'fail', '小幅偏差在容差内不拦');
 }
 {
   const d = clone(FIXTURE);
   for (const seg of d.episodes[0].segments) for (const cut of seg.cuts) cut.seconds = 2; // 全部压到最短，总时长跌破 30*0.85=25.5
   const total = d.episodes[0].segments.reduce((n, s) => n + segSeconds(s), 0);
   ok(total < 25.5, '构造用例确实跌破容差下限');
-  ok(!gate(d, 'ep-duration').ok, '总时长跌破容差下限被拦');
+  ok(gate(d, 'ep-duration').status === 'fail', '总时长跌破容差下限被拦');
 }
 
 // crowd
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[2].cuts[0].characters = ['C01', 'C02', 'C01', 'C02'];
-  ok(!gate(d, 'crowd').ok, '同框超过上限且没有拆解说明被拦');
+  ok(gate(d, 'crowd').status === 'fail', '同框超过上限且没有拆解说明被拦');
   d.episodes[0].segments[2].note = '两人叠印，构图刻意压缩';
-  ok(gate(d, 'crowd').ok, '带了拆解说明就放行');
+  ok(gate(d, 'crowd').status !== 'fail', '带了拆解说明就放行');
 }
 
 // segment-id
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].id = 'E1-1';
-  ok(!gate(d, 'segment-id').ok, '段号格式不对被拦');
+  ok(gate(d, 'segment-id').status === 'fail', '段号格式不对被拦');
 }
 
 // size-phrase / camera-phrase：都是逐切核对这一切自己的 [Shot k] 行
@@ -421,25 +436,25 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].prompt = d.episodes[0].segments[0].prompt.replace('Wide shot, Tracking Shot', 'Tracking Shot');
   const g = gate(d, 'size-phrase');
-  ok(!g.ok, '景别短语从 [Shot 1] 行里被删掉后拦');
+  ok(g.status === 'fail', '景别短语从 [Shot 1] 行里被删掉后拦');
   ok(g.detail.includes('E01-01#1'), '点名到切');
 }
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].prompt = d.episodes[0].segments[0].prompt.replace('Wide shot, Tracking Shot', 'Wide shot');
   const g = gate(d, 'camera-phrase');
-  ok(!g.ok, '运镜词从 [Shot 1] 行里被删掉后拦');
+  ok(g.status === 'fail', '运镜词从 [Shot 1] 行里被删掉后拦');
   ok(g.detail.includes('E01-01#1'), '点名到切');
 }
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].cuts[0].camera = 'Not A Real Move';
-  ok(!gate(d, 'camera-phrase').ok, '运镜不在词表里被拦');
+  ok(gate(d, 'camera-phrase').status === 'fail', '运镜不在词表里被拦');
 }
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].cuts[0].size = 'not-a-size';
-  ok(!gate(d, 'size-phrase').ok, '景别不在枚举里被拦');
+  ok(gate(d, 'size-phrase').status === 'fail', '景别不在枚举里被拦');
 }
 
 // dialogue-verbatim：改一个字必被拦
@@ -447,7 +462,7 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].prompt = d.episodes[0].segments[0].prompt.replace('还开着吗？我想卖一本书。', '还开着吗？我想卖一本旧书。');
   const g = gate(d, 'dialogue-verbatim');
-  ok(!g.ok, '台词改一个字必被拦');
+  ok(g.status === 'fail', '台词改一个字必被拦');
   ok(g.detail.includes('E01-01'), '点名到段');
 }
 
@@ -455,12 +470,12 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].prompt += ' 这是一句中文';
-  ok(!gate(d, 'prompt-lang').ok, '英文提示词正文混入中文被拦');
+  ok(gate(d, 'prompt-lang').status === 'fail', '英文提示词正文混入中文被拦');
 }
 {
   const d = clone(FIXTURE);
   d.promptLang = 'zh';
-  ok(!gate(d, 'prompt-lang').ok, '设定中文却仍是英文正文被拦');
+  ok(gate(d, 'prompt-lang').status === 'fail', '设定中文却仍是英文正文被拦');
 }
 
 // prompt-no-names：正文（引号外）不许出现角色名
@@ -468,25 +483,25 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].prompt = d.episodes[0].segments[0].prompt.replace('the young man', '周亦');
   const g = gate(d, 'prompt-no-names');
-  ok(!g.ok, '提示词正文出现角色名被拦');
+  ok(g.status === 'fail', '提示词正文出现角色名被拦');
   ok(g.detail.includes('周亦'), '点名是谁');
 }
 {
   // 引号内的台词本身不含人名，但换一句含别名的台词验证「只查引号外」逻辑仍然正确识别引号边界
   const d = clone(FIXTURE);
-  ok(gate(d, 'prompt-no-names').ok, '原样样例没有违规');
+  ok(gate(d, 'prompt-no-names').status !== 'fail', '原样样例没有违规');
 }
 
 // refs：cut 引用了剧本该场没有的人物
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].cuts[0].characters = ['C99'];
-  ok(!gate(d, 'refs').ok, '引用剧本该场没有的人物被拦');
+  ok(gate(d, 'refs').status === 'fail', '引用剧本该场没有的人物被拦');
 }
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].sceneIndex = 9;
-  ok(!gate(d, 'refs').ok, 'sceneIndex 越界被拦');
+  ok(gate(d, 'refs').status === 'fail', 'sceneIndex 越界被拦');
 }
 
 // refimage-coverage：AC3——引用了不存在设定图的分镜必须点名缺哪张
@@ -495,17 +510,18 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   d.episodes[0].segments[0].cuts[0].characters = ['C02'];
   const fakeCtx = { ...CTX_IMG, imageExists: (rel) => !rel.includes('周亦') };
   const g = gate(d, 'refimage-coverage', fakeCtx);
-  ok(!g.ok, '缺文件时门必须失败');
+  ok(g.status === 'fail', '缺文件时门必须失败');
   ok(g.detail.includes('周亦') && g.detail.includes('../characters/images/周亦-sheet.png'), '点名身份 + 期望路径');
 }
+
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].cuts[0].characters = ['C88'];
   d.episodes[0].segments[0].cuts[0].props = [];
   // 剧本该场没有 C88，refs 门会先拦；这里单独看 refimage-coverage 对「找不到名字」的措辞
-  const ctxNoRefsCheck = { ...CTX_IMG, script: null }; // 去掉 script 依赖，只看 refimage-coverage 本身
+  const ctxNoRefsCheck = { ...CTX_IMG, script: undefined }; // 去掉 script 依赖，只看 refimage-coverage 本身
   const g = gate(d, 'refimage-coverage', ctxNoRefsCheck);
-  ok(!g.ok, '编号在 outline/art 里找不到名字也要拦');
+  ok(g.status === 'fail', '编号在 outline/art 里找不到名字也要拦');
   ok(g.detail.includes('C88') && g.detail.includes('找不到名字'), '措辞说明解不出路径的原因');
 }
 
@@ -514,26 +530,26 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].images.push({ kind: 'prop', ref: 'P01', role: '多挂一张' });
   const g = gate(d, 'refimage-labeled');
-  ok(!g.ok, '多挂一张但提示词没加身份说明句被拦');
+  ok(g.status === 'fail', '多挂一张但提示词没加身份说明句被拦');
   ok(g.detail.includes('缺'), '点名缺哪一句');
 }
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].prompt = d.episodes[0].segments[0].prompt.replace('Picture 3 is', 'Picture 3 was');
   const g = gate(d, 'refimage-labeled');
-  ok(!g.ok, '身份说明句被改得不再匹配固定句式也被拦');
+  ok(g.status === 'fail', '身份说明句被改得不再匹配固定句式也被拦');
 }
 
 // shot-recipe：可选挂载
 {
   const g = gate(FIXTURE, 'shot-recipe');
-  ok(g.ok, '没挂卡库本门通过');
+  eq(g.status, 'skipped', '没有挂载卡库时跳过，不计为通过');
   ok(g.detail.includes('跳过'), '跳过要明说，不静默');
 }
 {
   const shotsCtx = { ...CTX_IMG, recipes: CARDS };
   const g = gate(FIXTURE, 'shot-recipe', shotsCtx);
-  ok(g.ok, '挂了卡库但全篇没引用配方也算通过');
+  eq(g.status, 'skipped', '没有引用配方时不适用，不计为通过');
   eq(g.detail, '本批分镜没有引用配方', '没引用同样明说，不静默');
 }
 {
@@ -545,26 +561,26 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   );
   const shotsCtx = { ...CTX_IMG, recipes: CARDS };
   const g = gate(d, 'shot-recipe', shotsCtx);
-  ok(g.ok, '合规引用（必备短语都在对应 [Shot k] 行里）通过');
+  ok(g.status !== 'fail', '合规引用（必备短语都在对应 [Shot k] 行里）通过');
 }
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[3].cuts[1].recipe = 'no-such-card';
   const g = gate(d, 'shot-recipe', { ...CTX_IMG, recipes: CARDS });
-  ok(!g.ok, '引用不存在的配方被拦');
+  ok(g.status === 'fail', '引用不存在的配方被拦');
   ok(g.detail.includes('E01-04#2'), '点名到段号#切序');
 }
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[3].cuts[1].recipe = 'insert-beat';
   const g = gate(d, 'shot-recipe', { ...CTX_IMG, recipes: CARDS });
-  ok(!g.ok, '必备短语没进对应 [Shot k] 行被拦');
+  ok(g.status === 'fail', '必备短语没进对应 [Shot k] 行被拦');
   ok(g.detail.includes('插入特写'), '配方名带出来');
 }
 
 /* ---------------- validate 结构检查 ---------------- */
 
-ok(validateCreation(null).length === 1, 'null 直接报');
+ok(validateCreation(null).length > 0, 'null 直接报');
 ok(validateCreation({}).some((x) => x.includes('source')), '缺书名被拦');
 ok(validateCreation({ source: 'x', episodes: [] }).some((x) => x.includes('episodes')), '空 episodes 被拦');
 {
@@ -575,12 +591,12 @@ ok(validateCreation({ source: 'x', episodes: [] }).some((x) => x.includes('episo
 {
   const d = clone(FIXTURE);
   d.episodes.push(clone(d.episodes[0]));
-  ok(validateCreation(d).some((x) => x.includes('重复')), '集号重复被拦');
+  ok(validateCreation(d).some((x) => x.includes('唯一')), '集号重复被拦');
 }
 {
   const d = clone(FIXTURE);
   delete d.episodes[0].segments[0].id;
-  ok(validateCreation(d).some((x) => x.includes('缺 id')), '段缺 id 被拦');
+  ok(validateCreation(d).some((x) => x.includes('id/')), '段缺 id 被拦');
 }
 {
   const d = clone(FIXTURE);
@@ -595,17 +611,17 @@ ok(validateCreation({ source: 'x', episodes: [] }).some((x) => x.includes('episo
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].images[0].kind = 'nope';
-  ok(validateCreation(d).some((x) => x.includes('kind')), '参考图 kind 非法被拦');
+  ok(validateCreation(d).some((x) => x.includes('images')), '参考图 kind 非法被拦');
 }
 {
   const d = clone(FIXTURE);
   delete d.episodes[0].segments[0].images[0].ref;
-  ok(validateCreation(d).some((x) => x.includes('ref')), '参考图缺 ref 被拦');
+  ok(validateCreation(d).some((x) => x.includes('images')), '参考图缺 ref 被拦');
 }
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].cuts = [];
-  ok(validateCreation(d).some((x) => x.includes('没有分镜')), '段没有分镜被拦');
+  ok(validateCreation(d).some((x) => x.includes('cuts')), '段没有分镜被拦');
 }
 {
   const d = clone(FIXTURE);
@@ -620,7 +636,7 @@ ok(validateCreation({ source: 'x', episodes: [] }).some((x) => x.includes('episo
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].cuts[0].seconds = 99; // 触发质量门
-  ok(validateCreation(d, CTX_IMG_P).some((x) => x.includes('质量门未过')), '质量门未过也算进 validate 的违规清单');
+  ok(validateCreation(d, CTX_IMG_P).some((x) => x.includes('秒')), '质量门未过也算进 validate 的违规清单');
 }
 
 /* ---------------- seedFromScript ---------------- */
@@ -630,7 +646,7 @@ ok(validateCreation({ source: 'x', episodes: [] }).some((x) => x.includes('episo
   eq(seeded.source, '收书人', 'seed 带书名');
   eq(seeded.episodes.length, 1, 'seed 输出全部集');
   eq(seeded.episodes[0].seedScenes.length, 1, 'seed 展开场次');
-  eq(seeded.episodes[0].seedScenes[0].beats.length, 9, 'seed 展开节拍');
+  eq(seeded.episodes[0].seedScenes[0].beats.length, 10, 'seed 展开完整十拍');
   eq(seeded.episodes[0].segments.length, 0, 'segments 留空——切镜是模型的活');
   eq(seedFromScript(SCRIPT, [2, 3]).episodes.length, 0, '--eps 范围过滤生效');
 }
@@ -694,7 +710,8 @@ ok(validateCreation({ source: 'x', episodes: [] }).some((x) => x.includes('episo
   ok(html.includes('>参考图挂载单<'), '有参考图挂载单区块');
   ok(html.includes('>配音对齐单<'), '有配音对齐单区块');
   ok(html.includes('>质量门<'), '有质量门区块');
-  eq((html.match(/<li class="ok">/g) || []).length, 17, '十七道质量门全 ✓');
+  eq((html.match(/<li class="ok">/g) || []).length, gateReport(FIXTURE, CTX_IMG).filter(g => g.status === 'pass').length, '报告通过项只计真实 pass');
+  ok(html.includes('提醒') && html.includes('跳过') && html.includes('内容未评审'), '提醒、跳过和内容状态分别展示');
   ok(html.includes('gatepill pass'), '页眉徽章通过态');
   ok(!html.includes('class="reftile-ph"'), '真实文件都存在时不出现缺图占位');
 }
@@ -993,7 +1010,7 @@ eq(autopilotOf({ autopilot: 1 }), false, '数字不算开');
 ok(AUTOPILOT_NOTE.includes('不要停下来问用户'), '开着时打印的那句话说清了约束');
 ok(AUTOPILOT_NOTE.includes('止损'), '那句话同时说清止损不变——不打断不等于无限重试烧钱');
 ok(
-  gateReport(FIXTURE, { ...CTX_IMG, production: { ...PRODUCTION, autopilot: true } }).every((g) => g.ok),
+  gateReport(FIXTURE, { ...CTX_IMG, production: { ...PRODUCTION, autopilot: true } }).every((g) => !isBlocking(g)),
   '打开自动驾驶不影响任何一道门——它改的是跑法，不是参数',
 );
 

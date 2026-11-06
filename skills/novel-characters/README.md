@@ -2,13 +2,19 @@
 
 # novel-characters
 
+## 2.0.0 创作契约与迁移
+
+seed 只接受显式 `outline.schemaVersion: 2`。只读取 production 中 genre/narrativeStyle 作为背景，不加载 profile，不新增应用流程或 creativeContext，不伪造摘要。本地 profile 缺失不影响资产阶段。缺 production 的历史读取仅跳过上游对账；提供损坏上游或缺视觉正文的 production 必须失败。出图仍须合法视觉正文及制作参数。
+
+检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-background.md) 和 [迁移说明](references/migration.md)。
+
 丢一本小说或一篇短故事进去，输出每个角色的完整设定：
 
 - **角色表** — 谁出场了，主角还是龙套，跨章节的不同称呼归并到同一个人
 - **人物画像** — 性别、年龄、身份、外貌、性情、动机、人物弧光、关系网，每条附**原文逐字引文**
 - **形象提示词** — 真人实拍路线，双语出图 prompt + negative prompt + 风格标签，`negative_prompt` 是 lingying 的一等字段，原样填进去
 - **音色提示词** — 音色、音高、语速、口音、情绪，双语 voice-design prompt，直接喂 Qwen3-TTS / ElevenLabs Voice Design
-- **角色设定图** — **每个角色一张**：16:9 分三区，左侧约 34% 证件照式半身像（面部基准）、右上全身三视图、右下关键细节特写条。**画风由 `production.json` 定**，本 skill 不内置任何一档。白底方便抠图，出图是一条 `images` 命令（可选，走 lingying）
+- **角色设定图** — **每个角色一张**：按 `production.image.asset.aspectRatio` 分三区，左侧约 34% 证件照式半身像（面部基准）、右上全身三视图、右下关键细节特写条。**画风由 `production.json` 定**，本 skill 不内置任何一档。白底方便抠图，出图是一条 `images` 命令（可选，走 lingying）
 - **关系图谱** — 报告里的一个全景视图：谁跟谁有关系、是什么关系，一眼看完。悬停一个人亮出他的全部关系，点一下跳到那个人的详情
 
 产出 `cast.json` + Markdown + 一个双击就能开的 `report.html`。
@@ -58,7 +64,7 @@ node scripts/novel-characters.mjs seed outline.json > seed.json
 
 ## 使用
 
-安装见[仓库根 README](../../README.md)。装好后：
+将本目录完整复制到 agent 的 skills 目录，例如 `~/.pi/agent/skills/novel-characters`、`~/.claude/skills/novel-characters` 或 `~/.codex/skills/novel-characters`。也可以从这些位置建立指向本目录的软链接。脚本只需要 Node 18+，无需安装第三方依赖。安装后：
 
 ```
 /novel-characters ./你的小说.txt          # Claude Code、codex
@@ -79,6 +85,8 @@ node scripts/novel-characters.mjs seed outline.json > seed.json
 ```
 
 内置 **中文 / English / 日本語** 三套界面文案。**其他语言一样支持**——skill 会现场把界面文案翻译成目标语言，存进 `cast.json` 的 `ui` 字段，渲染时合并。法语、韩语、西班牙语都能出完整报告，不会露出英文界面。
+
+`render --lang en` 仅切换界面语言。内容校验继续读取输入 `cast.json.lang`，HTML 与 Markdown 口径一致，不会把中文音色字段误判为英文违规。
 
 两条不跟随语言：**出图和 TTS 提示词永远英文**（引擎吃英文最稳）；**原文引文永远保持原文语言**（翻译了就不是证据了）。
 
@@ -126,7 +134,7 @@ node scripts/novel-characters.mjs style     # 打印这部剧的 style.character
 { "source": "…", "lang": "zh", "summary": "…", "characters": [ … ] }
 ```
 
-所以外部工具改完可以**直接喂回 `render` 重新出报告**，也能过 `validate`。角色卡里的 `sheetImage`（`images/<slug>-sheet.png`）一并带出，拿得到哪张图对应哪个人。
+所以外部工具改完可以**直接喂回 `render` 重新出报告**，也能过 `validate`。输入原有的 `sheetImage` 原样导出；渲染时自动发现的图片只进入显示模型，不新增或覆盖导出字段。
 
 数据以 `<script type="application/json">` 内嵌在报告里，点导出只是把它包成 Blob 下载，**不发任何网络请求**。
 
@@ -178,7 +186,7 @@ node scripts/novel-characters.mjs slug "胡二爷"                  # 安全文�
 
 工作目录根的 `production.json`（`novel-setup` 的产出）顶层写着 `"autopilot": true` 时，本 skill 的全部流程**一口气跑完**：不问报告语言、不问选角人数，归并候选自己逐条复核（拿不准就不合并），设定图一次出全，做过的决定全部写进最后的汇报。
 
-**转移的是审批权，不是取消检查点**：校验照样要过、出图前照样打印要出多少张、拿到图照样要核对——只是不再等人点头。字段写着 `false`、整个没写、或者根本没有 `production.json`，就是原来的样子（该问就问）。跑 `validate` 时找到生产参数并且开着，会打印一句 `↳ 自动驾驶：开`。
+**转移的是审批权，不是取消检查点**：校验照样要过、出图前照样打印要出多少张、拿到图照样要核对——只是不再等人点头。字段写着 `false`、整个没写、或者根本没有 `production.json`，就是原来的样子（该问就问）。跑 `validate` 时找到生产参数并且开着，会打印一句 `↳ 自动驾驶：开启`。
 
 ## 边界
 
@@ -219,6 +227,6 @@ examples/
 node scripts/selftest.mjs
 ```
 
-439 项断言，覆盖分块 / 别名归并 / 合成 / 多语言 / 校验 / 生产参数的两条检查 / 渲染，外加出图编排的全部路径（提交、轮询、超时、续传、风格参考波次、抠图）——后者用注入的假 CLI 与假时钟跑，不 spawn 进程、不发请求。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
+439 项断言，覆盖分块 / 别名归并 / 合成 / 多语言 / 校验 / 生产参数的两条检查 / 渲染，外加出图编排的全部路径（提交、轮询、超时、续传、风格参考波次、抠图）——后者用注入的假 CLI 与假时钟跑，出图编排不启动网关进程、不发请求；契约测试启动本地 Node CLI。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
 
 **只在 macOS + Node 24 上实测过。** 代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但**没验过**。

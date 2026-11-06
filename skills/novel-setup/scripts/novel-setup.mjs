@@ -3,9 +3,11 @@
 // Zero dependencies on purpose: 和其余 skill 一样，任何目录里 node 直接跑。
 // Node 18+ (stdlib only).
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { creativeProblems, creativeBackground, DIMENSIONS, check, blocking, mark } from './lib/contracts.mjs';
+export { creativeProblems } from './lib/contracts.mjs';
 
 /* ------------------------------------------------------------------ */
 /* 文件名与查找                                                         */
@@ -26,7 +28,7 @@ export function findProduction(fromDir = '.', depth = LOOKUP_DEPTH) {
   let dir = resolve(fromDir);
   for (let i = 0; i <= depth; i++) {
     const hit = resolve(dir, PRODUCTION_FILE);
-    if (existsSync(hit)) return hit;
+    try { lstatSync(hit); return hit; } catch (error) { if (error.code !== 'ENOENT') throw error; }
     const up = dirname(dir);
     if (up === dir) break; // 到根了
     dir = up;
@@ -320,6 +322,7 @@ export function initProduction({
   videoModel = '',
   videoResolution = '',
   style = null,
+  selection = undefined,
   lang = 'zh',
   promptLang = 'en',
 } = {}) {
@@ -330,8 +333,12 @@ export function initProduction({
     );
   }
 
+  const creative = selection === undefined ? undefined : { version: 1, selection };
+  const problems = creativeProblems(creative);
+  if (problems.length) throw new Error(problems.join('；'));
   return {
     source,
+    ...(creative ? { creative } : {}),
     autopilot: autopilot === true,
     // 画风没有内置类型也没有默认值：给一份空骨架，用户填。
     // 没填 style-blocks 门会拦，不会静默用回某一档写死的画风。
@@ -368,7 +375,9 @@ export function initProduction({
 
 export function gateReport(doc) {
   const gates = [];
-  const add = (id, label, ok, detail = '') => gates.push({ id, label, ok, detail });
+  const add = (id, label, passed, detail = '') => gates.push(check(id, label, passed ? 'pass' : 'fail', detail));
+  const creativeBad = creativeProblems(doc?.creative);
+  gates.push(check('creative-selection', '创作四维选择与显式版本', doc?.creative === undefined ? 'skipped' : creativeBad.length ? 'fail' : 'pass', creativeBad.join('；') || (doc?.creative === undefined ? '未选择创作策略；不推断默认值' : '只核对选择结构，不核验各阶段本地 profile'), doc?.creative === undefined ? 'not-applicable' : undefined));
 
   const img = doc?.image ?? {};
   const asset = img.asset ?? {};
@@ -377,9 +386,9 @@ export function gateReport(doc) {
   /* 1 — 字段齐全且枚举合法 */
   {
     const bad = [];
-    if (!String(img.model ?? '').trim()) bad.push('image.model 为空');
-    if (!String(asset.resolution ?? '').trim()) bad.push('image.asset.resolution 为空');
-    if (!String(asset.aspectRatio ?? '').trim()) bad.push('image.asset.aspectRatio 为空');
+    if (typeof img.model !== 'string' || !img.model.trim()) bad.push('image.model 为空');
+    if (typeof asset.resolution !== 'string' || !asset.resolution.trim()) bad.push('image.asset.resolution 为空');
+    if (typeof asset.aspectRatio !== 'string' || !asset.aspectRatio.trim()) bad.push('image.asset.aspectRatio 为空');
     // style 的内容归下面两道门查，这里只确认它是个对象——画风已经不是枚举了
     if (!doc?.style || typeof doc.style !== 'object' || Array.isArray(doc.style)) {
       bad.push('style 要是一个对象（画风没有内置类型，正文在这一段填；跑 style-template 拿骨架）');
@@ -426,7 +435,7 @@ export function gateReport(doc) {
   /* 4 — 视频 resolution 已填（资产图非空归 fields，枚举归模型门） */
   {
     const bad = [];
-    if (!String(video.resolution ?? '').trim()) bad.push('video.resolution 为空');
+    if (typeof video.resolution !== 'string' || !video.resolution.trim()) bad.push('video.resolution 为空');
     add(
       'resolution-filled',
       '资产图与视频分辨率档位都已填',
@@ -441,8 +450,8 @@ export function gateReport(doc) {
   {
     const bad = [];
     const model = String(video.model ?? '').trim();
-    if (!model) bad.push('video.model 为空');
-    const entry = VIDEO_MODELS[model];
+    if (typeof video.model !== 'string' || !model) bad.push('video.model 必须是非空字符串');
+    const entry = Object.hasOwn(VIDEO_MODELS, model) ? VIDEO_MODELS[model] : null;
     let note = '';
     if (model && !entry) {
       note = `${model} 不在能力表里，只查了非空（能力表来自 lingying model get，加一条就自动开始查）`;
@@ -464,7 +473,7 @@ export function gateReport(doc) {
   /* 6 — 档位与比例被生图模型收（lingying 的 input_schema 是枚举，查得死） */
   {
     const model = String(img.model ?? '').trim();
-    const entry = IMAGE_MODELS[model];
+    const entry = Object.hasOwn(IMAGE_MODELS, model) ? IMAGE_MODELS[model] : null;
     const bad = [];
     let note = '';
     if (model && !entry) {
@@ -507,9 +516,9 @@ export function gateReport(doc) {
     if (!style || typeof style !== 'object' || Array.isArray(style)) {
       bad.push('style 不是对象');
     } else {
-      if (!String(style.label?.zh ?? '').trim()) bad.push('style.label.zh 为空（画风的中文名，报告里显示它）');
+      if (typeof style.label?.zh !== 'string' || !style.label.zh.trim()) bad.push('style.label.zh 为空（画风的中文名，报告里显示它）');
       const phrase = String(style.phrase ?? '').trim();
-      if (!phrase) {
+      if (typeof style.phrase !== 'string' || !phrase) {
         bad.push('style.phrase 为空（视频提示词指南使用的英文画风短语）');
       } else if (/[^\x20-\x7e]/.test(phrase)) {
         bad.push(`style.phrase「${phrase}」含非 ASCII 字符——请填写英文画风短语`);
@@ -522,10 +531,10 @@ export function gateReport(doc) {
         }
         for (const f of fields) {
           if (f === 'tags') {
-            if (!Array.isArray(b.tags) || b.tags.filter((t) => String(t ?? '').trim()).length === 0) {
+            if (!Array.isArray(b.tags) || b.tags.length === 0 || b.tags.some(t => typeof t !== 'string' || !t.trim())) {
               bad.push(`style.${block}.tags 要是非空数组`);
             }
-          } else if (!String(b[f] ?? '').trim()) {
+          } else if (typeof b[f] !== 'string' || !b[f].trim()) {
             bad.push(`style.${block}.${f} 为空`);
           }
         }
@@ -567,12 +576,18 @@ export function gateReport(doc) {
     );
   }
 
+  for (const [id, model, table] of [['model-caps', img.model, IMAGE_MODELS], ['video-model', video.model, VIDEO_MODELS]]) {
+    if (typeof model === 'string' && model.trim() && !Object.hasOwn(table, model.trim())) {
+      const g = gates.find(g => g.id === id);
+      if (g.status === 'pass') { g.status = 'skipped'; g.reason = 'not-applicable'; }
+    }
+  }
   return gates;
 }
 
 export function validateProduction(doc) {
   return gateReport(doc)
-    .filter((g) => !g.ok)
+    .filter(blocking)
     .map((g) => `[${g.id}] ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
 }
 
@@ -605,10 +620,13 @@ export function resolveStage(doc, stage) {
   const meta = STAGES[stage];
   if (!meta) throw new Error(`未知阶段 ${stage}（可用：${Object.keys(STAGES).join(' / ')}）`);
 
+  const problems = creativeProblems(doc?.creative);
+  if (problems.length) throw new Error(problems.join('；'));
   const style = doc?.style ?? {};
   const common = {
     stage,
     what: meta.what,
+    ...(doc?.creative ? (stage === 'video' ? { creative: doc.creative } : { creativeBackground: creativeBackground(doc) }) : {}),
     style: {
       label: style.label ?? {},
       phrase: style.phrase ?? '',
@@ -667,10 +685,16 @@ const dash = (v) => (String(v ?? '').trim() ? String(v) : '—');
 export function renderMarkdown(doc) {
   const img = doc?.image ?? {};
   const gates = gateReport(doc);
-  const failed = gates.filter((g) => !g.ok);
+  const failed = gates.filter(blocking);
 
   const out = [];
   out.push(`# 生产参数${doc?.source ? ` · ${doc.source}` : ''}`, '');
+  if (doc?.creative) for (const d of DIMENSIONS) {
+    const p = doc.creative.selection?.[d];
+    out.push(`- 创作选择 ${d}：${p?.id ?? '未填写'} @ ${p?.version ?? '未填写'}`);
+  }
+  else out.push('创作选择：未选择；不推断默认策略。');
+  out.push('');
   out.push('| 参数 | 值 |', '| --- | --- |');
   out.push(`| 生图模型 | ${dash(img.model)} |`);
   out.push(`| 资产图分辨率 | ${dash(img.asset?.resolution)} |`);
@@ -682,12 +706,12 @@ export function renderMarkdown(doc) {
   out.push(`| 画风短语 | ${dash(doc?.style?.phrase)} |`);
   out.push(`| 报告界面语言 | ${dash(doc?.lang)} |`);
   out.push(`| 提示词语言 | ${dash(doc?.promptLang)} |`);
-  out.push(`| 自动驾驶 | ${autopilotOf(doc) ? '开（下游跑完整段不打断）' : '关（该问就问）'} |`);
+  out.push(`| 自动驾驶 | ${autopilotOf(doc) ? '开启（下游跑完整段不打断）' : '关闭（该问就问）'} |`);
   out.push('');
   out.push(`> 出图与生视频都走 \`${GENERATION_CLI}\`：分辨率与比例是它的**枚举值**，原样填进 \`--input_data\`，提示词里不写像素。`, '');
   out.push('## 质量门', '');
   for (const g of gates) {
-    out.push(`- ${g.ok ? '✅' : '❌'} ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
+    out.push(`- ${mark(g)} ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
   }
   if (failed.length) out.push('', `**${failed.length} 道门没过，先修再往下跑。**`);
   return out.join('\n');
@@ -708,6 +732,7 @@ const USAGE = `novel-setup.mjs — novel-setup skill 的确定性工具（生产
        [--image-model <名>]              默认 nanobanana2
        [--video-model <名>]              视频模型，取 lingying model list 的 ID 列
        [--video-resolution <档位>]        视频分辨率档位（如 768p）
+       [--selection <selection.json>]  显式四维选择对象；省略不猜默认
        [--style <style.json>]            画风正文；不给就留一份空骨架待填
        [--lang zh|en]                    报告界面语言，默认 zh
        [--prompt-lang zh|en]             H3 提示词语言，默认 en
@@ -759,10 +784,11 @@ function main(argv) {
   }
 
   if (cmd === 'init') {
-    const allowed = new Set(['--aspect', '--source', '--autopilot', '--asset-resolution', '--asset-aspect', '--image-model', '--video-model', '--video-resolution', '--style', '--lang', '--prompt-lang']);
+    const allowed = new Set(['--aspect', '--source', '--autopilot', '--asset-resolution', '--asset-aspect', '--image-model', '--video-model', '--video-resolution', '--style', '--selection', '--lang', '--prompt-lang']);
     for (const arg of rest) {
       if (arg.startsWith('--') && !allowed.has(arg)) throw new Error(`未知选项 ${arg}`);
     }
+    if (rest.includes('--selection') && !flag(rest, '--selection')) throw new Error('--selection 需要 JSON 文件路径');
     const doc = initProduction({
       aspect: flag(rest, '--aspect'),
       source: flag(rest, '--source', ''),
@@ -772,11 +798,13 @@ function main(argv) {
       imageModel: flag(rest, '--image-model', 'nanobanana2'),
       videoModel: flag(rest, '--video-model', ''),
       videoResolution: flag(rest, '--video-resolution', ''),
+      selection: flag(rest, '--selection') ? readJson(flag(rest, '--selection')) : undefined,
       style: flag(rest, '--style') ? readJson(flag(rest, '--style')) : null,
       lang: flag(rest, '--lang', 'zh'),
       promptLang: flag(rest, '--prompt-lang', 'en'),
     });
     console.log(JSON.stringify(doc, null, 2));
+    if (!flag(rest, '--selection')) console.error('创作选择未填写：请明确确认四维组合；不会按画幅或题材猜测默认策略');
     if (!flag(rest, '--style')) {
       console.error('⚠️ 画风留了空骨架——填满顶层 style 再跑 validate（style-template 有逐字段说明）');
     }
@@ -840,10 +868,10 @@ function main(argv) {
     if (cmd === 'checkup') {
       const gates = gateReport(doc);
       for (const g of gates) {
-        console.log(`${g.ok ? '✓' : '✗'} ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
+        console.log(`${mark(g)} ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
       }
-      const failedN = gates.filter((g) => !g.ok).length;
-      console.log(failedN ? `\n✗ ${failedN} 项未过` : '\n✓ 全部通过');
+      const failedN = gates.filter(blocking).length;
+      console.log(`\n阻断失败 ${failedN}；通过 ${gates.filter(g => g.status === 'pass').length}；跳过 ${gates.filter(g => g.status === 'skipped').length}；内容未评审`);
       if (failedN) process.exit(1);
       return;
     }
@@ -855,7 +883,7 @@ function main(argv) {
       process.exit(1);
     }
     console.log(
-      `✓ 生产参数全部通过校验（成片 ${doc.video?.aspectRatio} · 资产图 ${doc.image?.asset?.resolution} ${doc.image?.asset?.aspectRatio} · 画风 ${styleLabelOf(doc?.style)} · 自动驾驶 ${autopilotOf(doc) ? '开' : '关'}）`,
+      `✓ 生产参数无阻断失败（跳过 ${gateReport(doc).filter(g => g.status === 'skipped').length} 项，内容未评审）（成片 ${doc.video?.aspectRatio} · 资产图 ${doc.image?.asset?.resolution} ${doc.image?.asset?.aspectRatio} · 画风 ${styleLabelOf(doc?.style)} · 自动驾驶 ${autopilotOf(doc) ? '开启' : '关闭'}）`,
     );
     return;
   }

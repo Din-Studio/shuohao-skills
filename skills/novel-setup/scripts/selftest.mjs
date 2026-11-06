@@ -3,6 +3,7 @@
 // 不调用任何模型、不碰网络、不花额度，跑一次 < 1 秒。
 //   node scripts/selftest.mjs
 
+import './contracts-selftest.mjs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -52,7 +53,7 @@ function eq(actual, expected, msg) {
 }
 const clone = (d = PORTRAIT) => JSON.parse(JSON.stringify(d));
 const gate = (d, id) => gateReport(d).find((g) => g.id === id);
-const fails = (d, id) => gate(d, id).ok === false;
+const fails = (d, id) => (gate(d, id).status !== 'fail') === false;
 
 /* ---------------- 比例的解析 ---------------- */
 
@@ -189,7 +190,7 @@ eq(clampDuration('大概十秒', 'MiniMax H3').duration, null, '不是数字也�
 {
   const d = initProduction({ aspect: '16:9', imageModel: '未知模型', assetResolution: '8K' });
   eq(d.image.asset.resolution, '8K', '未知模型与未知档位都原样落盘——表里没有的不是错误');
-  ok(gate(d, 'model-caps').ok, '未知模型的档位比例都跳过检查');
+  eq(gate(d, 'model-caps').status, 'skipped', '未知模型的档位比例都跳过检查');
   ok(/不在能力表里/.test(gate(d, 'model-caps').detail), '跳过了要明说，不装查过');
 }
 
@@ -218,7 +219,7 @@ eq(autopilotOf({ autopilot: 1 }), false, '数字不算开');
 }
 {
   const d = clone(); delete d.autopilot;
-  ok(gate(d, 'fields').ok, '整个不写 autopilot 不算违规——老项目的 production.json 里没有这个字段');
+  ok((gate(d, 'fields').status !== 'fail'), '整个不写 autopilot 不算违规——老项目的 production.json 里没有这个字段');
 }
 {
   const d = clone(); d.autopilot = true;
@@ -246,7 +247,7 @@ ok(PORTRAIT.video.model !== LANDSCAPE.video.model, '两份样例演示了两个�
 ok(PORTRAIT.video.resolution !== LANDSCAPE.video.resolution, '两份样例演示了两个视频档位');
 ok(PORTRAIT.source !== LANDSCAPE.source, '两份样例是两部不同的剧');
 ok(PORTRAIT.autopilot !== LANDSCAPE.autopilot, '两份样例把自动驾驶的两档各演示一次');
-eq(gateReport(PORTRAIT).length, 8, '一共八道门');
+eq(gateReport(PORTRAIT).length, 9, '一共八道门');
 
 /* ---------------- 八道门，每道都有击穿用例 ---------------- */
 
@@ -319,7 +320,7 @@ passed++;
 }
 {
   const d = clone(); d.image.asset.aspectRatio = '1:1';
-  ok(gate(d, 'asset-landscape').ok, '方形资产图放行');
+  ok((gate(d, 'asset-landscape').status !== 'fail'), '方形资产图放行');
 }
 
 // 4 resolution-filled
@@ -329,7 +330,7 @@ passed++;
 }
 {
   const g = gate(PORTRAIT, 'resolution-filled');
-  ok(g.ok, '档位填齐了就过');
+  ok((g.status !== 'fail'), '档位填齐了就过');
   ok(g.detail.includes('768p'), '详情把两处档位摆出来');
 }
 
@@ -345,16 +346,16 @@ passed++;
 }
 {
   const d = clone(); d.video.aspectRatio = '21:9';
-  ok(gate(d, 'video-model').ok, 'H3 收 21:9');
+  ok((gate(d, 'video-model').status !== 'fail'), 'H3 收 21:9');
 }
 {
   const d = clone(); d.video.model = 'seedance2.0'; d.video.resolution = '720p';
-  ok(gate(d, 'video-model').ok, '换个模型换个档位照样过');
+  ok((gate(d, 'video-model').status !== 'fail'), '换个模型换个档位照样过');
 }
 {
   const d = clone(); d.video.model = '某个新模型';
   const g = gate(d, 'video-model');
-  ok(g.ok, '表里没有的视频模型只查非空');
+  ok((g.status !== 'fail'), '表里没有的视频模型只查非空');
   ok(/不在能力表里/.test(g.detail), '跳过了要明说');
 }
 ok(gate(PORTRAIT, 'video-model').detail.includes('5~15'), '过了的时候顺手提醒段时长要折成整数秒');
@@ -376,7 +377,7 @@ ok(gate(PORTRAIT, 'video-model').detail.includes('5~15'), '过了的时候顺手
 {
   const d = clone(LANDSCAPE); d.image.asset.resolution = '2K';
   d.image.asset.aspectRatio = '4:3'; d.video.aspectRatio = '4:3';
-  ok(gate(d, 'model-caps').ok, '同样是 4:3，降到 2K 就合法——限制只在 4K 上');
+  ok((gate(d, 'model-caps').status !== 'fail'), '同样是 4:3，降到 2K 就合法——限制只在 4K 上');
 }
 ok(gate(LANDSCAPE, 'model-caps').detail.includes('4K 下只收'), '过了的时候也把 4K 的限制摆出来');
 
@@ -404,7 +405,7 @@ ok(gate(LANDSCAPE, 'model-caps').detail.includes('4K 下只收'), '过了的时�
 }
 {
   const d = clone(); d.style.character.surface = '毛孔、碎发、布料织纹';
-  ok(gate(d, 'style-blocks').ok, '正文写成中文不拦——画风正文的语言由下游出图 skill 的英文门去查，这里只查填没填');
+  ok((gate(d, 'style-blocks').status !== 'fail'), '正文写成中文不拦——画风正文的语言由下游出图 skill 的英文门去查，这里只查填没填');
 }
 eq(Object.keys(STYLE_BLOCKS).join(','), 'character,scene', '画风分两块：人一套、环境一套');
 ok(STYLE_BLOCKS.character.includes('lighting'), '角色那块多一个光照——设定表要能抠图能量比例');
@@ -437,7 +438,7 @@ ok(!STYLE_BLOCKS.scene.includes('lighting'), '场景那块没有光照——光�
 {
   const d = clone();
   ok(/text/.test(d.style.character.negative), '写实画风的反向词里确实有 text');
-  ok(gate(d, 'style-coherent').ok, 'negative 里的 text 不该被 surface 里的 micro-texture 命中——误报的门比没有门更坏');
+  ok((gate(d, 'style-coherent').status !== 'fail'), 'negative 里的 text 不该被 surface 里的 micro-texture 命中——误报的门比没有门更坏');
 }
 eq(negativeTerms('a, photorealistic; 3d render').join('|'), 'photorealistic|3d render', '反向词按逗号分号拆，太短的丢掉');
 eq(negativeTerms('').length, 0, '空反向词拆不出东西');
@@ -549,22 +550,22 @@ eq(Object.keys(STAGES).join(','), 'characters,art,video', '三个消费端');
   ok(md.includes('| 视频 aspect_ratio | 9:16 |'), '参数表用视频模型的字段名');
   ok(md.includes('| 视频 resolution | 768p |'), '视频分辨率原样显示');
   ok(md.includes(GENERATION_CLI), '表下有一句说清出图与生视频走哪个 CLI');
-  ok(md.includes('| 自动驾驶 | 关（该问就问） |'), '参数表把自动驾驶摆出来——它决定这一趟会不会停下来问');
+  ok(md.includes('| 自动驾驶 | 关闭（该问就问） |'), '参数表把自动驾驶摆出来——它决定这一趟会不会停下来问');
   ok(md.includes('## 质量门'), '参数表带质量门');
   ok(md.includes('| 画风 | 真人实拍 |'), '参数表显示画风名称');
-  ok(md.split('\n').filter((l) => l.startsWith('- ✅')).length === 8, '八道门全绿');
+  ok(md.split('\n').filter((l) => l.startsWith('- ✓')).length === 9, '八道门全绿');
 }
 {
   const d = clone(); d.video.model = '';
   const md = renderMarkdown(d);
-  ok(md.includes('- ❌'), '有门没过就标红');
+  ok(md.includes('- ✗'), '有门没过就标红');
   ok(md.includes('1 道门没过'), '结尾点清没过几道');
   ok(md.includes('| 生视频模型 | — |'), '空值渲染成破折号不是空白');
 }
 {
   const md = renderMarkdown(LANDSCAPE);
   ok(md.includes('| 视频 resolution | 1080p |'), '横屏样例的视频档位也原样显示');
-  ok(md.includes('| 自动驾驶 | 开（下游跑完整段不打断） |'), '开着的时候参数表说清后果');
+  ok(md.includes('| 自动驾驶 | 开启（下游跑完整段不打断） |'), '开着的时候参数表说清后果');
 }
 
 /* ---------------- 能力表的自律 ---------------- */

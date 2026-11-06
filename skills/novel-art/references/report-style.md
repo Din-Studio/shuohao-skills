@@ -24,7 +24,7 @@ KPI 带    场景数（主场景 + 变体）/ 一致性锚点 / 光照状态 / �
 
 ## 质量门
 
-11 道（场景与共用 7 + 道具 4），`gateReport()` 渲染时算好烘进页面。无道具的文档四道道具门直接放行并照常显示。特殊处理一条：「提示词不含角色名」在没给 cast.json 时**明说跳过**（面板上写「未提供 cast.json，本门跳过」），不装作查过——静默通过和撒谎只差一步。
+`gateReport()` 返回 status/category/level，渲染时计算当前事实。只统计 pass 为通过；无道具的四项为 skipped/not-applicable，缺少上游为 skipped/missing-upstream；提供损坏上游为 fail。特殊处理一条：「提示词不含角色名」在没给 cast.json 时**明说跳过**（面板上写「未提供 cast.json，本门跳过」），不装作查过——静默通过和撒谎只差一步。
 
 ## 导出 JSON
 
@@ -36,3 +36,7 @@ KPI 带    场景数（主场景 + 变体）/ 一致性锚点 / 光照状态 / �
 - `@media print`：隐藏按钮、提示词全展开、卡片不跨页断
 - `prefers-reduced-motion` 关动效
 - 中文文案不用单字词（复制/展开/主场景，不写单字）
+
+## 创作背景与检查状态
+
+只展示项目提供的 genre/narrativeStyle 背景，不生成 profile 应用记录或 creativeContext。检查对象为 status/category/level；pass、fail、skipped 分开呈现，skipped 不计为通过。报告明确内容评审未执行，导出 JSON 不附加背景副本、统计或来源摘要。

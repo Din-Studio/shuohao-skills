@@ -1,0 +1,9 @@
+{
+  "profileSchemaVersion": 1,
+  "dimension": "genre",
+  "id": "life",
+  "version": "1.0.0",
+  "stage": "creation",
+  "guide": "guide.md",
+  "rules": {}
+}

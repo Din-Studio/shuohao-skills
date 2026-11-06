@@ -2,6 +2,12 @@
 
 # novel-setup
 
+## 3.0.0 创作契约与迁移
+
+通过 `init --selection <selection.json>` 写入显式四维选择。selection 文件只包含 genre/narrativeStyle/structure/pacing，每维指定 id/version。creative.version 固定为 1。show 展示选择，resolve 按阶段返回选择或背景。不读取兄弟 profile，不猜默认，不保证下游实现已安装。
+
+检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-selection.md) 和 [迁移说明](references/migration.md)。
+
 给 AI 短剧统一生产参数：资产图模型、分辨率与比例，视频模型、画幅与档位，以及画风、语言和自动驾驶。参数写入工作目录根的 `production.json`，五个创作阶段分别读取。
 
 **资产图与视频画幅独立**。角色、场景和道具设定图是横构图或方形的参考表；成片可以是竖屏。视频创作直接挂载已有设定图，不生成中间关键帧。
@@ -28,9 +34,9 @@ node scripts/novel-setup.mjs show <工作目录>/production.json
 
 ## 参数与质量门
 
-完整结构见 [references/schema.md](references/schema.md)。**8 道门全部由代码检查**：
+完整结构见 [references/schema.md](references/schema.md)。**9 道检查（含创作选择）全部由代码执行**：
 
-| 门 | 内容 |
+| 检查项 | 内容 |
 | --- | --- |
 | fields | 字段齐全、语言枚举合法、自动驾驶是布尔值 |
 | aspect-format | 资产图与视频比例均为固定 `W:H`，不接受 `adaptive` |

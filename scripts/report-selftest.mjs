@@ -4,8 +4,12 @@
 //   node scripts/report-selftest.mjs
 
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   PANES,
+  findJson,
   makePane,
   rebaseAssets,
   renderShell,
@@ -119,6 +123,7 @@ const DOC = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   ok(h.includes('id="outline--sec-gates"'), 'id 加前缀');
   ok(h.includes('href="#outline--sec-gates"'), '页内锚点跟着改');
   ok(h.includes('data-pane="outline--tp-1"'), 'data-pane 跟着改——大纲的图表切换靠它跟 id 比对');
+  eq(scopeHtml('<button data-target="p-许苒"></button><article id="p-许苒"></article>', 'characters--'), '<button data-target="characters--p-许苒"></button><article id="characters--p-许苒"></article>', '角色索引和关系跳转保持与卡片 ID 一致');
   // 跨报告重复的 id 实测有 9 个（#ep-1…#ep-6、#sec-gates、#sec-scenes、#sec-rhythm），
   // 不加前缀页内锚点会跳到别的面板去
   eq(scopeHtml('<i id="ep-1"></i>', 'script--'), '<i id="script--ep-1"></i>', '不同面板的同名 id 分得开');
@@ -150,6 +155,17 @@ const DOC = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
 {
   const b = rebaseAssets('<img data-src="../art/images/scene.png" data-img="../art/images/scene.png">', '/demo/creation', '/demo');
   eq((b.match(/art\/images\/scene\.png/g) ?? []).length, 2, 'data-src 与 data-img 都重算');
+}
+
+{
+  const data = { summary: '资料 url(images/reference.png)', extra: 'background-image:url(../kept.png)' };
+  const html = `<style>.photo{background-image:url('images/a.png')}</style><body><p>资料 url(images/reference.png)</p><i style="background-image:url('images/a.png')"></i><script type="application/json" id="art-data">${JSON.stringify(data)}<\/script></body>`;
+  const pane = makePane(html, { id: 'art', fromDir: '/demo/art', outDir: '/demo' });
+  const raw = pane.html.match(/<script type="application\/json" id="art--art-data">([\s\S]*?)<\/script>/)[1];
+  assert.deepEqual(JSON.parse(raw), data); passed++;
+  ok(pane.html.includes('<p>资料 url(images/reference.png)</p>'), '正文不是 CSS，不重定位文字');
+  ok(pane.html.includes("url('art/images/a.png')"), '内联样式仍正确重定位');
+  ok(pane.css.includes("url('art/images/a.png')"), '独立样式表仍正确重定位');
 }
 
 /* ---------------- scopeJs ---------------- */
@@ -255,6 +271,37 @@ const DOC = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   ok(!/<link\b/i.test(html), '没有外链样式表');
   ok(!/<script[^>]+\bsrc=/i.test(html), '没有外链脚本');
   ok(!/https?:\/\/(?!x\.com)/.test(html.replace(/https:\/\/json-schema\.org[^"']*/g, '')), '没有外部请求');
+}
+
+// v2 报告的 ID 选择器在合并后仍指向本面板，不与相邻面板串联。
+{
+  const css = scopeCss('#checks .row{color:#fff}@media(max-width:500px){#story{display:block}}', '#pane-outline', 'outline--');
+  ok(css.includes('#pane-outline #outline--checks'), 'CSS ID 同步前缀');
+  ok(css.includes('color:#fff'), '颜色值不被当成 ID 改写');
+  ok(css.includes('#pane-outline #outline--story'), '媒体查询中的 ID 同步');
+  const queried = [];
+  const root = { querySelector: s => queried.push(s), querySelectorAll: s => queried.push(s) };
+  const win = { document: { getElementById: () => root } };
+  new Function('window', scopeJs("document.querySelector('#checks');document.querySelectorAll('#story .row');", 'pane-outline', 'outline--'))(win);
+  eq(queried.join('|'), '#outline--checks|#outline--story .row', 'JS ID 查询限定本面板');
+  queried.length = 0;
+  new Function('window', scopeJs("document.querySelector('#outline--ep-6');document.getElementById('outline--ep-6');document.getElementById('ep-6');", 'pane-outline', 'outline--'))(win);
+  eq(queried.join('|'), '#outline--ep-6|#outline--ep-6|#outline--ep-6', '来自真实DOM或hash的已加前缀ID不会再次加前缀');
+  const p = makePane(DOC, { id: 'outline' }); p.meta = PANES[0];
+  const html = renderShell([p], { notices: ['缺少上游 <script>bad</script>', '内容未评审'] });
+  ok(html.includes('&lt;script&gt;bad&lt;/script&gt;'), '检查边界说明正常转义');
+  ok(html.includes('内容未评审'), '报告没有把未执行评审变成通过');
+}
+{
+  const dir = mkdtempSync(join(tmpdir(), 'report-discovery-'));
+  try {
+    eq(findJson(dir, 'novel-outline'), null, '缺少产物不伪造面板');
+    writeFileSync(join(dir, 'one-outline.json'), '{}');
+    writeFileSync(join(dir, 'one-outline.backup.123.json'), '{}');
+    eq(findJson(dir, 'novel-outline'), join(dir, 'one-outline.json'), '排除应用备份');
+    writeFileSync(join(dir, 'two-outline.json'), '{}');
+    assert.throws(() => findJson(dir, 'novel-outline'), /显式指定/); passed++;
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
 console.log(`✓ ${passed} 项自测全部通过`);

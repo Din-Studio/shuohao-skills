@@ -1,0 +1,25 @@
+{
+  "lang": "zh",
+  "autopilot": false,
+  "creative": {
+    "version": 1,
+    "selection": {
+      "genre": {
+        "id": "life",
+        "version": "1.0.0"
+      },
+      "narrativeStyle": {
+        "id": "warm",
+        "version": "1.0.0"
+      },
+      "structure": {
+        "id": "episodic",
+        "version": "1.0.0"
+      },
+      "pacing": {
+        "id": "measured",
+        "version": "1.0.0"
+      }
+    }
+  }
+}

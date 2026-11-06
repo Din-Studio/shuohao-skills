@@ -1,13 +1,13 @@
 ---
 name: novel-setup
-version: 2.0.0
+version: 3.0.0
 description: |
   给 AI 短剧定生产参数：资产图模型、分辨率档位与比例，视频模型、画幅与档位，
   以及画风、报告界面语言、提示词语言和自动驾驶 autopilot。
   一次写入工作目录根的 production.json，五个创作 skill 向上查找并遵循。
   资产图是横构图或方形的设定表，与成片画幅独立；视频直接挂载已有设定图。
   画风没有内置类型或默认值，由用户填写角色与环境两块正文。
-  8 道质量门全部由脚本检查。分辨率与比例直接使用 lingying 的枚举值，不折算像素。
+  9 道检查（含创作选择）全部由脚本检查。分辨率与比例直接使用 lingying 的枚举值，不折算像素。
   成片画幅没有默认值，必须显式指定。本 skill 不调用模型，不出图，不下单。
   Use when asked to 定参数、配置画幅、竖屏还是横屏、出图分辨率、视频参数、production setup for AI short drama。
 allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep
@@ -35,20 +35,27 @@ metadata:
     - codex
 ---
 
+## 3.0.0 创作契约与迁移
+
+通过 `init --selection <selection.json>` 写入显式四维选择。selection 文件只包含 genre/narrativeStyle/structure/pacing，每维指定 id/version。creative.version 固定为 1。show 展示选择，resolve 按阶段返回选择或背景。不读取兄弟 profile，不猜默认，不保证下游实现已安装。
+
+检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-selection.md) 和 [迁移说明](references/migration.md)。
+
 ## novel-setup
 
 管线的第 0 段。先统一技术参数，再进行创作。
 
 `{baseDir}` 是本文件所在目录。脚本为 `{baseDir}/scripts/novel-setup.mjs`，Node 18+，只使用标准库，无 npm 依赖。
 
-**边界**：不写故事、不出图、不下单。角色与美术阶段生成设定图，视频创作阶段直接挂载设定图生成视频。集数、时长、题材属于大纲阶段。
+**边界**：不写故事、不出图、不下单。角色与美术阶段生成设定图，视频创作阶段直接挂载设定图生成视频。集数、时长属于大纲阶段；题材方法只记录选择，不在本阶段创作故事。
 
 ### Step 0 — 确认要求
 
-三件事不能猜：
+四件事不能猜：
 
 1. **成片画幅**：例如 `9:16` 或 `16:9`。没有默认值，猜错会导致视频重出。
 2. **视频模型与档位**：执行 `lingying model list --model_type video` 查看可用模型，按 `caps --model <名>` 核对档位。
+4. **创作选择**：明确确认题材、叙事风格、故事结构、叙事节奏的 ID 与固定版本；没有选择不按竖屏猜测密集兑现。
 3. **画风**：确认名字与具体质感要求。没有预设选项或默认画风；真人实拍、手绘、水墨、黏土定格都可以。
 
 生图模型默认 `nanobanana2`，资产图默认 `2K`、`16:9`。资产图是设定表，成片竖屏不要求设定图也竖屏。
@@ -74,7 +81,7 @@ node {baseDir}/scripts/novel-setup.mjs init --aspect 9:16 \
   > <工作目录>/production.json
 ```
 
-可选参数：`--autopilot`、`--asset-resolution`、`--asset-aspect`、`--image-model`、`--lang`、`--prompt-lang`、`--style <style.json>`。
+可选参数：`--selection <selection.json>`、`--autopilot`、`--asset-resolution`、`--asset-aspect`、`--image-model`、`--lang`、`--prompt-lang`、`--style <style.json>`。
 
 `--aspect` 只设置视频画幅。文件必须位于工作目录根，下游从自己的产物目录向上最多 5 层查找。
 
@@ -109,7 +116,7 @@ node {baseDir}/scripts/novel-setup.mjs validate <工作目录>/production.json
 node {baseDir}/scripts/novel-setup.mjs checkup <工作目录>/production.json
 ```
 
-8 道质量门：字段与枚举、比例写法、资产图横构图或方形、分辨率已填、视频模型参数、生图模型参数、画风完整、画风不矛盾。有违规先修正，再重跑直到通过。
+9 道检查（含创作选择）：四维选择与显式版本、字段与枚举、比例写法、资产图横构图或方形、分辨率已填、视频模型参数、生图模型参数、画风完整、画风不矛盾。有违规先修正，再重跑直到通过。
 
 视频采用固定 `W:H` 画幅，不接受 `adaptive`，避免逐段比例变化。资产图比例不要求等于视频比例。
 

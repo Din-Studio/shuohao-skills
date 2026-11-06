@@ -55,9 +55,13 @@ node scripts/novel-characters.mjs style
 
 ## 版面不随画风变
 
-16:9 三区、34%/66% 比例、人物比例协调、细节让位不是人物让位——这些是**版面规则**，
+按 `production.image.asset.aspectRatio` 分三区、34%/66% 分栏比例、人物比例协调、细节让位不是人物让位——这些是**版面规则**，
 哪一档画风都一样。变的只有渲染质感。
 
 `lighting` 归在画风里而不是版面里，是因为它两头都沾：设定表要平光才好抠图、好量比例，
 写实又要方向光才有体积。怎么调和是画风自己的事（写实那套分区打光，平涂那套全图平光，
 平光本来就是那个风格的一部分），所以它跟着画风走。
+
+## 创作背景与视觉边界
+
+参见 [creative-background.md](creative-background.md)。只记录 production 的 genre/narrativeStyle 背景；结构与节奏不属于本阶段。不加载本地或兄弟 profile，不生成 creativeContext 或来源摘要。本地 profile 缺失不影响角色资产阶段，但缺少视觉正文不能由通用方法代替。保留逐字证据、角色区分度、设定表比例、视觉正文和参考图挂载检查。seed 只接受显式 outline v2，旧版先按 [migration.md](migration.md) 迁移。正式样例与本地投影夹具均为《渡口》。
