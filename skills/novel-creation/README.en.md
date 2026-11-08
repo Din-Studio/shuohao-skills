@@ -6,7 +6,7 @@ Build reference-image video plans from v2 scripts. **No storyboard image generat
 - `params.rules.cutDuration` supports off/warn/error. There is no universal 2–5 second hard gate.
 - Consume opening, ending, openingBeat, endBeat and outline beat IDs. Preserve closure and open endings.
 - Report base failures, policy warnings, disabled checks, missing upstream and unperformed content review separately.
-- Preserve reference mounts, model prompt contracts, bilingual reports, original JSON export and the lingying production interface.
+- Preserve reference mounts, model prompt contracts, bilingual reports, original JSON export and offline generation plans. Use the independently installed ly-video skill for actual generation; see [handoff](references/media-handoff.md).
 
 See [SKILL.md](SKILL.md), [schema](references/schema.md), [profile contract](references/profile-contract.md), and [migration](references/migration.md). Node 18+, standard library only. Copy this skill independently; no sibling skill code or references are required.
 

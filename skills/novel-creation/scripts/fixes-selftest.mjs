@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Review R1–R8 regression: local fixtures + injected exec/fetch only. No generation.
+// Creative-contract and offline handoff regressions. No generation.
 import assert from 'node:assert/strict';
 import {readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, chmodSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
@@ -8,7 +8,6 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import * as C from './novel-creation.mjs';
 import {scriptProblems} from './lib/contracts.mjs';
-import {runBatch, inputIdentity} from './lib/lingying.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const read=p=>JSON.parse(readFileSync(join(root,'examples',p),'utf8'));
 const doc=read('creation/收书人-creation.json'), script=read('script/收书人-script.json');
@@ -25,13 +24,7 @@ const short=()=>{
   d.episodes=d.episodes.slice(0,1);const e=d.episodes[0];e.segments=e.segments.slice(0,1);e.openingBeat=[1,1];e.endBeat=[1,1];
   Object.assign(e.segments[0],{images:[],cuts:[{beats:[1,1],seconds:5,size:'wide',camera:'Static Shot',characters:[]}],prompt:'shots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.'});return d;
 };
-const fakeFetch=async()=>({ok:true,arrayBuffer:async()=>new Uint8Array([1,2,3]).buffer});
-const job=()=>({key:'E01-01',name:'E01-01',file:'E01-01/video.mp4',prompt:'observe',duration:5,images:[]});
-function runner(outDir, extra={}) {
-  const calls=[];
-  return {calls, options:{outDir,bin:'FAKE-NOT-A-REAL-EXECUTABLE',model:'MiniMax H3',fetchImpl:fakeFetch,sleep:async()=>{},
-    exec:async(_bin,args)=>{calls.push(args);if(args[0]==='upload')return 'https://fake.invalid/ref';if(args[0]==='video')return JSON.stringify({data:{task_id:'new-task'}});return JSON.stringify({data:{status:'success',result:{url:'https://fake.invalid/video'}}});},...extra}};
-}
+
 try {
   await test('R1 exact thirds: dialogue fit fails 14/3 > 4.6',()=>{
     const s=clone(script);s.params.charsPerSecond=3;
@@ -66,52 +59,29 @@ try {
   });
   for(const seconds of [NaN,Infinity,undefined]) await test(`R2 non-finite duration ${seconds}`,()=>assert.equal(C.clampDuration(seconds,'MiniMax H3').duration,null));
   await test('R2 valid decimal rounds up; short clip pads, never truncates',()=>{
-    json(manifestPath,manifest(12.5));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,0,r.stderr);assert.equal(JSON.parse(r.stdout).results[0].inputData.duration,13);assert.equal(C.clampDuration(3,'MiniMax H3').duration,5);
+    json(manifestPath,manifest(12.5));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,0,r.stderr);assert.equal(JSON.parse(r.stdout).jobs[0].params.duration,13);assert.equal(C.clampDuration(3,'MiniMax H3').duration,5);
   });
-  await test('R3 force never polls old taskId, even same inputs',async()=>{
-    for(const changed of [false,true]) {
-      const dir=join(temp,`force-${changed}`),j=job();json(join(dir,'.tasks.json'),{[j.key]:{taskId:'old-task',model:'MiniMax H3',inputIdentity:inputIdentity(j,{outDir:dir,model:'MiniMax H3'})}});
-      if(changed){j.prompt='new prompt';j.duration=30;}
-      const r=runner(dir,{force:true,model:changed?'seedance2.5':'MiniMax H3'});const result=await runBatch([j],r.options);
-      assert.equal(result.summary.ok,1);assert.equal(r.calls.filter(a=>a[0]==='video').length,1);assert.ok(!r.calls.some(a=>a.includes('old-task')));
-    }
-  });
-  await test('R3 timeout resumes matching task without upload or submit',async()=>{
-    const dir=join(temp,'resume'),j=job();j.images=[{path:'ref.bin'}];mkdirSync(dir,{recursive:true});writeFileSync(join(dir,'ref.bin'),'fixture bytes');
-    const first=runner(dir,{timeoutMs:0,exec:async(_b,a)=>a[0]==='upload'?'https://fake.invalid/ref':JSON.stringify({data:a[0]==='video'?{task_id:'pending-task'}:{status:'running'}})});
-    assert.equal((await runBatch([j],first.options)).summary.timeout,1);
-    const next=runner(dir);assert.equal((await runBatch([j],next.options)).summary.ok,1);
-    assert.deepEqual(next.calls,[['task','get','pending-task','--json']]);
-    const done=runner(dir);assert.equal((await runBatch([j],done.options)).summary.skipped,1);assert.deepEqual(done.calls,[]);
-  });
-  for(const change of ['model','prompt','duration','inputBase','reference-content','reference-order','file','legacy']) await test(`R3 changed ${change} requires force; no exec`,async()=>{
-    const dir=join(temp,`identity-${change}`),j=job();mkdirSync(dir,{recursive:true});
-    for(const name of ['a.bin','b.bin'])writeFileSync(join(dir,name),name);
-    j.images=[{path:'a.bin'},{path:'b.bin'}];
-    const old={taskId:'old-task',model:'MiniMax H3',inputIdentity:inputIdentity(j,{model:'MiniMax H3',outDir:dir})};
-    if(change==='legacy')delete old.inputIdentity;
-    json(join(dir,'.tasks.json'),{[j.key]:old});const r=runner(dir);
-    if(change==='model')r.options.model='seedance2.5';
-    if(change==='prompt')j.prompt='changed';
-    if(change==='duration')j.duration=10;
-    if(change==='file')j.file='new/video.mp4';
-    if(change==='inputBase')r.options.inputBase={resolution:'1080p'};
-    if(change==='reference-content')writeFileSync(join(dir,'a.bin'),'changed bytes');
-    if(change==='reference-order')j.images.reverse();
-    const result=await runBatch([j],r.options);assert.equal(result.summary.failed,1);assert.match(result.results[0].detail,/--force/);assert.deepEqual(r.calls,[]);
-  });
-  await test('R3 completed output identity also detects changed prompt',async()=>{
-    const dir=join(temp,'completed'),j=job(),r=runner(dir);assert.equal((await runBatch([j],r.options)).summary.ok,1);
-    j.prompt='changed';const next=runner(dir);assert.equal((await runBatch([j],next.options)).summary.failed,1);assert.deepEqual(next.calls,[]);
-  });
-  await test('R3 failed force does not resurrect old task or old output',async()=>{
-    const dir=join(temp,'force-failed'),j=job();json(join(dir,'.tasks.json'),{[j.key]:{taskId:'old-task'}});
-    mkdirSync(join(dir,'E01-01'),{recursive:true});writeFileSync(join(dir,j.file),'old bytes');
-    const first=runner(dir,{force:true,exec:async()=>{throw new Error('fake submit failure');}});assert.equal((await runBatch([j],first.options)).summary.failed,1);
-    const next=runner(dir);assert.equal((await runBatch([j],next.options)).summary.ok,1);assert.ok(next.calls.some(a=>a[0]==='video'));assert.ok(!next.calls.some(a=>a.includes('old-task')));
-  });
-  await test('R3 corrupt ledger never becomes a new submission',async()=>{
-    const dir=join(temp,'bad-ledger');mkdirSync(dir,{recursive:true});writeFileSync(join(dir,'.tasks.json'),'{');const r=runner(dir);await assert.rejects(()=>runBatch([job()],r.options),/台账不可读/);assert.deepEqual(r.calls,[]);
+  await test('handoff CLI preserves ordered references, roles, prompt and output from another cwd',()=>{
+    const m=manifest(7);m.video.aspectRatio='9:16';m.video.resolution='768p';
+    const refs=[{path:'../second.png',kind:'scene',ref:'S01',name:'测试场景',role:'environment reference'},
+      {path:'../first.png',kind:'character',ref:'C02',name:'测试角色',role:'identity reference'}];
+    m.segments[0].images=refs;
+    writeFileSync(join(temp,'first.png'),'fixture one');writeFileSync(join(temp,'second.png'),'fixture two');
+    json(manifestPath,m);
+    const out=join(temp,'handoff.json'),r=cli('videos',manifestPath,'--only','E01-01','--out',out);
+    assert.equal(r.status,0,r.stderr);const plan=JSON.parse(r.stdout),j=plan.jobs[0];
+    assert.equal(plan.status,'planned');assert.equal(plan.skill,'ly-video');assert.equal(plan.model,'MiniMax H3');
+    assert.equal(plan.jobs.length,1);assert.equal(j.id,'E01-01');
+    assert.equal(j.prompt,'shots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.');
+    assert.deepEqual(j.params,{aspect_ratio:'9:16',resolution:'768p',duration:7});
+    assert.deepEqual(j.references,refs.map(ref=>({...ref,path:resolve(temp,'pack',ref.path)})));
+    assert.equal(j.output,join(temp,'pack/E01-01/video.mp4'));
+    assert.deepEqual(JSON.parse(readFileSync(out,'utf8')),plan);
+    assert.equal(cli('videos',manifestPath,'--out',out).status,1,'plan output must not be overwritten');
+    for(const option of ['--force','--cutout','--timeout','--concurrency'])
+      assert.equal(cli('videos',manifestPath,option,'1').status,1);
+    rmSync(join(temp,'second.png'));
+    assert.equal(cli('videos',manifestPath,'--dry-run').status,1,'missing reference fails even in preview');
   });
   for(const missing of ['script','outline']) await test(`R4 independent selection checks: missing ${missing}`,()=>{
     const ctx={script:clone(script),outline:clone(outline),production};
@@ -156,5 +126,5 @@ try {
   await test('R8 videos validates seedance prompt again after export',()=>{
     const m=manifest(5);m.video.model='seedance2.0';json(manifestPath,m);writeFileSync(join(temp,'pack/E01-01/prompt.md'),'0–3 秒观察');assert.equal(cli('videos',manifestPath,'--dry-run').status,1);
   });
-  console.log(`✓ ${count} creation fixes tests passed; fake exec/fetch only`);
+  console.log(`✓ ${count} creation fixes tests passed; offline only`);
 } finally { rmSync(temp,{recursive:true,force:true}); }

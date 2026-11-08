@@ -45,7 +45,7 @@ node scripts/novel-setup.mjs show <work-dir>/production.json
 | style-blocks | Style label and both style blocks are complete |
 | style-coherent | Positive and negative requirements agree |
 
-Every model-table entry records its `lingying model get` command and UUID. Unknown models explicitly skip capability checking. Resolution and aspect are gateway enum values, not pixel dimensions.
+Model tables retain historical source metadata and UUIDs for offline checks. Unknown models explicitly skip capability checks. Before generation, use the independently installed ly-image / ly-video skills to discover live schemas. Resolution and aspect are service tiers, not pixel dimensions.
 
 A video ratio does not constrain the asset-image model. For example, `nanobanana2` sheets can remain at `16:9` while a compatible video model produces `4:3`. The `image-2` model at `4K` accepts only `16:9` or `9:16` images.
 

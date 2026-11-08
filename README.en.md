@@ -22,7 +22,7 @@ Here is the whole pipeline — **the production parameters lock the aspect and t
 | [**novel-characters**](skills/novel-characters/README.en.md) | Turns the cast the outline settled on into a character bible: profiles, design prompts, voice prompts, model sheets. Seeds the roster from outline.json; report language is configurable and the art style is copied whole from `production.json` |
 | [**novel-art**](skills/novel-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; base contracts and production parameters are checked |
 | [**novel-script**](skills/novel-script/README.en.md) | Writes scenes and beat flow, claims outline beats by stable ID, locates openings and endings, and reconciles upstream target duration. Opening windows and line length are policy rules; estimated time is not measured performance |
-| [**novel-creation**](skills/novel-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` submits, polls and downloads video jobs. Shot-expression policies and model limits are checked separately |
+| [**novel-creation**](skills/novel-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` exports an offline plan; the separately installed ly-video skill generates and recovers tasks. Shot-expression policies and model limits are checked separately |
 
 **Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for English interface labels (story content and raw diagnostics retain their original language). The UI language can also be settled once in `production.json`.
 
@@ -134,7 +134,17 @@ The workflow, the scripts and the artifacts are identical across all three. Only
 
 Asking in plain words ("break this book down into characters", plus the path) works on all three and is equivalent to typing the command.
 
-Every step in a SKILL.md that says "fan out to sub-agents if you have them" simply runs in sequence inside the current session on pi: breaking down an 800k-character novel takes several times longer, but the merge, the quality gates and the report come out word for word the same. **The "submit concurrently" in image and video generation has nothing to do with sub-agents** — that means firing off the requests without waiting and polling a list of task ids, which pi does exactly the same way.
+Creative steps can run serially when sub-agents are unavailable. Actual media generation and task recovery belong to the separately installed ly-image / ly-video skills, not local creative scripts.
+
+## External generation skills
+
+Install these first when you want generated media:
+
+```bash
+npx skills@latest add Din-Studio/skills --agent codex --skill ly-image ly-video -g -y
+```
+
+The user-level copies in `~/.agents/skills/` are also discoverable by pi. Reload skills or start a new session. Each creative skill remains standalone: `images` and `videos` now export plans only, even without `--dry-run`. Use `--out plan.json` to save a new plan. Read the stage's `references/media-handoff.md`, then the installed external skill, for live model discovery, request preparation, authorized submission, task recovery and output placement. Old generation flags are retired; never resubmit uncertain tasks.
 
 ## Requirements
 
@@ -142,7 +152,7 @@ Every step in a SKILL.md that says "fan out to sub-agents if you have them" simp
 | --- | --- | --- |
 | **Node** | Yes | ≥ 18. The skill scripts use only the standard library — **no npm dependencies, nothing to install** |
 | **Model quota** | Yes | The writing stages use your current session's quota. **No API key needed** |
-| **lingying CLI** | Optional | Needed for **image and video generation**. Put it on your PATH (or at `bin/lingying` in the work directory) and write the credentials into `~/.config/lingying/config.json` (`api_key`, plus `assethub_admin_token` for reference images). Without it, generation steps are skipped and everything else still runs |
+| **ly-image / ly-video skills** | Optional | Install separately from [Din-Studio/skills](https://github.com/Din-Studio/skills). Actual generation requires Node 22.20+ and private credentials; existing `~/.config/ly/config.json` is supported. Local writing, validation and plan export remain independent |
 
 > **Note on output language.** These skills are Chinese-first. `novel-characters` produces Chinese character profiles even for an English source novel, and its validator actively rejects English in those fields. See that skill's README for what it would take to change.
 

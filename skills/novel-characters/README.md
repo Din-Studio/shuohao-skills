@@ -12,9 +12,9 @@ seed 只接受显式 `outline.schemaVersion: 2`。只读取 production 中 genre
 
 - **角色表** — 谁出场了，主角还是龙套，跨章节的不同称呼归并到同一个人
 - **人物画像** — 性别、年龄、身份、外貌、性情、动机、人物弧光、关系网，每条附**原文逐字引文**
-- **形象提示词** — 真人实拍路线，双语出图 prompt + negative prompt + 风格标签，`negative_prompt` 是 lingying 的一等字段，原样填进去
+- **形象提示词** — 真人实拍路线，双语出图 prompt + negative prompt + 风格标签，反向词原样保留到计划，提交前按模型实时 schema 核对
 - **音色提示词** — 音色、音高、语速、口音、情绪，双语 voice-design prompt，直接喂 Qwen3-TTS / ElevenLabs Voice Design
-- **角色设定图** — **每个角色一张**：按 `production.image.asset.aspectRatio` 分三区，左侧约 34% 证件照式半身像（面部基准）、右上全身三视图、右下关键细节特写条。**画风由 `production.json` 定**，本 skill 不内置任何一档。白底方便抠图，出图是一条 `images` 命令（可选，走 lingying）
+- **角色设定图** — **每个角色一张**：按 `production.image.asset.aspectRatio` 分三区，左侧约 34% 证件照式半身像（面部基准）、右上全身三视图、右下关键细节特写条。**画风由 `production.json` 定**，本 skill 不内置任何一档。白底方便抠图，`images` 导出计划，实际生成交给 ly-image
 - **关系图谱** — 报告里的一个全景视图：谁跟谁有关系、是什么关系，一眼看完。悬停一个人亮出他的全部关系，点一下跳到那个人的详情
 
 产出 `cast.json` + Markdown + 一个双击就能开的 `report.html`。
@@ -175,7 +175,7 @@ node scripts/novel-characters.mjs merge /tmp/wk                 # 归并 roster-
 node scripts/novel-characters.mjs merge /tmp/wk --apply m.json   # 落地复核后的合并
 node scripts/novel-characters.mjs assemble /tmp/wk --source 书名 # card-*.json 合成 cast.json，同档按戏份排序
 node scripts/novel-characters.mjs validate cast.json book.txt   # 校验
-node scripts/novel-characters.mjs images cast.json               # 出设定图：提交 / 轮询 / 落盘全在脚本里
+node scripts/novel-characters.mjs images cast.json               # 仅导出离线计划
 node scripts/novel-characters.mjs images cast.json --dry-run     # 只看要提交什么
 node scripts/novel-characters.mjs images cast.json --style-ref auto  # 拿第一张压画风
 node scripts/novel-characters.mjs render cast.json --html       # 出 report.html
@@ -192,10 +192,10 @@ node scripts/novel-characters.mjs slug "胡二爷"                  # 安全文�
 
 - 单次上限 24 块（净覆盖约 93 万字符）。超了会明确报 `truncated`，**不静默截断**
 - 人类可读字段跟随 `--lang`；出图和 TTS 提示词**永远英文**，那些引擎吃英文最稳，跟报告语言无关
-- 默认取戏份最重的 30 位角色，**每位都出设定图**。一批角色先全部提交再统一轮询，总耗时约等于最慢的那一张——这个编排在脚本里，不靠模型每次重拼。想少出就用 `--only`，或者直接说只要主要角色
+- 每个选中角色都有交接任务。使用 `--only` 缩小计划；`--style-ref auto` 包含基准依赖。实际生成与费用由 ly-image 处理。
 - **同一批角色的画风可能有差异**——各自独立出图。早期用「扁平矢量卡通」这种含糊写法时漂得很厉害（同批出成动画感／半写实／水墨写实三种），改成把 `production.json` 那一块画风整块原样抄进每张提示词后好了很多，但不能保证完全一致。在意的话加 `--style-ref auto` 拿第一张当参考图压一压，见 `references/sheet.md`
 
-> ⚠️ **出图要 lingying 的凭证。** `~/.config/lingying/config.json` 里至少要有 `api_key`，挂参考图还要 `assethub_admin_token`。缺了会报「缺少 API_KEY」——如实转述，不要静默跳过：用户以为出了图而实际没出，比明说没出更坏。
+> 实际生成使用独立安装的 [ly-image](https://github.com/Din-Studio/skills)，需要 Node 22.20+，可复用本机私有 `~/.config/ly/config.json`。先阅读 [交接与恢复](references/media-handoff.md)。密钥不进入请求或仓库。缺工具或授权时交付计划，不声称已出图。
 
 ## 文件
 
@@ -203,14 +203,14 @@ node scripts/novel-characters.mjs slug "胡二爷"                  # 安全文�
 SKILL.md                 给 agent 读的工作流
 scripts/
   novel-characters.mjs   chunk / merge / assemble / validate / images / render / slug
-  lib/lingying.mjs       出图调用：提交 / 轮询 / 落盘 / 断点续传
+  lib/media-plan.mjs    离线交接计划，不调用网关
   selftest.mjs           439 项断言，不调模型、不发请求
 references/
   roster-pass.md         第一趟：扫描角色
   profile-pass.md        第二趟：生成角色卡（8 条硬规则）
   realism.md             真实感怎么落进提示词（写实档全套，其余画风只取通用那半边）
   schema.md              角色卡结构 + 字段语言归属
-  sheet.md               设定图的版面与提示词（调用由 images 子命令负责）
+  sheet.md               设定图的版面与提示词（生成交给 ly-image）
   report-style.md        report.html 的设计约定
   style.md               画风从哪来（不内置，读 production.json）
 examples/
@@ -227,6 +227,6 @@ examples/
 node scripts/selftest.mjs
 ```
 
-439 项断言，覆盖分块 / 别名归并 / 合成 / 多语言 / 校验 / 生产参数的两条检查 / 渲染，外加出图编排的全部路径（提交、轮询、超时、续传、风格参考波次、抠图）——后者用注入的假 CLI 与假时钟跑，出图编排不启动网关进程、不发请求；契约测试启动本地 Node CLI。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
+离线自测覆盖创作契约、渲染和交接计划，包括参考依赖、提示词原文、文件检查和退役选项。不调用网关或模型。
 
 **只在 macOS + Node 24 上实测过。** 代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但**没验过**。

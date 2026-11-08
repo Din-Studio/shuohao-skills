@@ -21,10 +21,7 @@ export function checkup(doc, ctx = {}) {
     warnings: gates.filter(g => g.status === 'fail' && g.level === 'warn').length,
     skipped: gates.filter(g => g.status === 'skipped').length, contentReview: 'not-performed' };
 }
-import {
-  CLI_NAME, DEFAULT_CONCURRENCY, DEFAULT_TIMEOUT_MS,
-  findLingying, preflight, runBatch,
-} from './lib/lingying.mjs';
+import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
 
 /* ------------------------------------------------------------------ */
 /* 常量                                                                */
@@ -1735,9 +1732,10 @@ const USAGE = `novel-creation.mjs — novel-creation skill 的确定性工具（
          [--lang zh|en]                         报告界面语言（默认 zh；未指定时读取 JSON 顶层 lang 字段）
   export <creation.json> --script <script.json> [--out .]
                                                 导出投产包：每段一个文件夹 <段号>/prompt.md，根部 manifest.json
-  videos <manifest.json> [--only E01-01,E01-02] 下单生视频：提交/轮询/落盘/续传全在代码里
-         [--dry-run] [--force]
-         [--timeout <秒>] [--concurrency <n>]
+  videos <manifest.json>          导出离线交接计划，交给 ly-video 生成
+         [--only <ID列表>]                仅选择指定任务（图片自动补齐参考依赖）
+         [--dry-run]                      只预览计划；本命令始终不上传、不提交
+         [--out <plan.json>]              另存计划（不覆盖已有文件）
   slug <name>                                   剧名转安全文件名
 
 validate/render/export/videos 都按参考图的相对路径（../characters/images、../art/images）解析，
@@ -1971,8 +1969,9 @@ async function main(argv) {
   }
 
   if (cmd === 'videos') {
+    checkPlanFlags(rest);
     const [path] = rest;
-    if (!path) throw new Error('用法：videos <manifest.json> [--only E01-01,E01-02] [--dry-run] [--force] [--timeout 秒] [--concurrency n]');
+    if (!path) throw new Error('用法：videos <manifest.json> [--only E01-01,E01-02] [--dry-run] [--out plan.json]');
     const manifest = readJson(path);
     const outDir = resolve(path, '..');
     const video = manifest.video ?? null;
@@ -2006,49 +2005,14 @@ async function main(argv) {
       return {
         key: s.segment, name: s.segment, file: `${s.segment}/video.mp4`,
         prompt, duration,
-        images: (s.images ?? []).map((i) => ({ path: i.path })),
+        images: s.images ?? [],
       };
     });
     if (durationNotes.length) console.error(`⚠️ duration 折算：\n${durationNotes.map((x) => '  ' + x).join('\n')}`);
 
-    const dryRun = rest.includes('--dry-run');
-    const timeoutMs = Number(flag(rest, '--timeout', DEFAULT_TIMEOUT_MS / 1000)) * 1000;
-    const concurrency = Number(flag(rest, '--concurrency', DEFAULT_CONCURRENCY));
-
-    let bin = null;
-    if (!dryRun) {
-      bin = findLingying();
-      const pre = preflight({ bin });
-      if (!pre.ok) {
-        // 没装 CLI 是「整步跳过」不是失败——投产包照常交付，其余产出不受影响
-        console.error(`⚠️ 下单跳过：\n${pre.problems.map((x) => '  ' + x).join('\n')}`);
-        console.log(JSON.stringify({ skipped: true, reason: pre.problems }, null, 2));
-        return;
-      }
-      console.error(`↳ ${CLI_NAME}：${bin}`);
-    }
-
-    const { results, summary } = await runBatch(jobs, {
-      bin, model: video.model, inputBase, outDir, ledgerDir: outDir,
-      timeoutMs, concurrency,
-      force: rest.includes('--force'),
-      dryRun,
-      log: (m) => console.error(m),
-    });
-
-    for (const r of results) {
-      if (r.status === 'ok' || r.status === 'skipped' || r.status === 'dry-run') continue;
-      console.error(`✗ ${r.name} ${r.status} — ${r.detail ?? ''}`);
-    }
-    // stdout 只有这一行 JSON：agent 直接拿去汇报，不用自己数
-    console.log(JSON.stringify({ model: video.model, inputBase, summary, results }, null, 2));
-
-    const bad = summary.failed + summary.timeout;
-    if (bad) {
-      console.error(`\n✗ ${bad} 段没出成（成功 ${summary.ok}，跳过 ${summary.skipped}）——重跑本命令会跳过已有产物、接着轮询超时的任务`);
-      process.exit(1);
-    }
-    if (!dryRun) console.error(`\n✓ 下单完成：新出 ${summary.ok} 段，跳过 ${summary.skipped} 段`);
+    const plan = mediaPlan(jobs, { kind: 'video', model: video.model, inputBase, outDir, only });
+    printPlan(plan, flag(rest, '--out'));
+    console.error('✓ 交接计划已准备；未提交、未生成。请继续使用 ' + plan.skill + '。');
     return;
   }
 

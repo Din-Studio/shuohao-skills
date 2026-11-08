@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  GENERATION_CLI,
+  GENERATION_SKILLS,
   IMAGE_MODELS,
   LOOKUP_DEPTH,
   PRODUCTION_FILE,
@@ -456,8 +456,8 @@ ok(!mentionsTerm('grounded architectural perspective', 'warped perspective'), '�
   eq(r.inputData.aspect_ratio, '16:9', 'inputData 使用 lingying 的字段名');
   eq(r.inputData.resolution, '2K', '档位原样进 inputData，不折算像素');
   eq(Object.keys(r.inputData).join(','), 'aspect_ratio,resolution', 'inputData 只有这两个键，prompt 由调用方补');
-  eq(r.cli, GENERATION_CLI, 'resolve 说清了走哪个 CLI');
-  ok(r.command.includes('image create'), '出图阶段给的是 image create');
+  eq(r.skill, GENERATION_SKILLS.image, 'resolve 说明外部生图 skill');
+  ok(r.command.includes('image.mjs models --model'), '出图阶段先发现实时模型，不直接生成');
 }
 {
   const d = clone(); d.image.asset.resolution = '2k';
@@ -509,7 +509,8 @@ eq(resolveStage(PORTRAIT, 'art').aspectRatio, '16:9', '场景阶段与角色阶�
   eq(r.promptLang, 'en', '视频阶段带上提示词语言');
   eq(r.durationRange.max, 15, '视频阶段带上单段时长上限');
   eq(r.inputData.duration, undefined, 'duration 逐段不同，不在这里定');
-  ok(r.command.includes('video create'), '视频阶段给的是 video create');
+  eq(r.skill, GENERATION_SKILLS.video, '视频阶段使用 ly-video');
+  ok(r.command.includes('video.mjs models --model'), '视频阶段先发现实时模型');
 }
 {
   const r = resolveStage(LANDSCAPE, 'video');
@@ -549,7 +550,7 @@ eq(Object.keys(STAGES).join(','), 'characters,art,video', '三个消费端');
   ok(!/参考像素/.test(md), '参数表里不再有参考像素——档位就是下给模型的值');
   ok(md.includes('| 视频 aspect_ratio | 9:16 |'), '参数表用视频模型的字段名');
   ok(md.includes('| 视频 resolution | 768p |'), '视频分辨率原样显示');
-  ok(md.includes(GENERATION_CLI), '表下有一句说清出图与生视频走哪个 CLI');
+  ok(Object.values(GENERATION_SKILLS).every(s => md.includes(s)), '说明两个外部生成 skill');
   ok(md.includes('| 自动驾驶 | 关闭（该问就问） |'), '参数表把自动驾驶摆出来——它决定这一趟会不会停下来问');
   ok(md.includes('## 质量门'), '参数表带质量门');
   ok(md.includes('| 画风 | 真人实拍 |'), '参数表显示画风名称');
@@ -575,19 +576,14 @@ eq(Object.keys(STAGES).join(','), 'characters,art,video', '三个消费端');
  * 所以表可以填，但**出处不许省**：过期了重新跑一次就能对账。
  */
 
-for (const [name, m] of Object.entries(IMAGE_MODELS)) {
-  ok(m.source.includes(`${GENERATION_CLI} model get`), `${name} 注明了取数命令`);
-  ok(m.modelId.length === 36, `${name} 带了 model get 要用的 UUID`);
-  ok(m.resolutions.length > 0 && m.aspectRatios.length > 0, `${name} 的档位与比例枚举都不为空`);
-}
-for (const [name, m] of Object.entries(VIDEO_MODELS)) {
-  ok(m.source.includes(`${GENERATION_CLI} model get`), `${name} 注明了取数命令`);
-  ok(m.modelId.length === 36, `${name} 带了 model get 要用的 UUID`);
-  ok(m.resolutions?.length && m.aspectRatios?.length, `${name} 的档位与比例枚举都不为空`);
+for (const [name, m] of Object.entries({ ...IMAGE_MODELS, ...VIDEO_MODELS })) {
+  ok(m.source.includes('历史 CLI 采集'), `${name} 明确历史快照来源`);
+  ok(m.modelId.length === 36, `${name} 保留采集模型 UUID`);
+  ok(m.resolutions.length > 0 && m.aspectRatios.length > 0, `${name} 枚举非空`);
 }
 ok(Object.keys(IMAGE_MODELS).includes('nanobanana2'), '生图能力表收了 nanobanana2');
 ok(Object.keys(VIDEO_MODELS).includes('MiniMax H3'), '生视频能力表收了 MiniMax H3——分镜的 H3 提示词就是给它的');
-eq(GENERATION_CLI, 'lingying', '出图与生视频统一走 lingying');
+eq(Object.values(GENERATION_SKILLS).join(','), 'ly-image,ly-video', '按类型交给外部 skill');
 eq(SUPPORTED_LANGS.join(','), 'zh,en', '语言枚举与五个 skill 的报告语言对齐');
 eq(styleLabelOf(null), '未填', '没有画风就说没填，不编一个名字出来');
 eq(styleLabelOf({ label: { zh: '水墨' } }, 'en'), '水墨', '没写英文名就回落中文名');

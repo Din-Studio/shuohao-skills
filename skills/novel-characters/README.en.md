@@ -12,9 +12,9 @@ Feed it a novel or a short story, and get a complete design bible for every char
 
 - **Cast list** — who appears, how central they are, with every name a character is called by folded into one person
 - **Profile** — gender, age, standing, appearance, temperament, motivation, arc, relationships, each backed by **verbatim quotes from the source**
-- **Design prompts** — art direction copied verbatim from the show's style block, bilingual image prompt + negative prompt + style tags; `negative_prompt` is a first-class lingying field, passed through verbatim
+- **Design prompts** — art direction copied verbatim from the show's style block, bilingual image prompt + negative prompt + style tags; negative prompts are preserved in the plan and checked against the live model schema
 - **Voice prompts** — timbre, pitch, pace, accent, emotion, plus a voice-design prompt for Qwen3-TTS / ElevenLabs Voice Design
-- **A character model sheet** — **one per character**: an image using `production.image.asset.aspectRatio`, divided into three zones: an ID-photo-style bust on the left (~34%, the reference for the face design), a full-body turnaround top-right, and a strip of key-detail close-ups bottom-right. White background for clean cut-out; generation is a single `images` command (optional, via lingying)
+- **A character model sheet** — **one per character**: an image using `production.image.asset.aspectRatio`, divided into three zones: an ID-photo-style bust on the left (~34%, the reference for the face design), a full-body turnaround top-right, and a strip of key-detail close-ups bottom-right. White background for clean cut-out; `images` exports a plan; ly-image performs generation
 - **Relationship map** — a whole-cast view inside the report: who is tied to whom, and how. Hover a character to light up every link they are part of, click to jump to their profile
 
 Outputs `cast.json`, a Markdown report, and a self-contained `report.html` you can just double-click.
@@ -168,7 +168,7 @@ node scripts/novel-characters.mjs merge /tmp/wk                 # merge roster-*
 node scripts/novel-characters.mjs merge /tmp/wk --apply m.json   # apply reviewed merges
 node scripts/novel-characters.mjs assemble /tmp/wk --source Book # combine card-*.json into cast.json, prominence-ordered
 node scripts/novel-characters.mjs validate cast.json book.txt   # validate
-node scripts/novel-characters.mjs images cast.json               # generate sheets: submit / poll / save, all in the script
+node scripts/novel-characters.mjs images cast.json               # export offline plan only
 node scripts/novel-characters.mjs images cast.json --dry-run     # print what would be submitted
 node scripts/novel-characters.mjs images cast.json --style-ref auto  # pin the style to the first sheet
 node scripts/novel-characters.mjs render cast.json --html       # build report.html
@@ -185,10 +185,10 @@ When the `production.json` at the work-directory root (produced by `novel-setup`
 
 - Caps at 24 chunks (~930k characters net of overlap) per run. Beyond that it reports `truncated` explicitly — it does **not** silently drop the tail
 - Human-readable fields follow `--lang`; image and TTS prompts are **always English**, since those engines work best that way regardless of report language
-- The top 30 characters by prominence are profiled by default, and **every one of them gets a sheet** — one call per character, so this is the slowest step on a large cast. The whole batch is submitted before polling starts, so wall-clock is roughly the slowest single sheet — that orchestration lives in the script, not in prompt-assembled bash. Use `--only`, or ask for leads only, if you want it shorter
+- Every selected character has a handoff job. Use `--only` to limit the plan; `--style-ref auto` includes the anchor dependency. Actual generation and costs belong to ly-image.
 - **Art style can still vary across a cast**, since each character is generated independently. It used to drift badly under the old "flat vector cartoon" wording — one run produced anime-ish, semi-realistic and ink-wash results side by side. Copying the whole style block from `production.json` verbatim into every prompt fixed most of that, but not all of it. Passing `--style-ref auto` feeds the first sheet back as a reference for the rest, which helps; see `references/sheet.md`
 
-> ⚠️ **Image generation needs lingying credentials.** `~/.config/lingying/config.json` must carry at least `api_key`, plus `assethub_admin_token` if you attach reference images. Missing ones surface as a "缺少 API_KEY" error — report it verbatim rather than skipping silently: believing images were generated when they were not is worse than being told they were not.
+> Actual generation uses the independently installed [ly-image skill](https://github.com/Din-Studio/skills). It requires Node 22.20+ and can reuse private `~/.config/ly/config.json`. Read [handoff and recovery](references/media-handoff.md); never store secrets in requests or the repository. Missing tools or authorization means prompts/plans only, not generated images.
 
 ## Files
 
@@ -196,7 +196,7 @@ When the `production.json` at the work-directory root (produced by `novel-setup`
 SKILL.md                 the workflow the agent reads
 scripts/
   novel-characters.mjs   chunk / merge / assemble / validate / images / render / slug
-  lib/lingying.mjs       image generation: submit / poll / save / resume
+  lib/media-plan.mjs    offline handoff plan; no gateway calls
   selftest.mjs           439 assertions, never calls a model or the network
 references/
   roster-pass.md         pass 1: scanning for characters
@@ -220,6 +220,6 @@ In `examples/渡口.txt` the peddler is only ever referred to by a nickname and 
 node scripts/selftest.mjs
 ```
 
-439 assertions across chunking, alias merging, assembly, localization, validation, the two production-parameter checks, rendering, and the full image-generation flow (submit, poll, timeout, resume, style-reference ordering, cut-out) against an injected fake CLI and clock. No model calls, no requests, no quota, runs in about a second. Run it before anything else after touching the scripts.
+Offline tests cover creative contracts, rendering and handoff plans, including reference dependencies, preserved prompts, file checks and retired options. No gateway calls or model usage.
 
 **Only tested on macOS with Node 24.** There is no platform-specific code, so Linux and older Node releases should be fine, but that is **unverified**.

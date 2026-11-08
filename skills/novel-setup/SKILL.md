@@ -7,7 +7,7 @@ description: |
   一次写入工作目录根的 production.json，五个创作 skill 向上查找并遵循。
   资产图是横构图或方形的设定表，与成片画幅独立；视频直接挂载已有设定图。
   画风没有内置类型或默认值，由用户填写角色与环境两块正文。
-  9 道检查（含创作选择）全部由脚本检查。分辨率与比例直接使用 lingying 的枚举值，不折算像素。
+  9 道检查（含创作选择）全部由脚本检查。分辨率与比例直接使用 模型枚举档位，生成前按实时 schema 核对，不折算像素。
   成片画幅没有默认值，必须显式指定。本 skill 不调用模型，不出图，不下单。
   Use when asked to 定参数、配置画幅、竖屏还是横屏、出图分辨率、视频参数、production setup for AI short drama。
 allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep
@@ -54,7 +54,7 @@ metadata:
 四件事不能猜：
 
 1. **成片画幅**：例如 `9:16` 或 `16:9`。没有默认值，猜错会导致视频重出。
-2. **视频模型与档位**：执行 `lingying model list --model_type video` 查看可用模型，按 `caps --model <名>` 核对档位。
+2. **视频模型与档位**：读取已安装 ly-video，执行其 `models` 与 `models --model <ID>` 查看实时模型和档位；本地 `caps` 只提供历史快照。
 4. **创作选择**：明确确认题材、叙事风格、故事结构、叙事节奏的 ID 与固定版本；没有选择不按竖屏猜测密集兑现。
 3. **画风**：确认名字与具体质感要求。没有预设选项或默认画风；真人实拍、手绘、水墨、黏土定格都可以。
 
@@ -69,7 +69,7 @@ node {baseDir}/scripts/novel-setup.mjs caps
 node {baseDir}/scripts/novel-setup.mjs caps --model "MiniMax H3"
 ```
 
-能力表每条都带 `lingying model get` 取数命令与模型 UUID。表外模型不直接拒绝，但相关门必须说明跳过能力检查。需要更新时先查询模型，不凭记忆编枚举。
+模型能力表保留历史采集来源与 UUID，只做离线检查。表外模型明确跳过能力检查。生成前通过已安装 ly-image / ly-video 的 models --model 查询实时 schema，不把快照当成当前能力。
 
 **资产图与视频分别检查**：`nanobanana2` 不接受 `4:3` 资产图，不代表视频不能选择 `4:3`。`image-2` 的 `4K` 资产图只接受 `16:9` / `9:16`。
 

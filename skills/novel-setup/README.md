@@ -47,7 +47,7 @@ node scripts/novel-setup.mjs show <工作目录>/production.json
 | style-blocks | 画风名称及角色、环境正文完整 |
 | style-coherent | 正反向要求不矛盾 |
 
-模型能力表每条带 `lingying model get` 取数命令与 UUID。表外模型明确提示跳过能力检查，不冒充已验证。分辨率与比例直接使用网关枚举值，不折算像素。
+模型能力表保留历史采集来源与 UUID，只做离线检查。表外模型明确跳过能力检查。生成前通过已安装 ly-image / ly-video 的 models --model 查询实时 schema，不把快照当成当前能力。
 
 **视频画幅不限制资产图模型**：`nanobanana2` 不收 `4:3` 资产图，但仍可搭配支持 `4:3` 的视频模型。`image-2` 的 `4K` 资产图只收 `16:9` / `9:16`。
 

@@ -8,18 +8,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertOutlineV2, assetProductionProblems, creativeBackground, check, blocking, mark } from './lib/contracts.mjs';
 export { creativeBackground } from './lib/contracts.mjs';
-import {
-  CLI_NAME,
-  DEFAULT_ASPECT,
-  DEFAULT_CONCURRENCY,
-  DEFAULT_IMAGE_MODEL,
-  DEFAULT_RESOLUTION,
-  DEFAULT_TIMEOUT_MS,
-  cutout,
-  findLingying,
-  preflight,
-  runBatch,
-} from './lib/lingying.mjs';
+import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
 
 /* ------------------------------------------------------------------ */
 /* chunk                                                               */
@@ -1953,14 +1942,11 @@ const USAGE = `novel-characters.mjs — novel-characters skill 的确定性工�
         [--order merged.json]      同档角色的戏份顺序（默认自动找 <workdir>/merged.json）
   checkup <cast.json> [book.txt]    检查状态 pass/fail/skipped；缺少上游不计为通过
   validate <cast.json> <book.txt>  校验；有违规逐条打印并 exit 1
-  images <cast.json>               出设定图：提交 / 轮询 / 落盘全在代码里
-        [--only 名字1,名字2]        只出这几个（默认全出）
-        [--dry-run]                只打印将要提交的参数，不提交
-        [--force]                  已有产物也重出（默认跳过）
-        [--cutout]                 白底图再走一次抠图，另存 -cutout.png
-        [--style-ref auto|<角色名>] 拿这个角色的成图当风格参考喂给其余角色
-        [--timeout <秒>]           单张总超时，默认 ${DEFAULT_TIMEOUT_MS / 1000} 秒
-        [--concurrency <n>]        同时在跑的任务数
+  images <cast.json>          导出离线交接计划，交给 ly-image 生成
+         [--only <ID列表>]                仅选择指定任务（图片自动补齐参考依赖）
+         [--dry-run]                      只预览计划；本命令始终不上传、不提交
+         [--out <plan.json>]              另存计划（不覆盖已有文件）
+         [--style-ref auto|<角色名>]      基准角色先生成，其余角色引用其成图
   render <cast.json> [--html|--md] 渲染报告到 stdout（默认 --md）
   slug <name>                      角色名转安全文件名
   ui-template [lang]               打印界面文案骨架，供翻译成内置表没有的语言
@@ -1976,8 +1962,7 @@ render 选项：
   --images <dir>    图片目录名，默认 images（images 命令也认这个）
                     会去找 <dir>/<slug>-sheet.png
 
-images 走 ${CLI_NAME} CLI，没装就整步跳过只交提示词；出图参数取自 production.json，
-提示词取自 cast.json 的 image.sheet 与 image.negativePrompt。**先 images 再 render。**`;
+images 只导出计划，不执行生成。使用 ly-image 完成并核验图片后，放到计划 output 路径再 render。`;
 
 function readJson(path) {
   return JSON.parse(readFileSync(resolve(path), 'utf8'));
@@ -2207,8 +2192,9 @@ async function main(argv) {
   }
 
   if (cmd === 'images') {
+    checkPlanFlags(rest);
     const [castPath] = rest;
-    if (!castPath) throw new Error('用法：images <cast.json> [--only 名字] [--dry-run] [--force] [--cutout] [--style-ref auto]');
+    if (!castPath) throw new Error('用法：images <cast.json> [--only 名字] [--dry-run] [--out plan.json] [--style-ref auto]');
     const { characters } = loadCast(castPath);
     const outDir = resolve(castPath, '..');
     const imagesDir = flag(rest, '--images', 'images');
@@ -2227,67 +2213,10 @@ async function main(argv) {
     if (!prod.doc) console.error(`⚠️ 没有生产参数，按 ${model} + ${inputBase.resolution} + ${inputBase.aspect_ratio} 出——汇报里要说清`);
 
     const only = flag(rest, '--only');
-    const picked = only
-      ? (() => {
-          const want = new Set(only.split(',').map((x) => x.trim()).filter(Boolean));
-          const miss = [...want].filter((k) => !jobs.some((j) => j.key === k));
-          if (miss.length) throw new Error(`--only 里这些角色不在 cast.json 里：${miss.join('、')}`);
-          const need = new Set(want);
-          // 风格参考的基准角色没被选中也得跟着出，否则参考图挂不上
-          for (const j of jobs) if (need.has(j.key) && j.refFrom) need.add(j.refFrom);
-          return jobs.filter((j) => need.has(j.key));
-        })()
-      : jobs;
 
-    const dryRun = rest.includes('--dry-run');
-    const wantCutout = rest.includes('--cutout');
-    const needUpload = wantCutout || picked.some((j) => j.refFrom);
-    const timeoutMs = Number(flag(rest, '--timeout', DEFAULT_TIMEOUT_MS / 1000)) * 1000;
-    const concurrency = Number(flag(rest, '--concurrency', DEFAULT_CONCURRENCY));
-
-    let bin = null;
-    if (!dryRun) {
-      bin = findLingying();
-      const pre = preflight({ bin, needUpload });
-      if (pre.status !== 'pass') {
-        // 没装 CLI 是「整步跳过」不是失败——提示词照常交付，其余产出不受影响
-        console.error(`⚠️ 出图跳过：\n${pre.problems.map((x) => '  ' + x).join('\n')}`);
-        console.log(JSON.stringify({ skipped: true, reason: pre.problems }, null, 2));
-        return;
-      }
-      console.error(`↳ ${CLI_NAME}：${bin}`);
-      console.error(`↳ 要出 ${picked.length} 张——这是整条管线最慢的一步`);
-    }
-
-    const { results, summary } = await runBatch(picked, {
-      bin, model, inputBase, outDir, ledgerDir: resolve(outDir, imagesDir),
-      timeoutMs, concurrency,
-      force: rest.includes('--force'),
-      dryRun,
-      log: (m) => console.error(m),
-    });
-
-    let cutouts = [];
-    if (wantCutout && !dryRun) {
-      cutouts = await cutout(
-        picked.map((j) => ({ key: j.key, name: j.name, file: j.file, cutoutFile: j.cutoutFile })),
-        { bin, outDir, timeoutMs, concurrency, force: rest.includes('--force'), log: (m) => console.error(m) },
-      );
-    }
-
-    for (const r of results) {
-      if (r.status === 'ok' || r.status === 'skipped' || r.status === 'dry-run') continue;
-      console.error(`✗ ${r.name} ${r.status} — ${r.detail ?? ''}`);
-    }
-    // stdout 只有这一行 JSON：agent 直接拿去汇报，不用自己数
-    console.log(JSON.stringify({ model, inputBase, summary, results, ...(cutouts.length ? { cutouts } : {}) }, null, 2));
-
-    const bad = summary.failed + summary.timeout;
-    if (bad) {
-      console.error(`\n✗ ${bad} 张没出成（成功 ${summary.ok}，跳过 ${summary.skipped}）——重跑本命令会跳过已有产物、接着轮询超时的任务`);
-      process.exit(1);
-    }
-    if (!dryRun) console.error(`\n✓ 出图完成：新出 ${summary.ok} 张，跳过 ${summary.skipped} 张`);
+    const plan = mediaPlan(jobs, { kind: 'image', model: model, inputBase, outDir, only });
+    printPlan(plan, flag(rest, '--out'));
+    console.error('✓ 交接计划已准备；未提交、未生成。请继续使用 ' + plan.skill + '。');
     return;
   }
 

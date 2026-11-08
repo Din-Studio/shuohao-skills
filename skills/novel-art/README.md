@@ -80,14 +80,14 @@ node scripts/novel-art.mjs style                             # 看这部剧的�
 ## 出图（可选）
 
 ```bash
-node scripts/novel-art.mjs images art.json              # 提交 / 轮询 / 落盘全在脚本里
+node scripts/novel-art.mjs images art.json              # 仅导出离线计划
 node scripts/novel-art.mjs images art.json --dry-run    # 只看要提交什么
-node scripts/novel-art.mjs images art.json --cutout     # 道具再走一次抠图
+node scripts/novel-art.mjs images art.json --out image-plan.json # 保存计划，不生成图片
 ```
 
-走 **lingying**（灵影网关）。场景和道具各一张设定图，版面都是**主视角大图 + 底部和右侧的 L 形细节边框**：场景细节格放锚点特写，道具细节格放锚点特写 + 其他状态 + 侧面。场景**无人**；道具另加**无手、纯白背景**。没有 lingying 就只交提示词，其余照常。
+走 **ly-image**（灵影网关）。场景和道具各一张设定图，版面都是**主视角大图 + 底部和右侧的 L 形细节边框**：场景细节格放锚点特写，道具细节格放锚点特写 + 其他状态 + 侧面。场景**无人**；道具另加**无手、纯白背景**。没有 ly-image 就只交提示词，其余照常。
 
-**调用是代码不是文档。** 参数不经过 shell（`execFile` 收数组，提示词里的引号换行原样抵达）、只读 `data.status`（响应里的 `message: success` 恒为 success）、单张超时 300 秒就跳过、已有产物跳过、提交过的任务写进 `images/.tasks.json` 断点续传、变体等母场景落盘后自动挂参考图。版面与提示词怎么写见 `references/sheet.md`。
+本地命令只导出计划。阅读 [生成交接](references/media-handoff.md)，再使用独立安装的 ly-image 完成模型发现、预览、生成与任务恢复。下载核验后放到计划 output 路径再 render。独立创作、校验和导出计划不依赖外部 skill。
 
 ## 自动驾驶（autopilot）
 
@@ -101,14 +101,14 @@ node scripts/novel-art.mjs images art.json --cutout     # 道具再走一次抠�
 SKILL.md                 给 agent 读的工作流
 scripts/
   novel-art.mjs          seed / validate / checkup / images / render / style / slug
-  lib/lingying.mjs       出图调用：提交 / 轮询 / 落盘 / 断点续传
+  lib/media-plan.mjs    离线交接计划，不调用网关
   selftest.mjs           278 项原功能断言与新增契约回归，不调模型、不发请求
 references/
   schema.md              art.json 结构 + 硬规则
   scene-pass.md          怎么填场景设定（AI 短剧的思路）
   prop-pass.md           怎么选、怎么填叙事道具
   realism.md             真实感怎么落进提示词（写实档全套，其余画风只取通用那半边）
-  sheet.md               设定图的版面与提示词（调用由 images 子命令负责）
+  sheet.md               设定图的版面与提示词（生成交给 ly-image）
   report-style.md        报告的设计约定
 examples/
   雨棚留言-art.json           《雨棚留言》三场景 + 两件道具样例，全部质量门通过
@@ -122,7 +122,7 @@ assets/
 node scripts/selftest.mjs
 ```
 
-278 项原功能断言与新增契约回归，覆盖 seed / 画风读取 / 确定性检查逐项击穿 / 生产参数查找与继承 / 渲染（中英界面）/ 导出。不调模型、不花额度、1 秒跑完。改完脚本先跑这个。
+离线自测覆盖创作契约、渲染和交接计划，包括参考依赖、提示词原文、文件检查和退役选项。不调用网关或模型。
 
 **只在 macOS + Node 24 上实测过。** 代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但**没验过**。
 

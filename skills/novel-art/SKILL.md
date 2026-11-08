@@ -10,9 +10,9 @@ description: |
   其中 2 道读工作目录根的 production.json：画风与设定图画幅，没有就明说跳过）。
   画风**不内置任何类型**——它由用户在 novel-setup 那一段填进 production.json 顶层的 style.scene，
   本 skill 整块抄过来用（真人实拍、吉卜力、水墨、黏土定格都行，不用改代码）。
-  有 novel-outline 的 outline.json 就用 seed 预填场景清单与出现集；出图是一条命令（可选，走 lingying 灵影网关）——
-  提交、轮询、落盘、断点续传全在脚本里，不靠模型现拼 bash。
-  零依赖、零 npm；出图要 lingying 的 api_key。
+  有 outline.json 就使用 seed 预填场景清单与出现集；本地 images 导出离线计划。
+  上传、提交、任务恢复和下载归外部生成工具，本 skill 可独立交付创作与计划。
+  零依赖、零 npm；本地不执行生成，实际生图可交给独立安装的 ly-image。
   production.json 顶层 autopilot 为 true 时全程不打断——输入、道具清单自己定，做过的决定写进汇报。
   Use when asked to 场景设定、出场景、环境设定集、场景一致性、scene bibles for AI short drama。
 # 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
@@ -32,8 +32,7 @@ metadata:
   requires:
     bins:
       - node          # >= 18，只用标准库，无 npm 依赖
-    optional:
-      - lingying      # 有才出环境设定图；没有就只交提示词，其余照常
+    # 可选外部执行工具：ly-image；不影响本 skill 独立产出
   runtimes:
     - pi            # 没有子代理：并发步骤在当前会话串行做，产出一致
     - claude-code
@@ -62,7 +61,7 @@ seed 只接受显式 `outline.schemaVersion: 2`。只读取 production 中 genre
 
 `{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/novel-art.mjs`，零依赖，`node` 直接跑。
 
-**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。Step 4 出设定图要本机安装了 `lingying` CLI——见 `references/sheet.md`。
+**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。实际生成可交给独立安装的 ly-image——见 `references/media-handoff.md`。
 
 **边界（不做的事）**：不做分镜、不写剧本、不管角色（`novel-characters` 的活）、不排大纲（`novel-outline` 的活）。**道具只收叙事道具**（有特写、跨集、承载剧情的，通常 3–8 件）——场景陈设归场景锚点，一次性手部道具镜头级提示词解决，都不单独建资产。
 
@@ -96,7 +95,7 @@ node {baseDir}/scripts/novel-art.mjs style
 
 **生产参数不用挂载，脚本自己找。** `production.json`（`novel-setup` 的产出）住在工作目录根，`validate` / `checkup` / `images` 都会从 art.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「2 道门跳过」——不静默。
 
-找到了画风就以它为准（渲染句有没有进提示词、反向词有没有带全，由脚本查了），设定图版面的画幅也必须与 `image.asset.aspectRatio` 一致。出图用 `image.model` + `image.asset.resolution`（**档位就是 lingying 收的 `resolution` 枚举值**，原样进 `--input_data`，不折算像素）——**这三个值 `images` 子命令自己读，不用手动挂载**。历史报告没有这份文件时可以独立读取；`--no-production` 只跳过上游对账，不提供出图默认值。出图前必须补齐视觉正文与制作参数。
+找到了画风就以它为准（渲染句有没有进提示词、反向词有没有带全，由脚本查了），设定图版面的画幅也必须与 `image.asset.aspectRatio` 一致。出图用 `image.model` + `image.asset.resolution`（**档位对应模型的 `resolution` 枚举值**，进入计划 params，提交前按实时 schema 核对，不折算像素）——**这三个值 `images` 子命令自己读，不用手动挂载**。历史报告没有这份文件时可以独立读取；`--no-production` 只跳过上游对账，不提供出图默认值。出图前必须补齐视觉正文与制作参数。
 
 ### Step 0.5 — 自动驾驶（autopilot）
 
@@ -108,7 +107,7 @@ Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时�
 | --- | --- |
 | Step 0 三种输入选哪个 | 按写死的优先级自己选（outline.json > 小说原文 > 用户手写清单），选了哪个写进汇报 |
 | Step 2 叙事道具收哪几件 | 自己定（有特写、跨集、承载剧情，3–8 件），清单与取舍理由写进汇报 |
-| Step 4 出图 | 场景与道具一次出全；拿到图自己核对锚点（全图无人，道具图另加无手、纯白背景），不对就 `--force` 重出一次，还不对记进汇报接着往下 |
+| Step 4 出图 | 完成离线计划；已授权时通过 ly-image 生成并检查，不自动重投。没有生成工具则明确未生成 |
 
 **转移的是审批权，不是取消检查点**：确定性检查照样要过、拿到图照样要核对锚点——只是不再等人点头。**替用户做的每一个决定都要写进 Step 5 的汇报**，道具取舍一条不漏。
 
@@ -154,14 +153,13 @@ cd <段目录>
 node {baseDir}/scripts/novel-art.mjs images <剧名>-art.json
 ```
 
-**调用不用你写。** 场景和道具各一张设定图，提交、轮询、落盘、断点续传、变体的「先母后子」全在脚本里：参数不经过 shell（提示词里的引号换行中文原样抵达）、只读 `data.status`（响应里的 `"message": "success"` 恒为 success）、单张超时 300 秒到点就跳过继续下一张。出图参数自己从 `production.json` 取，**没有 lingying 就整步跳过**，只交提示词。
+本命令只输出离线计划，不会生成图片。可增加 `--out image-plan.json` 保存计划，`--only` 筛选任务。
 
-- 参数存疑先 `--dry-run` 看一眼要提交什么；`--only S01,P01` 只出几个；`--force` 重出已有的
-- 道具要透明底加 `--cutout`，抠完另存 `-cutout.png`（`render` 找的仍然是白底那张）
-- **失败不阻断批次，但有失败就 exit 1**——重跑跳过已有产物、接着轮询超时的任务，成本很低
-- 拿到图先核对锚点：**全图无人**，道具图另加**无手**、**纯白背景**，出现人影或手就 `--force` 重出
+读取 [生成交接流程](references/media-handoff.md)，再读取已安装的 **ly-image**。由它发现实时模型/schema、构造请求、预览、在授权范围内提交，并使用原回执恢复查询与下载。计划按参考依赖排序；基准图核验完成后才能生成依赖图。外部下载名不同于本地报告路径，核验格式和内容后放到计划 output，再 render。
 
-版面与提示词怎么写在 `{baseDir}/references/sheet.md`——**那才是这一步属于你的部分**。
+没有 ly-image 或没有生成授权时，只交付提示词与计划，明确“未生成”。原 `--force`、`--cutout`、超时与并发选项已退役；质量重做和透明底由 ly-image 另行处理，不能自动重复付费。
+
+全图无人；道具另加无手、纯白背景。版面要求见 [sheet](references/sheet.md)。
 
 ### Step 5 — 输出与汇报
 
@@ -187,8 +185,8 @@ node {baseDir}/scripts/novel-art.mjs render <剧名>-art.json --cast ../characte
     ├── <剧名>-art.md
     ├── art-report.html            ← 双击就能开
     └── images/
-        ├── <slug>-sheet.png       ← 有 lingying 才有
-        └── .tasks.json            ← 提交了还没落盘的任务；图到齐就空了，可以删
+        ├── <slug>-sheet.png       ← 通过外部生成并核验后才有
+        └── jobs/                  ← 外部 skill 回执，保留用于恢复
 ```
 
 ---
@@ -208,7 +206,7 @@ seed 吃 outline.json 的场景与道具两块（大纲没有 `props` 时道具�
 
 - 报告界面内置中英（`--lang`，默认中文、或跟 art.json 的 `lang` 字段）；出图提示词永远英文
 - 画风不自己定也不自己编：`style.scene` 从 `production.json` 取，`style.character` 是角色 skill 的，两块别互相搬
-- 出图只走 `images` 子命令——提交、轮询、落盘不再有第二份手写实现。以前那段 bash 拼错的方式比拼对的多：提示词里的引号把 `--input_data` 拆两半、轮询在整段 JSON 里搜 `success` 撞上恒为 success 的 `message`、`while` 循环没有出口
+- `images` 只输出离线计划；实际生成只交给 ly-image，不内置第二套网关调用。
 - 场景数量不设硬上限——上限在 novel-outline 的主场景门那里管；这里管的是每个资产的质量
 - 道具只收叙事道具，3–8 件为宜——每多一件就多一份跨集一致性维护
 
@@ -218,7 +216,7 @@ seed 吃 outline.json 的场景与道具两块（大纲没有 `props` 时道具�
 node {baseDir}/scripts/selftest.mjs
 ```
 
-278 项原功能断言与新增契约回归，不调模型、不花额度。每类资产检查都有击穿用例；出图编排用注入的假 CLI 与假时钟跑完全部路径（提交、轮询、超时、续传、变体波次、抠图），**只启动本地 Node CLI 子进程，不访问网关、不发网络请求**。改完脚本先跑这个。
+离线自测覆盖创作、契约、渲染与交接计划；检查依赖顺序、提示词原文、素材路径、退役参数与防覆盖。不调用模型、不读取凭据、不发网络请求。
 
 ## 自带样例
 

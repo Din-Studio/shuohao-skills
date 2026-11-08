@@ -49,14 +49,14 @@ node scripts/novel-art.mjs style
 ## Image generation (optional)
 
 ```bash
-node scripts/novel-art.mjs images art.json              # submit / poll / save, all in the script
+node scripts/novel-art.mjs images art.json              # export offline plan only
 node scripts/novel-art.mjs images art.json --dry-run    # print what would be submitted
-node scripts/novel-art.mjs images art.json --cutout     # transparent cut-out for props
+node scripts/novel-art.mjs images art.json --out image-plan.json # save plan; does not generate
 ```
 
-Via the **lingying** gateway. One sheet per scene and per prop, both using the **master-view + L-shaped detail border** layout (bottom and right edges). Scene details = anchor close-ups; prop details = anchor close-ups + other states + a side profile. Scenes are empty of people; props additionally ban hands and sit on pure white for clean cut-out. No lingying → prompts only.
+Via the **ly-image** gateway. One sheet per scene and per prop, both using the **master-view + L-shaped detail border** layout (bottom and right edges). Scene details = anchor close-ups; prop details = anchor close-ups + other states + a side profile. Scenes are empty of people; props additionally ban hands and sit on pure white for clean cut-out. No ly-image → prompts only.
 
-**The call is code, not documentation.** Arguments never go through a shell (`execFile` takes an array, so quotes and newlines inside prompts arrive intact), only `data.status` is read (the envelope's `message: success` is always success), each sheet times out after 300s instead of looping forever, existing files are skipped, submitted task ids land in `images/.tasks.json` for resume, and variants automatically attach the parent sheet once it is on disk. Layout and prompt rules live in `references/sheet.md`.
+The local command exports a plan only. Read [handoff instructions](references/media-handoff.md), then use the independently installed ly-image skill for discovery, preview, generation and task recovery. Verify downloaded files and place them at each planned output path before rendering. No external skill is required for standalone writing, validation or plan export.
 
 ## Autopilot
 
@@ -70,7 +70,7 @@ When the `production.json` at the work-directory root (produced by `novel-setup`
 node scripts/selftest.mjs
 ```
 
-278 original-function assertions plus contract regressions — seeding, style lookup, gate-defeating cases for all applicable checks, production-parameter lookup and inheritance, rendering (zh/en report UI), export, and the full image-generation flow (submit, poll, timeout, resume, variant ordering, cut-out) against an injected fake CLI and clock. No model calls, no requests, runs in about a second.
+Offline tests cover creative contracts, rendering and handoff plans, including reference dependencies, preserved prompts, file checks and retired options. No gateway calls or model usage.
 
 **Only tested on macOS + Node 24.**
 

@@ -40,11 +40,11 @@ export function findProduction(fromDir = '.', depth = LOOKUP_DEPTH) {
 /* 生图模型能力表                                                       */
 /* ------------------------------------------------------------------ */
 /*
- * 出图与生视频都走 lingying（灵影网关）CLI。它的 `model get` 会把每个模型的
+ * 能力表来自历史采集。外部 ly-image / ly-video 的 models --model 提供当前
  * input_schema 原样打出来，所以这两张表**有本机可查的确凿依据**，
  * 不是凭记忆编的——每条都注明了取数命令，过期了重新跑一次就能对账。
  *
- * 关键差别（相对旧的按像素下单）：lingying 的 resolution 就是**档位本身**
+ * 关键差别（相对旧的按像素下单）：网关 的 resolution 就是**档位本身**
  * （1K / 2K / 4K），aspect_ratio 是**枚举**，两者都是结构化字段。
  * 所以本 skill 不再需要把档位折算成像素，也不再往提示词里写 `Render at …`。
  *
@@ -54,7 +54,7 @@ export function findProduction(fromDir = '.', depth = LOOKUP_DEPTH) {
 export const IMAGE_MODELS = {
   nanobanana2: {
     label: 'nanobanana2 · 灵影网关',
-    source: 'lingying model get f0621c54-167a-4319-a067-30c36eff2c3d',
+    source: '历史 CLI 采集，模型 UUID： f0621c54-167a-4319-a067-30c36eff2c3d',
     modelId: 'f0621c54-167a-4319-a067-30c36eff2c3d',
     resolutions: ['1K', '2K', '4K'],
     aspectRatios: ['1:1', '2:3', '3:2', '9:16', '16:9'],
@@ -64,7 +64,7 @@ export const IMAGE_MODELS = {
   },
   'image-2': {
     label: 'image-2 · 灵影网关',
-    source: 'lingying model get fac7474d-8dd2-4830-b792-02715820cfd6',
+    source: '历史 CLI 采集，模型 UUID： fac7474d-8dd2-4830-b792-02715820cfd6',
     modelId: 'fac7474d-8dd2-4830-b792-02715820cfd6',
     resolutions: ['1K', '2K', '4K'],
     aspectRatios: ['1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16'],
@@ -81,8 +81,8 @@ export const IMAGE_MODELS = {
 /* ------------------------------------------------------------------ */
 /*
  * 这张表以前是**有意留空**的——各家 resolution 口径不同、版本之间还会变，
- * 没有本机文档可依据时凭记忆编一张比不查更坏。改走 lingying 之后依据有了：
- * `lingying model list --model_type video` 加 `model get`，逐条抄下来。
+ * 没有本机文档可依据时凭记忆编一张比不查更坏。改走 网关 之后依据有了：
+ * 历史模型发现与详情采集，逐条记录；实际调用前必须重新查询。
  *
  * 各家的 resolution 口径不一样（`768p` / `2K` 与 `480p` / `720p` / `1080p` 并存），
  * 所以这张表逐个模型抄枚举，不做任何归一。
@@ -95,7 +95,7 @@ export const IMAGE_MODELS = {
 export const VIDEO_MODELS = {
   'MiniMax H3': {
     label: 'MiniMax H3 · 灵影网关',
-    source: 'lingying model get 7809cb1a-4f09-40de-a9e9-dd3841016138',
+    source: '历史 CLI 采集，模型 UUID： 7809cb1a-4f09-40de-a9e9-dd3841016138',
     modelId: '7809cb1a-4f09-40de-a9e9-dd3841016138',
     resolutions: ['768p', '2K'],
     aspectRatios: ['16:9', '21:9', '4:3', '1:1', '3:4', '9:16', 'adaptive'],
@@ -104,7 +104,7 @@ export const VIDEO_MODELS = {
   },
   'seedance2.5': {
     label: 'seedance2.5 · 灵影网关',
-    source: 'lingying model get 927e312f-795c-4558-9696-3226e51ecc08',
+    source: '历史 CLI 采集，模型 UUID： 927e312f-795c-4558-9696-3226e51ecc08',
     modelId: '927e312f-795c-4558-9696-3226e51ecc08',
     resolutions: ['480p', '720p'],
     aspectRatios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'],
@@ -114,7 +114,7 @@ export const VIDEO_MODELS = {
   },
   'seedance2.0': {
     label: 'seedance2.0 · 灵影网关',
-    source: 'lingying model get 67a84596-7d39-499e-8118-bd47075f753a',
+    source: '历史 CLI 采集，模型 UUID： 67a84596-7d39-499e-8118-bd47075f753a',
     modelId: '67a84596-7d39-499e-8118-bd47075f753a',
     resolutions: ['480p', '720p', '1080p'],
     aspectRatios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'],
@@ -123,7 +123,7 @@ export const VIDEO_MODELS = {
   },
   'seedance2.0 fast': {
     label: 'seedance2.0 fast · 灵影网关',
-    source: 'lingying model get 19dd94a3-a727-4753-8cc1-e67be689cb4f',
+    source: '历史 CLI 采集，模型 UUID： 19dd94a3-a727-4753-8cc1-e67be689cb4f',
     modelId: '19dd94a3-a727-4753-8cc1-e67be689cb4f',
     resolutions: ['480p', '720p'],
     aspectRatios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'],
@@ -132,7 +132,7 @@ export const VIDEO_MODELS = {
   },
   'seedance2.0 mini': {
     label: 'seedance2.0 mini · 灵影网关',
-    source: 'lingying model get 3d04b2de-9329-4bfa-aa99-c2d978bc8746',
+    source: '历史 CLI 采集，模型 UUID： 3d04b2de-9329-4bfa-aa99-c2d978bc8746',
     modelId: '3d04b2de-9329-4bfa-aa99-c2d978bc8746',
     resolutions: ['480p', '720p'],
     aspectRatios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'],
@@ -224,7 +224,7 @@ export const mentionsTerm = (haystack, term) =>
 export const autopilotOf = (doc) => doc?.autopilot === true;
 
 /** 出图与生视频统一走这个 CLI；skill 只认名字，装在哪由使用方决定。 */
-export const GENERATION_CLI = 'lingying';
+export const GENERATION_SKILLS = { image: 'ly-image', video: 'ly-video' };
 
 /* ------------------------------------------------------------------ */
 /* 比例与档位                                                           */
@@ -278,7 +278,7 @@ export function imageCaps(model, resolution = '') {
 }
 
 /**
- * 把段秒数折成 lingying 能接受的 duration。
+ * 把段秒数折成 网关 能接受的 duration。
  *
  * H3 只收 5~15 的**整数秒**，而分镜的段秒数是按节拍算出来的，可能是 3 秒、
  * 也可能是 12.5 秒。折算规则写死在这里，免得每个下单脚本各折各的：
@@ -365,7 +365,7 @@ export function initProduction({
  *   会导致重出图的（比例对不上、档位模型不收、画风缺块或自相矛盾）——拦；
  *   只影响阅读的（报告界面语言）——不设门，下游继承就好。
  *
- * 改走 lingying 之后多出来的那道是 model-caps：档位与比例都是模型的**枚举值**，
+ * 改走 网关 之后多出来的那道是 model-caps：档位与比例都是模型的**枚举值**，
  * 能在这里查死。以前档位要折成像素、折算规则在使用方的 CLI 里，
  * 所以只能查非空；现在枚举就在 input_schema 里，查得起。
  *
@@ -416,7 +416,7 @@ export function gateReport(doc) {
       'aspect-format',
       '比例都是 W:H 写法',
       bad.length === 0,
-      bad.length ? `${bad.join('；')}——lingying 的 adaptive 在本管线里不能用：成片需要固定画幅，不能让模型逐段选择` : '',
+      bad.length ? `${bad.join('；')}——网关 的 adaptive 在本管线里不能用：成片需要固定画幅，不能让模型逐段选择` : '',
     );
   }
 
@@ -454,7 +454,7 @@ export function gateReport(doc) {
     const entry = Object.hasOwn(VIDEO_MODELS, model) ? VIDEO_MODELS[model] : null;
     let note = '';
     if (model && !entry) {
-      note = `${model} 不在能力表里，只查了非空（能力表来自 lingying model get，加一条就自动开始查）`;
+      note = `${model} 不在能力表里，只查了非空（能力表来自 历史模型采集，加一条就自动开始查）`;
     } else if (entry) {
       const caps = videoCaps(model);
       if (caps && !matchTier(video.resolution, caps.resolutions)) {
@@ -470,14 +470,14 @@ export function gateReport(doc) {
     add('video-model', '视频模型与参数合法', bad.length === 0, bad.length ? bad.join('；') : note);
   }
 
-  /* 6 — 档位与比例被生图模型收（lingying 的 input_schema 是枚举，查得死） */
+  /* 6 — 档位与比例被生图模型收（网关 的 input_schema 是枚举，查得死） */
   {
     const model = String(img.model ?? '').trim();
     const entry = Object.hasOwn(IMAGE_MODELS, model) ? IMAGE_MODELS[model] : null;
     const bad = [];
     let note = '';
     if (model && !entry) {
-      note = `${model} 不在能力表里，档位与比例都跳过检查（能力表来自 lingying model get，加一条就自动开始查）`;
+      note = `${model} 不在能力表里，档位与比例都跳过检查（能力表来自 历史模型采集，加一条就自动开始查）`;
     } else if (entry) {
       for (const [label, slot] of [['资产图', asset]]) {
         const res = String(slot?.resolution ?? '').trim();
@@ -599,8 +599,8 @@ export function validateProduction(doc) {
  * 它们直接读 production.json。resolve 是给「想一行拿到参数」的场合用的：
  * 出图前 shell 一句就知道这次该用哪个模型、哪个档位、哪个比例。
  *
- * 最值钱的一个字段是 inputData：**直接展开进 lingying 的 --input_data**，
- * 每个 skill 只要补一个 prompt（和参考图 URL）就能提交，
+ * inputData 保留制作参数接口；执行方将其作为 params 候选，按实时 schema 核对。
+ * 提示词与素材交接给 ly-image / ly-video，不在本仓库提交。
  * 省得各拼各的——拼法一漂就又是一处不一致。
  */
 
@@ -634,7 +634,7 @@ export function resolveStage(doc, stage) {
     },
     lang: doc?.lang,
     autopilot: autopilotOf(doc),
-    cli: GENERATION_CLI,
+    skill: meta.kind === 'video' ? GENERATION_SKILLS.video : GENERATION_SKILLS.image,
   };
 
   if (meta.kind === 'video') {
@@ -653,7 +653,7 @@ export function resolveStage(doc, stage) {
       // duration 逐段不同，下单时用 clampDuration 折算后补进去
       inputData,
       durationRange: caps?.duration ?? null,
-      command: `${GENERATION_CLI} video create --model ${JSON.stringify(model)} --input_data '<JSON>' --json`,
+      command: 'node <ly-video-dir>/scripts/video.mjs models --model ' + JSON.stringify(model),
     };
   }
 
@@ -666,13 +666,13 @@ export function resolveStage(doc, stage) {
     model,
     resolution,
     aspectRatio,
-    // 补一个 prompt（要参考图再补 images）就能提交，不用自己拼。
+    // 这里只提供候选参数；素材字段必须由执行方按实时 schema 绑定。
     // 档位回填成枚举里的写法：用户写了 2k，网关只认 2K
     inputData: {
       aspect_ratio: aspectRatio,
       resolution: matchTier(resolution, IMAGE_MODELS[model]?.resolutions ?? []) ?? resolution,
     },
-    command: `${GENERATION_CLI} image create --model ${JSON.stringify(model)} --input_data '<JSON>' --json`,
+    command: 'node <ly-image-dir>/scripts/image.mjs models --model ' + JSON.stringify(model),
   };
 }
 
@@ -708,7 +708,7 @@ export function renderMarkdown(doc) {
   out.push(`| 提示词语言 | ${dash(doc?.promptLang)} |`);
   out.push(`| 自动驾驶 | ${autopilotOf(doc) ? '开启（下游跑完整段不打断）' : '关闭（该问就问）'} |`);
   out.push('');
-  out.push(`> 出图与生视频都走 \`${GENERATION_CLI}\`：分辨率与比例是它的**枚举值**，原样填进 \`--input_data\`，提示词里不写像素。`, '');
+  out.push('> 实际生图使用 ly-image，生视频使用 ly-video。此处只提供制作参数；档位与比例需按实时 schema 核对，不折算像素。', '');
   out.push('## 质量门', '');
   for (const g of gates) {
     out.push(`- ${mark(g)} ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
@@ -730,7 +730,7 @@ const USAGE = `novel-setup.mjs — novel-setup skill 的确定性工具（生产
        [--asset-resolution <档位>]        资产图分辨率档位，默认 2K
        [--asset-aspect <W:H>]            资产图比例（默认 16:9——设定图版面要横构图）
        [--image-model <名>]              默认 nanobanana2
-       [--video-model <名>]              视频模型，取 lingying model list 的 ID 列
+       [--video-model <名>]              视频模型，取 ly-video 实时 models 返回的 id
        [--video-resolution <档位>]        视频分辨率档位（如 768p）
        [--selection <selection.json>]  显式四维选择对象；省略不猜默认
        [--style <style.json>]            画风正文；不给就留一份空骨架待填
@@ -749,8 +749,8 @@ const USAGE = `novel-setup.mjs — novel-setup skill 的确定性工具（生产
   find [--from <目录>]                    只打印找到的 production.json 路径
   models                                 打印内置的生图与生视频模型能力表
 
-出图与生视频都走 ${GENERATION_CLI} CLI。分辨率与比例是它的**枚举值**（1K/2K/4K、16:9…），
-原样填进 --input_data，不折算像素、提示词里也不写像素。能力表抄自 \`${GENERATION_CLI} model get\`，
+实际生成使用 ly-image / ly-video，本命令只管理制作参数。
+能力表是历史快照；提交前通过外部 skill 的 models --model 查询实时 schema，
 每条都注明取数命令；表里没有的模型不是错误，相关的门明说跳过。
 
 production.json 住在**工作目录根**，下游从自己的输出目录向上找（最多 ${LOOKUP_DEPTH} 层）。`;
@@ -898,7 +898,7 @@ function main(argv) {
   if (cmd === 'caps') {
     const model = flag(rest, '--model');
     if (!model) {
-      console.log(`${GENERATION_CLI} 能力表（抄自 ${GENERATION_CLI} model get，每条都注明取数命令）\n`);
+      console.log('历史能力快照（每条保留来源；实时约束请通过 ly-image / ly-video 查询）\n');
       console.log('生图：');
       for (const [name, m] of Object.entries(IMAGE_MODELS)) {
         console.log(`  ${name.padEnd(14)} 档位 ${m.resolutions.join(' / ')}　比例 ${m.aspectRatios.join(' / ')}`);
@@ -919,7 +919,7 @@ function main(argv) {
     if (!entry) {
       throw new Error(
         `能力表里没有 ${model}（生图：${Object.keys(IMAGE_MODELS).join(' / ')}；生视频：${Object.keys(VIDEO_MODELS).join(' / ')}）\n` +
-          `跑 \`${GENERATION_CLI} model list\` 看网关上现在有什么，确认口径后往表里加一条就自动开始查。`,
+          '请使用 ly-image / ly-video 的 models 发现当前模型，再读取 models --model 的实时 schema。',
       );
     }
     console.log(JSON.stringify({ model, ...entry }, null, 2));
@@ -954,8 +954,8 @@ function main(argv) {
     console.log(
       JSON.stringify(
         {
-          cli: GENERATION_CLI,
-          note: `能力表抄自 \`${GENERATION_CLI} model get\`，每条都带取数命令；表里没有的模型不是错误，相关的门明说跳过`,
+          skills: GENERATION_SKILLS,
+          note: '历史能力快照，非实时发现；实际生成前使用 ly-image / ly-video 核对 schema。表外模型的能力检查明确跳过。',
           image: IMAGE_MODELS,
           video: VIDEO_MODELS,
         },

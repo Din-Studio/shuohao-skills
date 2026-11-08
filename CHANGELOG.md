@@ -1,5 +1,14 @@
 # Changelog
 
+## 外部媒体生成交接 — 2026-11-08
+
+- 删除角色、美术、视频创作三份内置 `lib/lingying.mjs`，不再维护上传、提交、轮询和下载。
+- 实际生图、生视频改为独立安装 [Din-Studio/skills](https://github.com/Din-Studio/skills) 的 ly-image / ly-video。各创作 skill 仍可单独拷走完成文本、校验和离线计划，不依赖外部 skill 的代码。
+- **命令语义变更**：`images` / `videos` 默认只输出 planned 交接计划；`--out` 另存且不覆盖已有文件。保留提示词、原生参数、参考依赖顺序和目标路径。旧 force、cutout、timeout、concurrency 选项明确报错。
+- 生成前按外部 skill 实时 schema 绑定素材与核对价格；下载验收后放到计划 output，再渲染。旧台账保留用于对账，不自动转换或重新提交。
+- novel-setup 的 resolve 输出改为 skill 标识与模型发现命令；inputData 参数结构保留。能力表明确为历史快照。
+- 离线自测改为交接契约检查；不再测试已删除的内置网关实现。未新增质量门失败累积日志。
+
 ## 创作策略解耦与 v2 数据契约
 
 **novel-setup 3.0.0 · novel-outline 2.0.0 · novel-script 2.0.0 · novel-characters 2.0.0 · novel-art 2.0.0 · novel-creation 2.0.0**

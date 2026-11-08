@@ -21,10 +21,10 @@
 | --- | --- |
 | [**novel-setup**](skills/novel-setup) | 确认制作参数、视觉正文和四维创作选择，写入工作目录根的 `production.json`。画幅不决定叙事节奏，选择不代表下游策略已安装 |
 | [**novel-outline**](skills/novel-outline) | 建立作品承诺、稳定剧情节点、分集与集尾计划、可选阶段里程碑和资产清单。兑现频率、悬念要求与终局方式由显式策略决定 |
-| [**novel-characters**](skills/novel-characters) | 把大纲定下的角色做成角色设定集：人物画像、形象提示词、音色提示词、角色设定图。吃 outline.json 预填角色表，报告语言可选，画风整块取自 `production.json`。**出图是一条 `images` 命令**——提交、轮询、落盘、断点续传全在脚本里，`--style-ref auto` 拿第一张压住画风漂移 |
-| [**novel-art**](skills/novel-art) | 给 AI 短剧出美术设定集（场景 + 叙事道具）：一致性锚点、光照与状态变体、尺度参照、无人无手白底提示词。吃 outline.json 预填清单，基础契约与制作参数由脚本检查。**出图是一条 `images` 命令**——提交、轮询、落盘、断点续传全在脚本里，参数不经过 shell，不靠模型现拼 bash |
+| [**novel-characters**](skills/novel-characters) | 把大纲定下的角色做成角色设定集：人物画像、形象提示词、音色提示词、角色设定图。吃 outline.json 预填角色表，报告语言可选，画风整块取自 `production.json`。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
+| [**novel-art**](skills/novel-art) | 给 AI 短剧出美术设定集（场景 + 叙事道具）：一致性锚点、光照与状态变体、尺度参照、无人无手白底提示词。吃 outline.json 预填清单，基础契约与制作参数由脚本检查。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
 | [**novel-script**](skills/novel-script) | 编写场次与节拍流，按 ID 认领大纲节点，定位开场与集尾，严格对账上游目标时长。台词长度和开场窗口按当前策略检查；估算不等于真实表演时长 |
-| [**novel-creation**](skills/novel-creation) | 参考图直出视频：按剧本分段、切镜，直接挂载已有的角色、场景与道具设定图，不生成中间分镜图。视频提示词按模型选择结构，`export` 输出投产包，`videos` 编排下单、轮询与落盘。镜头表达策略与模型技术限制分别检查 |
+| [**novel-creation**](skills/novel-creation) | 参考图直出视频：按剧本分段、切镜，直接挂载已有的角色、场景与道具设定图，不生成中间分镜图。视频提示词按模型选择结构，`export` 输出投产包，`videos` 导出离线计划，独立安装的 ly-video 负责生成与恢复。镜头表达策略与模型技术限制分别检查 |
 
 **五个创作 skill 的报告都支持中英双语界面**：默认中文，`render --lang en` 切换为英文界面（故事内容与原始诊断保持原文）。界面语言也可以在 `production.json` 里一处定死。
 
@@ -138,7 +138,19 @@ pi install git:github.com/eternityspring/shuohao-skills   # 直接从 GitHub
 
 直接用中文说「帮我拆一下这本书的角色」并给出路径，三家都能唤起，与打命令等价。
 
-SKILL.md 里凡是写着「有子代理就并发」的步骤，在 pi 里就是当前会话顺着做一遍：80 万字的小说拆角色会慢好几倍，但归并、质量门、报告一个字都不差。**出图与生视频那种「并发提交」跟子代理无关**——那是提交完不等待、拿一串 task_id 统一轮询，pi 照样这么做。
+本仓库不再内置生成编排。实际生成由独立安装的 ly-image / ly-video 执行；任务恢复使用外部回执，不通过重跑本地 `images` / `videos` 重新提交。
+
+## 外部生成技能
+
+需要实际生图、生视频时，先安装：
+
+```bash
+npx skills@latest add Din-Studio/skills --agent codex --skill ly-image ly-video -g -y
+```
+
+用户级副本位于 `~/.agents/skills/`，pi 也能发现；安装后重新加载技能或启动新会话。各创作 skill 仍自包含：`images` / `videos` 现在只导出计划，即使不带 `--dry-run` 也不提交。使用 `--out plan.json` 保存新计划。
+
+实际生成先阅读对应阶段的 `references/media-handoff.md`，再读取已安装外部 skill。由外部 skill 完成实时模型发现、请求预览、授权提交、原任务恢复与下载；核验后放到计划 output 路径再渲染报告。旧生成选项已退役；不得因提交状态不确定而自动重投。
 
 ## 前置条件
 
@@ -146,7 +158,7 @@ SKILL.md 里凡是写着「有子代理就并发」的步骤，在 pi 里就是�
 | --- | --- | --- |
 | **Node** | 必需 | ≥ 18。skill 的脚本只用标准库，**没有 npm 依赖，不需要 install** |
 | **模型额度** | 必需 | 写文本的部分用你当前会话的额度，**不需要任何 API key** |
-| **lingying CLI** | 可选 | **出图与生视频**才用得上。安装在 PATH 里（或放在工作目录的 `bin/lingying`），凭证写进 `~/.config/lingying/config.json`（`api_key`；挂参考图还要 `assethub_admin_token`）。没有就跳过出图与下单，其余产出照常 |
+| **ly-image / ly-video skills** | 可选 | 从 [Din-Studio/skills](https://github.com/Din-Studio/skills) 独立安装。实际生成需要 Node 22.20+ 和私有凭据，可复用 `~/.config/ly/config.json`。本仓库创作、校验和计划导出仍可独立运行 |
 
 ## 仓库约定
 

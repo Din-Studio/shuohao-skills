@@ -15,7 +15,7 @@ metadata:
   license: Apache-2.0
   requires:
     bins: [node]
-    optional: [lingying]
+    # 可选外部执行工具：ly-video；不影响本 skill 独立产出
   runtimes: [pi, claude-code, codex]
 ---
 
@@ -101,7 +101,7 @@ export 在检查通过后生成 manifest 和每段 prompt.md，包含已有参�
 
 ## 5. 视频生成（仅授权后）
 
-读取 `references/video-order.md`。使用 `videos manifest.json --dry-run` 检查下单计划。实际生成前告知模型、总秒数和费用预估；没有 lingying 或授权就跳过。原有 `lib/lingying.mjs` 负责提交、轮询、续传、去重上传与止损。超模型上限的段直接失败，不截短下单。普通续传须核对现有台账的输入身份；身份变化要求明确使用 `--force`，该选项始终重新提交而不复用旧任务。同一段连续失败两次停止该段，不无限重试。
+读取 `references/video-order.md` 与 [生成交接流程](references/media-handoff.md)。`videos manifest.json --dry-run` 只检查并输出离线计划；使用 `--out video-plan.json` 可另存。实际生成读取已安装 ly-video，由它发现实时模型/schema、预览请求、在授权范围内提交并恢复原任务。告知模型、最终总秒数与实时费用预估。超模型上限直接失败，不截短故事。没有工具或授权就交付计划并明确未生成。下载核验后放到计划 output 路径再 render；不得因等待到期而重新提交。
 
 production.autopilot 必须严格为布尔 true 才生效。它转移审批权，不取消策略确认记录、费用告知、授权范围、检查或止损。替用户作出的选择写入当次汇报。
 
@@ -116,4 +116,4 @@ node {baseDir}/scripts/profile-selftest.mjs
 node {baseDir}/scripts/fixes-selftest.mjs
 ```
 
-只执行确定性检查及注入假 CLI 的生成接口回归，不调用模型。
+只执行确定性检查和离线交接回归，不调用模型、不访问网关。

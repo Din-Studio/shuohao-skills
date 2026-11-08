@@ -6,7 +6,7 @@
 - `params.rules.cutDuration` 支持 off/warn/error，不再统一要求二至五秒切镜。
 - 接收 opening、ending、openingBeat、endBeat 和节点 ID 认领。开放结尾不会被改成追更悬念。
 - 分别展示基础检查、策略提醒、来源状态、缺少上游和内容未评审。
-- 保留参考图挂载、通用提示词、双语报告、原始 JSON 导出及 lingying 投产接口。
+- 保留参考图挂载、通用提示词、双语报告、原始 JSON 导出及离线交接计划。实际生成交给独立安装的 ly-video，见 [生成交接](references/media-handoff.md)。
 
 ## 使用
 
