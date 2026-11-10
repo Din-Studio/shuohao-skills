@@ -2,9 +2,9 @@
 
 # novel-art
 
-## 2.0.0: creative contract
+## v3 upstream contract
 
-Accept only explicit outline schemaVersion 2 in seed. Read genre/narrativeStyle from production as background only; do not load profiles, apply policy, write creativeContext or fabricate hashes. Missing local profiles do not affect this asset stage. Visual text and image production parameters remain mandatory for generation. Missing production may skip historical upstream checks; a supplied but damaged production fails.
+Seed accepts outline schemaVersion 3 only; production also requires schemaVersion 3. Read the optional non-empty creativeBrief as natural language, never as policy or model parameters. Character provenance/arc and beat classification/position are optional. Missing production skips upstream checks; damaged or legacy production fails. Asset outputs and media plans remain unchanged.
 
 Check objects use `status: pass|fail|skipped`, `category`, and `level`, never an ok boolean. Skips are not passes. Content review is not performed by these checks. See [contract](references/creative-background.md) and [migration](references/migration.md).
 
@@ -68,6 +68,8 @@ When the `production.json` at the work-directory root (produced by `novel-setup`
 
 ```bash
 node scripts/selftest.mjs
+node scripts/v3-selftest.mjs
+node scripts/upstream-selftest.mjs
 ```
 
 Offline tests cover creative contracts, rendering and handoff plans, including reference dependencies, preserved prompts, file checks and retired options. No gateway calls or model usage.
@@ -78,10 +80,10 @@ The formal sample is Rain Canopy Messages (雨棚留言), a neighbourhood-market
 
 ## Standalone sample
 
-All inputs below belong to Rain Canopy Messages. The outline file is a consumed-field v2 fixture, not a full outline deliverable.
+All inputs below belong to Rain Canopy Messages. The outline file is a consumed-field v3 fixture, not a full outline deliverable.
 
 ```bash
 node scripts/novel-art.mjs validate examples/雨棚留言-art.json --production examples/雨棚留言-production.json --cast examples/雨棚留言-cast-names.json
 node scripts/novel-art.mjs render examples/雨棚留言-art.json --production examples/雨棚留言-production.json --cast examples/雨棚留言-cast-names.json --html --lang en
 ```
-No profile files or real generated images are required. Keep regenerated HTML out of version control.
+No other skill or real generated images are required. Keep regenerated HTML out of version control.

@@ -33,8 +33,7 @@
             },
             {
               "speaker": "C02",
-              "line": "老板？书有问题吗？",
-              "delivery": "见她不说话，忍不住开口"
+              "line": "老板？书有问题吗？"
             },
             {
               "speaker": "C01",
@@ -58,18 +57,9 @@
           ]
         }
       ],
-      "opening": "深夜旧书店快打烊时，周亦抱着一本卷边诗集进门，询问能否卖书。",
-      "ending": {
-        "mode": "open",
-        "event": "陈叙在周亦离开后拾起书中滑落的字条，认出自己写给妹妹的「致晚晚」，独自留在书店灯下。"
-      },
       "openingBeat": [
         1,
         1
-      ],
-      "endBeat": [
-        1,
-        10
       ],
       "beatClaims": [
         {
@@ -108,18 +98,8 @@
       ]
     }
   ],
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "params": {
-    "charsPerSecond": 4.5,
-    "actionSeconds": 2.5,
-    "tolerance": 0.3,
-    "rules": {
-      "openingWindow": {
-        "level": "off"
-      },
-      "lineLength": {
-        "level": "off"
-      }
-    }
+    "tolerance": 0.3
   }
 }

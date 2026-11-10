@@ -1,27 +1,24 @@
-// Local data contract; no profile discovery or sibling imports.
-export const DIMENSIONS = ['genre', 'narrativeStyle', 'structure', 'pacing'];
+// Local v3 document contract; no strategy registry or sibling imports.
 const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-const exact = (v, keys) => object(v) && Object.keys(v).length === keys.length && keys.every(k => Object.hasOwn(v, k));
 const text = v => typeof v === 'string' && v.trim().length > 0;
-export function creativeProblems(creative) {
-  if (creative === undefined) return [];
+export function documentProblems(doc) {
+  if (!object(doc)) return ['production 必须是对象'];
   const bad = [];
-  if (!exact(creative, ['version', 'selection']) || creative.version !== 1)
-    return ['creative 必须恰好包含 version: 1 与 selection'];
-  if (!exact(creative.selection, DIMENSIONS)) return ['creative.selection 必须恰好包含 genre/narrativeStyle/structure/pacing 四维'];
-  for (const dimension of DIMENSIONS) {
-    const p = creative.selection[dimension];
-    if (!exact(p, ['id', 'version']) || typeof p.id !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(p.id) ||
-        typeof p.version !== 'string' || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(p.version))
-      bad.push('creative.selection.' + dimension + ' 必须是明确 id 与固定语义版本；不接受 latest、范围、路径或额外字段');
-  }
+  if (doc.params !== undefined && !object(doc.params)) bad.push('params 必须是对象');
+  if (doc.source !== undefined && typeof doc.source !== 'string') bad.push('source 必须是字符串');
+  if (doc.schemaVersion !== 3) bad.push('production 需要 schemaVersion: 3；请执行 migrate-v3');
+  if (doc.creativeBrief !== undefined && !text(doc.creativeBrief)) bad.push('creativeBrief 提供时必须是非空字符串');
+  for (const field of ['creative', 'creativeContext', 'selection', 'decisions', 'overrides'])
+    if (Object.hasOwn(doc, field)) bad.push(field + ' 已废弃；请执行 migrate-v3');
+  for (const field of ['rules', 'defaults', 'preferences'])
+    if (object(doc.params) && Object.hasOwn(doc.params, field)) bad.push('params.' + field + ' 已废弃；请执行 migrate-v3');
   return bad;
 }
 export function creativeBackground(production) {
-  const bad = creativeProblems(production?.creative);
+  if (production == null) return null;
+  const bad = documentProblems(production);
   if (bad.length) throw new Error(bad.join('；'));
-  const s = production?.creative?.selection;
-  return s ? { genre: { ...s.genre }, narrativeStyle: { ...s.narrativeStyle } } : null;
+  return production.creativeBrief ?? null;
 }
 export function check(id, label, status, detail = '', reason = undefined) {
   return { id, label, status, category: 'base', level: 'error', detail, ...(reason ? { reason } : {}) };
@@ -29,10 +26,14 @@ export function check(id, label, status, detail = '', reason = undefined) {
 export const blocking = g => g.status === 'fail' && g.level === 'error';
 export const mark = g => g.status === 'pass' ? '✓' : g.status === 'skipped' ? '—' : g.level === 'warn' ? '提醒' : '✗';
 
-/** Validate the consumed outline v2 projection, not narrative policy or content quality. */
-export function assertOutlineV2(doc) {
-  const fail = message => { throw new Error('outline v2: ' + message + '；参见 references/migration.md'); };
-  if (!object(doc) || doc.schemaVersion !== 2) fail('需要显式 schemaVersion: 2，拒绝旧版或缺版本');
+/** Validate the consumed outline v3 projection, not narrative policy or content quality. */
+export function assertOutlineV3(doc) {
+  const fail = message => { throw new Error('outline v3: ' + message + '；参见 references/migration.md'); };
+  if (!object(doc) || doc.schemaVersion !== 3) fail('需要显式 schemaVersion: 3，拒绝旧版或缺版本');
+  const documentBad = documentProblems(doc);
+  if (documentBad.length) fail(documentBad.join('；'));
+  if (doc.story && Object.hasOwn(doc.story, 'drive')) fail('story.drive 已废弃，请迁移');
+  if (doc.adaptation && Object.hasOwn(doc.adaptation, 'core')) fail('adaptation.core 已废弃，请迁移');
   if (!text(doc.source)) fail('source 必须非空');
   for (const key of ['characters', 'scenes']) if (!Array.isArray(doc[key])) fail(key + ' 必须是数组');
   for (const key of ['props', 'beats', 'episodes']) if (doc[key] !== undefined && !Array.isArray(doc[key])) fail(key + ' 必须是数组');
@@ -54,9 +55,12 @@ export function assertOutlineV2(doc) {
       }
       if (key === 'props' && !text(item.function)) fail('props.function 必须非空');
       if (key === 'beats') {
-        if (!Number.isInteger(item.episode) || item.episode < 1 || !['event','pressure','turn','payoff'].includes(item.kind) ||
-            !['opening','early','middle','late','ending'].includes(item.position) || !text(item.type) || !text(item.setup) || !text(item.outcome)) fail('节点字段损坏');
-        if (item.kind === 'payoff' ? !['minor','major'].includes(item.weight) : Object.hasOwn(item, 'weight')) fail('节点 weight 与 kind 不一致');
+        if (Object.hasOwn(item, 'type')) fail('beats.type 已废弃，请合并到 setup/outcome 后迁移');
+        if (!Number.isInteger(item.episode) || item.episode < 1 ||
+            (item.kind !== undefined && !['event','pressure','turn','payoff'].includes(item.kind)) ||
+            (item.position !== undefined && !['opening','early','middle','late','ending'].includes(item.position)) ||
+            !text(item.setup) || !text(item.outcome)) fail('节点字段损坏');
+        if (Object.hasOwn(item, 'weight') && (item.kind !== 'payoff' || !['minor','major'].includes(item.weight))) fail('节点 weight 与 kind 不一致');
       }
     }
   }
@@ -66,15 +70,19 @@ export function assertOutlineV2(doc) {
   const eps = new Set();
   for (const ep of doc.episodes ?? []) {
     if (!object(ep) || !Number.isInteger(ep.ep) || ep.ep < 1 || eps.has(ep.ep)) fail('分集编号非法或重复');
+    if (Object.hasOwn(ep, 'stateChange')) fail('episodes.stateChange 已废弃，请迁移');
     eps.add(ep.ep);
     for (const [key, table] of [['characterIds','characters'],['sceneIds','scenes'],['propIds','props']])
       if (ep[key] !== undefined) refs(ep[key], ids[table], key);
   }
-  for (const pr of doc.props ?? []) refs(pr.beatIds ?? [], ids.beats, 'props.beatIds');
+  for (const pr of doc.props ?? []) refs(pr.beatIds === undefined ? [] : pr.beatIds, ids.beats, 'props.beatIds');
   if (doc.params !== undefined && !object(doc.params)) fail('params 必须是对象');
   const total = doc.params?.episodes;
   if (total !== undefined && (!Number.isInteger(total) || total < 1)) fail('params.episodes 必须是正整数');
+  let previousEpisode = 0;
   for (const b of doc.beats ?? []) {
+    if (b.episode < previousEpisode) fail('节点集号不能递减');
+    previousEpisode = b.episode;
     if (Number.isInteger(total) && b.episode > total) fail('节点所属集越界');
     if (eps.size && !eps.has(b.episode)) fail('节点所属集不存在');
   }
@@ -85,7 +93,7 @@ export function assertOutlineV2(doc) {
 export function assetProductionProblems(production, blockName) {
   if (production == null) return [];
   if (!object(production)) return ['production 必须是对象'];
-  const bad = creativeProblems(production.creative);
+  const bad = documentProblems(production);
   if (production.autopilot !== undefined && typeof production.autopilot !== 'boolean') bad.push('autopilot 必须是布尔值');
   if (!text(production.style?.label?.zh)) bad.push('style.label.zh 必须非空');
   const block = production.style?.[blockName];

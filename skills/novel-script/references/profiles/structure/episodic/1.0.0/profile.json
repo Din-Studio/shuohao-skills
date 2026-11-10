@@ -1,9 +1,0 @@
-{
-  "profileSchemaVersion": 1,
-  "dimension": "structure",
-  "id": "episodic",
-  "version": "1.0.0",
-  "stage": "script",
-  "guide": "guide.md",
-  "rules": {}
-}

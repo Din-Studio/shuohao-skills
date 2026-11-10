@@ -30,4 +30,4 @@
 
 ## 创作背景与视觉边界
 
-参见 [creative-background.md](creative-background.md)。只记录 production 的 genre/narrativeStyle 背景；结构与节奏不属于本阶段。不加载本地或兄弟 profile，不生成 creativeContext 或来源摘要。本地 profile 缺失不影响角色资产阶段，但缺少视觉正文不能由通用方法代替。保留逐字证据、角色区分度、设定表比例、视觉正文和参考图挂载检查。seed 只接受显式 outline v2，旧版先按 [migration.md](migration.md) 迁移。正式样例与本地投影夹具均为《渡口》。
+参见 [creative-background.md](creative-background.md)。读取 production.creativeBrief 的自然语言要求，不推导策略。保留逐字证据、角色区分度、设定表比例、视觉正文和参考图挂载检查。seed 接受 outline v3，允许省略人物 from/arc；角色卡输出仍遵循原协议。正式样例与本地投影夹具均为《渡口》。

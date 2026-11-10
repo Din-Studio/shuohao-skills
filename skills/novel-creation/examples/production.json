@@ -14,25 +14,5 @@
     "aspectRatio": "9:16",
     "resolution": "768p"
   },
-  "creative": {
-    "version": 1,
-    "selection": {
-      "genre": {
-        "id": "mystery",
-        "version": "1.0.0"
-      },
-      "narrativeStyle": {
-        "id": "restrained",
-        "version": "1.0.0"
-      },
-      "structure": {
-        "id": "serial",
-        "version": "1.0.0"
-      },
-      "pacing": {
-        "id": "gradual",
-        "version": "1.0.0"
-      }
-    }
-  }
+  "schemaVersion": 3
 }

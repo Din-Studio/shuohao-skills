@@ -4,7 +4,7 @@
 //   node scripts/report-selftest.mjs
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -273,7 +273,7 @@ const DOC = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   ok(!/https?:\/\/(?!x\.com)/.test(html.replace(/https:\/\/json-schema\.org[^"']*/g, '')), '没有外部请求');
 }
 
-// v2 报告的 ID 选择器在合并后仍指向本面板，不与相邻面板串联。
+// v3 报告的 ID 选择器在合并后仍指向本面板，不与相邻面板串联。
 {
   const css = scopeCss('#checks .row{color:#fff}@media(max-width:500px){#story{display:block}}', '#pane-outline', 'outline--');
   ok(css.includes('#pane-outline #outline--checks'), 'CSS ID 同步前缀');
@@ -296,12 +296,26 @@ const DOC = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
   const dir = mkdtempSync(join(tmpdir(), 'report-discovery-'));
   try {
     eq(findJson(dir, 'novel-outline'), null, '缺少产物不伪造面板');
+    mkdirSync(join(dir, 'directory-outline.json'));
+    symlinkSync(join(dir, 'missing.json'), join(dir, 'linked-outline.json'));
+    eq(findJson(dir, 'novel-outline'), null, '目录和符号链接不冒充自动发现的正式产物');
     writeFileSync(join(dir, 'one-outline.json'), '{}');
     writeFileSync(join(dir, 'one-outline.backup.123.json'), '{}');
-    eq(findJson(dir, 'novel-outline'), join(dir, 'one-outline.json'), '排除应用备份');
+    writeFileSync(join(dir, 'one-outline.bak.v2.json'), '{}');
+    eq(findJson(dir, 'novel-outline'), join(dir, 'one-outline.json'), '排除迁移备份');
     writeFileSync(join(dir, 'two-outline.json'), '{}');
     assert.throws(() => findJson(dir, 'novel-outline'), /显式指定/); passed++;
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
+// 合并显示不得给 v3 编辑源补上计划副本或可推导坐标。
+for (const stage of ['script', 'creation']) {
+  const data = { schemaVersion: 3, source: '夜班温度', episodes: [{ ep: 1,
+    ...(stage === 'script' ? { targetSeconds: 24, scenes: [{ sceneId: 'S01', characters: ['C01'], flow: [{ action: '保存原始记录。' }] }] } : { segments: [] }) }] };
+  const doc = `<html><body><p>当前大纲的开场展示</p><script type="application/json" id="${stage}-data">${JSON.stringify(data)}<\/script></body></html>`;
+  const pane = makePane(doc, { id: stage });
+  const embedded = JSON.parse(pane.html.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1]);
+  assert.deepEqual(embedded, data); passed++;
+  for (const key of ['opening', 'ending', 'endBeat']) ok(!(key in embedded.episodes[0]), `${stage} 不持久化 ${key}`);
+}
 console.log(`✓ ${passed} 项自测全部通过`);

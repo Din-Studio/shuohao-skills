@@ -52,8 +52,8 @@ export const PANES = [
     dir: 'outline',
     label: '大纲',
     labelEn: 'Outline',
-    hint: '改编结构与分集',
-    hintEn: 'Adaptation & episodes',
+    hint: '故事结构与分集',
+    hintEn: 'Story & episodes',
     needs: [],
   },
   {
@@ -531,6 +531,8 @@ const USAGE = `report.mjs —— 把 novel 系列各 skill 的报告合成一张
   --art <f>
   --script <f>
   --creation <f>
+  --production <f>   显式提供 v3 制作配置，传给全部面板
+  --no-production    不自动读取制作配置（独立模式）
   --out <f>          输出路径，默认 report.html
   --lang zh|en       外壳与各报告的界面语言，默认 zh
   --title <s>        左上角标题，默认取第一份 json 的 source
@@ -548,7 +550,8 @@ export function findJson(dir, skill) {
   if (!existsSync(dir)) return null;
   const kind = skill.replace('novel-', '');
   const stem = kind === 'characters' ? 'cast' : kind;
-  const files = readdirSync(dir)
+  const files = readdirSync(dir, { withFileTypes: true })
+    .filter(entry => entry.isFile()).map(entry => entry.name)
     .filter((f) => f.endsWith('.json') && !/manifest|\.gates|\.backup[.-]|\.bak[.-]/i.test(f))
     .filter((f) => f.toLowerCase().includes(stem));
   if (files.length > 1) throw new Error(`${dir} 有多份 ${stem} JSON，请显式指定对应阶段文件：${files.join('、')}`);
@@ -560,7 +563,7 @@ function main(argv) {
     console.log(USAGE);
     return;
   }
-  const allowed = new Set(['--from', '--out', '--lang', '--title', ...PANES.map((p) => p.flag)]);
+  const allowed = new Set(['--from', '--out', '--lang', '--title', '--production', '--no-production', ...PANES.map((p) => p.flag)]);
   for (const arg of argv) {
     if (arg.startsWith('--') && !allowed.has(arg)) throw new Error(`未知选项 ${arg}`);
   }
@@ -568,6 +571,13 @@ function main(argv) {
   const outPath = resolve(flag(argv, '--out', 'report.html'));
   const outDir = dirname(outPath);
   const lang = flag(argv, '--lang', 'zh');
+  const noProduction = argv.includes('--no-production');
+  const productionFlag = flag(argv, '--production');
+  if (argv.includes('--production') && !productionFlag) throw new Error('--production 需要文件路径');
+  if (noProduction && productionFlag) throw new Error('--production 与 --no-production 不能同时提供');
+  const discoveredProduction = from ? resolve(from, 'production.json') : null;
+  const production = productionFlag ? resolve(productionFlag)
+    : !noProduction && discoveredProduction && existsSync(discoveredProduction) ? discoveredProduction : null;
 
   // 路径来源：显式参数优先，其次从 --from 目录自动发现
   const paths = {};
@@ -585,6 +595,8 @@ function main(argv) {
     const jsonPath = paths[p.flag];
     const cli = join(skillsDir, p.skill, 'scripts', `${p.skill}.mjs`);
     const args = ['render', jsonPath, '--html', '--lang', lang];
+    if (production) args.push('--production', production);
+    if (noProduction) args.push('--no-production');
     for (const need of p.needs) {
       // 上游有就带上；没有就不带，各 skill 自己会说明跳过了什么
       if (paths[need]) args.push(need, paths[need]);
@@ -624,8 +636,8 @@ function main(argv) {
 
   const sub = panes.map((p) => (lang === 'en' ? p.meta.labelEn : p.meta.label)).join(lang === 'en' ? ' · ' : ' · ');
   const notices = [lang === 'en'
-    ? 'Rendering is not verification. Base checks, policy warnings, skipped checks and content review are reported separately in each pane. A standalone result is not joint delivery.'
-    : '报告生成不等于校验通过。各面板分别展示基础检查、策略提醒、跳过检查和内容评审。独立通过不代表联合交付。',
+    ? 'Rendering is not verification. Structural checks, warnings, missing-upstream checks and content review are reported separately in each pane. Content review has not been performed by this report assembler. A standalone result is not joint delivery.'
+    : '报告生成不等于校验通过。各面板分别展示结构检查、提醒、缺少上游而未检查的范围和内容评审状态。合并工具没有执行内容评审。独立通过不代表联合交付。',
     ...failures.map(message => lang === 'en' ? `Unavailable pane: ${message}` : `面板未生成：${message}`)];
   writeFileSync(outPath, renderShell(panes, { title, lang, subtitle: sub, notices }));
   if (failures.length) process.exitCode = 1;

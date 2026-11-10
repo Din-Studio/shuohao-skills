@@ -7,7 +7,7 @@ description: |
   一次写入工作目录根的 production.json，五个创作 skill 向上查找并遵循。
   资产图是横构图或方形的设定表，与成片画幅独立；视频直接挂载已有设定图。
   画风没有内置类型或默认值，由用户填写角色与环境两块正文。
-  9 道检查（含创作选择）全部由脚本检查。分辨率与比例直接使用 模型枚举档位，生成前按实时 schema 核对，不折算像素。
+  9 道检查（含 v3 契约）全部由脚本检查。分辨率与比例直接使用 模型枚举档位，生成前按实时 schema 核对，不折算像素。
   成片画幅没有默认值，必须显式指定。本 skill 不调用模型，不出图，不下单。
   Use when asked to 定参数、配置画幅、竖屏还是横屏、出图分辨率、视频参数、production setup for AI short drama。
 allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep
@@ -35,11 +35,11 @@ metadata:
     - codex
 ---
 
-## 3.0.0 创作契约与迁移
+## v3 创作契约与迁移
 
-通过 `init --selection <selection.json>` 写入显式四维选择。selection 文件只包含 genre/narrativeStyle/structure/pacing，每维指定 id/version。creative.version 固定为 1。show 展示选择，resolve 按阶段返回选择或背景。不读取兄弟 profile，不猜默认，不保证下游实现已安装。
+production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` 收集可选的自然语言创作要求。提供时必须非空，不解析为枚举、规则或模型参数。show 展示要求，resolve 原样返回 creativeBrief；不要求选择策略。
 
-检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-selection.md) 和 [迁移说明](references/migration.md)。
+检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-brief.md) 和 [迁移说明](references/migration.md)。
 
 ## novel-setup
 
@@ -47,16 +47,17 @@ metadata:
 
 `{baseDir}` 是本文件所在目录。脚本为 `{baseDir}/scripts/novel-setup.mjs`，Node 18+，只使用标准库，无 npm 依赖。
 
-**边界**：不写故事、不出图、不下单。角色与美术阶段生成设定图，视频创作阶段直接挂载设定图生成视频。集数、时长属于大纲阶段；题材方法只记录选择，不在本阶段创作故事。
+**边界**：不写故事、不出图、不下单。角色与美术阶段生成设定图，视频创作阶段直接挂载设定图生成视频。集数、时长属于大纲阶段；创作方向只记录自然语言要求，不在本阶段创作故事。
 
 ### Step 0 — 确认要求
 
-四件事不能猜：
+三项技术要求必须确认：
 
 1. **成片画幅**：例如 `9:16` 或 `16:9`。没有默认值，猜错会导致视频重出。
 2. **视频模型与档位**：读取已安装 ly-video，执行其 `models` 与 `models --model <ID>` 查看实时模型和档位；本地 `caps` 只提供历史快照。
-4. **创作选择**：明确确认题材、叙事风格、故事结构、叙事节奏的 ID 与固定版本；没有选择不按竖屏猜测密集兑现。
 3. **画风**：确认名字与具体质感要求。没有预设选项或默认画风；真人实拍、手绘、水墨、黏土定格都可以。
+
+另收集可选的 **creativeBrief**：请用户直接描述想要的作品与不希望的处理。没有额外要求就省略；不追问策略名称或版本，不自动推导规则。要求变化后明确提示下游内容需要重新评审。
 
 生图模型默认 `nanobanana2`，资产图默认 `2K`、`16:9`。资产图是设定表，成片竖屏不要求设定图也竖屏。
 
@@ -81,7 +82,7 @@ node {baseDir}/scripts/novel-setup.mjs init --aspect 9:16 \
   > <工作目录>/production.json
 ```
 
-可选参数：`--selection <selection.json>`、`--autopilot`、`--asset-resolution`、`--asset-aspect`、`--image-model`、`--lang`、`--prompt-lang`、`--style <style.json>`。
+可选参数：`--creative-brief "正文"`、`--autopilot`、`--asset-resolution`、`--asset-aspect`、`--image-model`、`--lang`、`--prompt-lang`、`--style <style.json>`。
 
 `--aspect` 只设置视频画幅。文件必须位于工作目录根，下游从自己的产物目录向上最多 5 层查找。
 
@@ -116,7 +117,7 @@ node {baseDir}/scripts/novel-setup.mjs validate <工作目录>/production.json
 node {baseDir}/scripts/novel-setup.mjs checkup <工作目录>/production.json
 ```
 
-9 道检查（含创作选择）：四维选择与显式版本、字段与枚举、比例写法、资产图横构图或方形、分辨率已填、视频模型参数、生图模型参数、画风完整、画风不矛盾。有违规先修正，再重跑直到通过。
+9 道检查（含 v3 契约）：数据版本与创作要求、字段与枚举、比例写法、资产图横构图或方形、分辨率已填、视频模型参数、生图模型参数、画风完整、画风不矛盾。有违规先修正，再重跑直到通过。
 
 视频采用固定 `W:H` 画幅，不接受 `adaptive`，避免逐段比例变化。资产图比例不要求等于视频比例。
 
@@ -161,6 +162,8 @@ node {baseDir}/scripts/novel-setup.mjs duration 12.5 --model "MiniMax H3"
 
 ```bash
 node {baseDir}/scripts/selftest.mjs
+node {baseDir}/scripts/migration-selftest.mjs
+node {baseDir}/scripts/upstream-selftest.mjs
 ```
 
 离线自测覆盖全部质量门，不调用模型、不访问网络、不花额度。

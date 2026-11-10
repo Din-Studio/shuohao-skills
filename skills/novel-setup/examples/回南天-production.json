@@ -1,4 +1,5 @@
 {
+  "schemaVersion": 3,
   "source": "回南天",
   "autopilot": false,
   "style": {
@@ -47,25 +48,5 @@
     "aspectRatio": "9:16",
     "resolution": "768p"
   },
-  "creative": {
-    "version": 1,
-    "selection": {
-      "genre": {
-        "id": "slice-of-life",
-        "version": "1.0.0"
-      },
-      "narrativeStyle": {
-        "id": "warm",
-        "version": "1.0.0"
-      },
-      "structure": {
-        "id": "episodic",
-        "version": "1.0.0"
-      },
-      "pacing": {
-        "id": "measured",
-        "version": "1.0.0"
-      }
-    }
-  }
+  "creativeBrief": "生活题材，关注日常关系与局部问题的解决。表达温暖，留出人物停顿与反应的空间。"
 }

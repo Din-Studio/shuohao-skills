@@ -17,30 +17,24 @@ Here is the whole pipeline — **the production parameters lock the aspect and t
 
 | Skill | What it does |
 | --- | --- |
-| [**novel-setup**](skills/novel-setup/README.en.md) | Locks asset-image and video models, resolution tiers and independent aspect ratios, plus art style, languages and autopilot. Writes `production.json` at the work-directory root for the five creative skills. Creative selection is explicit and independent of aspect ratio |
-| [**novel-outline**](skills/novel-outline/README.en.md) | Defines the audience promise, stable story beats, episode endings, optional arcs and assets. Payoff frequency and ending requirements come from explicitly selected profiles |
+| [**novel-setup**](skills/novel-setup/README.en.md) | Locks asset-image and video models, resolution tiers and independent aspect ratios, plus art style, languages and autopilot. Writes `production.json` at the work-directory root for the five creative skills. Optional creative requirements are plain language and independent of aspect ratio |
+| [**novel-outline**](skills/novel-outline/README.en.md) | Defines the audience promise, stable story beats, episode endings, optional arcs and assets. A local guide supports different creative goals without universal payoff or ending requirements |
 | [**novel-characters**](skills/novel-characters/README.en.md) | Turns the cast the outline settled on into a character bible: profiles, design prompts, voice prompts, model sheets. Seeds the roster from outline.json; report language is configurable and the art style is copied whole from `production.json` |
 | [**novel-art**](skills/novel-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; base contracts and production parameters are checked |
-| [**novel-script**](skills/novel-script/README.en.md) | Writes scenes and beat flow, claims outline beats by stable ID, locates openings and endings, and reconciles upstream target duration. Opening windows and line length are policy rules; estimated time is not measured performance |
-| [**novel-creation**](skills/novel-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` exports an offline plan; the separately installed ly-video skill generates and recovers tasks. Shot-expression policies and model limits are checked separately |
+| [**novel-script**](skills/novel-script/README.en.md) | Writes scenes and beat flow, claims outline beats by stable ID, locates openings and endings, and reconciles upstream target duration. Opening landings are optional, ending coordinates are computed, and estimated time is not measured performance |
+| [**novel-creation**](skills/novel-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` exports an offline plan; the separately installed ly-video skill generates and recovers tasks. Shot expression is reviewed against the guide; model limits remain deterministic checks |
 
 **Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for English interface labels (story content and raw diagnostics retain their original language). The UI language can also be settled once in `production.json`.
 
 **To run the whole thing without interruptions**, switch on autopilot in `production.json` (`novel-setup init --autopilot`): reading `"autopilot": true`, each of the five creative skills runs its own stage end to end — no questions, no waiting for sign-off, deciding for itself and listing every decision in its final report. **It transfers approval, it does not remove checkpoints**: gates stay gates, money is still costed first, and loss limits still apply. Off by default.
 
-## Creative profiles and version boundaries
+## Creative guides and data versions
 
-Genre, narrative style, structure and pacing are four independent selections in `production.json.creative`. Visual prose remains in `production.json.style`. Vertical framing does not imply fast pacing. The initial combinations cover dense-payoff serials, gradual serial mysteries and measured episodic life stories.
+Outline, script and creation each carry a self-contained `references/创作指南.md`. Store optional project requirements as natural-language `production.json.creativeBrief`. There are no four-dimensional profile selections, guide versions, source hashes or policy-application commands. Visual prose remains in `production.json.style`; framing does not dictate pacing.
 
-Outline, script and creation each provide `profiles`, `profile` and `apply-profile`. Profiles are local JSON plus Markdown under each skill's `references/profiles/`. They execute no code and need no sibling skill. Application previews changes and requires explicit decisions for old overrides, then backs up and atomically replaces the stage parameters. Validation and rendering never reapply templates. Same-version source drift allows historical inspection, but continued creation requires restoring the source or explicitly upgrading its version.
+JSON stores story content and necessary handoff relationships. Adaptation notes, question tracking, arcs and beat categories are optional where appropriate. Stable beat claims, asset references, explicit promises and model limits remain checked. Duration estimates are advisory, not measured performance.
 
-```bash
-node skills/novel-outline/scripts/novel-outline.mjs profiles
-node skills/novel-outline/scripts/novel-outline.mjs apply-profile outline/story-outline.json --production production.json
-# Review differences and explicit override decisions before adding --confirm.
-```
-
-**Breaking data change:** outline and script require `schemaVersion: 2`. Back up old files and follow each skill's migration guide; node meaning, endings and actual-text claims require human or model review, not mechanical renaming. Existing projects without `creative` acquire no implicit policy. Base checks, policy errors/warnings, disabled or missing-upstream skips and content review remain separate. Standalone success does not establish joint delivery.
+**Breaking data change:** production, outline, script and creation require `schemaVersion: 3`. Back up old projects, preview `migrate-v3`, review semantic merges, and write a new file following each skill's migration guide. Changing only the version number is not a migration. Guide edits do not invalidate existing artifacts. Structural checks and content review remain separate; missing upstream data prevents claims of joint verification.
 
 ## One page for the whole pipeline
 
@@ -185,7 +179,7 @@ Run every self-test before adding a skill:
 for f in skills/*/scripts/*selftest.mjs scripts/*-selftest.mjs; do node "$f" || exit; done
 ```
 
-There is no CI. Run the local tests, including three-combination integration, policy switching and isolated-copy checks. **Only tested on macOS with Node 24**; there is no platform-specific code, so Linux and older Node releases should be fine, but that is unverified.
+There is no CI. Run the local tests, including cross-stage integration, explicit migration and isolated-copy checks. **Only tested on macOS with Node 24**; there is no platform-specific code, so Linux and older Node releases should be fine, but that is unverified.
 
 ## Working-directory layout
 

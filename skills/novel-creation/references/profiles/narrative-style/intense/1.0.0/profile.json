@@ -1,9 +1,0 @@
-{
-  "profileSchemaVersion": 1,
-  "dimension": "narrativeStyle",
-  "id": "intense",
-  "version": "1.0.0",
-  "stage": "creation",
-  "guide": "guide.md",
-  "rules": {}
-}

@@ -109,7 +109,7 @@ eq(STAGE_DIR, 'creation', '段目录名与工作目录约定一致');
 eq(slug('陈叙'), '陈叙', '中文名保留');
 eq(slug('a/b:c'), 'a-b-c', '危险字符替换');
 eq(paramsOf({}).maxSegmentSeconds, DEFAULT_PARAMS.maxSegmentSeconds, '默认段上限 15 秒');
-eq(paramsOf(FIXTURE).rules.cutDuration.level, 'warn', '镜头表达使用当前有效规则');
+eq(paramsOf(FIXTURE).rules, undefined, '镜头创作方法不保存为规则');
 
 /* ---------------- 时长边界与折算 ---------------- */
 
@@ -357,18 +357,12 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   ok(gProd.detail.includes('MiniMax H3') && gProd.detail.includes('时长区间'), '点名模型与区间');
 }
 
-// cut-length：仅在明确 error 时阻断
-{
+// Retired creative rules must fail explicitly; technical limits remain separate.
+for (const seconds of [1, 6]) {
   const d = clone(FIXTURE);
-  d.params.rules.cutDuration = {level:'error', minSeconds:2, maxSeconds:5};
-  d.episodes[0].segments[0].cuts[0].seconds = 1;
-  ok(gate(d, 'cut-length').status === 'fail', '分镜短于 2 秒被拦');
-}
-{
-  const d = clone(FIXTURE);
-  d.params.rules.cutDuration = {level:'error', minSeconds:2, maxSeconds:5};
-  d.episodes[0].segments[0].cuts[0].seconds = 6;
-  ok(gate(d, 'cut-length').status === 'fail', '分镜超 5 秒被拦');
+  d.params.rules = {cutDuration:{level:'error',minSeconds:2,maxSeconds:5}};
+  d.episodes[0].segments[0].cuts[0].seconds = seconds;
+  ok(gate(d, 'fields').status === 'fail', '旧镜头规则要求显式迁移');
 }
 
 // dialogue-fit

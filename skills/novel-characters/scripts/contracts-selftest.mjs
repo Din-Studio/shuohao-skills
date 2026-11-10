@@ -5,15 +5,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { seedFromOutline, gateReport, creativeBackground, imageJobsFrom, renderHtml, slug } from './novel-characters.mjs';
-import { assertOutlineV2, assetProductionProblems } from './lib/contracts.mjs';
+import { assertOutlineV3, assetProductionProblems } from './lib/contracts.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
-const outline = JSON.parse(readFileSync(join(here, '../examples/渡口-outline-v2.json'), 'utf8'));
+const outline = JSON.parse(readFileSync(join(here, '../examples/渡口-outline-v3.json'), 'utf8'));
 const doc = JSON.parse(readFileSync(join(here, '../examples/渡口-cast.json'), 'utf8'));
-const selection = Object.fromEntries(['genre','narrativeStyle','structure','pacing'].map(k => [k, { id: 'not-installed-local-profile', version: '9.1.0' }]));
+// Natural language requirements do not select strategy implementations.
 const blockName = 'character';
 // Deliberately local synthetic production projection. No sibling fixture or profile read.
 const production = {
-  source: '渡口', creative: { version: 1, selection },
+  source: '渡口', schemaVersion: 3, creativeBrief: 'Express restrained everyday choices.',
   style: { label: { zh: '真人实拍', en: 'Live action' }, phrase: 'live action',
     [blockName]: { render: 'Photorealistic portrait of a real human actor',
       surface: 'authentic materials', lighting: 'soft directional light', negative: 'watermark', tags: ['photorealistic'] } },
@@ -22,8 +22,9 @@ const production = {
 const input = doc.characters;
 const checks = prod => gateReport(doc.characters, null, 'zh', prod);
 assert.equal(existsSync(join(here, '../references/profiles')), false, 'asset stage installs no placeholder profiles');
-assert.deepEqual(Object.keys(creativeBackground(production)), ['genre','narrativeStyle']);
-assert.equal(creativeBackground({}), null);
+assert.equal(creativeBackground(production), production.creativeBrief);
+assert.equal(creativeBackground({ schemaVersion: 3 }), null);
+assert.throws(() => creativeBackground({}), /schemaVersion/);
 assert.equal(assetProductionProblems(production, blockName).length, 0);
 const before = JSON.stringify(doc);
 assert.ok(checks(production).every(g => g.status !== 'fail'));
@@ -40,7 +41,7 @@ for (const mutate of [
   p => { p.style[blockName].tags = []; }, p => { p.image.asset.aspectRatio = '9:16'; },
   p => { p.image.asset.resolution = ''; }, p => { p.image.asset.resolution = '   '; }, p => { p.image.asset.resolution = 2; },
   ...['', '   ', 123, null, false, {}, []].map(model => p => { p.image.model = model; }),
-  p => { p.creative.selection.genre.version = 'latest'; }
+  p => { p.creative = {}; }, p => { p.creativeBrief = ' '; }, p => { p.schemaVersion = 2; }
 ]) {
   const bad = structuredClone(production); mutate(bad);
   assert.ok(checks(bad).some(g => g.status === 'fail'));
@@ -48,8 +49,8 @@ for (const mutate of [
 }
 assert.ok(imageJobsFrom(input, null).problems.length, 'generation cannot guess production');
 assert.equal(imageJobsFrom(input, production).problems.length, 0);
-for (const bad of [null, {}, [], { ...outline, schemaVersion: 1 }, { ...outline, schemaVersion: '2' }, { ...outline, schemaVersion: 3 }, { ...outline, characters: 'broken' }, { ...outline, scenes: null }])
-  assert.throws(() => seedFromOutline(bad), /outline v2/);
+for (const bad of [null, {}, [], { ...outline, schemaVersion: 1 }, { ...outline, schemaVersion: '2' }, { ...outline, schemaVersion: 2 }, { ...outline, characters: 'broken' }, { ...outline, scenes: null }])
+  assert.throws(() => seedFromOutline(bad), /outline v3/);
 for (const mutate of [
   o => { o.characters[0].id = '../C01'; },
   o => { o.characters[0].id = ['C01']; },
@@ -58,10 +59,10 @@ for (const mutate of [
   o => { o.characters[0].tier = 'unknown'; },
   o => { o.characters[0].from = 'wrong'; }
 ]) {
-  const bad = structuredClone(outline); mutate(bad); assert.throws(() => seedFromOutline(bad), /outline v2/);
+  const bad = structuredClone(outline); mutate(bad); assert.throws(() => seedFromOutline(bad), /outline v3/);
 }
 const html = renderHtml(doc.characters, doc.source, doc.summary, 'en', null, production);
-assert.ok(html.includes('not-installed-local-profile'));
+assert.ok(html.includes(production.creativeBrief));
 assert.ok(html.includes('Content review: not performed'));
 
 assert.equal(JSON.stringify(doc), before, 'render does not write context or inferred defaults');
@@ -157,4 +158,4 @@ try {
   assert.equal(cli('validate', asset, '--production', join(dir, 'missing.json')).status, 1);
   assert.equal(cli('validate', asset, '--production', prod, '--no-production').status, 1);
 } finally { rmSync(dir, { recursive: true, force: true }); }
-console.log('✓ characters v2 上游、创作背景及检查状态回归通过');
+console.log('✓ characters v3 上游、创作背景及检查状态回归通过');

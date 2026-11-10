@@ -1,132 +1,72 @@
-# outline.json v2 契约
+# outline.json v3 数据契约
 
-软件版本 2.0.0，数据版本必须是 `schemaVersion: 2`。JSON 唯一编辑源。旧文件拒绝并指向 [迁移指南](migration.md)。自有完整样例见 [旧站时刻](../examples/旧站时刻-outline.json)。本说明和本地 profile-contract 一起使用，无兄弟目录依赖。
+正式运行严格要求 schemaVersion: 3，拒绝旧字段并提示显式迁移，不双读旧格式。完整样例见 [旧站时刻](../examples/旧站时刻-outline.json)。创作方法见 [创作指南](创作指南.md)。
 
-## 顶层与参数
+## 核心与阶段
 
-必需：schemaVersion、source（非空作品名）、params、story、adaptation、characters、scenes；节点阶段增加 beats、story.endingBeatId；完整阶段增加 episodes。可选 lang=zh/en、props、arcs、creativeContext。
+必需：schemaVersion、非空 source、params、story、characters、scenes。可选 lang=zh/en、creativeBrief、adaptation、props、arcs。节点阶段增加 beats 与 story.endingBeatId；完整阶段增加 episodes。
 
-params.episodes 为正整数，minutesPerEpisode 为有限正数分钟。genre 是题材描述，不参与程序分支。adaptMode 为原创/忠实/抽核/借壳。preferences 可保留用户偏好；类型为 string[]，允许空数组，提供的每一项必须是非空字符串。
+skeleton 检查核心故事、参数与资产；beats 增加事件、结束节点、阶段和道具节点引用；full 增加分集、资产使用及问题回收。未到阶段明确 stage-incomplete，不冒充完整交付。
 
-params.thresholds 只管理制作资产预算，可覆盖 maxLeads(5)、maxSupport(10)、maxFunctional(10)、maxProps(8)、maxPrimaryScenes（默认 clamp(4+ceil(集数/10),5,15)）。值均为正整数；未知预算或旧 maxBeatGap 拒绝。预算不是题材规则。报告展示全部实际生效值。
+params.episodes 为正整数；minutesPerEpisode 为有限正数；genre 为非空题材描述；adaptMode 为原创/忠实/抽核/借壳。genre 不选择规则。params.preferences/rules/defaults 已删除。legacy pacing、maxBeatGap、hookWindow、maxLineChars、minCutSeconds、maxCutSeconds 同样拒绝。
 
-所有注册规则必须写入 params.rules。关闭对象恰好为 `{ "level": "off" }`；开启对象包含 level=warn/error 与下表全部参数，不能保留未知字段或半个规则对象。整数必须有限、数值类型、正整数。
+creativeBrief 提供时必须为非空字符串。production 使用 schemaVersion 3；项目要求只在 production 保存，本地要求必须先人工合并再删除副本。旧 creative、creativeContext、selection、decisions、overrides 拒绝。修改指南不影响数据结构有效性。
 
-| 键 | 开启参数 | 检查语义 |
-| --- | --- | --- |
-| payoffCoverage | minPerEpisode 正整数 | 每集 payoff 数量下限 |
-| firstMajor | byEpisode 正整数 | 必须有 major，首个不晚于 min(阈值,总集数) |
-| majorGap | maxGap 正整数 | major 所在集去重后相邻差值；少于两集则不适用 |
-| endingPayoff | minWeight=minor/major | endingBeatId 为满足强度的 payoff |
-| endingModes | nonFinal/final 非空无重复模式数组 | 按全剧最终集身份检查 ending.mode |
-| optionalQuestions | allow 布尔 | false 禁止 optional |
-| stateProgress | 无其他参数 | 每集提供 before/after 且文本不完全相同 |
-| arcCoverage | 无其他参数 | 非空 arcs 连续覆盖全剧；未提供则不适用 |
-| arcPayoff | minWeight=minor/major | 非空 arcs 的终点为满足强度的 payoff |
+## 故事与改编
 
-params.defaults 必须包含 questionResolveWithin，类型为正整数或 null。它是创建默认值，不是检查规则，没有 level。只对新建 required 且未给期限的问题写 dueByEp=min(提出集+默认值,总集数)。不会改写 optional、旧问题或显式期限；最终集仍禁止无法履行的 required 承诺。导出的 newQuestion(question,ep,params) 不修改输入。
+story.focusCharacterIds 为非空、无重复、存在的 C ID 数组；premise、throughline、ending 为非空字符串。audiencePromise 可选，提供则非空。endingBeatId 必须指向最终集的明确结束节点，不能用数组最后一项隐式替代。不要求兑现终点。drive 已删除。
 
-删除旧 params.pacing、maxBeatGap 等平铺创作字段；只有 migrate 辅助读取旧数据。validate/render 不填补缺项或重新应用策略。
+adaptation 整体可选。keep/cut/merge 按需为数组，条目含非空 what/why；risks 含 what/plan。条目的 evidence 或 adaptation.evidence 提供时为非空逐字原文；真实性由内容评审判断。sourceNote、cutNote、mergeNote 可选非空字符串。core 已删除；独有信息迁入 story。原创不强制填写空数组或伪造来源。
 
-## story：作品承诺
+## 人物、场景、道具
 
-- focusCharacterIds：非空、无重复、存在的 C ID 数组，支持群像。
-- premise：核心处境。
-- throughline：贯穿行动、关系或议题，单元故事不必伪造统一任务。
-- audiencePromise：观众希望持续获得的体验，不限爽感。
-- ending：本次交付实际结束方式与意义。
-- endingBeatId：节点和完整阶段必须指向最终集有效节点，不要求 payoff 或 major。
-- drive：可选非空文本值对象，补充具体目标、阻力和代价；不强迫所有作品填写。
+ID 为前缀加至少两位数字，各表不重复，始终保持稳定：
 
-## adaptation：来源与取舍
+- characters：id=C01、name、role 非空，tier=lead/support/functional。from 可选非空字符串数组；arc 可选非空字符串，静态人物不必编造变化。
+- scenes：id=S01、name 非空、primary 布尔。reusePlan 可选非空。
+- props：可选数组，id=P01、name/function 非空；beatIds 可选无重复有效 B ID。明确引用校验，不从同集推断精确关联。
+- full 时所有登记资产至少被一集引用。聚合使用次数、人物工作量、场景关联由工具计算。不接受顶层 assets/crowdPlan。
 
-core 必填。keep/cut/merge/risks 均为数组，允许原创或没有相关取舍时为空，不因为 adaptMode 标签强迫砍掉情节。
+## 重要事件与阶段规划
 
-keep/cut/merge 条目为 what/why；risks 为 what/plan；均为非空文本。evidence 可附逐字原文，不得伪造。提供时必须非空；真实性与覆盖范围归内容评审。可选 sourceNote 说明材料不足或原创身份，cutNote/mergeNote 说明决策；填写则不可为空。
+beats 为非空数组，每项 id=B01、episode（1..总集数）、setup/outcome 非空。
+数组按 episode 不递减；同集使用数组顺序。position 可选 opening/early/middle/late/ending，提供仅校验枚举，不重新排序。kind 可选 event/pressure/turn/payoff；weight 仅 kind=payoff 时可提供 minor/major。分类、强度均不强制。type/payoff 旧字段拒绝。resolves 可选无重复 Q ID 数组。
 
-## 资产
+arcs 可省或为空；条目 id=A01、startEp/endEp 合法区间、非空 goal、endBeatId 指向 endEp 节点。按起始集排序且不重叠；不强制连续覆盖或兑现结束。
 
-所有 ID 使用前缀加至少两位数字，全表唯一；数字可超过两位，不自动重编号。
+## 分集与问题
 
-- characters：C ID、name、role、tier=lead/support/functional、from 非空字符串数组。lead/support 必须有 arc，functional 可省。不存在通用“至少一个 lead”胜利模型，叙事关注由 story.focusCharacterIds 记录。
-- scenes：S ID、name、primary 布尔。reusePlan 可选，填写则非空。一次性场景不需要伪造复用方案。
-- props：可选数组。P ID、name、function 非空。可选 beatIds 为无重复有效 B ID，可指向任何 kind，不局限兑现。
-- 完整阶段，登记角色、场景、道具必须至少被一集引用。资产汇总、出现集与次数全部计算，不另存顶层 assets。
-- 不接受 crowdPlan。人物在场不是多人同框证据。
+episodes 恰好 params.episodes 项，ep 从 1 连续排列。opening/synopsis 为非空字符串。characterIds/sceneIds 为非空、无重复、有效引用；propIds 可选；warnings 可选非空字符串数组。stateChange、hook、suspense、crowdPlan、beatIds 旧字段拒绝。
 
-## beats：重要事件表
+ending 仅含 mode=suspense/closure/open、非空 event、可选 question。suspense 无 question 合法；closure 禁止新待答问题。question 仅含 id/text/resolution/reason/dueByEp：
 
-每个节点：id=B01 格式、episode、position、kind、type、setup、outcome。
+- id 为唯一 Q ID，text 非空，resolution=required/optional。
+- reason 可选非空；optional 不携带 dueByEp。
+- dueByEp 可选，明确提供时为提出集 < 期限 <= 总集数的整数；不自动填写。
+- required 由后续唯一节点解决，最终集不能新登记 required。optional 可不解决，若解决仍须唯一且后续。
+- 未登记引用、重复、提前或超期解决均失败。不得删去未解决承诺来规避校验。
 
-- episode 在 1..总集数内，是所属集号唯一来源。
-- position=opening/early/middle/late/ending，只是粗区段，不代表五等分秒数。
-- kind=event/pressure/turn/payoff。只有 payoff 必须填写 weight=minor/major；其他 kind 禁止 weight。
-- type 是非空自由标签；setup/outcome 为非空处境和事件后果。
-- 可选 resolves 为无重复 Q ID 数组。
-- 数组按集号、粗位置排列；同一位置保留数组顺序。不自动排序掩盖作者顺序错误。
-- 不接受旧 payoff 字段；不为每个动作登记节点，不为数量重复计数。
+## 制作预算与状态
 
-## episodes：分集计划
+params.thresholds 可选对象，合法键 maxLeads/maxSupport/maxFunctional/maxProps/maxPrimaryScenes，值为正整数。只有用户明确提供的键阻断超额；其余工具参考值为 5/10/10/8 与 clamp(4+ceil(集数/10),5,15)，仅提醒。报告逐项区分“用户预算”和“工具参考值”。
 
-ep 从 1 连续到总集数，opening/synopsis 非空；sceneIds/characterIds 非空且无重复有效引用，propIds 可选无重复有效引用；warnings 可选非空字符串数组。
+gate 使用 id/category/level/status/messages/reason?；status=pass/fail/skipped。error 失败阻断，warn 失败是提醒，缺上游与阶段未完成明确跳过。contentReview 固定 not-performed。complete 仅代表 full 本地结构无阻断；不等于内容或联合交付通过。validate/render 只读，不自动补字段。
 
-stateChange 可选，但提供时必须是 before/after 非空字符串对象。stateProgress 决定是否每集必填及完全相同文本是否失败。不同文本不证明内容推进。
+## 本地下游接口
 
-禁止 hook/suspense/crowdPlan/beatIds，旧结构不双读。synopsis 保持梗概职责；引号检测不作为通用硬门。
+checkup 的 --downstream 读取项目根 script/creation 中直接存放的 JSON，不执行兄弟代码。项目根来自 production，否则按 outline/ 目录约定定位。接口检查：
 
-ending 字段白名单：mode、event、question。
+- schemaVersion 3、source 一致、无旧配置字段；集号递增唯一且存在于 outline，允许合法批次。
+- script.targetSeconds 严格对齐大纲分钟数乘 60；拒绝重复 opening/ending 与持久化 endBeat。openingBeat 可选，缺省不伪造核验。beatClaims 按序认领当集所有 B ID，验证真实 flow 坐标、重复、倒序和重叠。
+- creation 拒绝项目计划副本/endBeat；检查镜头范围的顺序、连续、重叠和真实覆盖。唯一 script 匹配时覆盖全部实际 flow，结束位置由正文推导。openingBeat 缺省不新增映射。
+- creation 镜头秒数合法且总时长对齐目标，tolerance 缺省 0.15，明确覆盖须在 [0,1)。
+- 缺少 script 只跳过依赖上游的覆盖检查；损坏、悬空链接、不支持版本及多候选均失败。
 
-- mode=suspense/closure/open，event 非空，描述实际结束事件。
-- suspense 必须有 question；closure 禁止携带 question（包括 null）；open 可选。
-- question 白名单：id、text、resolution、reason、dueByEp。
-- id=Q01 格式，全剧唯一；text 非空；resolution=required/optional。
-- optional 必须有非空 reason，禁止 dueByEp。
-- dueByEp 可省；填写时必须是提出集 < 期限 <= 总集数的整数。
-- required 完整阶段必须由一个后续节点解决，最终集不得新提 required。
-- optional 可不解决；若解决仍必须唯一、后续、有真实引用。未知 Q、重复解决、提前解决、超期都失败，策略不能关闭。
-- beats 阶段尚未建立分集 Q，明确跳过问题对账；不误报不存在的集尾。
+本地接口零失败不代表模型技术、媒体交接或各阶段完整联合校验通过。结果标记 fullDownstreamValidation/contentReview: not-performed。
 
-## arcs：可选阶段
+## API
 
-数组或省略，空数组等同未提供。条目为 id=A01 格式、startEp/endEp 合法闭区间、goal 非空、endBeatId。按 startEp 排列且不重叠；终点节点必须属于 endEp。基础层不要求从第 1 集开始、不要求连续覆盖、不要求 payoff；arcCoverage/arcPayoff 决定附加要求。
-
-## 策略来源与项目对账
-
-creativeContext 保存完整四维 selection 快照、仅实际加载的 references（dimension/id/version/stage/sha256）和 overridePaths。outline 四维全部必须加载。值只在 params 保存，不在来源记录复制阈值。路径覆盖以完整规则或默认值为单位。
-
-应用流程与摘要算法以 [profile-contract](profile-contract.md) 为准。历史读取缺来源或摘要漂移提醒，不改参数；继续创作必须恢复来源或明确升级。提供 production 时检查 creative 结构及完整 selection 相等，失配为阻断项；无 production 明确 missing-upstream。来源匹配不证明内容质量。
-
-## 应用后的下游接口检查
-
-真实 `apply-profile ... --confirm` 写入成功后，重新检查当前大纲，并读取项目根 `script/`、`creation/` 内直接存放的全部 `.json` 文件。项目根优先取显式或自动发现的 production 所在目录，否则按大纲位于 `outline/` 的目录约定寻找同级阶段。备份不以 `.json` 结尾，不参与发现。
-
-本 skill 自带接口检查，不 import 兄弟代码，也不要求安装兄弟 skill：
-
-- script/creation 必须为可读取 JSON 对象、schemaVersion 2，完整四维 selection 与当前大纲一致。
-- 分集为非空数组，集号唯一递增，必须存在于大纲。允许合法批次，不要求每份文件覆盖全剧。
-- script 的 targetSeconds 严格等于大纲分钟数乘以 60；逐集开场与集尾投影一致。beatClaims 必须按序认领全部当集节点，检查真实 flow 坐标、重复、倒序和重叠。
-- creation 的开场及集尾投影与大纲一致；镜头秒数为有限正数，总时长按当前 tolerance 与大纲目标对账。存在唯一匹配 script 分集时，检查位置投影及每个剧本节拍恰好被镜头按序认领一次；多个匹配文件不能任意挑选。
-- 真正缺少匹配 script 时，仅跳过依赖 script 的坐标存在性和完整覆盖检查。已知文件损坏、不可读或版本不支持均报错，不作为缺失跳过。
-
-stderr 的 `downstream` 包含逐文件 gates、当前 stats、接口范围，以及 `fullDownstreamValidation/contentReview: not-performed`、`applicationWorkflow: incomplete`。本地接口失败使退出码为 1，但已经完成的策略写入不会自动撤销；原文件备份仍然保留。接口零失败不代表完整下游、内容评审或联合交付通过。继续执行各阶段完整校验及内容评审，包括策略、资产、台词估时、模型技术和参考图检查。
-
-`node scripts/fixes-selftest.mjs` 执行消费者真实 CLI、损坏／过期下游及生成报告 DOM 交互回归；主自测及独立拷贝自测同样执行这些回归。DOM 测试不替代真实浏览器的布局验收。
-
-## 阶段与结果 API
-
-`skeleton` 检查选择、参数、story 说明、资产、改编；不要求节点/分集。`beats` 增加节点、终点、阶段与适用节点策略，分集/Q 仍跳过。`full` 全部检查。
-
-导出 API：
-
-- createSkeleton(options)：中性草稿，不自动选择 profile。
-- checkup(doc,{stage='full',production,productionError,skillRoot})：返回 {stage,gates,stats,complete,contentReview,thresholds}。
-- gateReport(doc,options)：返回 gates 数组。
-- validateOutline(doc,stage='full',options)：返回阻断错误字符串数组；第二参数也可为 options。
-- renderHtml/renderMarkdown(doc,lang,options)：只读派生视图，报告包含全部检查。
-- computeAssets(doc)：计算资产使用、分档工作量、预警与关联类型。
-
-每个 gate 为 {id,category,level,status,messages,reason?}。category 为 base/policy/source/content；status 为 pass/fail/skipped，无 ok。基础 error 或策略 error 失败阻断；warn fail 是提醒，不计通过；source 不阻断历史。off 跳过原因为 policy-disabled；另有 missing-upstream/stage-incomplete/not-applicable。来源漂移/不可核验可有专用提醒原因。
-
-stats 分别记录本次 pass、阻断 fail、非阻断 warn、skipped 数量，不保存历史。complete 只说明 full 本地结构无阻断，不代表来源或联合交付、内容评审通过。contentReview 固定 not-performed，不从字段完整推导评审结论。
-
-CLI checkup --json 输出该对象；validate/checkup 阻断失败退出 1，提醒退出 0；损坏显式或已发现 production 不退化成缺少上游。render 可展示无效结构以诊断，但不自动修复。
+createSkeleton(options) 返回未完成草稿；newQuestion(question) 只复制，不生成期限。
+checkup(doc,options) 返回 stage/gates/stats/complete/contentReview/thresholds；validateOutline 返回错误字符串；gateReport 返回 gates。
+computeAssets 计算资产使用、castPlan、warnings、可选分类汇总 beatsByKind。
+renderHtml/renderMarkdown 为只读派生报告，导出 JSON 保持输入值。

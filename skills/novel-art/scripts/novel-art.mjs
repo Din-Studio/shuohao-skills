@@ -6,7 +6,7 @@
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertOutlineV2, assetProductionProblems, creativeBackground, check, blocking, mark } from './lib/contracts.mjs';
+import { assertOutlineV3, assetProductionProblems, creativeBackground, check, blocking, mark } from './lib/contracts.mjs';
 export { creativeBackground } from './lib/contracts.mjs';
 import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
 
@@ -168,7 +168,7 @@ export function slug(name) {
  */
 
 export function seedFromOutline(outline) {
-  assertOutlineV2(outline);
+  assertOutlineV3(outline);
   const eps = Array.isArray(outline?.episodes) ? outline.episodes : [];
   const beats = Array.isArray(outline?.beats) ? outline.beats : [];
 
@@ -176,7 +176,7 @@ export function seedFromOutline(outline) {
     const episodes = eps.filter((e) => (e?.sceneIds ?? []).includes(s.id)).map((e) => e.ep);
     const epSet = new Set(episodes);
     // Episode co-occurrence is not proof that a beat takes place in this scene.
-    const carried = [...new Set(beats.filter((b) => epSet.has(b.episode)).map((b) => b.type))];
+    const carried = [...new Set(beats.filter((b) => epSet.has(b.episode)).map((b) => b.outcome))];
     return {
       id: s.id,
       name: s.name,
@@ -196,7 +196,7 @@ export function seedFromOutline(outline) {
   // 搬过来的是改编阶段拍板的事实——哪几件物件承载剧情、各自承载什么、托起哪几个
   // 剧情节点、在哪几集出现。留空的是美术层的活：尺度、锚点、状态变体、白底提示词。
   // 大纲没有 props 字段就返回空数组，模型照 prop-pass.md 从原文提取，跟以前一样。
-  const beatType = new Map((outline?.beats ?? []).map((b) => [b?.id, b?.type]));
+  const beatType = new Map((outline?.beats ?? []).map((b) => [b?.id, b?.outcome]));
   const props = (outline?.props ?? []).map((pr) => {
     const episodes = eps.filter((e) => (e?.propIds ?? []).includes(pr.id)).map((e) => e.ep);
     return {
@@ -615,8 +615,8 @@ const I18N = {
     anchorsHint: '每次生成都必须出现的特征——认场景靠它，QC 也靠它',
     lightingTitle: '光照与时段',
     usageTitle: '出现集',
-    beatsTitle: '关联节点类型',
-    sceneBeatsTitle: '出现集中的节点类型（非场景落点认领）',
+    beatsTitle: '关联关键事件',
+    sceneBeatsTitle: '出现集中的关键事件（非场景落点认领）',
     variantTitle: '变体来源',
     variantChanges: '改动',
     promptsTitle: '出图提示词包',
@@ -668,8 +668,8 @@ const I18N = {
     anchorsHint: 'Features that must appear in every generation — viewers recognize the place by them, and QC checks against them',
     lightingTitle: 'Lighting states',
     usageTitle: 'Episodes',
-    beatsTitle: 'Linked beat types',
-    sceneBeatsTitle: 'Beat types in used episodes (not scene placement claims)',
+    beatsTitle: 'Linked key events',
+    sceneBeatsTitle: 'Key events in used episodes (not scene placement claims)',
     variantTitle: 'Variant of',
     variantChanges: 'Changes',
     promptsTitle: 'Prompt pack',
@@ -714,7 +714,7 @@ export function renderMarkdown(doc, lang = null, production = null, castNames = 
   const props = doc.props ?? [];
   const out = [`# ${t.docTitle(doc.source)}`, '', `> ${t.styleLine(production)}`, ''];
   const background = creativeBackground(production);
-  if (background) out.push(`> ${t.langCode === 'en' ? 'Creative background (record only)' : '创作背景（仅记录）'}: ${JSON.stringify(background)}`, '');
+  if (background) out.push(`> ${t.langCode === 'en' ? 'Creative brief' : '创作要求'}: ${JSON.stringify(background)}`, '');
 
   out.push(`## ${t.secList}`, '', mdHead(t.listCols));
   for (const s of doc.scenes) {
@@ -1249,7 +1249,7 @@ export function imageJobsFrom(doc, production = null) {
 
 const USAGE = `novel-art.mjs — novel-art skill 的确定性工具（场景 + 道具）
 
-  seed <outline.json>                    从 outline v2 预填 art.json（打印到 stdout，设计字段留空）
+  seed <outline.json>                    从 outline v3 预填 art.json（打印到 stdout，设计字段留空）
   validate <art.json> [--cast c.json]    校验；有违规逐条打印并 exit 1
                                          给了 cast.json 才查「提示词不含角色名」
   checkup <art.json> [--cast c.json]     只打印质量门 ✓/✗，有未过项 exit 1
@@ -1301,7 +1301,7 @@ function announceProduction(p, docPath = null) {
   else if (p.path) {
     console.error(`↳ 生产参数：${p.path}`);
     const background = creativeBackground(p.doc);
-    if (background) console.error(`↳ 创作背景（仅记录）：${JSON.stringify(background)}；不加载 profile，不生成摘要`);
+    if (background) console.error(`↳ 创作要求：${JSON.stringify(background)}；内容评审未执行`);
     if (autopilotOf(p.doc)) console.error(`↳ ${AUTOPILOT_NOTE}`);
     const note = stageDirNote(docPath, p.path);
     if (note) console.error(`⚠️ ${note}`);

@@ -4,6 +4,7 @@
   "episodes": [
     {
       "ep": 1,
+      "openingBeat": [1, 1],
       "segments": [
         {
           "id": "E01-01",
@@ -218,77 +219,13 @@
             }
           ]
         }
-      ],
-      "opening": "深夜旧书店快打烊时，周亦抱着一本卷边诗集进门，询问能否卖书。",
-      "ending": {
-        "mode": "open",
-        "event": "陈叙在周亦离开后拾起书中滑落的字条，认出自己写给妹妹的「致晚晚」，独自留在书店灯下。"
-      },
-      "openingBeat": [
-        1,
-        1
-      ],
-      "endBeat": [
-        1,
-        10
       ]
     }
   ],
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "params": {
     "maxSegmentSeconds": 15,
     "maxOnScreen": 3,
-    "tolerance": 0.15,
-    "rules": {
-      "cutDuration": {
-        "level": "warn",
-        "minSeconds": 4,
-        "maxSeconds": 12
-      }
-    }
-  },
-  "creativeContext": {
-    "selection": {
-      "genre": {
-        "id": "mystery",
-        "version": "1.0.0"
-      },
-      "narrativeStyle": {
-        "id": "restrained",
-        "version": "1.0.0"
-      },
-      "structure": {
-        "id": "serial",
-        "version": "1.0.0"
-      },
-      "pacing": {
-        "id": "gradual",
-        "version": "1.0.0"
-      }
-    },
-    "references": [
-      {
-        "dimension": "genre",
-        "id": "mystery",
-        "version": "1.0.0",
-        "stage": "creation",
-        "sha256": "3e9780f672132d8ce901b628fc8b060ea4272f1de55c705dec7781cbbfca2b09"
-      },
-      {
-        "dimension": "narrativeStyle",
-        "id": "restrained",
-        "version": "1.0.0",
-        "stage": "creation",
-        "sha256": "4862ad679a68ccf25e2ba3f29d7837f6bf6d47eef61aa38046f34119e5a8950e"
-      },
-      {
-        "dimension": "pacing",
-        "id": "gradual",
-        "version": "1.0.0",
-        "stage": "creation",
-        "sha256": "4746e88bd4e266dfa66dfb69f798dea841cd7141e3c9e2630ce9af5a0984b5ec"
-      }
-    ],
-    "overridePaths": []
+    "tolerance": 0.15
   }
 }

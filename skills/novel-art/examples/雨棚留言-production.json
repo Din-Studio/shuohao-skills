@@ -1,26 +1,6 @@
 {
+  "schemaVersion": 3,
   "source": "雨棚留言",
-  "creative": {
-    "version": 1,
-    "selection": {
-      "genre": {
-        "id": "slice-of-life",
-        "version": "1.0.0"
-      },
-      "narrativeStyle": {
-        "id": "warm",
-        "version": "1.0.0"
-      },
-      "structure": {
-        "id": "episodic",
-        "version": "1.0.0"
-      },
-      "pacing": {
-        "id": "measured",
-        "version": "1.0.0"
-      }
-    }
-  },
   "style": {
     "label": {
       "zh": "真人实拍",
@@ -63,5 +43,6 @@
   },
   "lang": "zh",
   "promptLang": "en",
-  "autopilot": false
+  "autopilot": false,
+  "creativeBrief": "围绕私人留言板的归属展开生活故事。尊重人物不愿公开陈列生活记录的选择，不把归还物件处理成强行和解。"
 }

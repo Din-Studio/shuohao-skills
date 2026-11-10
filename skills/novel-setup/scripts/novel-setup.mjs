@@ -3,11 +3,13 @@
 // Zero dependencies on purpose: 和其余 skill 一样，任何目录里 node 直接跑。
 // Node 18+ (stdlib only).
 
-import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { creativeProblems, creativeBackground, DIMENSIONS, check, blocking, mark } from './lib/contracts.mjs';
-export { creativeProblems } from './lib/contracts.mjs';
+import { documentProblems, check, blocking, mark } from './lib/contracts.mjs';
+export { documentProblems } from './lib/contracts.mjs';
+import { migrateProduction } from './lib/migration.mjs';
+export { migrateProduction } from './lib/migration.mjs';
 
 /* ------------------------------------------------------------------ */
 /* 文件名与查找                                                         */
@@ -322,6 +324,7 @@ export function initProduction({
   videoModel = '',
   videoResolution = '',
   style = null,
+  creativeBrief = undefined,
   selection = undefined,
   lang = 'zh',
   promptLang = 'en',
@@ -333,12 +336,13 @@ export function initProduction({
     );
   }
 
-  const creative = selection === undefined ? undefined : { version: 1, selection };
-  const problems = creativeProblems(creative);
+  if (selection !== undefined) throw new Error('selection 已废弃；使用 creativeBrief');
+  const problems = documentProblems({ schemaVersion: 3, ...(creativeBrief === undefined ? {} : { creativeBrief }) });
   if (problems.length) throw new Error(problems.join('；'));
   return {
     source,
-    ...(creative ? { creative } : {}),
+    schemaVersion: 3,
+    ...(creativeBrief === undefined ? {} : { creativeBrief }),
     autopilot: autopilot === true,
     // 画风没有内置类型也没有默认值：给一份空骨架，用户填。
     // 没填 style-blocks 门会拦，不会静默用回某一档写死的画风。
@@ -376,8 +380,8 @@ export function initProduction({
 export function gateReport(doc) {
   const gates = [];
   const add = (id, label, passed, detail = '') => gates.push(check(id, label, passed ? 'pass' : 'fail', detail));
-  const creativeBad = creativeProblems(doc?.creative);
-  gates.push(check('creative-selection', '创作四维选择与显式版本', doc?.creative === undefined ? 'skipped' : creativeBad.length ? 'fail' : 'pass', creativeBad.join('；') || (doc?.creative === undefined ? '未选择创作策略；不推断默认值' : '只核对选择结构，不核验各阶段本地 profile'), doc?.creative === undefined ? 'not-applicable' : undefined));
+  const documentBad = documentProblems(doc);
+  add('document-contract', 'v3 数据契约与创作要求', !documentBad.length, documentBad.join('；'));
 
   const img = doc?.image ?? {};
   const asset = img.asset ?? {};
@@ -620,13 +624,13 @@ export function resolveStage(doc, stage) {
   const meta = STAGES[stage];
   if (!meta) throw new Error(`未知阶段 ${stage}（可用：${Object.keys(STAGES).join(' / ')}）`);
 
-  const problems = creativeProblems(doc?.creative);
+  const problems = documentProblems(doc);
   if (problems.length) throw new Error(problems.join('；'));
   const style = doc?.style ?? {};
   const common = {
     stage,
     what: meta.what,
-    ...(doc?.creative ? (stage === 'video' ? { creative: doc.creative } : { creativeBackground: creativeBackground(doc) }) : {}),
+    ...(doc?.creativeBrief ? { creativeBrief: doc.creativeBrief } : {}),
     style: {
       label: style.label ?? {},
       phrase: style.phrase ?? '',
@@ -683,17 +687,15 @@ export function resolveStage(doc, stage) {
 const dash = (v) => (String(v ?? '').trim() ? String(v) : '—');
 
 export function renderMarkdown(doc) {
+  const problems = documentProblems(doc);
+  if (problems.length) throw new Error(problems.join('；'));
   const img = doc?.image ?? {};
   const gates = gateReport(doc);
   const failed = gates.filter(blocking);
 
   const out = [];
   out.push(`# 生产参数${doc?.source ? ` · ${doc.source}` : ''}`, '');
-  if (doc?.creative) for (const d of DIMENSIONS) {
-    const p = doc.creative.selection?.[d];
-    out.push(`- 创作选择 ${d}：${p?.id ?? '未填写'} @ ${p?.version ?? '未填写'}`);
-  }
-  else out.push('创作选择：未选择；不推断默认策略。');
+  if (doc?.creativeBrief) out.push(`创作要求：${doc.creativeBrief}`);
   out.push('');
   out.push('| 参数 | 值 |', '| --- | --- |');
   out.push(`| 生图模型 | ${dash(img.model)} |`);
@@ -713,6 +715,7 @@ export function renderMarkdown(doc) {
   for (const g of gates) {
     out.push(`- ${mark(g)} ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
   }
+  out.push('', '结构检查不代表创作要求已重新评审。内容评审：未执行。');
   if (failed.length) out.push('', `**${failed.length} 道门没过，先修再往下跑。**`);
   return out.join('\n');
 }
@@ -732,10 +735,11 @@ const USAGE = `novel-setup.mjs — novel-setup skill 的确定性工具（生产
        [--image-model <名>]              默认 nanobanana2
        [--video-model <名>]              视频模型，取 ly-video 实时 models 返回的 id
        [--video-resolution <档位>]        视频分辨率档位（如 768p）
-       [--selection <selection.json>]  显式四维选择对象；省略不猜默认
+       [--creative-brief <正文>]          可选自然语言创作要求，不推导规则
        [--style <style.json>]            画风正文；不给就留一份空骨架待填
        [--lang zh|en]                    报告界面语言，默认 zh
        [--prompt-lang zh|en]             H3 提示词语言，默认 en
+  migrate-v3 INPUT [--out OUTPUT] [--confirm]  预览迁移；显式确认语义项后写入新文件
   style-template                         打印画风骨架与逐字段说明（填好放进顶层 style）
   style <production.json>                打印这部剧的画风
         [--for character|scene]          只打印某一块（下游 skill 抄的就是它）
@@ -756,10 +760,10 @@ const USAGE = `novel-setup.mjs — novel-setup skill 的确定性工具（生产
 production.json 住在**工作目录根**，下游从自己的输出目录向上找（最多 ${LOOKUP_DEPTH} 层）。`;
 
 function readJson(path) {
-  return JSON.parse(readFileSync(resolve(path), 'utf8'));
+  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(resolve(path))));
 }
 
-function flag(rest, name, fallback = null) {
+function flag(rest, name, fallback) {
   const i = rest.indexOf(name);
   return i >= 0 && rest[i + 1] ? rest[i + 1] : fallback;
 }
@@ -783,12 +787,43 @@ function main(argv) {
     process.exit(cmd ? 0 : 1);
   }
 
+  if (cmd === 'migrate-v3') {
+    const [input, ...options] = rest;
+    if (!input || input.startsWith('--')) throw new Error('用法：migrate-v3 INPUT [--out OUTPUT] [--confirm]');
+    let output;
+    let confirm = false;
+    for (let i = 0; i < options.length; i++) {
+      if (options[i] === '--confirm' && !confirm) confirm = true;
+      else if (options[i] === '--out' && !output && options[i + 1] && !options[i + 1].startsWith('--')) output = options[++i];
+      else throw new Error('无效或重复迁移选项：' + options[i]);
+    }
+    const inputPath = resolve(input);
+    if (!lstatSync(inputPath).isFile()) throw new Error('迁移输入必须为常规文件，不能使用符号链接');
+    const original = readFileSync(inputPath);
+    const result = migrateProduction(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(original)), validateProduction);
+    if (output) {
+      if (resolve(output) === resolve(input)) throw new Error('迁移不能覆盖原文件；请选择新路径');
+      if (result.pending.length && !confirm) {
+        console.log(JSON.stringify(result, null, 2));
+        throw new Error('存在待人工确认项；检查预览后使用 --confirm，或先人工合并');
+      }
+      if (!readFileSync(inputPath).equals(original)) throw new Error('迁移期间输入已变化，请重新预览');
+      // Exclusive create also rejects existing files, directories and symlinks.
+      writeFileSync(resolve(output), JSON.stringify(result.candidate, null, 2) + '\n', { flag: 'wx' });
+      result.status = 'written';
+      result.output = resolve(output);
+      result.contentReview = 'not-performed';
+    }
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
   if (cmd === 'init') {
-    const allowed = new Set(['--aspect', '--source', '--autopilot', '--asset-resolution', '--asset-aspect', '--image-model', '--video-model', '--video-resolution', '--style', '--selection', '--lang', '--prompt-lang']);
+    const allowed = new Set(['--aspect', '--source', '--autopilot', '--asset-resolution', '--asset-aspect', '--image-model', '--video-model', '--video-resolution', '--style', '--creative-brief', '--lang', '--prompt-lang']);
     for (const arg of rest) {
       if (arg.startsWith('--') && !allowed.has(arg)) throw new Error(`未知选项 ${arg}`);
     }
-    if (rest.includes('--selection') && !flag(rest, '--selection')) throw new Error('--selection 需要 JSON 文件路径');
+    if (rest.includes('--creative-brief') && (!flag(rest, '--creative-brief') || flag(rest, '--creative-brief').startsWith('--'))) throw new Error('--creative-brief 需要非空正文');
     const doc = initProduction({
       aspect: flag(rest, '--aspect'),
       source: flag(rest, '--source', ''),
@@ -798,13 +833,13 @@ function main(argv) {
       imageModel: flag(rest, '--image-model', 'nanobanana2'),
       videoModel: flag(rest, '--video-model', ''),
       videoResolution: flag(rest, '--video-resolution', ''),
-      selection: flag(rest, '--selection') ? readJson(flag(rest, '--selection')) : undefined,
+      creativeBrief: flag(rest, '--creative-brief', undefined),
       style: flag(rest, '--style') ? readJson(flag(rest, '--style')) : null,
       lang: flag(rest, '--lang', 'zh'),
       promptLang: flag(rest, '--prompt-lang', 'en'),
     });
     console.log(JSON.stringify(doc, null, 2));
-    if (!flag(rest, '--selection')) console.error('创作选择未填写：请明确确认四维组合；不会按画幅或题材猜测默认策略');
+    // Omitted creativeBrief is valid; do not invent creative requirements.
     if (!flag(rest, '--style')) {
       console.error('⚠️ 画风留了空骨架——填满顶层 style 再跑 validate（style-template 有逐字段说明）');
     }
@@ -843,6 +878,8 @@ function main(argv) {
     const [path] = rest;
     if (!path) throw new Error('用法：style <production.json> [--for character|scene]');
     const doc = readJson(path);
+    const problems = documentProblems(doc);
+    if (problems.length) throw new Error(problems.join('；'));
     const only = flag(rest, '--for');
     if (only && !Object.keys(STYLE_BLOCKS).includes(only)) {
       throw new Error(`--for 要是 ${Object.keys(STYLE_BLOCKS).join(' / ')}`);

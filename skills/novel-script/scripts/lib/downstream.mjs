@@ -1,7 +1,8 @@
-// Local project-JSON interface checks after explicit application. No sibling code imports.
-import { lstatSync, readdirSync, readFileSync } from 'node:fs';
+// Local v3 project interface checks. No sibling code imports.
+import { lstatSync, readdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { validateSelection } from './creative.mjs';
+import { documentErrors, productionErrors } from './document.mjs';
+import { readJsonStrict } from './migration.mjs';
 const array = x => Array.isArray(x) ? x : [];
 const equal = (a,b) => JSON.stringify(a) === JSON.stringify(b);
 export function projectRoot(file, productionPath) {
@@ -12,43 +13,41 @@ export function projectRoot(file, productionPath) {
 export function stageFiles(root, stage) {
   const dir = join(root, stage);
   try { lstatSync(dir); } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
-  return readdirSync(dir).filter(n => n.endsWith('.json') && !n.startsWith('.') && !/manifest|\.backup|\.bak|\.tmp|\.review/i.test(n)).sort().map(n => join(dir,n));
+  return readdirSync(dir).filter(n => n.endsWith('.json') && !n.startsWith('.') && !/manifest|\.backup|\.bak|\.tmp|\.review|\.migration|\.v2-backup/i.test(n)).sort().map(n => join(dir,n));
 }
-export function loadKnownUpstreams(root) {
+export function loadKnownUpstreams(root, explicit = {}) {
   const context = {};
   for (const [stage,key] of [['outline','outline'],['art','art'],['characters','cast']]) {
+    if (Object.hasOwn(explicit, key)) continue;
     const files = stageFiles(root,stage);
     if (files.length > 1) throw new Error(`${stage}: multiple known inputs; run validate with an explicit --${key} before joint delivery: ${files.join(', ')}`);
-    if (files.length) context[key] = JSON.parse(readFileSync(files[0], 'utf8'));
+    if (files.length) context[key] = readJsonStrict(files[0]);
   }
   return context;
 }
 export function checkKnownCreation(script, { root, production } = {}) {
-  const files = stageFiles(root, 'creation');
+  let files;
+  try { files = stageFiles(root, 'creation'); } catch (error) { return [{ id: 'downstream-creation', category: 'base', level: 'error', status: 'fail', messages: [error.message] }]; }
   if (!files.length) return [{id:'downstream-creation',category:'base',level:'error',status:'skipped',reason:'not-applicable',messages:['No known creation JSON; no downstream interface was checked.']}];
   return files.map(file => {
     const messages = [];
     try {
-      const doc = JSON.parse(readFileSync(file,'utf8'));
-      if (doc?.schemaVersion !== 2) messages.push('creation.schemaVersion must be 2');
+      const doc = readJsonStrict(file);
+      if (doc?.schemaVersion !== 3) messages.push('creation.schemaVersion must be 3');
+      messages.push(...documentErrors(doc, 'creation'));
+      if (production !== undefined) messages.push(...productionErrors(production, [['creation', doc]]));
       if (doc?.source !== script.source) messages.push('creation.source differs from script');
       if (!Array.isArray(doc?.episodes) || !doc.episodes.length) messages.push('creation.episodes must be a nonempty array');
-      const tolerance = doc?.params?.tolerance;
-      if (typeof tolerance !== 'number' || !Number.isFinite(tolerance) || tolerance < 0) messages.push('creation.params.tolerance must be finite and nonnegative');
-      const selection = production?.creative?.selection ?? script?.creativeContext?.selection;
-      if (selection) {
-        const actual = doc?.creativeContext?.selection;
-        messages.push(...validateSelection(actual));
-        if (['genre','narrativeStyle','structure','pacing'].some(k => actual?.[k]?.id !== selection[k]?.id || actual?.[k]?.version !== selection[k]?.version)) messages.push('creation creative selection is stale');
-      }
-      const seen = new Set();
+      const tolerance = doc?.params?.tolerance ?? 0.15;
+      if (typeof tolerance !== 'number' || !Number.isFinite(tolerance) || tolerance < 0 || tolerance >= 1) messages.push('creation.params.tolerance must be finite and nonnegative');
+      const seen = new Set(); let lastEp = 0;
       for (const ep of array(doc?.episodes)) {
         const upstream = array(script?.episodes).find(s => s?.ep === ep?.ep);
-        if (!Number.isSafeInteger(ep?.ep) || ep.ep <= 0 || seen.has(ep.ep)) messages.push('creation ep must be unique positive integers');
-        seen.add(ep?.ep);
+        if (!Number.isSafeInteger(ep?.ep) || ep.ep <= lastEp || seen.has(ep.ep)) messages.push('creation ep must be ordered unique positive integers');
+        seen.add(ep?.ep); lastEp = ep?.ep;
         if (!upstream) { messages.push(`E${ep?.ep}: not in current script`); continue; }
-        for (const key of ['opening','openingBeat','endBeat']) if (!equal(ep[key],upstream[key])) messages.push(`E${ep.ep}.${key}: stale script projection`);
-        if (ep?.ending?.mode !== upstream.ending?.mode || ep?.ending?.event !== upstream.ending?.event) messages.push(`E${ep.ep}.ending: stale script projection`);
+        for (const key of ['opening', 'ending', 'endBeat']) if (Object.hasOwn(ep, key)) messages.push(`E${ep.ep}.${key}: duplicate/retired field; migrate-v3`);
+        if (!equal(ep.openingBeat, upstream.openingBeat)) messages.push(`E${ep.ep}.openingBeat: stale script landing; never invent a missing opening`);
         if (!Array.isArray(ep.segments) || !ep.segments.length) messages.push(`E${ep.ep}.segments must be a nonempty array`);
         let seconds = 0;
         const cursors = new Map(); let lastScene = 0;

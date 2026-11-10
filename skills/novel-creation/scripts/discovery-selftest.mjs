@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Real application path: absent stages differ from unreadable directory entries.
+// v3 read paths: absent stages differ from damaged or ambiguous entries.
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,symlinkSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,symlinkSync,chmodSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -16,15 +16,21 @@ try {
   for(const name of ['script','outline','art','characters']) {
     const project=join(root,name);mkdirSync(project);mkdirSync(join(project,'creation'));
     const file=join(project,'creation/input.json'),prod=join(project,'production.json');write(file,creation);write(prod,production);
-    const apply=()=>spawnSync(process.execPath,[join(here,'novel-creation.mjs'),'apply-profile',file,'--production',prod,'--confirm'],{encoding:'utf8',maxBuffer:4*1024*1024});
-    let r=apply();assert.equal(r.status,0,r.stderr);count++;
+    const run=(...extra)=>spawnSync(process.execPath,[join(here,'novel-creation.mjs'),'render',file,'--md',...extra],{encoding:'utf8',maxBuffer:4*1024*1024});
+    let r=run();assert.equal(r.status,0,r.stderr);count++;
     const stage=join(project,name),actual=join(project,'actual-stage');symlinkSync(actual,stage);
-    r=apply();assert.equal(r.status,1);assert.equal(JSON.parse(r.stdout).applied,true);assert.match(r.stderr,/ENOENT/);count++;
+    r=run();assert.equal(r.status,1);assert.match(r.stderr,/ENOENT/);count++;
     if(name==='script') {
-      mkdirSync(actual);write(join(actual,'batch.json'),script);
-      r=apply();assert.equal(r.status,0,r.stderr);assert.match(r.stderr,/script-contract/);count++;
-      write(join(actual,'another.json'),script);r=apply();assert.equal(r.status,1);assert.match(r.stderr,/不唯一/);count++;
+      mkdirSync(actual);const batch=join(actual,'batch.json');write(batch,script);
+      r=run();assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/script v3/);count++;
+      write(join(actual,'another.json'),script);r=run();assert.equal(r.status,1);assert.match(r.stderr,/不唯一/);count++;
+      r=run('--script',batch);assert.equal(r.status,0,r.stderr);count++;
+      writeFileSync(batch,'{');r=run('--script',batch);assert.equal(r.status,1);count++;
+      write(batch,script);rmSync(join(actual,'another.json'));
+      if(process.getuid?.()!==0){chmodSync(batch,0);try{assert.equal(run().status,1);count++;}finally{chmodSync(batch,0o600);}}
+      write(join(actual,'ignored.backup.json'),script);write(join(actual,'.hidden.json'),script);write(join(actual,'manifest.json'),{});write(join(actual,'batch.json.migration.json'),{});write(join(actual,'batch.v2-backup.json'),{});
+      assert.equal(run().status,0);count++;
     }
   }
-} finally {rmSync(root,{recursive:true,force:true});}
-console.log(`✓ ${count} creation real application discovery cases passed`);
+  console.log(`✓ ${count} creation v3 upstream discovery cases passed`);
+}finally{rmSync(root,{recursive:true,force:true});}

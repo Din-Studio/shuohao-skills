@@ -1,0 +1,294 @@
+{
+  "source": "收书人",
+  "promptLang": "en",
+  "episodes": [
+    {
+      "ep": 1,
+      "segments": [
+        {
+          "id": "E01-01",
+          "sceneIndex": 1,
+          "images": [
+            {
+              "kind": "character",
+              "ref": "C02",
+              "role": "identity reference"
+            },
+            {
+              "kind": "scene",
+              "ref": "S01",
+              "role": "environment reference"
+            },
+            {
+              "kind": "prop",
+              "ref": "P01",
+              "role": "prop reference"
+            }
+          ],
+          "prompt": "Picture 1 is the young man carrying the worn poetry book. Picture 2 is the night-only secondhand bookstore, shelves crowded with old books under a warm desk lamp. Picture 3 is the worn poetry book itself, its cloth cover softened with age.\n\nshots:\n[Shot 1] Wide shot, Tracking Shot — the camera follows <Picture 1> as he pushes open the door of <Picture 2>, a small bell chiming, his footsteps slowing among towering stacks of old books, <Picture 3> held close against his chest.\n[Shot 2] Medium shot, Push In — slowly moving closer on <Picture 1>'s face as he asks in a low, testing tone, <Picture 3> still cradled in one arm: \"还开着吗？我想卖一本书。\"\n\nambience: A faint bell chime fades under the low hum of the night, pages rustling somewhere in the stacks; no music.",
+          "cuts": [
+            {
+              "beats": [
+                1,
+                1
+              ],
+              "seconds": 4,
+              "size": "wide",
+              "camera": "Tracking Shot",
+              "characters": [
+                "C02"
+              ],
+              "props": [
+                "P01"
+              ]
+            },
+            {
+              "beats": [
+                2,
+                2
+              ],
+              "seconds": 3,
+              "size": "medium",
+              "camera": "Push In",
+              "characters": [
+                "C02"
+              ],
+              "props": [
+                "P01"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E01-02",
+          "sceneIndex": 1,
+          "images": [
+            {
+              "kind": "character",
+              "ref": "C01",
+              "role": "identity reference"
+            },
+            {
+              "kind": "prop",
+              "ref": "P01",
+              "role": "prop reference"
+            }
+          ],
+          "prompt": "Picture 1 is the woman who owns the bookstore, composed, in her fifties. Picture 2 is the worn poetry book with a faded cloth cover and a handwritten inscription on its title page.\n\nshots:\n[Shot 1] Medium shot, Pan Left — the camera pans to <Picture 1> as she looks up from behind a stack of ledgers, sets down her pen, and lifts a hand toward the counter, wordlessly asking for <Picture 2>.\n[Shot 2] Close-up, Push In — pushing in on <Picture 1>'s fingers as they open <Picture 2> to its title page, stopping on a line of handwriting, held there without turning the page.\n\nambience: The lamp hums faintly, a page turns somewhere else in the stacks, then everything goes still around her held breath; no music.",
+          "cuts": [
+            {
+              "beats": [
+                3,
+                3
+              ],
+              "seconds": 3,
+              "size": "medium",
+              "camera": "Pan Left",
+              "characters": [
+                "C01"
+              ],
+              "props": []
+            },
+            {
+              "beats": [
+                4,
+                4
+              ],
+              "seconds": 4,
+              "size": "close",
+              "camera": "Push In",
+              "characters": [
+                "C01"
+              ],
+              "props": [
+                "P01"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "E01-03",
+          "sceneIndex": 1,
+          "images": [
+            {
+              "kind": "character",
+              "ref": "C02",
+              "role": "identity reference"
+            },
+            {
+              "kind": "character",
+              "ref": "C01",
+              "role": "identity reference"
+            }
+          ],
+          "prompt": "Picture 1 is the young man who has just sold the worn poetry book; the book remains on the counter. Picture 2 is the woman who owns the bookstore, composed, in her fifties.\n\nshots:\n[Shot 1] Medium shot, Static Shot — holding steady on <Picture 1> as he studies her stillness and asks, uncertain: \"老板？书有问题吗？\"\n[Shot 2] Close-up, Push In — pushing in on <Picture 2>'s face, carefully composed, as she answers without looking up: \"没有。这本我要了，给你双倍。\"\n\nambience: The shop stays quiet around her measured voice, only the faint hum of the lamp and the distant creak of an old floorboard; no music.",
+          "cuts": [
+            {
+              "beats": [
+                5,
+                5
+              ],
+              "seconds": 3,
+              "size": "medium",
+              "camera": "Static Shot",
+              "characters": [
+                "C02"
+              ],
+              "props": []
+            },
+            {
+              "beats": [
+                6,
+                6
+              ],
+              "seconds": 4,
+              "size": "close",
+              "camera": "Push In",
+              "characters": [
+                "C01"
+              ],
+              "props": []
+            }
+          ]
+        },
+        {
+          "id": "E01-04",
+          "sceneIndex": 1,
+          "images": [
+            {
+              "kind": "character",
+              "ref": "C02",
+              "role": "identity reference"
+            },
+            {
+              "kind": "character",
+              "ref": "C01",
+              "role": "identity reference"
+            },
+            {
+              "kind": "prop",
+              "ref": "P01",
+              "role": "prop reference"
+            }
+          ],
+          "prompt": "Picture 1 is the young man who has just sold the worn poetry book. Picture 2 is the woman who owns the bookstore, composed, in her fifties. Picture 3 is the worn poetry book with a faded cloth cover.\n\nshots:\n[Shot 1] Wide shot, Pan Right — following <Picture 1> as he takes his payment and turns for the door empty-handed, leaving the book on the counter, the small bell chiming once as he steps out into the dark.\n[Shot 2] Close-up, Static Shot — a folded note slips from between the pages of <Picture 3> as <Picture 2> reopens it alone at the counter, drifting down to rest by her feet.\n[Shot 3] Close-up, Pull Out — <Picture 2> bends down to pick up the note and unfolds it, the handwritten inscription \"致晚晚\" catching the lamplight. She says quietly to herself: \"晚晚，这是姐姐当年写给你的。\" The frame pulls back to hold her alone in the quiet shop; the sister remains absent.\n\nambience: The bell's last chime fades into the hush of the empty shop, paper rustling once as the note unfolds; no music, just the held quiet of a room that has just recognized something.",
+          "cuts": [
+            {
+              "beats": [
+                7,
+                7
+              ],
+              "seconds": 3,
+              "size": "wide",
+              "camera": "Pan Right",
+              "characters": [
+                "C02"
+              ],
+              "props": []
+            },
+            {
+              "beats": [
+                8,
+                8
+              ],
+              "seconds": 2,
+              "size": "close",
+              "camera": "Static Shot",
+              "characters": [
+                "C01"
+              ],
+              "props": [
+                "P01"
+              ]
+            },
+            {
+              "beats": [
+                9,
+                10
+              ],
+              "seconds": 6,
+              "size": "close",
+              "camera": "Pull Out",
+              "characters": [
+                "C01"
+              ],
+              "props": [
+                "P01"
+              ]
+            }
+          ]
+        }
+      ],
+      "opening": "深夜旧书店快打烊时，周亦抱着一本卷边诗集进门，询问能否卖书。",
+      "ending": {
+        "mode": "open",
+        "event": "陈叙在周亦离开后拾起书中滑落的字条，认出自己写给妹妹的「致晚晚」，独自留在书店灯下。"
+      },
+      "openingBeat": [
+        1,
+        1
+      ],
+      "endBeat": [
+        1,
+        10
+      ]
+    }
+  ],
+  "schemaVersion": 2,
+  "params": {
+    "maxSegmentSeconds": 15,
+    "maxOnScreen": 3,
+    "tolerance": 0.15,
+    "rules": {
+      "cutDuration": {
+        "level": "warn",
+        "minSeconds": 4,
+        "maxSeconds": 12
+      }
+    }
+  },
+  "creativeContext": {
+    "selection": {
+      "genre": {
+        "id": "mystery",
+        "version": "1.0.0"
+      },
+      "narrativeStyle": {
+        "id": "restrained",
+        "version": "1.0.0"
+      },
+      "structure": {
+        "id": "serial",
+        "version": "1.0.0"
+      },
+      "pacing": {
+        "id": "gradual",
+        "version": "1.0.0"
+      }
+    },
+    "references": [
+      {
+        "dimension": "genre",
+        "id": "mystery",
+        "version": "1.0.0",
+        "stage": "creation",
+        "sha256": "3e9780f672132d8ce901b628fc8b060ea4272f1de55c705dec7781cbbfca2b09"
+      },
+      {
+        "dimension": "narrativeStyle",
+        "id": "restrained",
+        "version": "1.0.0",
+        "stage": "creation",
+        "sha256": "4862ad679a68ccf25e2ba3f29d7837f6bf6d47eef61aa38046f34119e5a8950e"
+      },
+      {
+        "dimension": "pacing",
+        "id": "gradual",
+        "version": "1.0.0",
+        "stage": "creation",
+        "sha256": "4746e88bd4e266dfa66dfb69f798dea841cd7141e3c9e2630ce9af5a0984b5ec"
+      }
+    ],
+    "overridePaths": []
+  }
+}

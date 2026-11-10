@@ -41,7 +41,7 @@ import './media-plan-selftest.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(join(here, '..', 'examples', '雨棚留言-art.json'), 'utf8'));
 const OUTLINE = JSON.parse(
-  readFileSync(join(here, '..', 'examples', '雨棚留言-outline-v2.json'), 'utf8'),
+  readFileSync(join(here, '..', 'examples', '雨棚留言-outline-v3.json'), 'utf8'),
 );
 const CAST = JSON.parse(
   readFileSync(join(here, '..', 'examples', '雨棚留言-cast-names.json'), 'utf8'),
@@ -102,7 +102,7 @@ eq(seeded.scenes.length, 3, 'seed 搬全部场景');
 {
   const s01 = seeded.scenes.find((s) => s.id === 'S01');
   eq(s01.usage.episodes.join(','), '1,2,3', 'seed 算出出现集');
-  eq(s01.usage.beats.join(','), '清理,核对,归还', 'seed 算出关联剧情节点');
+  eq(s01.usage.beats.join(','), OUTLINE.beats.map(b => b.outcome).join(','), 'seed 展示同集节点结果，不推断精确归属');
   eq(s01.summary, '', '设计字段留给模型填');
   const s03 = seeded.scenes.find((s) => s.id === 'S03');
   ok(s03.seedNote?.includes('复用方案'), 'outline 的 reusePlan 变成 seedNote 提示做变体');
@@ -118,9 +118,9 @@ eq(seeded.scenes.length, 3, 'seed 搬全部场景');
   eq(p01.summary, src.function, '大纲的 function 落成这里的 summary');
   const epsWithP01 = OUTLINE.episodes.filter((e) => (e.propIds ?? []).includes('P01')).map((e) => e.ep);
   eq(p01.usage.episodes.join(','), epsWithP01.join(','), 'seed 算出道具的出现集');
-  // beatIds 是 id，art 这边要的是节点类型，seed 负责翻译
-  eq(p01.usage.beats.join(','), src.beatIds.map((id) => OUTLINE.beats.find((b) => b.id === id).type).join(','),
-    'beatIds 翻译成节点类型');
+  // beatIds 是显式引用，art 的阅读标签来自节点结果，不再依赖分类
+  eq(p01.usage.beats.join(','), src.beatIds.map((id) => OUTLINE.beats.find((b) => b.id === id).outcome).join(','),
+    'beatIds 翻译成节点结果');
   // 设计字段留给模型
   eq(p01.scale, '', '尺度留空——那是美术层的活');
   eq(p01.states.length, 0, '状态变体留空');
@@ -128,17 +128,17 @@ eq(seeded.scenes.length, 3, 'seed 搬全部场景');
   eq(p01.carriedBy.length, 0, '跟谁走留空');
 }
 
-// 省略可选 props 的 v2 大纲没有 props 字段：返回空数组，模型照 prop-pass.md 从原文提取，跟以前一样
+// 省略可选 props 的 v3 大纲返回空数组，模型照 prop-pass.md 从原文提取
 {
   const noProps = JSON.parse(JSON.stringify(OUTLINE));
   delete noProps.props;
   for (const ep of noProps.episodes) ep.propIds = [];
   const r = seedFromOutline(noProps);
-  eq(r.props.length, 0, '省略可选 props 的 v2 大纲 seed 出空道具表，不是 undefined');
+  eq(r.props.length, 0, '省略可选 props 的 v3 大纲 seed 出空道具表，不是 undefined');
   ok(Array.isArray(r.props), '空道具表仍然是数组，调用方不用判空');
 }
 
-for (const bad of [{}, null, { ...OUTLINE, schemaVersion: 1 }, { ...OUTLINE, scenes: null }]) assert.throws(() => seedFromOutline(bad), /outline v2/);
+for (const bad of [{}, null, { ...OUTLINE, schemaVersion: 1 }, { ...OUTLINE, scenes: null }]) assert.throws(() => seedFromOutline(bad), /outline v3/);
 
 /* ---------------- castNamesOf ---------------- */
 
@@ -157,6 +157,7 @@ eq(gateReport(FIXTURE).length, 13, '质量门共 12 道（场景 6 + 道具 4 + 
 
 // 样例《雨棚留言》是横屏真人实拍，参数照它配才是全绿基线
 const PRODUCTION = {
+  schemaVersion: 3,
   source: '雨棚留言',
   style: STYLE,
   lang: 'zh',
@@ -233,8 +234,8 @@ ok(KNOWN_ASPECTS.includes('16:9') && KNOWN_ASPECTS.includes('9:16'), '画幅词�
   eq(langOf({ lang: 'zh' }, null, { lang: 'en' }), 'zh', 'art.json 顶层优先于生产参数');
   eq(langOf({ lang: 'zh' }, 'en', { lang: 'zh' }), 'en', '显式参数优先于一切');
   eq(langOf({}, null, null), 'zh', '都没有就默认中文');
-  ok(renderHtml(FIXTURE, null, { lang: 'en' }).includes('lang="en"'), '报告界面跟着生产参数走');
-  ok(renderMarkdown(FIXTURE, null, { lang: 'en' }).includes('## Scene list'), 'Markdown 同样继承');
+  ok(renderHtml(FIXTURE, null, { ...PRODUCTION, lang: 'en' }).includes('lang="en"'), '报告界面跟着生产参数走');
+  ok(renderMarkdown(FIXTURE, null, { ...PRODUCTION, lang: 'en' }).includes('## Scene list'), 'Markdown 同样继承');
 }
 
 /* ---------------- 质量门逐项击穿 ---------------- */

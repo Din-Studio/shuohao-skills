@@ -2,11 +2,11 @@
 
 # novel-setup
 
-## 3.0.0: creative contract
+## v3 production contract
 
-Record an optional, strict four-dimension creative selection with explicit versions. Initialize with `--selection <selection.json>` (the four-dimension object, not a creative wrapper). No implicit default and no sibling profile lookup. `show` displays identities and versions; `resolve` returns the stage-specific background or selection.
+Production requires schemaVersion 3. Collect an optional non-empty natural-language creativeBrief with --creative-brief. No strategy selection or default rules. show displays the brief; resolve returns it unchanged. Use migrate-v3 INPUT for a read-only preview, then --out OUTPUT and --confirm when semantic review is required. Existing targets are never overwritten.
 
-Check objects use `status: pass|fail|skipped`, `category`, and `level`, never an ok boolean. Skips are not passes. Content review is not performed by these checks. See [contract](references/creative-selection.md) and [migration](references/migration.md).
+Check objects use `status: pass|fail|skipped`, `category`, and `level`, never an ok boolean. Skips are not passes. Content review is not performed by these checks. See [contract](references/creative-brief.md) and [migration](references/migration.md).
 
 Locks asset-image and video models, resolution tiers, independent aspect ratios, art style, languages and autopilot in one `production.json` at the work-directory root.
 
@@ -32,10 +32,11 @@ node scripts/novel-setup.mjs show <work-dir>/production.json
 - Set report language with `--lang`, prompt language with `--prompt-lang`. Video creation applies its model-specific prompt rules.
 - Node 18+, standard library only. This skill makes no model calls and produces no HTML report.
 
-## Nine checks, including creative selection
+## Nine checks, including the v3 document contract
 
 | Gate | Checks |
 | --- | --- |
+| document-contract | schemaVersion 3, optional non-empty creativeBrief, no retired configuration |
 | fields | Required fields, language enums, boolean autopilot |
 | aspect-format | Fixed `W:H` asset and video ratios; no `adaptive` |
 | asset-landscape | Landscape or square asset layout |
@@ -84,6 +85,8 @@ These are examples, not a style menu. They also serve as independent test fixtur
 
 ```bash
 node scripts/selftest.mjs
+node scripts/migration-selftest.mjs
+node scripts/upstream-selftest.mjs
 ```
 
 No model calls, network access or quota. Legacy `image.frame` is ignored and omitted from new configurations. `style.phrase` remains available to model-specific video prompt guides.

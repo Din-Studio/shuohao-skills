@@ -35,9 +35,9 @@ metadata:
     - codex
 ---
 
-## 2.0.0 创作契约与迁移
+## v3 上游契约与迁移
 
-seed 只接受显式 `outline.schemaVersion: 2`。只读取 production 中 genre/narrativeStyle 作为背景，不加载 profile，不新增应用流程或 creativeContext，不伪造摘要。本地 profile 缺失不影响资产阶段。缺 production 的历史读取仅跳过上游对账；提供损坏上游或缺视觉正文的 production 必须失败。出图仍须合法视觉正文及制作参数。
+seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schemaVersion: 3`。读取可选非空 `production.creativeBrief`，不解释策略配置。人物来源、弧光、节点分类与位置可以省略。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
 
 检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-background.md) 和 [迁移说明](references/migration.md)。
 
@@ -315,6 +315,8 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
 
 ```bash
 node {baseDir}/scripts/selftest.mjs
+node {baseDir}/scripts/v3-selftest.mjs
+node {baseDir}/scripts/upstream-selftest.mjs
 ```
 
 离线自测覆盖创作、契约、渲染与交接计划；检查依赖顺序、提示词原文、素材路径、退役参数与防覆盖。不调用模型、不读取凭据、不发网络请求。

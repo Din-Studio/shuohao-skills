@@ -4,9 +4,10 @@
 // without an npm install. Node 18+ (stdlib only).
 
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { neutralParams, validateParams, validateSelection, inspectContext, handleCreativeCommand } from './lib/creative.mjs';
+import { projectProblems, scriptParams, endPosition, episodeIntent } from './lib/document.mjs';
+import { migrateFile } from './lib/migration.mjs';
 import { shapeProblems, scriptProblems, outlineProblems, reconcile, beatSeconds } from './lib/contracts.mjs';
 export { beatSeconds } from './lib/contracts.mjs';
 export const SKILL_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -28,7 +29,7 @@ import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
 /* ------------------------------------------------------------------ */
 /*
  * 两层结构：段（segment）＝ 一次视频生成调用，上限是视频模型单段时长；
- * 分镜（cut）＝ 段内的一次剪切，表达范围由当前策略控制。分镜下面**没有关键帧这一层**：段直接
+ * 分镜（cut）＝ 段内的一次剪切，表达时长由故事与表演需要决定。分镜下面**没有关键帧这一层**：段直接
  * 挂载 novel-characters / novel-art 已经生成落盘的设定图，写一条通用视频提示词，
  * 从 seed 到下单不产生任何新的图像生成调用。
  */
@@ -37,11 +38,10 @@ export const DEFAULT_PARAMS = {
   maxSegmentSeconds: 15, // 视频模型单段生成上限（秒）
   maxOnScreen: 3,        // 单个分镜同框人数上限，超了必须带拆解说明
   tolerance: 0.15,       // 每集总时长对剧本目标的容差
-  ...neutralParams('creation'),
 };
 
 export function paramsOf(doc) {
-  return { ...DEFAULT_PARAMS, ...(doc?.params ?? {}), rules: doc?.params?.rules };
+  return { ...DEFAULT_PARAMS, ...(doc?.params ?? {}) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -78,7 +78,7 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
  * 提示词按 video.model 自己分流、下单前的花费预估照样报出来但不等回应，
  * 做过的决定全部写进最后的汇报。
  *
- * 转移的是**审批权**，不是取消检查点：基础和 error 策略检查照样执行、花费照样先算清楚、
+ * 转移的是**审批权**，不是取消检查点：基础和模型技术检查照样执行、花费照样先算清楚、
  * 同一段连着失败两次照样跳过——**不打断不等于无限重试烧钱**。
  *
  * **只认布尔真值**：JSON 里写成字符串 "false" 在 JS 里是真的，那种写法会让
@@ -284,7 +284,7 @@ export function promptRemainder(prompt) {
  */
 
 export function expandScript(script) {
-  const p = script?.params ?? {};
+  const p = scriptParams(script);
   const eps = new Map();
   for (const ep of script?.episodes ?? []) {
     const scenes = (ep?.scenes ?? []).map((sc, i) => ({
@@ -306,7 +306,7 @@ export function expandScript(script) {
         };
       }),
     }));
-    eps.set(ep.ep, { ep: ep.ep, targetSeconds: ep.targetSeconds, opening: ep.opening, ending: ep.ending, openingBeat: ep.openingBeat, endBeat: ep.endBeat, scenes });
+    eps.set(ep.ep, { ep: ep.ep, targetSeconds: ep.targetSeconds, opening: ep.opening, ending: ep.ending, openingBeat: ep.openingBeat, endBeat: endPosition(ep), scenes });
   }
   return eps;
 }
@@ -428,7 +428,7 @@ export function resolveReferenceImage(kind, name, workDir = '.', { existsImpl = 
 
 export function gateReport(doc, ctx = {}) {
   const errors = shapeProblems(doc);
-  errors.push(...validateParams('creation', doc?.params));
+  errors.push(...projectProblems(doc, ctx));
   if (ctx.production?.video !== undefined && (!ctx.production.video || typeof ctx.production.video !== 'object' || typeof ctx.production.video.model !== 'string' || !ctx.production.video.model.trim())) errors.push('production.video.model 非法');
   for (const key of ['art','cast']) if (ctx[key] !== undefined) {
     const arrays = key === 'art' ? ['scenes','props'] : ['characters'];
@@ -437,35 +437,21 @@ export function gateReport(doc, ctx = {}) {
   const gates = [gateResult('fields', '基础字段与当前有效参数', errors)];
   let upstreamValid = true;
   for (const [key, validate] of [['script', scriptProblems], ['outline', outlineProblems]]) {
-    if (ctx[key] === undefined) gates.push(gateResult(key + '-contract', key + ' v2 契约', [], {status:'skipped', reason:'missing-upstream'}));
+    if (ctx[key] === undefined) gates.push(gateResult(key + '-contract', key + ' v3 契约', [], {status:'skipped', reason:'missing-upstream'}));
     else {
-      const issues = validate(ctx[key]); upstreamValid &&= !issues.length;
-      gates.push(gateResult(key + '-contract', key + ' v2 契约', issues));
+      let issues;
+      try { issues = validate(ctx[key]); } catch (error) { issues = [`${key} 数据结构损坏：${error.message}`]; }
+      upstreamValid &&= !issues.length;
+      gates.push(gateResult(key + '-contract', key + ' v3 契约', issues));
     }
   }
-  try {
-    gates.push(...inspectContext(doc, {skillRoot: SKILL_ROOT, stage:'creation', production:ctx.production})
-      .map(g => ({...g, label:g.id === 'creative-project' ? '项目创作选择对账' : g.id === 'creative-context' ? '策略来源记录' : '本地策略来源', detail:g.message ?? '', messages:[g.message ?? g.id]})));
-  } catch (e) { gates.push(gateResult('creative-context', '策略来源检查', [e.message])); }
+  gates.push(gateResult('project-contract', '项目 v3 契约与唯一创作要求', projectProblems(doc, ctx), ctx.production === undefined ? {status:'skipped',reason:'missing-upstream'} : {}));
   if (!upstreamValid) return gates;
-  const selectionOf = value => JSON.stringify(Object.entries(value ?? {}).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => [k,v?.id,v?.version]));
-  const expected = ctx.production?.creative?.selection ?? doc?.creativeContext?.selection;
-  const selections = ['script','outline'].map(key => {
-    const id = `${key}-selection`, label = `${key} 创作选择身份对账`;
-    if (ctx[key] === undefined) return gateResult(id, label, [], {status:'skipped', reason:'missing-upstream'});
-    if (ctx[key].creativeContext === undefined) return gateResult(id, label, [], {status:'skipped', reason:'stage-incomplete'});
-    const selection = ctx[key].creativeContext?.selection;
-    const issues = validateSelection(selection).map(m => `${key}: ${m}`);
-    if (expected && selectionOf(selection) !== selectionOf(expected)) issues.push(`${key} 创作选择与当前项目／分镜不一致`);
-    return gateResult(id, label, issues, !issues.length && !expected ? {status:'skipped', reason:'stage-incomplete'} : {});
-  });
-  gates.push(...selections);
-  const selectionErrors = selections.filter(g => g.status === 'fail').flatMap(g => g.messages);
-  const incomplete = selections.find(g => g.status === 'skipped');
-  gates.push(gateResult('upstream-selection', '上游创作选择身份对账', selectionErrors,
-    !selectionErrors.length && incomplete ? {status:'skipped', reason:incomplete.reason} : {}));
-  if (!errors.length) gates.push(gateResult('upstream-intent', '开场／集尾／节点与目标时长对账',
-    reconcile(doc, ctx.script, ctx.outline)));
+  if (!errors.length) {
+    const issues = reconcile(doc, ctx.script, ctx.outline);
+    gates.push(gateResult('upstream-intent', '开场／集尾／节点与目标时长对账', issues,
+      !issues.length && ctx.script === undefined ? {status:'skipped',reason:'missing-upstream',detail:'未提供剧本，只检查了本地连续认领；上游计划与实际结束坐标未核验'} : {}));
+  }
   try { gates.push(...technicalGates(doc, ctx)); }
   catch (e) { gates.push(gateResult('data-shape', '数据形状无法继续检查', [e.message])); }
   return gates;
@@ -601,10 +587,6 @@ function technicalGates(doc, ctx = {}) {
         const cid = `${sid}#${ci + 1}`;
         const slice = slices[ci];
 
-        const rule = doc?.params?.rules?.cutDuration;
-        if (rule && rule.level !== 'off' && (cut?.seconds < rule.minSeconds || cut?.seconds > rule.maxSeconds)) {
-          bad.cutLen.push(`${cid} ${cut?.seconds ?? '?'} 秒`);
-        }
         if ((cut?.characters ?? []).length > params.maxOnScreen && !String(cut?.note ?? seg?.note ?? '').trim()) {
 
           bad.crowd.push(`${cid} 同框 ${cut.characters.length} 人且没有拆解说明`);
@@ -747,11 +729,6 @@ function technicalGates(doc, ctx = {}) {
     eps.length > 0 && bad.segCap.length === 0 && bad.segCapModel.length === 0,
     [...bad.segCap, ...bad.segCapModel].join('；'),
   );
-  const rule = doc?.params?.rules?.cutDuration;
-  gates.push(gateResult('cut-length', '镜头表达时长 cutDuration', bad.cutLen, {
-    category:'policy', level:rule?.level ?? 'error',
-    ...(rule?.level === 'off' ? {status:'skipped', reason:'policy-disabled'} : {}),
-  }));
   add('dialogue-fit', '认领节拍的台词装得进分镜秒数', bad.fit.length === 0, script ? bad.fit.join('；') : SKIP_SCRIPT);
   add('ep-duration', `每集总时长在剧本目标 ±${Math.round(params.tolerance * 100)}% 内`, bad.duration.length === 0, script ? bad.duration.join('；') : SKIP_SCRIPT);
   add('crowd', `单个分镜同框 ≤ ${params.maxOnScreen} 人，超了必须带拆解说明`, bad.crowd.length === 0, bad.crowd.join('；'));
@@ -811,8 +788,10 @@ export function validateCreation(doc, ctx = {}) {
 /* seed — 从 script.json 确定性预填                                      */
 /* ------------------------------------------------------------------ */
 
-export function seedFromScript(script, epRange = null) {
-  const errors = scriptProblems(script);
+export function seedFromScript(script, epRange = null, ctx = {}) {
+  const errors = [...scriptProblems(script), ...projectProblems({}, {...ctx, script})];
+  if (ctx.outline !== undefined) errors.push(...outlineProblems(ctx.outline));
+  if (!errors.length && ctx.outline) errors.push(...reconcile({source:script.source,episodes:[]},script,ctx.outline));
   if (errors.length) throw new Error(errors.join('；'));
   const expanded = expandScript(script);
   const inRange = (n2) => !epRange || (n2 >= epRange[0] && n2 <= epRange[1]);
@@ -821,8 +800,7 @@ export function seedFromScript(script, epRange = null) {
     if (!inRange(epNo)) continue;
     episodes.push({
       ep: epNo,
-      opening: sEp.opening, ending: structuredClone(sEp.ending),
-      openingBeat: [...sEp.openingBeat], endBeat: [...sEp.endBeat],
+      ...(sEp.openingBeat ? {openingBeat:[...sEp.openingBeat]} : {}),
       segments: [],
       seedScenes: sEp.scenes.map((sc) => ({
         sceneIndex: sc.sceneIndex,
@@ -835,12 +813,13 @@ export function seedFromScript(script, epRange = null) {
           kind: b.kind,
           seconds: b.seconds,
           ...(b.speaker ? { speaker: b.speaker } : {}),
+          ...(b.delivery ? { delivery: b.delivery } : {}),
           text: b.text,
         })),
       })),
     });
   }
-  return { schemaVersion:2, source: script?.source ?? '', params:structuredClone(DEFAULT_PARAMS), episodes };
+  return { schemaVersion:3, source: script?.source ?? '', params:structuredClone(DEFAULT_PARAMS), episodes };
 }
 
 /* ------------------------------------------------------------------ */
@@ -962,15 +941,12 @@ export function exportPack(doc, script, { resolveImage = () => ({ name: '', path
 const GATE_LABELS_EN = {
   'coverage': 'Every script beat claimed exactly once, in order, contiguous (cut level)',
   'segment-cap': 'Each segment 0 < total ≤ {1}s (the single-generation cap; also within the video model\'s duration range when production parameters are mounted)',
-  'cut-length': 'Current cutDuration expression rule',
   'fields': 'Base fields and effective parameters',
-  'script-contract': 'Script v2 consumer contract',
-  'outline-contract': 'Outline v2 consumer contract',
+  'script-contract': 'Script v3 consumer contract',
+  'outline-contract': 'Outline v3 consumer contract',
   'upstream-intent': 'Opening, ending, beat claims and target duration reconciliation',
-  'upstream-selection': 'Upstream creative selection identity',
   'model-capability': 'Effective video model duration capability',
-  'creative-context': 'Applied creative context',
-  'creative-project': 'Project creative selection reconciliation',
+  'project-contract': 'Project v3 contract and unique creative brief',
   'dialogue-fit': 'Dialogue of the claimed beats fits within the cut duration',
   'ep-duration': 'Episode total within ±{0}% of the script\'s target',
   'crowd': 'At most {0} characters on screen per cut; more requires a breakdown note',
@@ -996,7 +972,7 @@ const GATE_SKIPS_EN = {
 };
 const gateText = (g, lang) => {
   if (lang !== 'en') return { label: g.label, detail: g.detail };
-  const en = GATE_LABELS_EN[g.id] ?? (g.category === 'source' ? 'Local creative source verification' : undefined);
+  const en = GATE_LABELS_EN[g.id];
   const nums = String(g.label).match(/\d+(?:\.\d+)?/g) ?? [];
   const label = en ? en.replace(/\{(\d)\}/g, (m, i) => nums[Number(i)] ?? m) : g.label;
   return { label, detail: GATE_SKIPS_EN[g.detail] ?? g.detail };
@@ -1121,24 +1097,25 @@ const summaryText = (gates, lang) => {
   const n = {pass:gates.filter(g => g.status === 'pass' && g.category !== 'source').length,
     blocking:gates.filter(isBlocking).length, warnings:gates.filter(g => g.status === 'fail' && g.level === 'warn').length,
     skipped:gates.filter(g => g.status === 'skipped').length};
-  return lang === 'en' ? `Base/policy passes ${n.pass}; blocking ${n.blocking}; warnings ${n.warnings}; skipped ${n.skipped}. Content review not performed. Timings are estimates, not generated results.`
-    : `基础／策略通过 ${n.pass}；阻断失败 ${n.blocking}；提醒 ${n.warnings}；跳过 ${n.skipped}。内容未评审。时长为估算，不是生成结果。`;
+  return lang === 'en' ? `Structural passes ${n.pass}; blocking ${n.blocking}; warnings ${n.warnings}; skipped ${n.skipped}. Content review not performed. Timings are estimates, not generated results.`
+    : `结构通过 ${n.pass}；阻断失败 ${n.blocking}；提醒 ${n.warnings}；跳过 ${n.skipped}。内容未评审。时长为估算，不是生成结果。`;
 };
-function reportContext(doc, ctx) {
-  const locate = (ep, pos) => (ep.segments ?? []).flatMap(seg => (seg.cuts ?? []).flatMap((cut, i) =>
-    Array.isArray(pos) && seg.sceneIndex === pos[0] && cut.beats?.[0] <= pos[1] && cut.beats?.[1] >= pos[1] ? [`${seg.id}#${i + 1}`] : []));
-  return {selection:doc.creativeContext?.selection ?? null, projectSelection:ctx.production?.creative?.selection ?? null,
-    effectiveParams:doc.params, overridePaths:doc.creativeContext?.overridePaths ?? [],
-    references:doc.creativeContext?.references ?? [], model:videoModelOf(doc, ctx.production), modelGuide:promptGuideOf(videoModelOf(doc, ctx.production)),
-    story:ctx.outline?.story ?? null,
-    episodes:(doc.episodes ?? []).map(ep => ({ep:ep.ep, opening:ep.opening, openingBeat:ep.openingBeat,
-      openingCuts:locate(ep, ep.openingBeat), ending:ep.ending, endBeat:ep.endBeat, endingCuts:locate(ep, ep.endBeat),
-      upstreamQuestion:ctx.outline?.episodes?.find(e => e.ep === ep.ep)?.ending?.question ?? null,
-      nodes:(ctx.outline?.beats ?? []).filter(b => b.episode === ep.ep).map(b => {
+export function reportContext(doc, ctx) {
+  const locate = (ep, pos) => ep.segments.flatMap(seg => seg.cuts.flatMap((cut, i) =>
+    Array.isArray(pos) && seg.sceneIndex === pos[0] && cut.beats[0] <= pos[1] && cut.beats[1] >= pos[1] ? [`${seg.id}#${i + 1}`] : []));
+  return {model:videoModelOf(doc, ctx.production), technicalParams:paramsOf(doc),
+    ...(ctx.production?.creativeBrief || doc.creativeBrief ? {creativeBrief:ctx.production?.creativeBrief ?? doc.creativeBrief} : {}),
+    episodes:doc.episodes.map(ep => {
+      const intent = episodeIntent(ep.ep, ctx);
+      const nodes = (ctx.outline?.beats ?? []).filter(b => b.episode === ep.ep).map(b => {
         const claim = ctx.script?.episodes?.find(e => e.ep === ep.ep)?.beatClaims?.find(c => c.beatId === b.id);
-        return {id:b.id,kind:b.kind,setup:b.setup,outcome:b.outcome,resolves:b.resolves ?? [],claim:claim ?? null,
-          startCuts:claim ? locate(ep,claim.start) : [],endCuts:claim ? locate(ep,claim.end) : []};
-      })}))};
+        return {id:b.id, setup:b.setup, outcome:b.outcome, ...(claim ? {claim,startCuts:locate(ep,claim.start),endCuts:locate(ep,claim.end)} : {})};
+      });
+      return {ep:ep.ep, ...intent,
+        ...(intent.openingBeat ? {openingCuts:locate(ep,intent.openingBeat)} : {openingMapping:'not-marked'}),
+        ...(intent.endBeat ? {endingCuts:locate(ep,intent.endBeat)} : {}),
+        ...(nodes.length ? {nodes} : {})};
+    })};
 }
 const tOf = (lang) => {
   if (lang && !I18N[lang]) throw new Error('报告界面语言目前内置 zh / en');
@@ -1182,13 +1159,15 @@ const mdRow = (cells) => `| ${cells.map((c) => String(c ?? '').replace(/\|/g, '\
 const mdHead = (cols) => [mdRow(cols), mdRow(cols.map(() => '---'))].join('\n');
 
 function assertReadableVersions(doc, ctx) {
-  if (doc?.schemaVersion !== 2) throw new Error('creation.schemaVersion 必须为 2；迁移见 references/migration.md');
+  if (doc?.schemaVersion !== 3) throw new Error('creation.schemaVersion 必须为 3；迁移见 references/migration.md');
   for (const [key, validator] of [['script',scriptProblems],['outline',outlineProblems]]) if (ctx[key] !== undefined) {
     const issues = validator(ctx[key]);
     if (issues.length) throw new Error(issues.join('；'));
   }
-  const errors = shapeProblems(doc);
+  const errors = [...shapeProblems(doc), ...projectProblems(doc, ctx)];
   if (errors.length) throw new Error(errors.join('；'));
+  const intent = reconcile(doc, ctx.script, ctx.outline);
+  if (intent.some(e => e.includes('重复保存'))) throw new Error(intent.join('；'));
 }
 
 export function renderMarkdown(doc, ctx = {}) {
@@ -1198,10 +1177,8 @@ export function renderMarkdown(doc, ctx = {}) {
   const expanded = expandScript(ctx.script);
   const stats = computeStats(doc, ctx.script);
   const eps = doc.episodes;
-  const out = [`# ${t.docTitle(doc.source, eps[0]?.ep, eps[eps.length - 1]?.ep)}`, '',
-    summaryText(gateReport(doc, ctx), t.langCode), '',
-    `## ${t.langCode === 'en' ? 'Effective configuration and upstream intent' : '当前有效配置与上游意图'}`,
-    '', '```json', JSON.stringify(reportContext(doc, ctx), null, 2), '```', ''];
+  const showRecipe = eps.some(ep => ep.segments.some(seg => seg.cuts.some(cut => cut.recipe)));
+  const out = [`# ${t.docTitle(doc.source, eps[0]?.ep, eps[eps.length - 1]?.ep)}`, ''];
 
   for (const [i, ep] of eps.entries()) {
     const st = stats.episodes[i];
@@ -1219,7 +1196,7 @@ export function renderMarkdown(doc, ctx = {}) {
           '',
         );
       }
-      out.push(mdHead(t.cutCols));
+      out.push(mdHead(t.cutCols.filter((_,i) => showRecipe || i !== 4)));
       seg.cuts.forEach((cut, ci) => {
         const summary = cutBeats(cut, scene)
 
@@ -1231,15 +1208,16 @@ export function renderMarkdown(doc, ctx = {}) {
           t.sizeName(cut.size), t.cameraLabel(cut.camera),
           rc ? `${rc.name}${rc.drift ? ` ≠（${rc.drift}）` : ''}` : t.recipeNone,
           summary, (cut.characters ?? []).map(n.char).join(t.listSep),
-        ]));
+        ].filter((_,i) => showRecipe || i !== 4)));
       });
       out.push('', `**${t.promptLabel}**`, '', '```text', seg.prompt ?? '', '```', '');
     }
   }
 
-  out.push(`## ${t.secDialogue}`, '', mdHead(t.dialogueCols));
+  out.push(`## ${t.langCode === 'en' ? 'Current upstream handoff' : '当前上游交接关系'}`, '', '```json', JSON.stringify(reportContext(doc, ctx), null, 2), '```', '');
+  if (stats.dialogue.length) out.push(`## ${t.secDialogue}`, '', mdHead(t.dialogueCols));
   for (const d of stats.dialogue) out.push(mdRow([`${d.segment}#${d.cut}`, n.char(d.speaker), d.line, d.seconds]));
-  out.push('', `## ${t.secGates}`, '');
+  out.push('', summaryText(gateReport(doc, ctx), t.langCode), '', `## ${t.secGates}`, '');
   for (const g of gateReport(doc, ctx)) out.push(`- ${statusLabel(g, t.langCode)} [${g.category}/${g.level}${g.reason ? '/' + g.reason : ''}] ${gateText(g, t.langCode).label}: ${gateText(g, t.langCode).detail}`);
   return out.join('\n');
 }
@@ -1447,7 +1425,8 @@ h1,h2,h3{margin:0;font-weight:400}
 .expo:focus-visible{outline:2px solid var(--seal);outline-offset:2px}
 
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:18px 0 6px}
-@media(max-width:980px){.kpis{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:980px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{min-width:0}
 .kpi{background:var(--panel);border:1px solid var(--rule);border-radius:2px;padding:11px 14px 9px}
 .kpi .l{font:500 10px/1 var(--sans);letter-spacing:.18em;color:var(--ink-3)}
 .kpi .v{font:400 28px/1.15 var(--serif);margin-top:5px}
@@ -1551,6 +1530,14 @@ td a{color:var(--seal);text-decoration:none}
 td.serif{font-family:var(--serif)}
 td.mono{font-family:var(--mono);font-size:11.5px}
 td small{display:block;color:var(--ink-3)}
+@media(max-width:600px){
+  table{table-layout:fixed;overflow-wrap:anywhere}
+  th,td{padding:7px 5px}
+  td:first-child{white-space:normal}
+  .sec-h{flex-wrap:wrap}
+  .sec-h .note{margin-left:0}
+  .gate li{overflow-wrap:anywhere}
+}
 .miss{color:var(--seal)}
 
 .copy{flex:none;font:500 11px/1 var(--sans);color:var(--ink-2);background:var(--panel);
@@ -1601,49 +1588,49 @@ td small{display:block;color:var(--ink-3)}
   </span>
 </header>
 
-<section class="top-sec" id="sec-creative"><h2>${lang === 'en' ? 'Effective configuration and upstream intent' : '当前有效配置与上游意图'}</h2>
+<section class="top-sec" id="sec-segments">
+  <div class="sec-h"><span class="no">01</span><h2>${esc(t.secSegments)}</h2><span class="note">${esc(t.segmentsNote)}</span></div>
+${epBlocks}
+</section>
+
+${refRows ? `<section class="top-sec" id="sec-refs">
+  <div class="sec-h"><span class="no">02</span><h2>${esc(t.secRefs)}</h2><span class="note">${esc(t.refsNote)}</span></div>
+  <table><thead><tr>${t.refCols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+  <tbody>
+${refRows}
+  </tbody></table>
+</section>` : ''}
+
+${dlgRows ? `<section class="top-sec" id="sec-dialogue">
+  <div class="sec-h"><span class="no">03</span><h2>${esc(t.secDialogue)}</h2><span class="note">${esc(t.dialogueNote)}</span></div>
+  <table><thead><tr>${t.dialogueCols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+  <tbody>
+${dlgRows}
+  </tbody></table>
+</section>` : ''}
+
+<section class="top-sec" id="sec-intent"><h2><span class="no">04</span> ${lang === 'en' ? 'Current upstream handoff' : '当前上游交接关系'}</h2>
 <p>${esc(summaryText(gates, lang))}</p>
 <pre style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(JSON.stringify(reportContext(doc, ctx), null, 2))}</pre>
 </section>
 <div class="kpis">
   <div class="kpi accent"><div class="l">${esc(t.kpi.segments)}</div><div class="v">${stats.totals.segments} <small>${esc(t.unitSeg)}</small></div><div class="d">${esc(t.kpi.segmentsSub(params.maxSegmentSeconds))}</div></div>
-  <div class="kpi"><div class="l">${esc(t.kpi.cuts)}</div><div class="v">${stats.totals.cuts} <small>${esc(t.unitCut)}</small></div><div class="d">${esc(t.kpi.cutsSub(stats.totals.avgCutSeconds))}</div></div>
+  <div class="kpi"><div class="l">${esc(t.kpi.cuts)}</div><div class="v">${stats.totals.cuts} <small>${esc(t.unitCut)}</small></div><div class="d">${esc(t.kpi.cutsSub(r1(stats.totals.avgCutSeconds)))}</div></div>
   <div class="kpi"><div class="l">${esc(t.kpi.time)}</div><div class="v">${esc(fmtMin(stats.totals.seconds))}</div><div class="d">${esc(t.kpi.timeSub(fmtMin(stats.totals.targetSeconds)))}</div></div>
   <div class="kpi"><div class="l">${esc(t.kpi.lines)}</div><div class="v">${stats.totals.withLines} <small>${esc(t.unitSeg)}</small></div><div class="d">${esc(t.kpi.linesSub)}</div></div>
 </div>
 ${failed.length ? `<div class="galert"><b>✗ ${esc(t.gatesFail(failed.length))}</b>${failed.map((g) => `<span>${esc(gateText(g, t.langCode).label)}${g.detail ? ` — ${esc(gateText(g, t.langCode).detail)}` : ''}</span>`).join('')}</div>` : ''}
 
 <section class="top-sec" id="sec-rhythm">
-  <div class="sec-h"><span class="no">01</span><h2>${esc(t.secRhythm)}</h2><span class="note">${esc(t.rhythmNote)}</span></div>
+  <div class="sec-h"><span class="no">05</span><h2>${esc(t.secRhythm)}</h2><span class="note">${esc(t.rhythmNote)}</span></div>
   <div class="rhythm">
     <div class="legend">${rhythmLegend}</div>
 ${rhythmRows}
   </div>
 </section>
 
-<section class="top-sec" id="sec-segments">
-  <div class="sec-h"><span class="no">02</span><h2>${esc(t.secSegments)}</h2><span class="note">${esc(t.segmentsNote)}</span></div>
-${epBlocks}
-</section>
-
-<section class="top-sec" id="sec-refs">
-  <div class="sec-h"><span class="no">03</span><h2>${esc(t.secRefs)}</h2><span class="note">${esc(t.refsNote)}</span></div>
-  <table><thead><tr>${t.refCols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>
-  <tbody>
-${refRows}
-  </tbody></table>
-</section>
-
-<section class="top-sec" id="sec-dialogue">
-  <div class="sec-h"><span class="no">04</span><h2>${esc(t.secDialogue)}</h2><span class="note">${esc(t.dialogueNote)}</span></div>
-  <table><thead><tr>${t.dialogueCols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>
-  <tbody>
-${dlgRows}
-  </tbody></table>
-</section>
-
 <section class="top-sec" id="sec-gates">
-  <div class="sec-h"><span class="no">05</span><h2>${esc(t.secGates)}</h2></div>
+  <div class="sec-h"><span class="no">06</span><h2>${esc(t.secGates)}</h2></div>
   ${gateList}
   <p class="gsum">${failed.length ? `<b>${esc(t.gatesFail(failed.length))}</b>` : esc(t.gatesPass)}</p>
 </section>
@@ -1719,8 +1706,8 @@ document.querySelector('.expo').addEventListener('click', (e) => {
 
 const USAGE = `novel-creation.mjs — novel-creation skill 的确定性工具（参考图直出视频）
 
-  profiles | profile --selection selection.json
-  apply-profile DOC --production production.json [--overrides overrides.json] [--decisions decisions.json] [--confirm]
+  migrate-v3 INPUT [--out OUTPUT] [--confirm] [--script SCRIPT] [--outline OUTLINE]
+                                                默认预览；保留输入，拒绝覆盖目标
   seed <script.json> [--eps 1-3]               从剧本预填节拍工作底稿（打印到 stdout）
   validate <creation.json> --script <script.json>
            [--outline] [--cast] [--art]         校验；有违规逐条打印并 exit 1
@@ -1742,7 +1729,7 @@ validate/render/export/videos 都按参考图的相对路径（../characters/ima
 运行前先 cd 进 <工作目录>/creation/（与 characters/、art/ 平级）。本 skill 不落 .gates.jsonl、不加 stats 子命令。`;
 
 function readJson(path) {
-  const value = JSON.parse(readFileSync(resolve(path), 'utf8'));
+  const value = JSON.parse(new TextDecoder('utf-8', {fatal:true}).decode(readFileSync(resolve(path))));
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${path} 必须为 JSON 对象，不能作为缺少上游跳过`);
   return value;
 }
@@ -1789,11 +1776,21 @@ function loadCtx(rest, fromDir = '.') {
     if (productionPath) production = readJson(productionPath);
   }
 
-  return {
+  const ctx = {
     script: get('--script'), outline: get('--outline'), cast: get('--cast'), art: get('--art'),
-    recipes: shots ? loadShots(shots) : null,
-    production, productionPath,
+    recipes: shots ? loadShots(shots) : null, production, productionPath,
   };
+  const root = productionPath ? dirname(resolve(productionPath))
+    : ['creation','script','outline','art','characters'].includes(basename(resolve(fromDir))) ? dirname(resolve(fromDir)) : resolve(fromDir);
+  for (const [key, directory] of [['script','script'],['outline','outline'],['art','art'],['cast','characters']]) {
+    if (ctx[key] !== undefined) continue;
+    const dir = join(root, directory);
+    try { lstatSync(dir); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+    const candidates = readdirSync(dir).filter(name => name.endsWith('.json') && !name.startsWith('.') && !/manifest|\.backup|\.bak|\.tmp|\.review|\.migration|\.v2-backup/i.test(name)).sort();
+    if (candidates.length > 1) throw new Error(`上游 ${key} 不唯一，请显式提供路径：${candidates.join(', ')}`);
+    if (candidates.length === 1) ctx[key] = readJson(join(dir,candidates[0]));
+  }
+  return ctx;
 }
 
 /** 找到就报一声，找不到也报一声——静默是最坏的那种。 */
@@ -1831,36 +1828,23 @@ async function main(argv) {
   for (const name of ['--script','--outline','--cast','--art','--shots','--production','--eps','--lang','--out','--only','--timeout','--concurrency']) {
     if (argv.includes(name)) flag(argv, name);
   }
-  if (await handleCreativeCommand(argv, {skillRoot:SKILL_ROOT, stage:'creation'})) {
-    if (argv[0] === 'apply-profile' && argv.includes('--confirm')) {
-
-      const doc = readJson(argv[1]);
-      const ctx = loadCtx(argv.slice(2), dirname(resolve(argv[1])));
-      // Application's frozen CLI accepts no upstream flags. Discover only unambiguous
-      // JSON products in this project; never read sibling skill code or references.
-      const projectRoot = ctx.productionPath ? dirname(resolve(ctx.productionPath)) : dirname(dirname(resolve(argv[1])));
-      for (const [key, directory] of [['script','script'],['outline','outline'],['art','art'],['cast','characters']]) {
-        const dir = join(projectRoot, directory);
-        try { lstatSync(dir); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
-        const candidates = readdirSync(dir).filter(name => name.endsWith('.json') && !name.startsWith('.') && !/manifest|\.backup|\.bak|\.tmp|\.review/i.test(name)).sort();
-        if (candidates.length === 1) ctx[key] = readJson(join(dir,candidates[0]));
-        else if (candidates.length > 1) throw new Error(`上游 ${key} 不唯一，应用后须显式 validate 对账：${candidates.join(', ')}`);
-      }
-      const manifest = join(dirname(resolve(argv[1])), 'manifest.json');
-      if (existsSync(manifest)) console.error(`已有投产包 ${manifest}：配置变更后须重新导出并核对视频，未自动修改`);
-      ctx.imageExists = rel => existsSync(resolve(dirname(resolve(argv[1])), rel));
-      const result = checkup(doc, ctx);
-      console.error(JSON.stringify({postApplication:result}, null, 2));
-      console.error('应用只更新配置；请重新内容评审并核对已有投产包/视频是否失效。未提供的上游不能宣称已对账。');
-      if (result.blocking) process.exitCode = 1;
-    }
-    return;
-  }
   const [cmd, ...rest] = argv;
 
   if (!cmd || cmd === '-h' || cmd === '--help') {
     console.log(USAGE);
     process.exit(cmd ? 0 : 1);
+  }
+
+  if (cmd === 'migrate-v3') {
+    if (rest.filter(a => a === '--confirm').length > 1) throw new Error('重复 --confirm');
+    for (const arg of rest) if (arg.startsWith('--') && !['--confirm','--out','--script','--outline'].includes(arg)) throw new Error(`未知迁移参数 ${arg}`);
+    if (!rest[0]) throw new Error('用法：migrate-v3 INPUT [--out OUTPUT] [--confirm]');
+    const result = migrateFile(rest[0], {out:flag(rest,'--out'), confirm:rest.includes('--confirm'),
+      script:flag(rest,'--script') ? readJson(flag(rest,'--script')) : undefined,
+      outline:flag(rest,'--outline') ? readJson(flag(rest,'--outline')) : undefined});
+    console.log(JSON.stringify(result,null,2));
+    if (result.pending.length && !rest.includes('--confirm')) process.exitCode = 1;
+    return;
   }
 
   if (cmd === 'seed') {
@@ -1873,7 +1857,10 @@ async function main(argv) {
       if (!m) throw new Error('--eps 形如 3 或 1-6');
       epRange = m[2] ? [Number(m[1]), Number(m[2])] : [Number(m[1]), Number(m[1])];
     }
-    console.log(JSON.stringify(seedFromScript(readJson(path), epRange), null, 2));
+    const script = readJson(path);
+    const ctx = loadCtx([...rest, ...(!rest.includes('--script') ? ['--script', path] : [])], dirname(resolve(path)));
+    const seed = seedFromScript(script, epRange, ctx);
+    console.log(JSON.stringify(seed, null, 2));
     return;
   }
 

@@ -3,6 +3,7 @@
 // 仅在临时目录写入文件，不调用模型，不修改真实 HOME。
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -22,6 +23,18 @@ const run = (bin, args, opts = {}) => spawnSync(bin, args, {
 const report = (...args) => run(process.execPath, ['scripts/report.mjs', ...args]);
 
 try {
+  // demo-script.json 是被忽略的本地历史数据；干净克隆没有它时明确说明未检查。
+  if (existsSync(join(root, 'demo-script.json'))) {
+    const demo = JSON.parse(readFileSync(join(root, 'demo-script.json'), 'utf8'));
+    eq(demo.schemaVersion, 3, '根目录独立剧本采用 v3');
+    eq(demo.episodes.length, 40, '早期剧本迁移保持原有40集');
+    const prose = demo.episodes.map(e => ({ ep: e.ep, targetSeconds: e.targetSeconds, scenes: e.scenes }));
+    eq(createHash('sha256').update(JSON.stringify(prose)).digest('hex'), '168ce5a1f2321d87b56884a579bd2231fd63a8344d78d0aa4c5100ceaeb81862', '正文、资产、目标时长与特殊 delivery 保持原值');
+    for (const ep of demo.episodes) {
+      for (const field of ['endBeat', 'seedNote', 'hook', 'cliff', 'beatsClaimed', 'hookBeat']) ok(!(field in ep), `独立剧本 E${ep.ep} 不携带 ${field}`);
+      ok(ep.scenes.every(scene => Array.isArray(scene.flow) && scene.flow.length > 0), '剧本正文没有因迁移删除');
+    }
+  } else console.log('未检查 demo-script.json：本地历史数据不存在。');
   ok(!existsSync(join(root, 'skills/novel-storyboard')), '退役 skill 目录不存在');
   for (const lang of ['zh', 'en']) {
     const out = join(temp, `merged-${lang}.html`);
@@ -73,6 +86,13 @@ try {
   const partial = report('--cast', fixture('novel-characters', '-cast.json'), '--out', join(temp, 'partial.html'));
   eq(partial.status, 0, partial.stderr);
   ok(partial.stdout.includes('1 个面板'), '单阶段渲染保持可用');
+  const conflict = report('--cast', fixture('novel-characters', '-cast.json'), '--production', 'production.json', '--no-production', '--out', join(temp, 'conflict.html'));
+  eq(conflict.status, 1, '独立模式和显式制作配置不能混用');
+  ok(!existsSync(join(temp, 'conflict.html')), '冲突参数不写入报告');
+  const malformedProduction = join(temp, 'broken-production.json'); writeFileSync(malformedProduction, '{broken');
+  const brokenProduction = report('--cast', fixture('novel-characters', '-cast.json'), '--production', malformedProduction, '--out', join(temp, 'broken-production.html'));
+  eq(brokenProduction.status, 1, '损坏的显式制作配置不静默变成独立模式');
+  ok(!existsSync(join(temp, 'broken-production.html')), '没有成功面板时不生成报告');
   const retired = report('--storyboard', 'old.json', '--cast', join(sample, 'characters/收书人-cast.json'), '--out', join(temp, 'retired.html'));
   eq(retired.status, 1, '旧参数不再静默忽略');
   ok(retired.stderr.includes('未知选项 --storyboard'), '旧参数明确报错');

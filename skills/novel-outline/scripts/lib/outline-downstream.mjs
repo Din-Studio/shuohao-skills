@@ -1,14 +1,12 @@
 // Portable project-JSON interface checks only. Never import or execute sibling skills.
 import {readFileSync,readdirSync,lstatSync} from 'node:fs';
 import {join} from 'node:path';
-import {validateSelection} from './creative.mjs';
+import {documentErrors} from './document.mjs';
 const object=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
 const arr=x=>Array.isArray(x)?x:[];
 const positive=x=>typeof x==='number'&&Number.isFinite(x)&&x>0;
 const integer=x=>Number.isInteger(x)&&x>0;
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
-const dimensions=['genre','narrativeStyle','structure','pacing'];
-const sameSelection=(a,b)=>dimensions.every(k=>a?.[k]?.id===b?.[k]?.id&&a?.[k]?.version===b?.[k]?.version);
 const coord=x=>Array.isArray(x)&&x.length===2&&x.every(integer);
 function coordinates(ep) {
  const keys=[];
@@ -17,7 +15,7 @@ function coordinates(ep) {
 }
 const position=(keys,p)=>coord(p)?keys.indexOf(p.join(':')):-1;
 
-export function checkKnownDownstream(outline,root) {
+export function checkKnownDownstream(outline,root,options={}) {
  const gates=[], files=[], records=[];
  const add=(file,stage,id,messages=[],extra={})=>gates.push({file,stage,id,category:'base',level:'error',status:messages.length?'fail':'pass',messages,...extra});
  for(const stage of ['script','creation']) {
@@ -41,10 +39,9 @@ export function checkKnownDownstream(outline,root) {
   }
  }
  for(const {file,stage,doc} of records) {
-  add(file,stage,'version',doc.schemaVersion===2?[]:['schemaVersion must be 2']);
-  const selection=doc.creativeContext?.selection, selectionErrors=validateSelection(selection);
-  if(!sameSelection(selection,outline.creativeContext?.selection))selectionErrors.push('creativeContext.selection differs from applied outline; synchronize explicitly');
-  add(file,stage,'selection',selectionErrors);
+  add(file,stage,'version',doc.schemaVersion===3?[]:['schemaVersion must be 3; run migrate-v3']);
+  add(file,stage,'document',documentErrors(doc,options.production));
+  add(file,stage,'source',doc.source===outline.source?[]:['source must match outline']);
   const errors=[];
   if(!Array.isArray(doc.episodes)||!doc.episodes.length)errors.push('episodes must be a non-empty array');
   let previous=0;
@@ -63,7 +60,7 @@ export function checkKnownDownstream(outline,root) {
    if(!positive(ep?.targetSeconds)||ep.targetSeconds!==outline.params?.minutesPerEpisode*60)duration.push(`${label}: targetSeconds must equal outline minutesPerEpisode × 60`);
    checkProjection(ep,upstream,label,projection);
    if(!Array.isArray(ep?.scenes)||!ep.scenes.length||ep.scenes.some(s=>!Array.isArray(s?.flow)||!s.flow.length))claims.push(`${label}: non-empty scenes/flow required to locate claims`);
-   if(position(keys,ep?.openingBeat)<0||position(keys,ep?.endBeat)<0||position(keys,ep?.endBeat)!==keys.length-1)claims.push(`${label}: invalid openingBeat/endBeat`);
+   if(ep?.openingBeat!==undefined&&position(keys,ep.openingBeat)<0)claims.push(`${label}: invalid openingBeat`);
    const expected=arr(outline.beats).filter(b=>b?.episode===ep?.ep).map(b=>b?.id);
    if(!Array.isArray(ep?.beatClaims)||!same(arr(ep?.beatClaims).map(c=>c?.beatId),expected))claims.push(`${label}: beatClaims must match all outline IDs in order`);
    let last=-1;
@@ -79,7 +76,7 @@ export function checkKnownDownstream(outline,root) {
  }
  for(const {file,stage,doc} of records.filter(r=>r.stage==='creation')) {
   const duration=[],claims=[],projection=[],missing=[];
-  const tolerance=doc.params?.tolerance;
+  const tolerance=doc.params?.tolerance===undefined?0.15:doc.params.tolerance;
   if(typeof tolerance!=='number'||!Number.isFinite(tolerance)||tolerance<0||tolerance>=1)duration.push('params.tolerance must be finite in [0,1)');
   for(const ep of arr(doc.episodes)) {
    const label=`ep${ep?.ep}`, upstream=arr(outline.episodes).find(e=>e?.ep===ep?.ep);
@@ -94,9 +91,9 @@ export function checkKnownDownstream(outline,root) {
    if(script) {
     const upstreamFile=matches[0].record.file;
     if(gates.some(g=>g.file===upstreamFile&&g.status==='fail'))claims.push(`${label}: script interface invalid (${upstreamFile})`);
-    for(const key of ['openingBeat','endBeat'])if(!same(ep?.[key],script[key]))projection.push(`${label}: ${key} differs from script`);
+    if(!same(ep?.openingBeat,script.openingBeat))projection.push(`${label}: openingBeat differs from script; do not invent a missing opening marker`);
    }
-   if(!coord(ep?.openingBeat)||!coord(ep?.endBeat))claims.push(`${label}: valid openingBeat/endBeat coordinates required`);
+   if(ep?.openingBeat!==undefined&&!coord(ep.openingBeat))claims.push(`${label}: valid openingBeat coordinates required when provided`);
    let total=0, lastScene=0,lastBeat=0,openingCovered=false;
    const keys=script?coordinates(script):[], covered=[];
    if(!Array.isArray(ep?.segments)||!ep.segments.length)claims.push(`${label}: non-empty segments required`);
@@ -117,8 +114,9 @@ export function checkKnownDownstream(outline,root) {
     }
    }
    if(script&&!same(covered,keys))claims.push(`${label}: cuts must claim every script beat exactly once in order`);
-   if(!openingCovered)claims.push(`${label}: openingBeat must be covered by an actual cut`);
-   if(!same(ep?.endBeat,[lastScene,lastBeat]))claims.push(`${label}: endBeat must be the last claimed beat`);
+   if(ep?.openingBeat!==undefined&&!openingCovered)claims.push(`${label}: openingBeat must be covered by an actual cut`);
+   // End is derived from current script coordinates; complete coverage above checks it.
+
    const target=outline.params?.minutesPerEpisode*60;
    if(ep?.targetSeconds!==undefined&&ep.targetSeconds!==target)duration.push(`${label}: targetSeconds differs from outline`);
    const epsilon=Number.EPSILON*Math.max(1,Math.abs(target),Math.abs(total))*4;
@@ -131,6 +129,5 @@ export function checkKnownDownstream(outline,root) {
 }
 function checkProjection(ep,upstream,label,errors) {
  if(!upstream){errors.push(`${label}: no valid outline episode for projection reconciliation`);return;}
- if(ep?.opening!==upstream.opening)errors.push(`${label}: opening differs from outline`);
- if(!object(ep?.ending)||Object.keys(ep.ending).some(k=>!['mode','event'].includes(k))||ep.ending.mode!==upstream.ending?.mode||ep.ending.event!==upstream.ending?.event)errors.push(`${label}: ending mode/event differs from outline or contains extra fields`);
+ for(const key of ['opening','ending','endBeat'])if(ep?.[key]!==undefined)errors.push(`${label}: ${key} is removed in project v3; run migrate-v3`);
 }

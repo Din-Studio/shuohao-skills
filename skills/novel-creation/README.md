@@ -1,30 +1,22 @@
 # novel-creation
 
-从 v2 剧本制作参考图直出视频方案。**不生成分镜图，不改写上游故事。**
+从 v3 剧本制作参考图直出视频方案。**不生成分镜图，不改写上游故事。**
 
-- 生成段受模型技术限制；镜头表达受当前创作规则控制。
-- `params.rules.cutDuration` 支持 off/warn/error，不再统一要求二至五秒切镜。
-- 接收 opening、ending、openingBeat、endBeat 和节点 ID 认领。开放结尾不会被改成追更悬念。
-- 分别展示基础检查、策略提醒、来源状态、缺少上游和内容未评审。
-- 保留参考图挂载、通用提示词、双语报告、原始 JSON 导出及离线交接计划。实际生成交给独立安装的 ly-video，见 [生成交接](references/media-handoff.md)。
+- JSON 保存段、镜头、真实节拍认领和资产关系。创作方法统一在[创作指南](references/创作指南.md)。
+- opening/ending 读取当前大纲或独立剧本；结束坐标从实际正文计算，不持久化。可选 openingBeat 只保留上游显式标注，缺省不伪造映射。
+- 不需要策略选择、摘要或应用流程。项目要求采用唯一的自然语言 creativeBrief。
+- 保留模型时长硬限制、参考图身份与顺序、台词原文和镜头顺序覆盖检查。没有通用镜头建议时长硬门。
+- 报告先展示分镜正文，再展示资产与当前交接、估时、结构检查和内容评审状态。支持中文／英文。
+- 显式 v2 → v3 迁移默认预览，保留输入和语义工作记录，拒绝覆盖目标。
 
 ## 使用
 
-完整流程和命令见 [SKILL.md](SKILL.md)，数据见 [schema](references/schema.md)，策略见 [profile-contract](references/profile-contract.md)，旧数据见 [迁移指南](references/migration.md)。Node 18+，零 npm 依赖；整个目录可单独拷走。
+完整步骤、命令及六个自测入口见 [SKILL.md](SKILL.md)。数据接口见 [schema](references/schema.md)，旧数据见[迁移指南](references/migration.md)。Node 18+，只有标准库依赖；整个目录可单独复制，不需要兄弟 skill。
 
-```bash
-node scripts/novel-creation.mjs profiles
-node scripts/novel-creation.mjs profile --production examples/production.json
-node scripts/selftest.mjs
-node scripts/strategy-selftest.mjs
-node scripts/profile-selftest.mjs
-node scripts/fixes-selftest.mjs
-```
-
-新建产物先 seed，再显式 apply-profile。应用前预览当前值、新组合和旧覆盖；确认才备份并写入。validate/render 不重新应用模板。视频模型指南与创作指南分别读取。实际视频生成需要授权和费用告知，本轮测试不调用模型。
+生产配置和唯一上游自动发现；多候选、损坏或不可读输入失败。缺少上游明确显示未检查，不计为通过。生成与外部媒体交接保持原协议，需要另行授权和费用告知；自测不调用模型。
 
 ## 自有样例
 
-《收书人》先有故事，后有分镜。一集、四段、九个镜头、十个节拍；目标三十秒，镜头计划三十二秒。内容评审后以一句自语明确字条与姐妹的关系；角色寻找妹妹的行动只得到旧书线索，没有伪造寻人成功。v2 夹具迁移和内容限制见 [MIGRATION.md](examples/MIGRATION.md)。现有图片只作参考图测试，不宣称本轮生成。
+《收书人》先有故事，后有分镜。一集、四段、九个镜头、十个节拍；目标三十秒，镜头计划三十二秒。陈叙只获得妹妹的旧书线索，没有找到妹妹。本轮只迁移数据表达，没有重创故事、台词或分镜。沿用既有图片，不声称本轮生成。迁移决定及实际成片限制见 [MIGRATION.md](examples/MIGRATION.md)。
 
-报告 HTML 是可重新渲染的派生产物，不进入版本控制。不新增质量门失败累积日志或统计功能。
+HTML 是可重建报告，不进入版本控制。结构有效不代表内容质量或成片效果通过。

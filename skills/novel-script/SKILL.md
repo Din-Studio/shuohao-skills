@@ -1,11 +1,11 @@
 ---
 name: novel-script
-version: 2.0.0
+version: 3.0.0
 description: |
-  把分集故事写成结构化场次与节拍流。支持独立创作或 outline v2 严格投影，
-  按稳定节点 ID 认领核心表现范围，核对开场、集尾和上游目标时长。
-  题材、叙事风格、结构、节奏通过本地 profiles 显式选择；不预设密集兑现。
-  输出 JSON、Markdown、离线中英报告。剧本不分镜、不出图、不调用付费模型。
+  把故事写成结构化场次、动作和台词。支持独立创作及 outline v3，
+  按节点 ID 认领核心表现范围，从正文计算结束位置，读取当前上游计划。
+  创作方向由自然语言要求与本地指南确定，不预设冷开场、密集动作或悬念集尾。
+  输出 JSON、Markdown、离线中英报告。不分镜、不出图、不调用付费模型。
   Use when asked to 写剧本、台词、场次、写戏、screenwriting、script。
 allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
 triggers:
@@ -21,94 +21,54 @@ metadata:
   runtimes: [pi, claude-code, codex]
 ---
 
-# novel-script v2
+# novel-script v3
 
-剧本负责人物行为和表达。分镜、镜号、镜头节奏、模型提示词、参考图和生成调度属于视频创作阶段。本 skill 自包含，只交换项目 JSON，不 import 兄弟代码，不读取兄弟样例或第三方 skill。
+剧本负责人物行为和表达。分镜、镜号、模型提示词、参考图及生成调度属于视频制作阶段。整个 skill 可单独复制，只有 Node 18+ 标准库依赖，不读取兄弟代码、兄弟样例或第三方 skill。
 
-`{baseDir}` 为本文件所在目录。Node 18+，标准库，无安装依赖。
+{baseDir} 是本文件目录。命令、示例和自测入口统一见 [README](README.md)，不在多份指南重复维护。
 
-## 1. 输入与创作选择
+## 输入与要求
 
-读取工作目录的 `production.json`，或明确声明独立模式。已有项目没有 creative 时不偷偷套用新策略。新项目需确认四维选择；自动驾驶可以代为决定，但必须逐项汇报。画幅、画风和题材不自动决定节奏。
+读取本地 [创作指南](references/创作指南.md) 和 [数据契约](references/schema.md)。读取用户要求以及工作目录 production.json，或明确声明独立模式。
 
-读取本地 [schema.md](references/schema.md)、[script-pass.md](references/script-pass.md)、[review-core.md](references/review-core.md) 和 [profile-contract.md](references/profile-contract.md)。
+production v3 的可选 creativeBrief 是项目要求；独立 script 可保存自己的 creativeBrief。两者同时非空时要求人工合并进 production，再删除阶段副本。自然语言不解析成枚举、门槛或模型参数。视觉 style 和媒体协议不在本阶段更改。
 
-有上游时读取 outline v2、可选 art/cast。没有上游也可以创作，不要求安装其他 skill；明确哪些对账无法执行。提供损坏或不支持版本的上游必须失败，不能伪装成缺少上游。
+有上游时读取当前 outline v3，可选 art/cast。CLI 自动发现唯一上游，多个候选必须显式指定。损坏输入、错误版本和悬空链接不能当作缺少上游。无大纲也可写作，但不宣称节点、问题及全剧结局已对账。
 
-```bash
-node {baseDir}/scripts/novel-script.mjs profiles
-node {baseDir}/scripts/novel-script.mjs profile --selection selection.json
-```
+## 骨架与逐批写戏
 
-四维全部加载本地匹配版本与指南。不能以相近 profile 替代缺失文件。来源漂移时停止继续创作：恢复原文件，或明确升级选择与版本。历史校验可以按已有有效参数运行，但必须展示来源提醒。
+项目产物放入项目根 script/。JSON 是唯一编辑源，Markdown/HTML 是派生视图。
 
-## 2. 建立骨架并显式应用
+seed 只建立集号、目标、按序 B ID 认领与空 scenes，不复制 opening/ending、Q、项目要求、默认参数或 seedNote。骨架检查通过不代表完整交付。
 
-所有正式产物放入 `<工作目录>/script/`。JSON 是唯一编辑源，Markdown/HTML 是派生视图。
+先确定故事，再安排事件，最后写场次。建议每批最多三集，传递人物位置、知情状态、道具状态与未兑现承诺。正文 flow 是有序动作和台词，不要求机械交替。characters 包括无台词人物，lighting/delivery 仅在确有表达价值时填写。
 
-```bash
-mkdir -p <工作目录>/script
-node {baseDir}/scripts/novel-script.mjs seed outline.json --eps 1-3 > <工作目录>/script/作品-script.json
-node {baseDir}/scripts/novel-script.mjs apply-profile <工作目录>/script/作品-script.json --production <工作目录>/production.json
-# 审阅预览、冲突、旧覆盖和手工差异，再显式决定：
-node {baseDir}/scripts/novel-script.mjs apply-profile <工作目录>/script/作品-script.json --production <工作目录>/production.json --decisions decisions.json --confirm
-```
+有大纲时每个当集节点都需认领，未分类节点同样不能遗漏。核心段按上游顺序、包含两端、不重叠，允许跨场次，共同铺垫可在范围之外。独立无节点时允许省略 beatClaims。
 
-独立模式以 `--selection selection.json` 代替 `--production`。没有 outline 时按 schema 手建骨架：集数和目标时长明确，场次为空，两个位置为 null，未规划上游节点时 beatClaims 为空数组。不伪造上游。
+openingBeat 可选；省略不是确认第一拍。结束坐标由最后一个实际 flow 项计算，不保存 endBeat。上游 opening/ending 只有大纲一份编辑源，报告读取当前实际计划。修改正文后重新计算受影响的认领坐标并检查；不能因旧坐标仍存在就声称内容有效。
 
-seed 逐字复制 opening 与 ending.mode/event，只按 ID 复制 beatClaims，绝不复制 Q。位置为 null，scenes 为空。seed 不冒充已应用策略，不复制大纲规则或来源摘要。
+## 结构检查与内容评审
 
-应用从中性规则重建，非策略估时参数保持不变。旧覆盖必须选择保留、放弃或重新填写，不能隐式沿用。模块备份并原子写入。确认应用后 CLI 重检本地完整契约；骨架会显示未完成。另运行 `validate --stage skeleton` 只检查骨架阶段。应用不重写故事。
+运行 validate/checkup。结构、引用、数值、版本或上下游目标不一致会阻断。粗略估时偏离仅提醒，不能据此强制删除有效表演。估时参数只有用户明确覆盖时保存，所有时间轴使用统一有效参数。
 
-## 3. 逐批写戏
+接着按创作指南阅读实际正文，检查动机、因果、信息、承诺、跨集状态及开场集尾表达。Q 由大纲维护；本阶段按 resolves 和 beatClaims 展示回答落点，不建第二份问题表。
 
-每批最多 3 集。顺序衔接；只有边界状态和跨批承诺明确时才并发。没有子代理时在当前会话顺序完成。
+记录具体分集、节点、坐标、原文、判断和复核状态到当前工作记录。不保存永久评分、失败累积日志或统计。自动检查始终声明内容评审未执行。要求变更后重新评审，不以指南已读取或字段完整代替内容结论。
 
-先确定故事，再安排节点，再写场次。读取上游事件 setup/outcome、实际结尾方式和人物状态。flow 是动作与台词的有序序列，不要求机械交替，不强制每场动作数量或连续台词数量。
+## 报告与交接
 
-- 每个上游节点分别认领。核心段按大纲顺序排列、两端包含、互不重叠。
-- 共同铺垫可以在核心段之外；核心段允许同集跨场次。
-- openingBeat 是有效坐标。endBeat 必须指向最后一拍。
-- opening/ending 是计划投影，不能在剧本中同义改写后冒充已对账。正文可以换表达。
-- 上游需要改动时先修订计划，再重新投影。不要通过改标签伪造节点落地。
+报告优先展示正文，再展示关键事件、必要计划、资产、台词本、估时与结构状态。未填写的可选字段不建立大面积空配置区。原始 JSON 导出不插入默认值、统计或评审结论。派生 HTML 不进版本控制。
 
-时长估算不等于真实表演。压缩先处理重复表达、无效过渡和不影响因果的动作，保护证据、人物选择与结果。仍无法容纳则返回大纲调整事件或时长。不执行“写超先删除动作”，不要求开场运动或结尾悬念。
+CLI 同时检查已知 creation v3 的当前实际 flow 顺序覆盖、作品和集号、可选开场落点及目标时长。过期或损坏下游返回非零，但不会擅自改文件。该检查不代替制作阶段的模型硬限制、资产、参考图身份顺序及内容评审。
 
-## 4. 基础检查、策略检查与内容评审
+汇报产物路径、集数、场次、台词句数、估时、阻断问题、提醒、缺少上游的范围和内容评审状态。不将局部通过冒称完整联合交付。
 
-```bash
-node {baseDir}/scripts/novel-script.mjs validate <工作目录>/script/作品-script.json --outline outline.json --art art.json --production <工作目录>/production.json
-node {baseDir}/scripts/novel-script.mjs checkup <工作目录>/script/作品-script.json --outline outline.json --json
-```
+## 自动驾驶与旧数据
 
-基础失败或 error 策略失败返回非零。warn 未满足是提醒，不是通过。off 是 skipped/policy-disabled。缺上游是 skipped/missing-upstream，与关闭规则分开。基础引用、位置、ID、节点范围与目标时长不能通过策略关闭。
+仅 production.autopilot === true 开启自动驾驶。审批权转移不取消逐项决定汇报、结构检查、内容评审或止损。本阶段不调用付费模型。
 
-接着按 review-core 与已加载的策略指南评审。引用具体分集、节点、坐标和台词。检查人物动机、因果、信息、节奏、跨批状态与开场集尾的实际表达。Q 由大纲管理；剧本报告按 ep 与 resolves/beatClaims 展示回答位置，不建立第二份问题表。
+旧数据只通过 [显式迁移](references/migration.md)，默认预览，不覆盖原文件。无法确定如何合并的信息保留为待确认项，不能直接删除。
 
-内容评审材料放当前工作记录或 `.work/`。不保存永久分数、爆款概率或门失败历史。自动检查不会宣布内容评审通过。
+## 自有样例
 
-## 5. 渲染与交付
-
-```bash
-node {baseDir}/scripts/novel-script.mjs render <工作目录>/script/作品-script.json --md --outline outline.json > <工作目录>/script/作品-script.md
-node {baseDir}/scripts/novel-script.mjs render <工作目录>/script/作品-script.json --html --outline outline.json --art art.json --cast cast.json > <工作目录>/script/script-report.html
-# 英文界面增加 --lang en
-```
-
-报告先展示作品承诺、选择快照、有效参数、覆盖与来源，再展示正文、逐拍估算轴、节点计划与实际核心段、Q 回答落点、资产、台词本及检查状态。导出不修改原始 JSON，不写入默认值或评审结论。HTML 不进版本控制。
-
-汇报集数、场次、句数、估时、阻断失败、提醒、跳过项、内容评审状态和产物路径。无 outline 不宣称节点与全剧结局已对账；无 production 不宣称项目选择一致。显式应用后，CLI 自动读取项目中唯一的已知上游，并检查已知 creation 的版本、选择、集号、开场／集尾及实际节拍覆盖；损坏或过期输入返回非零。完整联合交付仍须 creation 自身的模型能力、资产与内容检查。本阶段不 import 下游校验器，也不擅自修改其文件。
-
-## 自动驾驶
-
-仅 `production.autopilot === true` 生效。审批权转移，不取消策略确认记录、结构检查、内容评审或止损。批次照旧，逐项决定写入汇报。不调用付费模型。
-
-## 自有样例与自测
-
-先阅读 [故事提案](examples/故事提案.md)。《修伞簿》三个修补单元，前两集没有 payoff，普通集 closure，最终 open，不凭纹路认亲。所有上游 fixture 均在 examples 内本地编写。
-
-```bash
-node {baseDir}/scripts/selftest.mjs
-```
-
-样例与测试不依赖兄弟目录。旧数据按 [迁移指南](references/migration.md) 人工确认后迁移；v1 不再运行时双读。
+先阅读 [《修伞簿》故事提案](examples/故事提案.md)。三集、六场、三十句台词；先修伞，再在双方同意下询问，不凭纹路认亲。前两集 closure，最终 open。故事、节点与正文保持既有内容，只调整契约表达。所有消费 fixture 均由本 skill 自有，不依赖兄弟目录。

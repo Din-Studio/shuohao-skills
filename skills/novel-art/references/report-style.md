@@ -39,4 +39,4 @@ KPI 带    场景数（主场景 + 变体）/ 一致性锚点 / 光照状态 / �
 
 ## 创作背景与检查状态
 
-只展示项目提供的 genre/narrativeStyle 背景，不生成 profile 应用记录或 creativeContext。检查对象为 status/category/level；pass、fail、skipped 分开呈现，skipped 不计为通过。报告明确内容评审未执行，导出 JSON 不附加背景副本、统计或来源摘要。
+仅在提供时展示 creativeBrief 原文，不生成策略应用记录。资产正文与交接关系优先，结构问题和内容评审状态随后。检查对象为 status/category/level；pass、fail、skipped 分开呈现，skipped 不计为通过。报告明确内容评审未执行，导出 JSON 不附加要求副本、统计或来源摘要。

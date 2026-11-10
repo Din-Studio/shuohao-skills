@@ -15,47 +15,16 @@
       "name": "周亦",
       "role": "深夜顾客",
       "arc": "卖掉一本自己不知道分量的书，转身离开",
-      "tier": "supporting"
+      "tier": "support"
     }
   ],
-  "note": "本 skill 自有《收书人》的本地上游 v2 夹具。逐段核对原文与既有 flow 后手工迁移；不是 novel-outline 正式样例，不声称完成其全部预算/改编材料检查。未将寻人未完成伪装成兑现或 required 问题。",
-  "schemaVersion": 2,
+  "note": "本 skill 自有《收书人》本地 v3 上游夹具。保留既有故事、事件与资产；未将寻人未完成伪装成兑现或 required 问题。",
+  "schemaVersion": 3,
   "params": {
     "episodes": 1,
     "minutesPerEpisode": 0.5,
     "genre": "亲情寻踪",
-    "rules": {
-      "payoffCoverage": {
-        "level": "off"
-      },
-      "firstMajor": {
-        "level": "off"
-      },
-      "majorGap": {
-        "level": "off"
-      },
-      "endingPayoff": {
-        "level": "off"
-      },
-      "endingModes": {
-        "level": "off"
-      },
-      "optionalQuestions": {
-        "level": "off"
-      },
-      "stateProgress": {
-        "level": "off"
-      },
-      "arcCoverage": {
-        "level": "off"
-      },
-      "arcPayoff": {
-        "level": "off"
-      }
-    },
-    "defaults": {
-      "questionResolveWithin": null
-    }
+    "adaptMode": "原创"
   },
   "story": {
     "focusCharacterIds": [
@@ -84,7 +53,8 @@
         "B01",
         "B02",
         "B03"
-      ]
+      ],
+      "function": "承载熟悉笔迹与字条，使陈叙确认与妹妹有关的旧物线索。"
     }
   ],
   "beats": [
@@ -92,8 +62,6 @@
       "id": "B01",
       "episode": 1,
       "position": "opening",
-      "kind": "event",
-      "type": "收书",
       "setup": "陈叙在深夜旧书店继续收书。",
       "outcome": "周亦抱着诗集进门卖书，陈叙示意他放上柜台。"
     },
@@ -101,8 +69,6 @@
       "id": "B02",
       "episode": 1,
       "position": "middle",
-      "kind": "turn",
-      "type": "辨认笔迹",
       "setup": "陈叙翻开顾客卖来的旧诗集。",
       "outcome": "熟悉的笔迹让她停顿；她不解释缘由，以双倍价钱买下书。"
     },
@@ -110,8 +76,6 @@
       "id": "B03",
       "episode": 1,
       "position": "ending",
-      "kind": "event",
-      "type": "确认旧物",
       "setup": "周亦已经离开，陈叙独自再次翻书。",
       "outcome": "字条滑落，她认出自己写下的「致晚晚」；书曾属于妹妹，妹妹的去向仍未知。"
     }
@@ -120,23 +84,19 @@
     {
       "ep": 1,
       "opening": "深夜旧书店快打烊时，周亦抱着一本卷边诗集进门，询问能否卖书。",
-      "synopsis": "周亦深夜卖书，陈叙认出扉页笔迹后以双倍价钱收下。独处时她发现自己写给妹妹的字条，确认这本书曾经属于妹妹。",
+      "synopsis": "周亦深夜卖书，陈叙认出扉页笔迹后以双倍价钱收下。独处时她发现自己写给妹妹的字条，确认这本书曾经属于妹妹。 她此前只有长期寻找的习惯；本夜获得旧物线索，仍不知道妹妹现在的去向。",
       "ending": {
         "mode": "open",
         "event": "陈叙在周亦离开后拾起书中滑落的字条，认出自己写给妹妹的「致晚晚」，独自留在书店灯下。"
       },
-      "stateChange": {
-        "before": "只有长期寻找的习惯，没有本夜的新线索。",
-        "after": "认出与妹妹有关的旧诗集，但不知道妹妹现在的去向。"
-      },
-      "characters": [
+      "characterIds": [
         "C01",
         "C02"
       ],
-      "scenes": [
+      "sceneIds": [
         "S01"
       ],
-      "props": [
+      "propIds": [
         "P01"
       ]
     }

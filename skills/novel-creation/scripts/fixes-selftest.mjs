@@ -20,19 +20,19 @@ const json=(path,value)=>{mkdirSync(dirname(path),{recursive:true});writeFileSyn
 const cli=(...args)=>spawnSync(process.execPath,[join(root,'scripts/novel-creation.mjs'),...args],{cwd:temp,encoding:'utf8'});
 const gate=(d,id,ctx={})=>C.gateReport(d,ctx).find(g=>g.id===id);
 const short=()=>{
-  const d=clone(doc);d.params.rules.cutDuration={level:'off'};
-  d.episodes=d.episodes.slice(0,1);const e=d.episodes[0];e.segments=e.segments.slice(0,1);e.openingBeat=[1,1];e.endBeat=[1,1];
+  const d=clone(doc);
+  d.episodes=d.episodes.slice(0,1);const e=d.episodes[0];e.segments=e.segments.slice(0,1);
   Object.assign(e.segments[0],{images:[],cuts:[{beats:[1,1],seconds:5,size:'wide',camera:'Static Shot',characters:[]}],prompt:'shots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.'});return d;
 };
 
 try {
   await test('R1 exact thirds: dialogue fit fails 14/3 > 4.6',()=>{
     const s=clone(script);s.params.charsPerSecond=3;
-    s.episodes=[{ep:1,targetSeconds:5,opening:'start',ending:{mode:'open',event:'end'},openingBeat:[1,1],endBeat:[1,15],beatClaims:[],scenes:[{sceneId:'S01',characters:['C01'],flow:Array.from({length:15},()=>({speaker:'C01',line:'a'}))}]}];
+    s.episodes=[{ep:1,targetSeconds:5,opening:'start',ending:{mode:'open',event:'end'},openingBeat:[1,1],beatClaims:[],scenes:[{sceneId:'S01',characters:['C01'],flow:Array.from({length:15},()=>({speaker:'C01',line:'a'}))}]}];
     assert.deepEqual(scriptProblems(s),[]);
     const beats=C.expandScript(s).get(1).scenes[0].beats;
     assert.equal(beats[0].seconds,1/3);assert.equal(beats.reduce((n,b)=>n+b.seconds,0),Array(15).fill(1/3).reduce((a,b)=>a+b,0));
-    const d=short(),e=d.episodes[0];Object.assign(e,{opening:'start',ending:s.episodes[0].ending,endBeat:[1,15]});
+    const d=short(),e=d.episodes[0];
     e.segments[0].cuts=[{...e.segments[0].cuts[0],beats:[1,14],seconds:4.6},{...e.segments[0].cuts[0],beats:[15,15],seconds:0.4}];
     e.segments[0].prompt='shots:\n[Shot 1] wide shot, Static Shot — says "a".\n[Shot 2] wide shot, Static Shot — says "a".\nambience: silence.';
     assert.equal(gate(d,'dialogue-fit',{script:s}).status,'fail');
@@ -46,7 +46,7 @@ try {
     assert.equal(manifest.segments[0].seconds,seconds);
   });
   await test('R1 valid upper bound stays accepted',()=>{const d=short();d.episodes[0].segments[0].cuts[0].seconds=15;assert.deepEqual(C.validateCreation(d),[]);});
-  for(const beat of [{line:'a',action:'b'},{line:''},{action:''},{line:'a'}]) await test(`R1 invalid timing is null ${JSON.stringify(beat)}`,()=>assert.equal(C.beatSeconds(beat,{}),null));
+  for(const beat of [{line:'a',action:'b'},{line:''},{action:''},{}]) await test(`R1 invalid timing is null ${JSON.stringify(beat)}`,()=>assert.equal(C.beatSeconds(beat,{}),null));
   await test('R1 fractional segment and episode sums remain unrounded',()=>{
     const d=short();d.episodes[0].segments[0].cuts[0].seconds=5.04;
     d.episodes.push({...clone(d.episodes[0]),ep:2});assert.equal(C.computeStats(d).totals.seconds,10.08);
@@ -83,19 +83,17 @@ try {
     rmSync(join(temp,'second.png'));
     assert.equal(cli('videos',manifestPath,'--dry-run').status,1,'missing reference fails even in preview');
   });
-  for(const missing of ['script','outline']) await test(`R4 independent selection checks: missing ${missing}`,()=>{
-    const ctx={script:clone(script),outline:clone(outline),production};
-    for(const key of ['script','outline'])ctx[key].creativeContext={selection:clone(production.creative.selection)};
-    assert.equal(gate(doc,'upstream-selection',ctx).status,'pass');delete ctx[missing].creativeContext;
-    assert.equal(gate(doc,`${missing}-selection`,ctx).reason,'stage-incomplete');assert.equal(gate(doc,'upstream-selection',ctx).status,'skipped');
-    const other=missing==='script'?'outline':'script';assert.equal(gate(doc,`${other}-selection`,ctx).status,'pass');
-    ctx[other].creativeContext.selection.pacing.id='wrong';assert.equal(gate(doc,'upstream-selection',ctx).status,'fail');
+  for(const stage of ['script','outline']) await test(`R4 project and ${stage} brief conflict requires manual merge`,()=>{
+    const ctx={script:clone(script),outline:clone(outline),production:{...production,creativeBrief:'保持克制'}};
+    assert.equal(gate(doc,'project-contract',ctx).status,'pass');
+    ctx[stage].creativeBrief='人物表达强烈';
+    assert.equal(gate(doc,'project-contract',ctx).status,'fail');
   });
-  for(const key of ['charsPerSecond','actionSeconds']) for(const value of [undefined,null,0,-1,'4',NaN,Infinity]) await test(`R5 explicit timing ${key}=${value}`,()=>{
+  for(const key of ['charsPerSecond','actionSeconds']) for(const value of [null,0,-1,'4',NaN,Infinity]) await test(`R5 explicit timing ${key}=${value}`,()=>{
     const s=clone(script);s.params[key]=value;assert.ok(scriptProblems(s).some(m=>m.includes(key)));assert.throws(()=>C.seedFromScript(s));
     assert.equal(gate(doc,'script-contract',{script:s}).status,'fail');assert.throws(()=>C.renderMarkdown(doc,{script:s}));
   });
-  for(const params of [undefined,null,[]]) await test(`R5 invalid params ${JSON.stringify(params)}`,()=>{const s=clone(script);s.params=params;assert.ok(scriptProblems(s).length);assert.equal(gate(doc,'script-contract',{script:s}).status,'fail');});
+  for(const params of [null,[]]) await test(`R5 invalid params ${JSON.stringify(params)}`,()=>{const s=clone(script);s.params=params;assert.ok(scriptProblems(s).length);assert.equal(gate(doc,'script-contract',{script:s}).status,'fail');});
   await test('R5 overflowing dialogue estimate is invalid, not zero',()=>{const s=clone(script);s.params.charsPerSecond=Number.MIN_VALUE;assert.ok(scriptProblems(s).length);assert.equal(C.expandScript(s).get(1).scenes[0].beats[1].seconds,null);assert.equal(gate(doc,'script-contract',{script:s}).status,'fail');});
   await test('R6 props omitted remains valid and seeds empty props',()=>{
     const s=clone(script);s.episodes.forEach(e=>e.scenes.forEach(sc=>delete sc.props));assert.deepEqual(scriptProblems(s),[]);assert.deepEqual(C.seedFromScript(s).episodes[0].seedScenes[0].props,[]);

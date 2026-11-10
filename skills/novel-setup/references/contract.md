@@ -36,9 +36,9 @@
 
 临时分卷摘要与候选角色卡放各阶段自己的 `.work/`。报告 HTML 可以重新渲染，不进入版本控制。
 
-## 创作选择
+## 创作要求
 
-先读 [creative-selection.md](creative-selection.md)。setup 记录四维选择，不加载任何 profile。outline/script 消费四维，creation 按本阶段契约加载 genre/narrativeStyle/pacing 并记录 structure；characters/art 只记录 genre/narrativeStyle 背景，不新增 creativeContext。本地 profile 缺失不影响资产阶段，也不允许伪造来源摘要。
+先读 [creative-brief.md](creative-brief.md)。production 的 creativeBrief 是唯一项目创作要求。各阶段读取原文，不建立选择、版本或摘要快照。独立 outline/script/creation 可以有本地 creativeBrief；接入项目时与项目要求同时存在必须提示人工合并，再删除阶段副本。要求变化后由 Agent 重新评审受影响内容，结构检查通过不表示内容已重新评审。
 
 ## 参数消费者
 
@@ -90,9 +90,9 @@ node scripts/novel-setup.mjs resolve --for video
 
 可加 `--from <目录>` 指定查找起点。阶段只有 `characters`、`art`、`video`。
 
-- 角色阶段返回 `style.label`、`style.phrase` 与 `style.character`，另返回仅含 genre/narrativeStyle 的 creativeBackground（若有选择）。
+- 角色阶段返回 `style.label`、`style.phrase` 与 `style.character`，另返回 `creativeBrief` 原文（提供时）。
 - 美术阶段返回 `style.label`、`style.phrase` 与 `style.scene`，背景范围同角色阶段。
-- 视频阶段返回画风名称与短语及完整 creative（若有选择），不返回角色或环境正文。
+- 视频阶段返回画风名称与短语及 `creativeBrief` 原文（提供时），不返回角色或环境正文。
 - `resolution` 与 `aspectRatio` 保留配置原值，`inputData.resolution` 规范化为已知枚举的大小写。
 - 视频返回 `durationRange`；逐段 `duration` 不在这里固定。
 

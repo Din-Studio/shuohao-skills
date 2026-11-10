@@ -88,4 +88,4 @@ Scene: S01 菜摊雨棚（主场景）
 
 ## 创作背景边界
 
-先读 [creative-background.md](creative-background.md)。genre/narrativeStyle 仅作为已提供的项目背景，不加载 profile 或生成摘要。视觉正文必须来自 production.style.scene。节点关联可以是 event/pressure/turn/payoff；不把所有物件改写为爽点道具。正式样例先确定《雨棚留言》故事提案，再设计资产；没有分镜或真实图片。
+先读 [creative-background.md](creative-background.md)。creativeBrief 仅作为项目自然语言要求，不推导规则。视觉正文必须来自 production.style.scene。节点无需分类；道具只保留显式 beatIds 引用，节点结果用于阅读，不凭同集出现推断精确节点归属。正式样例先确定《雨棚留言》故事提案，再设计资产；没有分镜或真实图片。

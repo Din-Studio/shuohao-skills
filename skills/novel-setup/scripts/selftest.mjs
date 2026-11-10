@@ -204,7 +204,7 @@ eq(clampDuration('大概十秒', 'MiniMax H3').duration, null, '不是数字也�
   const d = initProduction({ aspect: '9:16', autopilot: true });
   eq(d.autopilot, true, '显式打开就落成 true');
   ok(autopilotOf(d), '打开了 autopilotOf 说开');
-  eq(Object.keys(d).indexOf('autopilot'), 1, 'autopilot 是顶层参数，紧跟在剧名后面');
+  eq(d.schemaVersion, 3, 'production 显式采用 v3');
 }
 eq(autopilotOf(initProduction({ aspect: '9:16' })), false, '默认关');
 eq(autopilotOf(null), false, '没有生产参数就是关——老项目照旧该问就问');
@@ -497,7 +497,7 @@ ok(!mentionsTerm('grounded architectural perspective', 'warped perspective'), '�
   eq(Object.keys(r.style).join(','), 'label,phrase', '视频阶段保留画风名称与短语供模型指南使用');
 }
 {
-  const r = resolveStage({}, 'characters');
+  const r = resolveStage({ schemaVersion: 3 }, 'characters');
   eq(Object.keys(r.style).join(','), 'label,phrase,character', '没填画风也给得出形状，值是空的');
   eq(Object.keys(r.style.label).length, 0, '没填画风名则返回空对象');
 }

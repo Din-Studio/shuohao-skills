@@ -9,40 +9,54 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const temp = mkdtempSync(join(tmpdir(), 'shuohao-standalone-'));
-let passed = 0;
+let passed = 0, entries = 0;
+const failures = [];
+function check(label, fn) {
+  try { fn(); passed++; console.log(`✓ ${label}`); }
+  catch (e) { failures.push(label); console.error(`失败 ${label}\n${e.message}`); }
+}
 const walk = dir => readdirSync(dir).flatMap(name => {
   const path = join(dir, name);
   return statSync(path).isDirectory() ? walk(path) : [path];
 });
 try {
-  for (const name of readdirSync(join(root, 'skills')).filter(n => n.startsWith('novel-'))) {
+  for (const name of readdirSync(join(root, 'skills')).filter(n => n.startsWith('novel-')).sort()) {
     const source = join(root, 'skills', name);
     const isolated = join(temp, name, 'standalone');
     cpSync(source, isolated, { recursive: true });
-    assert.ok(existsSync(join(isolated, 'scripts/selftest.mjs')), `${name} 缺少基础自测`);
+    check(`${name} 自测入口存在`, () => assert.ok(existsSync(join(isolated, 'scripts/selftest.mjs'))));
+    if (['novel-outline', 'novel-script', 'novel-creation'].includes(name)) check(`${name} v3 自包含指南`, () => {
+      assert.ok(existsSync(join(isolated, 'references/创作指南.md')));
+      assert.ok(!existsSync(join(isolated, 'references/profiles')));
+      assert.ok(!existsSync(join(isolated, 'references/profile-contract.md')));
+      assert.ok(!existsSync(join(isolated, 'scripts/lib/creative.mjs')));
+    });
     for (const file of readdirSync(join(isolated, 'scripts')).filter(n => n.endsWith('selftest.mjs')).sort()) {
-      const test = join(isolated, 'scripts', file);
-      const run = spawnSync(process.execPath, [test], {
-        cwd: isolated, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
-        env: { ...process.env, NODE_OPTIONS: '' },
+      entries++;
+      check(`${name}/${file} 独立拷贝`, () => {
+        const run = spawnSync(process.execPath, [join(isolated, 'scripts', file)], {
+          cwd: isolated, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 180000,
+          env: { ...process.env, NODE_OPTIONS: '' },
+        });
+        assert.ifError(run.error);assert.equal(run.signal,null);
+        assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
       });
-      assert.equal(run.status, 0, `${name}/${file}\n${run.stdout}\n${run.stderr}`);
-      console.log(`✓ ${name}/${file} 独立拷贝通过`);
-      passed++;
     }
-    for (const file of walk(isolated).filter(p => p.endsWith('.md'))) {
-      const md = readFileSync(file, 'utf8');
-      for (const match of md.matchAll(/\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g)) {
-        const link = match[1];
-        if (/^(?:[a-z]+:|#|\/)/i.test(link) || /[<>]/.test(link)) continue;
-        const target = resolve(dirname(file), decodeURIComponent(link.split('#')[0]));
-        assert.ok(target === isolated || target.startsWith(isolated + '/'), `${name} 文档链接越出独立目录：${file} → ${link}`);
-        assert.ok(existsSync(target), `${name} 文档链接失效：${file} → ${link}`);
-        passed++;
+    check(`${name} 所有本地文档链接`, () => {
+      for (const file of walk(isolated).filter(p => p.endsWith('.md'))) {
+        const md = readFileSync(file, 'utf8');
+        for (const match of md.matchAll(/\]\(([^\s)]+)(?:\s+"[^"]*")?\)/g)) {
+          const link = match[1];
+          if (/^(?:[a-z]+:|#|\/)/i.test(link) || /[<>]/.test(link)) continue;
+          const target = resolve(dirname(file), decodeURIComponent(link.split('#')[0]));
+          assert.ok(target === isolated || target.startsWith(isolated + '/'), `${file} → ${link} 越出独立目录`);
+          assert.ok(existsSync(target), `${file} → ${link} 链接失效`);
+        }
       }
-    }
+    });
   }
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }
-console.log(`✓ ${passed} 项独立拷贝与本地链接检查通过`);
+console.log(`本次实际执行 ${entries} 个独立自测入口；${passed} 组通过，${failures.length} 组失败。`);
+if (failures.length) process.exitCode = 1;

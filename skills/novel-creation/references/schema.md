@@ -3,17 +3,17 @@
 两层：**集 → 段（segment）→ 分镜（cut）**。分镜下面没有关键帧这一层，所以段直接挂载既有设定图、写一条通用视频提示词，不产生任何新的图像生成调用。
 
 - **段** = 一次视频生成调用，总时长 ≤ `maxSegmentSeconds`（默认 15 秒），不跨场次——换景必开新段
-- **分镜** = 段内的一次剪切，表达时长由 `params.rules.cutDuration` 决定，各自认领剧本节拍、带景别运镜。**没有 `frame` 字段**——分镜不出关键帧图，景别与运镜短语写进段级 `prompt` 里这一切自己的 `[Shot k]` 行
+- **分镜** = 段内的一次剪切，表达时长由故事与表演需要决定，各自认领剧本节拍、带景别运镜。**没有 `frame` 字段**——分镜不出关键帧图，景别与运镜短语写进段级 `prompt` 里这一切自己的 `[Shot k]` 行
 - **参考图挂载** = 段级的 `images` 数组，直接引用 `cast.json` / `art.json` 已经生成落盘的设定图，不产生新的出图调用
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "source": "收书人",
   "promptLang": "en",
   "video": { "model": "MiniMax H3" },
-  "params": { "maxSegmentSeconds": 15, "maxOnScreen": 3, "tolerance": 0.15, "rules": { "cutDuration": { "level": "off" } } },
-  "episodes": [ { "ep": 1, "opening": "实际开场事件", "openingBeat": [1, 1], "ending": { "mode": "open", "event": "实际结束事件" }, "endBeat": [1, 9], "segments": [ ... ] } ]
+  "params": { "maxSegmentSeconds": 15, "maxOnScreen": 3, "tolerance": 0.15 },
+  "episodes": [ { "ep": 1, "segments": [ ... ] } ]
 }
 ```
 
@@ -49,7 +49,7 @@
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `beats` | [int, int] | 认领该场第几拍到第几拍（含两端）。**每个节拍必须被恰好一个分镜认领**，按顺序、连续 |
-| `seconds` | number | 分镜时长，必须为有限正数。表达范围按 cutDuration 的 level 执行。认领节拍的台词秒数必须装得下 |
+| `seconds` | number | 分镜时长，必须为有限正数。没有通用的建议时长硬门。认领节拍的台词秒数必须装得下 |
 | `size` | enum | 景别：`extreme-wide` 大远景 / `wide` 全景 / `medium` 中景 / `close` 特写 / `extreme-close` 大特写。对应的英文短语必须出现在这一切自己的 `[Shot k]` 行里 |
 | `camera` | enum | 运镜，统一词表（原样字符串，英文词沿用 H3 官方词表——这是通用摄影语汇，不是任何一个模型的私有字段）：`Static Shot` `Push In` `Pull Out` `Zoom In/Out` `Pan Left/Right` `Truck Left/Right` `Tilt Up/Down` `Pedestal Up/Down` `Arc Shot` `Tracking Shot` `Shake Slightly/Strongly` `POV` `Roll Clockwise/Counterclockwise`。运镜词同样必须出现在这一切自己的 `[Shot k]` 行里 |
 | `characters` | string[] | 画内人物（C 编号），必须 ⊆ 剧本该场人物；空镜给空数组。> `maxOnScreen` 时必须带 `note` |
@@ -85,20 +85,26 @@ ambience: A faint bell chime fades under the low hum of the night; no music.
 
 台词秒数（按剧本语速折算）≤ 分镜 `seconds`；段 Σ分镜 ≤ `maxSegmentSeconds`，并落进有效视频模型的合法时长区间；集 Σ段 落在剧本 `targetSeconds` 的 tolerance 内。提供 outline 时，先严格对账目标为 minutesPerEpisode × 60，容差不能放宽此项。所有时间是估算，不是生成结果。估时、段和集的求和、模型边界检查及 manifest 都使用未舍入数值；只有报告显示可以舍入。15.04 秒不能作为 15 秒通过模型上限。
 
-## v2 上游投影与独立校验
+## v3 上游与唯一计划
 
-script 和 outline 必须显式 schemaVersion:2。creation 也采用 schemaVersion:2。拒绝旧 hook/cliff/closure/hookBeat。opening 非空，openingBeat/endBeat 是从 1 起的场次／节拍坐标。endBeat 必须是最后一拍，并落入最后镜头。ending 只允许 mode/event，mode 为 suspense/closure/open；不复制 question、期限或解决计划。
+script、outline、creation、production 必须显式 schemaVersion:3。正式读取拒绝旧 creative/creativeContext、params.rules/defaults/preferences、旧镜头阈值和旧开场字段，不静默忽略。
 
-v2 script 必须显式提供有限正数 `params.charsPerSecond` 与 `params.actionSeconds`，读取时不补旧默认值。台词按去除空白后的字数除以语速计算，动作按显式动作秒数计算；无效估时不能按零秒累计。场次 `props` 可以省略；提供时必须是合法且无重复的 P 编号数组。
+creation 集对象不持久化 opening、ending、endBeat。计划只从当前加载的 outline 读取；无 outline 时读取独立 script 的可选 opening/ending。提供 outline 时，script 中的计划副本报待迁移错误。source、ep、目标秒数和 B ID 顺序进行实际对账，但同名不证明语义同步。
 
-seed 原样搬运上述投影，不从批次末集推导全剧终局。提供 script 时严格对账其位置和计划；提供 outline 时按 ep 再核对开场、集尾、节点 ID 顺序、终局身份与目标时长。节点语义和 Q 完整性仍由大纲及内容评审负责，本消费端检查不能替代完整大纲校验。没有上游时，仅跳过真正依赖上游的项目；本地 ID、坐标认领、类型、时长和模型检查继续执行。损坏或不支持的上游不能作为缺失跳过。API 只有字段不存在或 undefined 表示缺失，显式 null 失败。CLI 选项存在但缺少值、或后面直接跟另一选项时失败。`--production` 与 `--no-production` 互斥；自动发现的悬空链接、不可读文件和损坏配置必须失败，不继续向上寻找配置来代替。
+creation.openingBeat 与 script 的可选显式标注一致，不补默认坐标。script.openingBeat 可选，缺省显示 not-marked，不生成虚假的开场映射。结束坐标从最后一个实际 flow 项计算，正文追加动作后自动变化。镜头必须覆盖最后一拍；旧镜头遗漏追加正文时失败。
 
-script 与 outline 的选择分别生成 `script-selection`、`outline-selection` 检查。已提供但没有选择快照时是 `stage-incomplete`，不同快照失败；只有两项都通过才将 `upstream-selection` 汇总为通过。一项通过不能掩盖另一项未核验。
+script beatClaims 在独立模式可以省略；提供 outline 时必须按顺序完整认领全部当集节点。不分类的节点仍按 ID 认领。已提供的认领坐标继续检查存在、重复、倒序、重叠和所属集。场次 characters 包括无台词在场人物，不从 speaker 推导替代；props 可选，填写时为唯一合法 P ID。
 
-## 当前有效配置与来源
+script params 可选。唯一有效参数入口使用 charsPerSecond=4.5、actionSeconds=2.5、tolerance=0.15 的工具默认值，并接受显式覆盖。读取和渲染不回写默认值。非法数值、损坏参数和无效动作／台词失败，不按零秒累计。delivery、lighting 可选，特殊表演说明保留；省略不影响合法性。
 
-params.rules 必须显式包含 cutDuration，未知规则和旧 minCutSeconds/maxCutSeconds 拒绝。off 必须恰好为 `{ "level": "off" }`；warn/error 必须且只能包含 level、minSeconds、maxSeconds。两阈值是有限正数且 minSeconds ≤ maxSeconds。按闭区间逐镜检查；warn 未满足显示提醒，error 未满足阻断；off 的 status 是 skipped，reason 是 policy-disabled。基础失败始终阻断。
+outline 的人物 from/arc、audiencePromise、adaptation、props、节点 position/kind/weight 按 v3 可选。weight 仅允许 kind=payoff 时提供。endingBeatId 仍需引用最终集节点，不能简单使用最后数组项代替。显式资产和节点引用继续检查。完整 Q 语义、预算和内容质量仍由大纲阶段校验及内容评审负责，本消费端不冒充完整大纲检查。
 
-profile 的发现、显式应用、原子写入、冲突和摘要详见 [profile-contract.md](profile-contract.md)。creativeContext 保存完整四维 selection、实际加载的 genre/narrativeStyle/pacing references 和完整覆盖路径 overridePaths。structure 不加载本地文件。有效值只保存在 params，不在来源里复制。运行 validate/render 不重新应用 profile。来源不可核验和同版本漂移提醒历史读取，项目选择不同则待同步；继续创作必须先解决来源问题。
+## 创作要求与发现
 
-检查对象使用 id/category/level/status/messages，必要时附 reason；没有 ok。category 为 base/policy/source，status 为 pass/fail/skipped。内容未评审单独说明。报告不会把提醒、跳过或来源核验算作结构通过。CLI：`profiles`、`profile --selection selection.json`、`apply-profile DOC --production production.json [--overrides overrides.json] [--decisions decisions.json] [--confirm]`；独立应用以 --selection 替代 --production。预览不写文件；成功应用后重新校验，并人工核对已有投产包和视频。
+creativeBrief 提供时为非空字符串。项目与任一已加载阶段同时存在要求时失败，人工合并到 production 后删除阶段副本。要求是自然语言，不解析成规则。指南修改不使旧故事失效。
+
+CLI 从产物所在目录向上最多五层寻找 production.json；随后在项目 script、outline、art、characters 目录发现唯一 JSON。显式路径优先。过滤 manifest、隐藏文件及备份／工作记录。多候选失败，要求明确路径。损坏、不可读、悬空链接不能当作缺失。API 仅 undefined 表示缺失，显式 null 失败。
+
+缺上游时只跳过真正依赖上游的检查，本地 ID、连续覆盖、数据类型、时长和模型约束继续执行。--production 与 --no-production 互斥，--no-production 不关闭模型默认限制，也不停止其他上游发现。
+
+检查对象使用 id/category/level/status/messages，必要时附 reason；没有 ok。status 为 pass/fail/skipped。提醒和跳过不计为通过，内容评审状态另列。命令只在 SKILL.md 维护；模型和媒体交接协议保持原样。

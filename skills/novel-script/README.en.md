@@ -1,70 +1,43 @@
 [中文](README.md) · **English**
 
-# novel-script 2.0
+# novel-script 3.0
 
-Turn story plans into scenes and structured dialogue. No shot lists, images or generation prompts. Genre, narrative style, structure and pacing are explicit local profile choices, not universal cold-open or cliffhanger requirements.
+Write scenes, actions and structured dialogue. No shot lists, generation prompts or paid calls. Natural-language requirements and the local [writing guide](references/创作指南.md) replace the profile framework.
 
-## v2 contract
+## Contract
 
-- Explicit `schemaVersion: 2`. Legacy data is rejected; follow the local [migration guide](references/migration.md).
-- Neutral `opening/openingBeat/ending/endBeat`.
-- Seed copies opening and ending.mode/event exactly. It never copies Q plans. Scenes stay empty and all unwritten positions stay null.
-- `beatClaims` identifies every upstream B ID, in outline order, with inclusive, valid, non-overlapping core ranges. Cross-scene ranges and shared setup outside the ranges are supported.
-- With an outline, episode identity, projected intent and `targetSeconds = minutesPerEpisode × 60` are reconciled again. Timing tolerance cannot relax that equality.
-- Every beat, opening, claim and ending uses one unrounded cumulative estimate. Display rounding does not affect validation. Estimates are not measured performances.
+- Explicit schemaVersion:3. With an outline, read current opening/ending plans upstream rather than storing copies. Standalone plans are optional.
+- End coordinates are computed from the last flow item. openingBeat is optional; omission is never reported as a verified first-beat landing.
+- Claim every upstream B ID, including unclassified events, in order with valid inclusive non-overlapping ranges. Standalone scripts without planned beats may omit claims.
+- targetSeconds strictly matches the outline target. Approximate duration differences are warnings, not orders to remove valid performances.
+- Neutral estimation defaults are 4.5 characters/second, 2.5 seconds/action and 0.15 tolerance. Persist only explicit overrides; rendering never inserts defaults.
+- lighting and delivery are optional. Preserve silent characters in the scene cast.
+- A project and local creativeBrief conflict requires manual merging, never implicit precedence.
 
-## Profiles and checks
+## Commands and safety
 
-Local JSON/Markdown profiles are discovered by scanning. No genre-ID branches. Only explicit application changes effective parameters; validation and rendering never reapply templates.
+Node 18+, standard library only. The authoritative command list, examples and all three test entrypoints are maintained in [README.md](README.md#命令入口), avoiding duplicate command documentation.
 
-`params.rules.openingWindow` and `lineLength` support off/warn/error. Off objects contain only level. A warning is a failed policy check, not a pass, but does not block. Base contract failures and error-level policy failures block. Profiles cannot disable identity, reference, coordinate or upstream-target checks.
+CLI commands: seed, validate, checkup, render, migrate-v3 and slug. Project artifacts belong under script/. Explicit upstream files take precedence; otherwise discover a unique outline/art/cast. Multiple candidates, corrupt files, unsupported versions, invalid UTF-8 and dangling links fail rather than being treated as missing.
 
-Checks expose pass/fail/skipped, not ok. Missing upstream, disabled policies and incomplete stages stay distinct. Historical source drift is reported without rewriting parameters or hashes. Content review is separate and never fabricated by the renderer.
+Production requires schemaVersion:3. --no-production disables project configuration discovery, not explicitly supplied or uniquely discovered outlines. It is mutually exclusive with --production.
 
-## CLI
+migrate-v3 INPUT previews by default. --out OUTPUT writes new files only; pending semantic decisions require --confirm. Source bytes remain unchanged, with an exact backup and migration work record. Existing output/backup/record paths are refused. Confirmation cannot bypass structural errors. See [migration](references/migration.md).
 
-Node 18+, standard library only.
+## Reports and delivery
 
-```bash
-node scripts/novel-script.mjs profiles
-node scripts/novel-script.mjs profile --selection examples/selection.json
-node scripts/novel-script.mjs seed examples/修伞簿-outline.fixture.json --eps 1-3
-node scripts/novel-script.mjs validate examples/修伞簿-script.json \
-  --outline examples/修伞簿-outline.fixture.json --art examples/修伞簿-art.fixture.json
-node scripts/novel-script.mjs checkup examples/修伞簿-script.json --json
-node scripts/novel-script.mjs render examples/修伞簿-script.json --html --lang en \
-  --outline examples/修伞簿-outline.fixture.json --art examples/修伞簿-art.fixture.json \
-  --cast examples/修伞簿-cast.fixture.json > /tmp/script-report.html
-```
+Offline bilingual HTML and Markdown put authored text first, followed by event locations, plans, optional questions, assets, line books, estimated timing and structural checks. No selection snapshots, source hashes or empty configuration tables.
 
-Production artifacts belong in `<workdir>/script/`, with production.json at the project root. The bundled production fixture is test input, not a deployed project root.
+Responsive layout, coordinate links, copy controls, optional supplied voice prompts, print support and exact input JSON export remain available. Special delivery survives line-book export. Generated HTML is not versioned.
 
-```bash
-node scripts/novel-script.mjs apply-profile <workdir>/script/story-script.json --production <workdir>/production.json
-node scripts/novel-script.mjs apply-profile <workdir>/script/story-script.json --production <workdir>/production.json --decisions decisions.json --confirm
-```
+Missing upstream, warnings, incomplete skeletons and content-review-not-performed are distinct. Current JSON interface checks include known downstream creation v3 flow coverage and optional opening locations. Model limits, reference-image identity/order and content still require creation-stage validation.
 
-Review differences and unresolved decisions first. Decisions use full rule paths and keep/drop values. Overrides contain full rule objects. Confirmation backs up and atomically writes the artifact, then checks the current script. It does not rewrite the story. Recheck known downstream creation artifacts separately.
+## Own examples and tests
 
-Standalone application uses `--selection selection.json` instead of production. Skeleton checks use `--stage skeleton`; success is not full delivery. Missing outline/art skips only dependent reconciliation. Supplied corrupt or unreadable files fail.
+[The Umbrella Repair Ledger](examples/故事提案.md) retains its original story: three episodes, six scenes, thirty lines, with 60-second targets and estimates around 61.1 / 62.2 / 65.1 seconds. The second episode omits its optional opening landing. The first two endings close local tasks; the final ending stays open.
 
-## Reports
+All fixtures are local to this skill. A historical v2 input is isolated under scripts/fixtures/ exclusively for migration tests. The retired screenshot is not v3 verification evidence.
 
-Offline HTML and Markdown show the audience promise, selection snapshot, effective parameters, overrides, sources, actual script, per-beat estimated timeline, upstream setup/outcome beside claimed text, Q answer locations, assets and line books.
+Three test entrypoints cover contracts, timing, references, reports, real CLI behavior, downstream boundaries, migration and safe I/O. Isolated copying requires no sibling code or examples. No paid calls.
 
-HTML includes Chinese/English UI, responsive layout, collapsible scripts, coordinate links, copy buttons, optional supplied voice prompts and print support. Authored content and diagnostics keep their original language. JSON export preserves the input without inserting defaults or review claims. Generated HTML is not versioned.
-
-## Own story and tests
-
-[The Umbrella Repair Ledger](examples/故事提案.md) follows a repairer who recognizes a familiar knot but chooses consent-based conversation rather than claiming kinship from a pattern. Three episodes, six scenes, thirty lines. Targets are 60 seconds each; estimates are approximately 61.1 / 62.2 / 65.1 seconds. The first two episodes have no payoff beats and close their local tasks; the final ending stays open.
-
-All outline/art/cast/production fixtures are authored locally. No sibling samples or runtime imports. The old screenshot is not v2 verification evidence.
-
-```bash
-node scripts/selftest.mjs
-node scripts/profile-selftest.mjs
-```
-
-Tests cover strict projection, claim failures, opening/ending coordinates, exact target reconciliation, rule severity, standalone mode, three profile combinations, source inspection, bilingual reports, export safety, real CLI exit codes and isolated copying. No paid calls or real image/video generation.
-
-See [SKILL.md](SKILL.md), [schema](references/schema.md) and [content review](references/review-core.md).
+See [workflow](SKILL.md), [schema](references/schema.md), [writing guide](references/创作指南.md) and [report specification](references/report-style.md).

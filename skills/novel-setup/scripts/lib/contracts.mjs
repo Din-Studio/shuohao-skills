@@ -1,27 +1,18 @@
-// Local data contract; no profile discovery or sibling imports.
-export const DIMENSIONS = ['genre', 'narrativeStyle', 'structure', 'pacing'];
+// Local v3 document contract; no strategy registry or sibling imports.
 const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
-const exact = (v, keys) => object(v) && Object.keys(v).length === keys.length && keys.every(k => Object.hasOwn(v, k));
 const text = v => typeof v === 'string' && v.trim().length > 0;
-export function creativeProblems(creative) {
-  if (creative === undefined) return [];
+export function documentProblems(doc) {
+  if (!object(doc)) return ['production 必须是对象'];
   const bad = [];
-  if (!exact(creative, ['version', 'selection']) || creative.version !== 1)
-    return ['creative 必须恰好包含 version: 1 与 selection'];
-  if (!exact(creative.selection, DIMENSIONS)) return ['creative.selection 必须恰好包含 genre/narrativeStyle/structure/pacing 四维'];
-  for (const dimension of DIMENSIONS) {
-    const p = creative.selection[dimension];
-    if (!exact(p, ['id', 'version']) || typeof p.id !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(p.id) ||
-        typeof p.version !== 'string' || !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(p.version))
-      bad.push('creative.selection.' + dimension + ' 必须是明确 id 与固定语义版本；不接受 latest、范围、路径或额外字段');
-  }
+  if (doc.params !== undefined && !object(doc.params)) bad.push('params 必须是对象');
+  if (doc.source !== undefined && typeof doc.source !== 'string') bad.push('source 必须是字符串');
+  if (doc.schemaVersion !== 3) bad.push('production 需要 schemaVersion: 3；请执行 migrate-v3');
+  if (doc.creativeBrief !== undefined && !text(doc.creativeBrief)) bad.push('creativeBrief 提供时必须是非空字符串');
+  for (const field of ['creative', 'creativeContext', 'selection', 'decisions', 'overrides'])
+    if (Object.hasOwn(doc, field)) bad.push(field + ' 已废弃；请执行 migrate-v3');
+  for (const field of ['rules', 'defaults', 'preferences'])
+    if (object(doc.params) && Object.hasOwn(doc.params, field)) bad.push('params.' + field + ' 已废弃；请执行 migrate-v3');
   return bad;
-}
-export function creativeBackground(production) {
-  const bad = creativeProblems(production?.creative);
-  if (bad.length) throw new Error(bad.join('；'));
-  const s = production?.creative?.selection;
-  return s ? { genre: { ...s.genre }, narrativeStyle: { ...s.narrativeStyle } } : null;
 }
 export function check(id, label, status, detail = '', reason = undefined) {
   return { id, label, status, category: 'base', level: 'error', detail, ...(reason ? { reason } : {}) };

@@ -39,9 +39,9 @@ metadata:
     - codex
 ---
 
-## 2.0.0 创作契约与迁移
+## v3 上游契约与迁移
 
-seed 只接受显式 `outline.schemaVersion: 2`。只读取 production 中 genre/narrativeStyle 作为背景，不加载 profile，不新增应用流程或 creativeContext，不伪造摘要。本地 profile 缺失不影响资产阶段。缺 production 的历史读取仅跳过上游对账；提供损坏上游或缺视觉正文的 production 必须失败。出图仍须合法视觉正文及制作参数。
+seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schemaVersion: 3`。读取可选非空 `production.creativeBrief`，不解释策略配置。人物来源、弧光、节点分类与位置可以省略。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
 
 检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-background.md) 和 [迁移说明](references/migration.md)。
 
@@ -134,7 +134,7 @@ node {baseDir}/scripts/novel-art.mjs seed <outline.json> > <段目录>/<剧名>-
 
 核心要求都在 scene-pass.md 里，最重的三条：锚点要**可画可认可核对**（「补丁船篷」是锚点，「陈旧的氛围」是形容词）；光照状态**从分集反推**，不写用不上的全家桶；**能做变体就别开新景**。
 
-**叙事道具优先吃大纲**：`outline.json` v2 的可选 `props`，`seed` 会把道具表连同「承载什么」「关联哪些剧情节点」「哪几集出现」一起搬过来，这一层只填设计字段（尺度、锚点、状态变体、白底提示词）。**大纲没有 props 就从原文提取**，那时这步是模型的活：只收**有特写、跨集出现、承载剧情**的，通常 3–8 件，跟主角数量一个量级。每件按 `references/prop-pass.md` 填：戏剧功能、锚点、状态变体、尺度、白底无手提示词；磨损怎么写得可核对，见 `references/realism.md` 第 4 节。留言板这种「跟人走的道具」就该在这——塞进场景锚点和角色画像都不对。
+**叙事道具优先吃大纲**：`outline.json` v3 的可选 `props`，`seed` 会把道具表连同「承载什么」「关联哪些剧情节点」「哪几集出现」一起搬过来，这一层只填设计字段（尺度、锚点、状态变体、白底提示词）。**大纲没有 props 就从原文提取**，那时这步是模型的活：只收**有特写、跨集出现、承载剧情**的，通常 3–8 件，跟主角数量一个量级。每件按 `references/prop-pass.md` 填：戏剧功能、锚点、状态变体、尺度、白底无手提示词；磨损怎么写得可核对，见 `references/realism.md` 第 4 节。留言板这种「跟人走的道具」就该在这——塞进场景锚点和角色画像都不对。
 
 ### Step 3 — 校验 ⛔ 不能跳
 
@@ -214,6 +214,8 @@ seed 吃 outline.json 的场景与道具两块（大纲没有 `props` 时道具�
 
 ```bash
 node {baseDir}/scripts/selftest.mjs
+node {baseDir}/scripts/v3-selftest.mjs
+node {baseDir}/scripts/upstream-selftest.mjs
 ```
 
 离线自测覆盖创作、契约、渲染与交接计划；检查依赖顺序、提示词原文、素材路径、退役参数与防覆盖。不调用模型、不读取凭据、不发网络请求。

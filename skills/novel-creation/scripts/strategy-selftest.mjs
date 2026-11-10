@@ -1,201 +1,184 @@
 #!/usr/bin/env node
-// Consumer integration tests. Only local files and fake inputs; never call generation.
+// v3 integration regressions, replacing retired strategy-application assertions.
 import assert from 'node:assert/strict';
-import {readFileSync, writeFileSync, mkdtempSync, cpSync, rmSync, existsSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdtempSync,cpSync,rmSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {dirname, resolve, join} from 'node:path';
+import {dirname,resolve,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {gateReport, validateCreation, seedFromScript, renderHtml, renderMarkdown, checkup, isBlocking, exportPack} from './novel-creation.mjs';
-import {neutralParams, previewApplication, applyToFile, resolveProfiles, inspectContext} from './lib/creative.mjs';
-const root=resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const ex=join(root,'examples');
+import {gateReport,validateCreation,seedFromScript,renderHtml,renderMarkdown,checkup,exportPack,expandScript,reportContext,beatSeconds} from './novel-creation.mjs';
+import {scriptProblems,outlineProblems} from './lib/contracts.mjs';
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),ex=join(root,'examples');
 const read=p=>JSON.parse(readFileSync(join(ex,p),'utf8'));
-const doc=read('creation/收书人-creation.json'), script=read('script/收书人-script.json'), outline=read('outline/收书人-outline.json'), production=read('production.json');
+const doc=read('creation/收书人-creation.json'),script=read('script/收书人-script.json'),outline=read('outline/收书人-outline.json'),production=read('production.json');
 const ctx={script,outline,production,art:read('art/收书人-art.json'),cast:read('characters/收书人-cast.json'),imageExists:p=>existsSync(resolve(ex,'creation',p))};
-const clone=structuredClone;
+const clone=structuredClone, temp=mkdtempSync(join(tmpdir(),'creation-v3-'));
 let count=0;
 const test=(name,fn)=>{try{fn();count++;}catch(e){e.message=`${name}: ${e.message}`;throw e;}};
-const cut=(d,level='off')=>{d.params.rules.cutDuration=level==='off'?{level}:{level,minSeconds:4,maxSeconds:12};return d;};
 const find=(d,id,c=ctx)=>gateReport(d,c).find(g=>g.id===id);
-const selection=(genre,narrativeStyle,structure,pacing)=>Object.fromEntries(Object.entries({genre,narrativeStyle,structure,pacing}).map(([k,id])=>[k,{id,version:'1.0.0'}]));
-const temp=mkdtempSync(join(tmpdir(),'creation-v2-'));
-const cli=(args,cwd=temp)=>spawnSync(process.execPath,[join(root,'scripts/novel-creation.mjs'),...args],{cwd,encoding:'utf8'});
-const file=(name,value)=>{const p=join(temp,name);writeFileSync(p,JSON.stringify(value,null,2));return p;};
+const cli=(args,cwd=temp)=>spawnSync(process.execPath,[join(root,'scripts/novel-creation.mjs'),...args],{cwd,encoding:'utf8',maxBuffer:8*1024*1024});
+const file=(name,value)=>{const p=join(temp,name);writeFileSync(p,JSON.stringify(value));return p;};
 try {
-  test('formal sample has warnings, not failures or fake passes',()=>{
-    const r=checkup(doc,ctx);assert.equal(r.blocking,0);assert.ok(r.warnings>0);assert.equal(r.contentReview,'not-performed');
-    assert.equal(find(doc,'cut-length').status,'fail');assert.equal(find(doc,'cut-length').level,'warn');
-    assert.ok(r.gates.every(g=>!Object.hasOwn(g,'ok') && Array.isArray(g.messages)));
+  test('sample v3 chain and honest content-review status',()=>{
+    const r=checkup(doc,ctx);assert.equal(r.blocking,0);assert.equal(r.contentReview,'not-performed');
+    assert.ok(r.gates.every(g=>!Object.hasOwn(g,'ok')&&Array.isArray(g.messages)));assert.ok(!r.gates.some(g=>/selection|creative-context|cut-length/.test(g.id)));
   });
-  for(const level of ['off','warn','error']) test(`cutDuration ${level} and CLI exits`,()=>{
-    const d=cut(clone(doc),level), g=find(d,'cut-length');
-    assert.equal(g.status,level==='off'?'skipped':'fail');
-    assert.equal(validateCreation(d,ctx).length>0,level==='error');
-    if(level==='off')assert.equal(g.reason,'policy-disabled');
-    const p=file(`level-${level}.json`,d), result=cli(['validate',p,'--no-production']);
-    assert.equal(result.status,level==='error'?1:0,result.stderr+result.stdout);
-    assert.equal(cli(['checkup',p,'--no-production']).status,level==='error'?1:0);
+  for(const value of [0,-1,NaN,Infinity,'4',null]) test(`finite positive seconds ${value}`,()=>{
+    const d=clone(doc);d.episodes[0].segments[0].cuts[0].seconds=value;assert.ok(validateCreation(d,ctx).some(m=>m.includes('seconds')));
   });
-  test('closed interval',()=>{
-    const d=clone(doc);d.params.rules.cutDuration={level:'error',minSeconds:2,maxSeconds:6};
-    assert.equal(find(d,'cut-length').status,'pass');
+  for(const field of ['rules','defaults','preferences','minCutSeconds','maxCutSeconds']) test(`retired params rejected ${field}`,()=>{
+    const d=clone(doc);d.params[field]={};assert.ok(validateCreation(d,ctx).some(m=>m.includes(field)));assert.throws(()=>renderHtml(d,ctx));
   });
-  for(const value of [0,-1,NaN,Infinity,'4',null]) test(`real seconds always positive finite: ${value}`,()=>{
-    const d=cut(clone(doc));d.episodes[0].segments[0].cuts[0].seconds=value;
-    assert.ok(validateCreation(d,ctx).some(m=>m.includes('seconds')));
+  for(const field of ['creative','creativeContext','selection','decisions','overrides','seedNote']) test(`retired document field ${field}`,()=>{
+    const d=clone(doc);d[field]={};assert.ok(validateCreation(d,ctx).some(m=>m.includes(field)));
   });
-  for(const value of [undefined,{level:'off',minSeconds:1},{level:'warn',minSeconds:1},{level:'error',minSeconds:5,maxSeconds:2},{level:'warn',minSeconds:1,maxSeconds:5,x:1}]) test(`invalid rule ${JSON.stringify(value)}`,()=>{
-    const d=clone(doc);d.params.rules.cutDuration=value;assert.ok(validateCreation(d,ctx).length);
+  for(const key of ['opening','ending','endBeat']) test(`creation has no persisted upstream projection ${key}`,()=>{
+    const d=clone(doc);d.episodes[0][key]='old';assert.equal(find(d,'fields').status,'fail');assert.throws(()=>renderMarkdown(d,ctx));
   });
-  for(const field of ['minCutSeconds','maxCutSeconds']) test(`old field rejected: ${field}`,()=>{
-    const d=cut(clone(doc));d.params[field]=2;assert.ok(validateCreation(d,ctx).some(m=>m.includes(field)));
+  test('long observation allowed but model limit remains hard',()=>{
+    const d=clone(doc);d.episodes[0].segments[0].cuts[0].seconds=8;d.params.tolerance=.4;assert.deepEqual(validateCreation(d,ctx),[]);
+    d.params.maxSegmentSeconds=100;d.episodes[0].segments[0].cuts[0].seconds=20;assert.equal(find(d,'segment-cap').status,'fail');assert.equal(find(d,'segment-cap',{}).status,'fail');
   });
-  test('long observation is allowed; model cap cannot be overridden',()=>{
-    const d=cut(clone(doc));d.episodes[0].segments[0].cuts[0].seconds=8;
-    d.params.tolerance=0.4;assert.deepEqual(validateCreation(d,ctx),[]);
-    d.params.maxSegmentSeconds=100;d.episodes[0].segments[0].cuts[0].seconds=20;
-    assert.equal(find(d,'segment-cap').status,'fail');
-    assert.equal(find(d,'segment-cap',{}).status,'fail');
-  });
-  test('local ids and final position remain enforced without upstream',()=>{
-    const d=cut(clone(doc));d.episodes[0].endBeat=[1,8];assert.ok(validateCreation(d).length);
-    d.episodes[0].endBeat=[1,10];d.episodes.push(clone(d.episodes[0]));assert.ok(validateCreation(d).length);
+  test('local duplicate IDs and noncontiguous coverage still fail',()=>{
+    const d=clone(doc);d.episodes.push(clone(d.episodes[0]));assert.ok(validateCreation(d).length);
+    const c=clone(doc);c.episodes[0].segments[1].cuts[0].beats=[1,1];assert.equal(find(c,'upstream-intent',{}).status,'fail');
   });
   test('missing upstream is skipped, not passed',()=>{
-    const g=gateReport(doc,{});for(const id of ['script-contract','outline-contract','coverage','creative-project']) {
-      const x=g.find(x=>x.id===id);assert.equal(x.status,'skipped');assert.equal(x.reason,'missing-upstream');
-    }
+    for(const id of ['script-contract','outline-contract','coverage','project-contract']){const g=find(doc,id,{});assert.equal(g.status,'skipped');assert.equal(g.reason,'missing-upstream');}
   });
-  for(const key of ['script','outline']) for(const value of [{},[],{schemaVersion:1}]) test(`damaged ${key} does not become missing`,()=>{
-    const g=gateReport(doc,{...ctx,[key]:value}).find(g=>g.id===key+'-contract');assert.equal(g.status,'fail');
+  for(const key of ['script','outline']) for(const value of [{},[],null,{schemaVersion:2}]) test(`damaged upstream ${key} ${JSON.stringify(value)}`,()=>{
+    assert.equal(find(doc,key+'-contract',{...ctx,[key]:value}).status,'fail');assert.throws(()=>renderHtml(doc,{...ctx,[key]:value}));
   });
-  test('supplied JSON null, broken JSON, missing file fail CLI',()=>{
+  test('broken JSON, null JSON and missing file fail CLI',()=>{
     for(const content of ['null','{']){const p=join(temp,'bad.json');writeFileSync(p,content);assert.equal(cli(['validate',file('d.json',doc),'--script',p,'--no-production']).status,1);}
     assert.equal(cli(['validate',file('d.json',doc),'--script',join(temp,'absent.json'),'--no-production']).status,1);
   });
-  test('seed preserves intent, no fabricated questions or scenes',()=>{
-    const d=seedFromScript(script), e=d.episodes[0], s=script.episodes[0];
-    for(const k of ['opening','ending','openingBeat','endBeat'])assert.deepEqual(e[k],s[k]);
-    assert.equal(e.ending.mode,'open');assert.deepEqual(e.segments,[]);assert.deepEqual(d.params.rules,neutralParams('creation').rules);
-    assert.ok(!d.creativeContext);assert.throws(()=>seedFromScript({...script,schemaVersion:1}));
+  test('CLI refuses invalid UTF-8 even inside otherwise valid JSON text',()=>{
+    const p=join(temp,'bad-utf8.json');writeFileSync(p,Buffer.concat([Buffer.from('{"source":"'),Buffer.from([0xff]),Buffer.from('"}') ]));
+    assert.equal(cli(['validate',file('d.json',doc),'--script',p,'--no-production']).status,1);
   });
-  for(const field of ['question','questionId','dueByEp','resolves']) test(`script ending rejects ${field}`,()=>{
-    const s=clone(script);s.episodes[0].ending[field]='invented';assert.equal(find(doc,'script-contract',{...ctx,script:s}).status,'fail');
+  test('seed carries neither plans nor persisted end, leaves cuts to author',()=>{
+    const d=seedFromScript(script,null,ctx),ep=d.episodes[0];assert.equal(d.schemaVersion,3);
+    for(const k of ['opening','ending','endBeat'])assert.ok(!(k in ep));
+    assert.deepEqual(ep.openingBeat,script.episodes[0].openingBeat);
+    assert.deepEqual(ep.segments,[]);assert.ok(!d.params.rules);assert.throws(()=>seedFromScript({...script,schemaVersion:2}));
   });
-  test('suspense projection requires no local Q',()=>{
-    const d=clone(doc), s=clone(script);d.episodes[0].ending.mode=s.episodes[0].ending.mode='suspense';
-    assert.deepEqual(validateCreation(d,{...ctx,script:s,outline:undefined}),[]);
+  test('current outline plan changes are read at render time, not cached',()=>{
+    const o=clone(outline);o.episodes[0].opening='NEW CURRENT OPENING';o.episodes[0].ending.event='NEW CURRENT ENDING';
+    const md=renderMarkdown(doc,{...ctx,outline:o});assert.ok(md.includes('NEW CURRENT OPENING')&&md.includes('NEW CURRENT ENDING'));
+    assert.deepEqual(validateCreation(doc,{...ctx,outline:o}),[]); // content synchronization still requires review
   });
-  for(const key of ['opening','ending','openingBeat','endBeat']) test(`upstream projection mismatch ${key}`,()=>{
-    const d=clone(doc);
-    if(key==='opening')d.episodes[0][key]+='changed';else if(key==='ending')d.episodes[0].ending.event+='changed';else d.episodes[0][key]=[1,2];
-    assert.equal(find(d,'upstream-intent').status,'fail');
+  for(const k of ['opening','ending']) test(`script duplicate upstream plan rejected ${k}`,()=>{
+    const s=clone(script);s.episodes[0][k]=outline.episodes[0][k];assert.equal(find(doc,'upstream-intent',{...ctx,script:s}).status,'fail');
+    assert.throws(()=>renderHtml(doc,{...ctx,script:s}));assert.throws(()=>seedFromScript(s,null,ctx));
   });
-  test('ending key order is irrelevant',()=>{
-    const d=clone(doc);d.episodes[0].ending={event:d.episodes[0].ending.event,mode:d.episodes[0].ending.mode};assert.deepEqual(validateCreation(d,ctx),[]);
+  test('independent script may omit plans, claims and opening position',()=>{
+    const s=clone(script);delete s.episodes[0].beatClaims;delete s.episodes[0].openingBeat;delete s.params;
+    const d=clone(doc);delete d.episodes[0].openingBeat;
+    assert.deepEqual(scriptProblems(s),[]);assert.deepEqual(validateCreation(d,{script:s}),[]);
+    const info=reportContext(d,{script:s}).episodes[0];assert.equal(info.planSource,'missing-upstream');assert.equal(info.openingMapping,'not-marked');assert.ok(!('openingCuts' in info));
+    assert.ok(renderMarkdown(d,{script:s}).includes('missing-upstream'));
   });
-  test('outline target is strict and not tolerance based',()=>{
-    const o=clone(outline);o.params.minutesPerEpisode=0.51;
+  test('independent script plans render without inventing questions',()=>{
+    const s=clone(script);s.episodes[0].opening='观察空书店';s.episodes[0].ending={mode:'suspense',event:'发现一本书'};
+    const md=renderMarkdown(doc,{script:s});assert.ok(md.includes('观察空书店')&&md.includes('发现一本书'));assert.ok(!md.includes('dueByEp'));
+    const seeded=seedFromScript(s);assert.ok(!('ending' in seeded.episodes[0]));
+  });
+  for(const field of ['question','questionId','dueByEp','resolves']) test(`script ending rejects extra Q field ${field}`,()=>{
+    const s=clone(script);s.episodes[0].ending={mode:'open',event:'结束',[field]:'invented'};assert.ok(scriptProblems(s).length);
+  });
+  test('end follows actual last flow, stale shot coverage fails',()=>{
+    assert.deepEqual(expandScript(script).get(1).endBeat,[1,10]);
+    const s=clone(script);s.episodes[0].scenes[0].flow.push({action:'她关上灯。'});
+    assert.deepEqual(expandScript(s).get(1).endBeat,[1,11]);assert.equal(find(doc,'coverage',{...ctx,script:s}).status,'fail');
+    assert.deepEqual(reportContext(doc,{...ctx,script:s}).episodes[0].endBeat,[1,11]);
+  });
+  test('explicit endBeat is rejected in script',()=>{const s=clone(script);s.episodes[0].endBeat=[1,10];assert.ok(scriptProblems(s).length);});
+  test('opening omitted never becomes verified first beat',()=>{
+    const s=clone(script),d=clone(doc);delete s.episodes[0].openingBeat;delete d.episodes[0].openingBeat;
+    assert.deepEqual(validateCreation(d,{...ctx,script:s}),[]);assert.ok(!('openingBeat' in seedFromScript(s).episodes[0]));
+    const info=reportContext(doc,{...ctx,script:s}).episodes[0];assert.ok(!('openingBeat' in info)&&!('openingCuts' in info));assert.equal(info.openingMapping,'not-marked');
+  });
+  test('default timing equals explicit defaults and override used consistently',()=>{
+    const s=clone(script);delete s.params;const explicit=clone(s);explicit.params={charsPerSecond:4.5,actionSeconds:2.5,tolerance:.15};
+    assert.deepEqual(expandScript(s),expandScript(explicit));
+    s.params={charsPerSecond:3,actionSeconds:7};const beats=expandScript(s).get(1).scenes[0].beats;
+    assert.equal(beats[0].seconds,7);assert.equal(beats[1].seconds,4);assert.equal(beatSeconds({line:'abc'},s.params),1);
+  });
+  test('strict outline target despite estimation tolerance',()=>{
+    const o=clone(outline);o.params.minutesPerEpisode=.51;assert.equal(find(doc,'upstream-intent',{...ctx,outline:o}).status,'fail');
+  });
+  for(const [label,mutate] of [
+    ['missing',s=>s.episodes[0].beatClaims.pop()],['unknown',s=>s.episodes[0].beatClaims[1].beatId='B99'],
+    ['duplicate',s=>s.episodes[0].beatClaims[1].beatId='B01'],['overlap',s=>s.episodes[0].beatClaims[1].start=[1,2]],
+    ['reverse',s=>s.episodes[0].beatClaims[1].start=[1,7]],['invalid position',s=>s.episodes[0].beatClaims[1].end=[9,1]],
+    ['order',s=>s.episodes[0].beatClaims.reverse()],['wrong episode',s=>s.episodes[0].ep=2],
+  ]) test(`claims remain checked ${label}`,()=>{const s=clone(script);mutate(s);assert.ok(validateCreation(doc,{...ctx,script:s}).length);});
+  test('deleted outline node invalidates both asset references and claims',()=>{
+    const o=clone(outline);o.beats.splice(1,1);assert.equal(find(doc,'outline-contract',{...ctx,outline:o}).status,'fail');
+    o.props.forEach(p=>p.beatIds=p.beatIds.filter(id=>id!=='B02'));
     assert.equal(find(doc,'upstream-intent',{...ctx,outline:o}).status,'fail');
   });
-  for(const mutation of [s=>s.episodes[0].beatClaims.pop(),s=>s.episodes[0].beatClaims[1].beatId='B99',s=>s.episodes[0].beatClaims[1].start=[1,2],s=>s.episodes[0].endBeat=[1,8]]) test('node identity/range/end checks',()=>{
-    const s=clone(script);mutation(s);assert.ok(validateCreation(doc,{...ctx,script:s}).length);
+  test('unclassified optional fields accepted, explicit invalid fields rejected',()=>{
+    const o=clone(outline);for(const b of o.beats){delete b.position;delete b.kind;}delete o.story.audiencePromise;delete o.adaptation;
+    for(const c of o.characters){delete c.from;delete c.arc;}assert.deepEqual(outlineProblems(o),[]);assert.deepEqual(validateCreation(doc,{...ctx,outline:o}),[]);
+    o.beats[0].weight='major';assert.ok(outlineProblems(o).length);delete o.beats[0].weight;o.beats[0].kind='wrong';assert.ok(outlineProblems(o).length);
   });
-  test('project mismatch blocks, missing context is not silently applied',()=>{
-    const p=clone(production);p.creative.selection.pacing.id='measured';assert.equal(find(doc,'creative-project',{...ctx,production:p}).status,'fail');
-    const d=clone(doc);delete d.creativeContext;assert.equal(find(d,'creative-project').status,'fail');
+  test('brief must be nonempty and project/local conflict never chooses priority',()=>{
+    for(const value of ['',null,{},' '])assert.ok(validateCreation({...doc,creativeBrief:value}).length);
+    assert.deepEqual(validateCreation({...doc,creativeBrief:'克制'}),[]);
+    assert.equal(find({...doc,creativeBrief:'克制'},'project-contract',{...ctx,production:{...production,creativeBrief:'强烈'}}).status,'fail');
   });
-  test('three combinations use the same engine and preserve non-policy parameters',()=>{
-    for(const choice of [selection('drama','intense','serial-cliff','dense-payoff'),selection('mystery','restrained','serial','gradual'),selection('life','warm','episodic','measured')]) {
-      const r=previewApplication(doc,{skillRoot:root,stage:'creation',selection:choice});
-      assert.deepEqual(r.document.episodes,doc.episodes);assert.equal(r.document.params.maxSegmentSeconds,15);assert.equal(r.document.params.tolerance,0.15);
-      assert.equal(r.document.creativeContext.references.length,3);assert.ok(r.document.creativeContext.references.every(r=>r.dimension!=='structure'));
-      assert.equal(r.document.creativeContext.selection.structure.id,choice.structure.id);
-      const g=gateReport(r.document,{...ctx,production:{...production,creative:{version:1,selection:choice}}});assert.ok(!g.some(isBlocking));
-    }
+  test('production v3 required; creative config is refused',()=>{
+    assert.ok(validateCreation(doc,{production:{...production,schemaVersion:2}}).length);
+    assert.ok(validateCreation(doc,{production:{...production,creative:{}}}).length);
   });
-  test('closure nonfinal and open final pass through seed without cliff invention',()=>{
-    const s=clone(script);const first=clone(s.episodes[0]);first.ending={mode:'closure',event:'本次收书交易结束。'};
-    const second={...clone(s.episodes[0]),ep:2};second.beatClaims.forEach((c,i)=>{c.beatId=`B${11+i}`;});
-    s.episodes=[first,second];
-    const result=seedFromScript(s);assert.equal(result.episodes[0].ending.mode,'closure');assert.equal(result.episodes[1].ending.mode,'open');
-  });
-  test('explicit application, backup and preview cancellation',()=>{
-    const p=file('apply.json',doc), original=readFileSync(p,'utf8');
-    const options={skillRoot:root,stage:'creation',selection:production.creative.selection,overrides:{'params.rules.cutDuration':{level:'off'}}};
-    assert.equal(applyToFile(p,options).applied,false);assert.equal(readFileSync(p,'utf8'),original);
-    const r=applyToFile(p,{...options,confirm:true});assert.equal(r.applied,true);assert.equal(readFileSync(r.backup,'utf8'),original);
-    assert.deepEqual(r.document.params.rules.cutDuration,{level:'off'});assert.equal(r.document.params.maxSegmentSeconds,doc.params.maxSegmentSeconds);
-  });
-  test('source drift and missing source do not mutate or block history; same-version apply rejected',()=>{
-    const local=join(temp,'local');cpSync(root,local,{recursive:true});
-    resolveProfiles(local,'creation',production.creative.selection);
-    // Resolve actual file via discovery rather than assuming a returned guide shape.
-    const {genre}=production.creative.selection;
-    const path=join(local,'references/profiles/genre',genre.id,genre.version,'guide.md');
-    writeFileSync(path,readFileSync(path,'utf8')+'\nDrift test.\n');
-    const before=JSON.stringify(doc), checks=inspectContext(doc,{skillRoot:local,stage:'creation',production});
-    assert.ok(checks.some(g=>g.reason==='source-drift'));assert.ok(!checks.some(isBlocking));assert.equal(JSON.stringify(doc),before);
-    assert.throws(()=>previewApplication(doc,{skillRoot:local,stage:'creation',selection:production.creative.selection}));
-    rmSync(join(local,'references/profiles/genre',genre.id),{recursive:true});
-    assert.ok(inspectContext(doc,{skillRoot:local,stage:'creation',production}).some(g=>g.reason==='source-unverifiable'));
-  });
-  test('reports show current values, reasons, source and exact original export',()=>{
+  test('reports are body-first, current intent, escaped, immutable and bilingual',()=>{
     const d=clone(doc);d.source='</script><img src=x onerror=alert(1)>';
-    const before=JSON.stringify(d), html=renderHtml(d,ctx), md=renderMarkdown(d,ctx);
-    assert.ok(html.includes('policy') && html.includes('missing-upstream') && html.includes('当前有效配置') && html.includes('内容未评审'));
-    assert.ok(html.includes('&lt;/script&gt;'));assert.ok(!html.includes('<img src=x onerror'));
-    assert.ok(md.includes('overridePaths') && md.includes('提醒'));
+    const before=JSON.stringify(d),html=renderHtml(d,ctx),md=renderMarkdown(d,ctx);
+    assert.ok(html.indexOf('id="sec-segments"')<html.indexOf('id="sec-intent"'));assert.ok(md.indexOf('## E01')<md.indexOf('当前上游交接关系'));
+    assert.ok(html.includes('&lt;/script&gt;')&&!html.includes('<img src=x onerror'));
+    assert.ok(!md.includes('overridePaths')&&!md.includes('selection')&&!md.includes('sha256'));
     assert.equal(JSON.stringify(d),before);
-    const embedded=html.match(/<script type="application\/json" id="creation-data">([\s\S]*?)<\/script>/)[1];
-    assert.deepEqual(JSON.parse(embedded),d);
-    const en=renderHtml(d,{...ctx,lang:'en'});assert.ok(en.includes('Content review not performed') && en.includes('Warning'));
+    assert.deepEqual(JSON.parse(html.match(/<script type="application\/json" id="creation-data">([\s\S]*?)<\/script>/)[1]),d);
+    assert.ok(renderHtml(d,{...ctx,lang:'en'}).includes('Content review not performed'));
   });
-  test('independent skill copy runs without siblings',()=>{
+  test('partial upstream still catches known invalid reference',()=>{
+    const d=clone(doc);d.episodes[0].segments[0].images[1].ref='S99';assert.equal(find(d,'refimage-coverage',{art:ctx.art}).status,'fail');
+  });
+  test('export effective model, original prompt and reference order retained',()=>{
+    const d=clone(doc);d.video={model:'seedance2.0'};const p=exportPack(d,script,{production});
+    const manifest=JSON.parse(p.files.find(f=>f.path==='manifest.json').content);assert.equal(manifest.video.model,'seedance2.0');assert.equal(manifest.video.aspectRatio,production.video.aspectRatio);
+    assert.deepEqual(manifest.segments[0].images.map(i=>i.ref),doc.episodes[0].segments[0].images.map(i=>i.ref));assert.ok(p.files[0].content.includes(doc.episodes[0].segments[0].prompt));
+  });
+  test('independent skill copy executes local checks and CLI without siblings',()=>{
     const local=join(temp,'standalone');cpSync(root,local,{recursive:true});
-    const r=spawnSync(process.execPath,[join(local,'scripts/selftest.mjs')],{cwd:temp,encoding:'utf8'});
-    assert.equal(r.status,0,r.stderr+r.stdout);
-    const cwd=join(local,'examples/creation'), entry=join(local,'scripts/novel-creation.mjs');
-    const args=['收书人-creation.json','--script','../script/收书人-script.json','--outline','../outline/收书人-outline.json','--art','../art/收书人-art.json'];
-    for(const command of [['validate',...args],['render',...args,'--html','--lang','en'],['render',...args,'--md'],['export',...args,'--out','.']]) {
-      const result=spawnSync(process.execPath,[entry,...command],{cwd,encoding:'utf8'});assert.equal(result.status,0,result.stderr+result.stdout);
+    const r=spawnSync(process.execPath,[join(local,'scripts/selftest.mjs')],{cwd:temp,encoding:'utf8'});assert.equal(r.status,0,r.stderr+r.stdout);
+    const cwd=join(local,'examples/creation'),entry=join(local,'scripts/novel-creation.mjs');
+    for(const args of [['validate','收书人-creation.json'],['render','收书人-creation.json','--html','--lang','en'],['render','收书人-creation.json','--md'],['export','收书人-creation.json','--out','.']]){
+      const result=spawnSync(process.execPath,[entry,...args],{cwd,encoding:'utf8'});assert.equal(result.status,0,result.stderr+result.stdout);
     }
-    assert.ok(existsSync(join(cwd,'manifest.json')));assert.ok(existsSync(join(cwd,'E01-01/prompt.md')));
-    assert.ok(!existsSync(join(cwd,'E01-01/video.mp4')));
+    assert.ok(existsSync(join(cwd,'manifest.json'))&&!existsSync(join(cwd,'E01-01/video.mp4')));
   });
-  test('partial upstream cannot hide a known invalid mounted reference',()=>{
-    const d=clone(doc);d.episodes[0].segments[0].images[1].ref='S99';
-    assert.equal(find(d,'refimage-coverage',{art:ctx.art}).status,'fail');
+  test('optional tables omitted and special delivery retained in seed',()=>{
+    const d=clone(doc);d.episodes[0].segments.forEach(s=>s.images=[]);
+    const s=clone(script);s.episodes[0].scenes[0].flow=s.episodes[0].scenes[0].flow.map(b=>({action:b.action??b.line}));
+    assert.ok(!renderHtml(d,{script:s}).includes('id="sec-dialogue"'));
+    assert.ok(!renderHtml(d,{script:s}).includes('id="sec-refs"'));
+    assert.ok(!renderMarkdown(doc,ctx).includes('| 配方 |'));
+    assert.equal(seedFromScript(script).episodes[0].seedScenes[0].beats[1].delivery,script.episodes[0].scenes[0].flow[1].delivery);
   });
-  test('export uses the same effective model as technical checks',()=>{
-    const d=clone(doc);d.video={model:'seedance2.0'};
-    const p=exportPack(d,script,{production});
-    const manifest=JSON.parse(p.files.find(f=>f.path==='manifest.json').content);
-    assert.equal(manifest.video.model,'seedance2.0');assert.equal(manifest.video.aspectRatio,production.video.aspectRatio);
+  test('damaged nested upstream structures return failures without throwing',()=>{
+    for(const mutate of [s=>s.episodes[0].scenes[0].flow[0]=null,s=>s.episodes[0].scenes[0].characters=['bad'],s=>s.episodes[0].scenes[0].characters=['C01','C01']]){
+      const s=clone(script);mutate(s);assert.equal(find(doc,'script-contract',{...ctx,script:s}).status,'fail');
+    }
+    for(const mutate of [o=>o.episodes[0]=null,o=>o.characters[0]=null,o=>o.beats[0]=null]){
+      const o=clone(outline);mutate(o);assert.equal(find(doc,'outline-contract',{...ctx,outline:o}).status,'fail');
+    }
   });
-  test('upstream snapshots reconcile without comparing sibling digests',()=>{
-    const s=clone(script);s.creativeContext={selection:clone(production.creative.selection)};
-    assert.equal(find(doc,'script-selection',{...ctx,script:s}).status,'pass');
-    assert.equal(find(doc,'outline-selection',{...ctx,script:s}).reason,'stage-incomplete');
-    assert.equal(find(doc,'upstream-selection',{...ctx,script:s}).status,'skipped');
-    s.creativeContext.selection.genre.id='life';assert.equal(find(doc,'upstream-selection',{...ctx,script:s}).status,'fail');
-  });
-  test('creation selection can record an uninstalled structure',()=>{
-    const choice=clone(production.creative.selection);choice.structure.id='uninstalled-structure';
-    const r=resolveProfiles(root,'creation',choice);assert.equal(r.references.length,3);
-    choice.pacing.id='uninstalled-pacing';assert.throws(()=>resolveProfiles(root,'creation',choice));
-  });
-  test('render rejects old versions and malformed numeric fields instead of injecting markup',()=>{
-    assert.throws(()=>renderHtml({...doc,schemaVersion:1},ctx));
-    assert.throws(()=>renderMarkdown(doc,{...ctx,script:{...script,schemaVersion:1}}));
+  test('CLI seed/render and invalid numeric boundary',()=>{
+    const s=file('script.json',script),p=file('creation.json',doc);assert.equal(cli(['seed',s]).status,0);assert.equal(cli(['render',p,'--script',s,'--no-production','--html']).status,0);
     const d=clone(doc);d.episodes[0].segments[0].cuts[0].seconds='<img onerror=bad>';assert.throws(()=>renderHtml(d,ctx));
   });
-  test('CLI seed/render and invalid old version boundary',()=>{
-    const s=file('script.json',script), p=file('creation.json',doc);
-    assert.equal(cli(['seed',s]).status,0);
-    assert.equal(cli(['render',p,'--script',s,'--no-production','--html']).status,0);
-    const d=clone(doc);delete d.schemaVersion;assert.equal(cli(['validate',file('old.json',d),'--no-production']).status,1);
-  });
-  console.log(`✓ ${count} 项 creation 策略/上游/报告/独立性集成测试通过；未调用生成`);
-} finally { rmSync(temp,{recursive:true,force:true}); }
+  console.log(`✓ ${count} creation v3 integration tests passed; offline only`);
+}finally{rmSync(temp,{recursive:true,force:true});}

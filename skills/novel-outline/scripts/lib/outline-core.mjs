@@ -1,7 +1,7 @@
-// Outline v2: deterministic contract and policy checks. No profile-ID branches.
+// Outline v3: deterministic structure, references and explicit production budgets.
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { neutralParams, validateParams, inspectContext } from './creative.mjs';
+import { documentErrors } from './document.mjs';
 export const SKILL_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const STAGES = ['skeleton', 'beats', 'full'];
 export const ADAPT_MODES = ['忠实', '抽核', '借壳', '原创'];
@@ -25,17 +25,11 @@ const unique = x => new Set(x).size === x.length;
 const validIds = (xs, prefix) => Array.isArray(xs) && xs.every(x=>typeof x === 'string' && new RegExp(`^${prefix}\\d{2,}$`).test(x)) && unique(xs);
 export const blocking = g => g.status === 'fail' && g.level === 'error' && g.category !== 'source';
 
-export function createSkeleton({source, episodes, minutesPerEpisode, genre='', adaptMode='原创'}={}) {
-  return {schemaVersion:2,source,params:{episodes,minutesPerEpisode,genre,adaptMode,...neutralParams('outline')},story:{focusCharacterIds:[],premise:'',throughline:'',audiencePromise:'',ending:''},adaptation:{core:'',keep:[],cut:[],merge:[],risks:[]},characters:[],scenes:[],props:[],beats:[],episodes:[]};
+export function createSkeleton({source, episodes, minutesPerEpisode, genre='', adaptMode='原创',creativeBrief,lang}={}) {
+  return {schemaVersion:3,source,...(lang===undefined?{}:{lang}),...(creativeBrief===undefined?{}:{creativeBrief}),params:{episodes,minutesPerEpisode,genre,adaptMode},story:{focusCharacterIds:[],premise:'',throughline:'',ending:''},characters:[],scenes:[],props:[],beats:[],episodes:[]};
 }
-// Explicit creation helper only: validate/render never fill deadlines or mutate data.
-export function newQuestion(question, episode, params) {
-  const q = structuredClone(question);
-  if (q.resolution === 'required' && q.dueByEp === undefined && params?.defaults?.questionResolveWithin != null) {
-    q.dueByEp = Math.min(episode + params.defaults.questionResolveWithin, params.episodes);
-  }
-  return q;
-}
+// Explicit copy helper. Never invent a question deadline.
+export function newQuestion(question) { return structuredClone(question); }
 
 export function checkup(doc, options={}) {
   if (typeof options === 'string') options={stage:options};
@@ -43,13 +37,13 @@ export function checkup(doc, options={}) {
   const add=(id, messages=[], extra={})=>gates.push({id,category:'base',level:'error',status:messages.length?'fail':'pass',messages,...extra});
   const skip=(id,reason,category='base',level='error')=>add(id,[],{category,level,status:'skipped',reason});
   const fields=(value, names, path, errors)=>{ for(const key of names) if(!text(value?.[key])) errors.push(`${path}.${key}: non-empty string required`); };
-  const reject=(value,names,path,errors)=>{for(const key of names) if(value?.[key]!==undefined) errors.push(`${path}.${key}: removed in v2; see references/migration.md`);};
+  const reject=(value,names,path,errors)=>{for(const key of names) if(value?.[key]!==undefined) errors.push(`${path}.${key}: removed in v3; run migrate-v3; see references/migration.md`);};
   if(!object(doc)) {add('document',['outline must be an object']); return finish();}
   if(!STAGES.includes(stage)) add('stage',[`unknown stage ${stage}`]);
   const p=object(doc.params)?doc.params:{}, n=p.episodes, chars=array(doc.characters), scenes=array(doc.scenes), props=array(doc.props), beats=array(doc.beats), eps=array(doc.episodes), arcs=array(doc.arcs);
   const ci=new Set(chars.map(c=>c?.id)), si=new Set(scenes.map(s=>s?.id)), pi=new Set(props.map(p=>p?.id)), bi=new Map(beats.map(b=>[b?.id,b]));
   const errors=[];
-  if(doc.schemaVersion!==2) errors.push('schemaVersion must be 2; migrate explicitly using references/migration.md');
+  if(doc.schemaVersion!==3) errors.push('schemaVersion must be 3; run migrate-v3 explicitly');
   fields(doc,['source'],'outline',errors);
   if(doc.lang!==undefined && !['zh','en'].includes(doc.lang)) errors.push('lang must be zh/en');
   if(!object(doc.params)) errors.push('params must be an object');
@@ -57,32 +51,35 @@ export function checkup(doc, options={}) {
   if(typeof p.minutesPerEpisode!=='number'||!Number.isFinite(p.minutesPerEpisode)||p.minutesPerEpisode<=0) errors.push('params.minutesPerEpisode must be finite and positive');
   fields(p,['genre'],'params',errors);
   if(!ADAPT_MODES.includes(p.adaptMode)) errors.push('params.adaptMode invalid');
-  if(p.preferences!==undefined&&(!Array.isArray(p.preferences)||!p.preferences.every(text))) errors.push('params.preferences must be an array of non-empty strings');
-  errors.push(...validateParams('outline',p));
+  errors.push(...documentErrors(doc,options.production));
   reject(p,['pacing','maxBeatGap','hookWindow','maxLineChars','minCutSeconds','maxCutSeconds'],'params',errors);
   if(p.thresholds!==undefined && !object(p.thresholds)) errors.push('params.thresholds must be an object');
   for(const [key,value] of Object.entries(object(p.thresholds)?p.thresholds:{})) if(![...Object.keys(DEFAULT_THRESHOLDS),'maxPrimaryScenes'].includes(key)||!positiveInt(value)) errors.push(`params.thresholds.${key}: unknown budget or not a positive integer`);
   reject(doc,['crowdPlan','assets'],'outline',errors);
+  // Removed persisted fields are never silently accepted at an earlier stage.
+  if(stage==='skeleton')for(const b of beats)reject(b,['type','payoff'],`beats.${b?.id}`,errors);
+  if(stage!=='full')for(const ep of eps)reject(ep,['stateChange','hook','suspense','crowdPlan','beatIds'],`ep${ep?.ep}`,errors);
   add('fields',errors);
 
   const storyErrors=[], story=doc.story;
   if(!object(story)) storyErrors.push('story required');
-  fields(story,['premise','throughline','audiencePromise','ending'],'story',storyErrors);
+  fields(story,['premise','throughline','ending'],'story',storyErrors);
+  if(story?.audiencePromise!==undefined&&!text(story.audiencePromise)) storyErrors.push('story.audiencePromise must be non-empty if provided');
   if(!validIds(story?.focusCharacterIds,'C')||!story?.focusCharacterIds?.length) storyErrors.push('story.focusCharacterIds must be non-empty unique C IDs');
   for(const id of array(story?.focusCharacterIds)) if(!ci.has(id)) storyErrors.push(`story.focusCharacterIds unknown ${id}`);
-  if(story?.drive!==undefined && (!object(story.drive)||!Object.values(story.drive).every(text))) storyErrors.push('story.drive must contain non-empty strings');
+  reject(story,['drive'],'story',storyErrors);
   add('story',storyErrors);
   const adErrors=[], ad=doc.adaptation;
-  if(!object(ad)) adErrors.push('adaptation required');
-  fields(ad,['core'],'adaptation',adErrors);
+  if(ad!==undefined&&!object(ad)) adErrors.push('adaptation must be an object if provided');
+  reject(ad,['core'],'adaptation',adErrors);
   for(const [key,names] of [['keep',['what','why']],['cut',['what','why']],['merge',['what','why']],['risks',['what','plan']]]) {
-    if(!Array.isArray(ad?.[key])) adErrors.push(`adaptation.${key} must be an array`);
+    if(ad?.[key]!==undefined&&!Array.isArray(ad[key])) adErrors.push(`adaptation.${key} must be an array`);
     for(const [i,item] of array(ad?.[key]).entries()) {
       fields(item,names,`adaptation.${key}[${i}]`,adErrors);
       if(item?.evidence!==undefined&&!text(item.evidence)) adErrors.push(`adaptation.${key}[${i}].evidence must be a non-empty verbatim excerpt`);
     }
   }
-  for(const key of ['cutNote','mergeNote','sourceNote']) if(ad?.[key]!==undefined&&!text(ad[key])) adErrors.push(`adaptation.${key} cannot be empty`);
+  for(const key of ['cutNote','mergeNote','sourceNote','evidence']) if(ad?.[key]!==undefined&&!text(ad[key])) adErrors.push(`adaptation.${key} cannot be empty`);
   add('adaptation',adErrors);
   // Evidence authenticity is a content review, not a substring or genre heuristic.
   if(p.adaptMode==='原创') skip('source-evidence','not-applicable','content','warn');
@@ -98,8 +95,8 @@ export function checkup(doc, options={}) {
       if(key==='characters') {
         fields(r,['role'],`${key}.${r?.id}`,assetErrors);
         if(!CHARACTER_TIERS.includes(r?.tier)) assetErrors.push(`${r?.id}.tier invalid`);
-        if(r?.tier!=='functional') fields(r,['arc'],`${key}.${r?.id}`,assetErrors);
-        if(!Array.isArray(r?.from)||!r.from.length||!r.from.every(text)) assetErrors.push(`${r?.id}.from must record source/original character`);
+        if(r?.arc!==undefined) fields(r,['arc'],`${key}.${r?.id}`,assetErrors);
+        if(r?.from!==undefined&&(!Array.isArray(r.from)||!r.from.length||!r.from.every(text))) assetErrors.push(`${r?.id}.from must record source/original character`);
       }
       if(key==='scenes') {
         if(typeof r?.primary!=='boolean') assetErrors.push(`${r?.id}.primary must be boolean`);
@@ -115,10 +112,10 @@ export function checkup(doc, options={}) {
   const th=thresholdsOf(doc);
   for(const [tier,key] of [['lead','maxLeads'],['support','maxSupport'],['functional','maxFunctional']]) {
     const count=chars.filter(c=>c?.tier===tier).length;
-    add(`${tier}-cap`,count>th[key]?[`${count} > ${th[key]}`]:[]);
+    add(`${tier}-cap`,count>th[key]?[`${count} > ${th[key]}`]:[],{level:p.thresholds?.[key]!==undefined?'error':'warn',budgetSource:p.thresholds?.[key]!==undefined?'user':'reference'});
   }
-  add('scene-cap',scenes.filter(s=>s?.primary).length>th.maxPrimaryScenes?[`primary scenes > ${th.maxPrimaryScenes}`]:[]);
-  if(doc.props===undefined) skip('prop-cap','not-applicable'); else add('prop-cap',props.length>th.maxProps?[`${props.length} > ${th.maxProps}`]:[]);
+  add('scene-cap',scenes.filter(s=>s?.primary).length>th.maxPrimaryScenes?[`primary scenes > ${th.maxPrimaryScenes}`]:[],{level:p.thresholds?.maxPrimaryScenes!==undefined?'error':'warn',budgetSource:p.thresholds?.maxPrimaryScenes!==undefined?'user':'reference'});
+  if(doc.props===undefined) skip('prop-cap','not-applicable'); else add('prop-cap',props.length>th.maxProps?[`${props.length} > ${th.maxProps}`]:[],{level:p.thresholds?.maxProps!==undefined?'error':'warn',budgetSource:p.thresholds?.maxProps!==undefined?'user':'reference'});
 
   if(stage==='skeleton') {
     for(const id of ['beats','ending-beat','arcs','prop-beats']) skip(id,'stage-incomplete');
@@ -128,15 +125,15 @@ export function checkup(doc, options={}) {
     if(!validIds(beats.map(b=>b?.id),'B')) be.push('beats: invalid or duplicate B IDs');
     let previous=-1;
     for(const b of beats) {
-      fields(b,['type','setup','outcome'],`beats.${b?.id}`,be);
+      fields(b,['setup','outcome'],`beats.${b?.id}`,be);
       if(!positiveInt(b?.episode)||b.episode>n) be.push(`${b?.id}.episode outside episode range`);
-      if(!POSITIONS.includes(b?.position)) be.push(`${b?.id}.position invalid`);
-      if(!KINDS.includes(b?.kind)) be.push(`${b?.id}.kind invalid`);
-      if(b?.kind==='payoff'?!BEAT_WEIGHTS.includes(b?.weight):b?.weight!==undefined) be.push(`${b?.id}.weight required only for payoff`);
+      if(b?.position!==undefined&&!POSITIONS.includes(b.position)) be.push(`${b?.id}.position invalid`);
+      if(b?.kind!==undefined&&!KINDS.includes(b.kind)) be.push(`${b?.id}.kind invalid`);
+      if(b?.weight!==undefined&&(b?.kind!=='payoff'||!BEAT_WEIGHTS.includes(b.weight))) be.push(`${b?.id}.weight allowed only for payoff and must be minor/major`);
       if(b?.resolves!==undefined&&!validIds(b.resolves,'Q')) be.push(`${b?.id}.resolves must be unique Q IDs`);
-      reject(b,['payoff'],`beats.${b?.id}`,be);
-      const order=b?.episode*5+POSITIONS.indexOf(b?.position);
-      if(order<previous) be.push(`${b?.id}: beats must follow episode/position order`);
+      reject(b,['payoff','type'],`beats.${b?.id}`,be);
+      const order=b?.episode;
+      if(order<previous) be.push(`${b?.id}: beats must follow episode order; same-episode array order is authoritative`);
       previous=order;
     }
     add('beats',be);
@@ -149,7 +146,7 @@ export function checkup(doc, options={}) {
     for(const a of arcs) {
       fields(a,['goal'],`arcs.${a?.id}`,ae);
       if(!positiveInt(a?.startEp)||!positiveInt(a?.endEp)||a.startEp>a.endEp||a.endEp>n||a.startEp<=prevEnd) ae.push(`${a?.id}: invalid, unsorted or overlapping arc range`);
-      if(!bi.has(a?.endBeatId)||bi.get(a.endBeatId).episode!==a.endEp) ae.push(`${a?.id}.endBeatId must belong to endEp`);
+      if(!bi.has(a?.endBeatId)||bi.get(a?.endBeatId)?.episode!==a?.endEp) ae.push(`${a?.id}.endBeatId must belong to endEp`);
       prevEnd=a?.endEp;
     }
     add('arcs',ae);
@@ -165,17 +162,15 @@ export function checkup(doc, options={}) {
     for(const [i,e] of eps.entries()) {
       if(e?.ep!==i+1) ee.push(`episodes[${i}].ep must be ${i+1}`);
       fields(e,['opening','synopsis'],`ep${e?.ep}`,ee);
-      reject(e,['hook','suspense','crowdPlan','beatIds'],`ep${e?.ep}`,ee);
+      reject(e,['hook','suspense','crowdPlan','beatIds','stateChange'],`ep${e?.ep}`,ee);
       for(const [key,prefix,ids] of [['characterIds','C',ci],['sceneIds','S',si],['propIds','P',pi]]) {
         if((key!=='propIds'||e?.[key]!==undefined)&&(!validIds(e?.[key],prefix)||(key!=='propIds'&&!e?.[key]?.length))) ee.push(`ep${e?.ep}.${key}: valid non-empty asset references required`);
         for(const id of array(e?.[key])) if(!ids.has(id)) re.push(`ep${e?.ep}.${key}: unknown ${id}`);
       }
       if(e?.warnings!==undefined&&(!Array.isArray(e.warnings)||!e.warnings.every(text))) ee.push(`ep${e?.ep}.warnings must be strings`);
-      if(e?.stateChange!==undefined && (!object(e.stateChange)||!text(e.stateChange.before)||!text(e.stateChange.after))) ee.push(`ep${e?.ep}.stateChange requires before/after`);
       const end=e?.ending;
       if(!object(end)||!MODES.includes(end.mode)||!text(end.event)) ee.push(`ep${e?.ep}.ending requires mode/event`);
       if(object(end)&&Object.keys(end).some(k=>!['mode','event','question'].includes(k))) ee.push(`ep${e?.ep}.ending unknown fields`);
-      if(end?.mode==='suspense'&&!object(end.question)) qe.push(`ep${e?.ep}: suspense requires question`);
       if(end?.mode==='closure'&&end.question!==undefined) qe.push(`ep${e?.ep}: closure forbids question`);
       if(end?.question!==undefined) {
         const q=end.question;
@@ -187,7 +182,7 @@ export function checkup(doc, options={}) {
           questions.set(q.id,{...q,ep:e?.ep});
         }
         if(q?.reason!==undefined&&!text(q.reason)) qe.push(`${q?.id}: reason must be a non-empty string`);
-        if(q?.resolution==='optional'&&(!text(q.reason)||q.dueByEp!==undefined)) qe.push(`${q?.id}: optional needs reason and forbids dueByEp`);
+        if(q?.resolution==='optional'&&q.dueByEp!==undefined) qe.push(`${q?.id}: optional forbids dueByEp`);
         if(q?.dueByEp!==undefined&&(!positiveInt(q.dueByEp)||q.dueByEp<=e?.ep||q.dueByEp>n)) qe.push(`${q?.id}: invalid dueByEp`);
         if(q?.resolution==='required'&&e?.ep===n) qe.push(`${q?.id}: final episode cannot promise required resolution`);
       }
@@ -206,42 +201,7 @@ export function checkup(doc, options={}) {
     for(const e of eps) for(const [risk,pattern] of Object.entries(RISK_PATTERNS)) if(pattern.test([e?.synopsis,e?.opening,e?.ending?.event].join(' '))&&!array(e?.warnings).includes(risk)) risks.push(`ep${e?.ep}: consider ${risk}`);
     add('risk-scan',risks,{category:'content',level:'warn'});
   }
-  const rules=object(p.rules)?p.rules:{};
-  const payoff=beats.filter(b=>b?.kind==='payoff'), majors=[...new Set(payoff.filter(b=>b.weight==='major').map(b=>b.episode))].sort((a,b)=>a-b);
-  const hasWeight=(b,min)=>b?.kind==='payoff'&&BEAT_WEIGHTS.indexOf(b.weight)>=BEAT_WEIGHTS.indexOf(min);
-  for(const key of Object.keys(neutralParams('outline').rules)) {
-    const rule=rules[key];
-    if(!object(rule)||!['off','warn','error'].includes(rule.level)) {add(key,['invalid policy configuration'],{category:'policy'});continue;}
-    if(rule.level==='off') {skip(key,'policy-disabled','policy','off');continue;}
-    const fullOnly=['endingModes','optionalQuestions','stateProgress'].includes(key);
-    if(stage==='skeleton'||(stage!=='full'&&fullOnly)) {skip(key,'stage-incomplete','policy',rule.level);continue;}
-    if((['arcCoverage','arcPayoff'].includes(key)&&!arcs.length)||(key==='majorGap'&&majors.length<2)) {skip(key,'not-applicable','policy',rule.level);continue;}
-    const bad=[];
-    if(key==='payoffCoverage') {
-      if(!positiveInt(n)) bad.push('valid total episode count required for payoff coverage');
-      else {
-        const counts=new Map();
-        for(const b of payoff) if(positiveInt(b.episode)&&b.episode<=n) counts.set(b.episode,(counts.get(b.episode)??0)+1);
-        const satisfied=[...counts].filter(([,count])=>count>=rule.minPerEpisode).length;
-        if(satisfied<n) bad.push(`${n-satisfied} episodes below payoff minimum ${rule.minPerEpisode}`);
-      }
-    }
-    if(key==='firstMajor'&&(!majors.length||majors[0]>Math.min(rule.byEpisode,n))) bad.push(`first major required by ep${Math.min(rule.byEpisode,n)}`);
-    if(key==='majorGap') for(let i=1;i<majors.length;i++) if(majors[i]-majors[i-1]>rule.maxGap) bad.push(`ep${majors[i-1]}–${majors[i]}: major gap > ${rule.maxGap}`);
-    if(key==='endingPayoff'&&!hasWeight(bi.get(story?.endingBeatId),rule.minWeight)) bad.push(`endingBeatId requires ${rule.minWeight} payoff`);
-    if(key==='endingModes') for(const e of eps) if(!array(e?.ep===n?rule.final:rule.nonFinal).includes(e?.ending?.mode)) bad.push(`ep${e?.ep}: ending mode ${e?.ending?.mode} not allowed`);
-    if(key==='optionalQuestions'&&!rule.allow) for(const e of eps) if(e?.ending?.question?.resolution==='optional') bad.push(`ep${e?.ep}: optional question not allowed`);
-    if(key==='stateProgress') for(const e of eps) if(!text(e?.stateChange?.before)||!text(e?.stateChange?.after)||e.stateChange.before===e.stateChange.after) bad.push(`ep${e?.ep}: missing or identical stateChange`);
-    if(key==='arcCoverage'&&(arcs[0]?.startEp!==1||arcs.at(-1)?.endEp!==n||arcs.some((a,i)=>i>0&&a.startEp!==arcs[i-1].endEp+1))) bad.push('arcs must cover all episodes continuously');
-    if(key==='arcPayoff') for(const a of arcs) if(!hasWeight(bi.get(a?.endBeatId),rule.minWeight)) bad.push(`${a?.id}: arc endpoint requires ${rule.minWeight} payoff`);
-    add(key,bad,{category:'policy',level:rule.level});
-  }
-  try {
-    for(const g of inspectContext(doc,{skillRoot:options.skillRoot??SKILL_ROOT,stage:'outline',production:options.productionError?null:options.production})) {
-      gates.push({...g,messages:g.messages??(g.message?[g.message]:[])});
-      delete gates.at(-1).message;
-    }
-  } catch(error) {add('creative-context',[error.message]);}
+  if(options.production===undefined&&!options.productionError) skip('project-requirements','missing-upstream');
   if(options.productionError) add('production-readable',[options.productionError]);
   // No renderer or structural check can award a semantic review pass.
   skip('content-review','not-applicable','content','warn');
@@ -264,8 +224,8 @@ export function computeAssets(doc) {
   const characters=chars.map(c=>{const episodes=usage(c?.id,'characterIds');return {...c,uses:episodes.length,episodes};});
   const props=array(doc?.props).map(p=>{const episodes=usage(p?.id,'propIds');return {...p,uses:episodes.length,episodes,beatIds:array(p?.beatIds)};});
   const castPlan=CHARACTER_TIERS.map(tier=>{const members=chars.filter(c=>c?.tier===tier);return {tier,label:TIER_LABELS[tier],count:members.length,names:members.map(c=>c.name),spec:TIER_ASSET_SPEC[tier]};});
-  const warnings=Object.create(null),beatsByType=Object.create(null);
+  const warnings=Object.create(null),beatsByKind=Object.create(null);
   for(const e of eps) for(const w of array(e?.warnings)) (warnings[w]??=[]).push(e.ep);
-  for(const b of beats) (beatsByType[b?.type]??=[]).push(b?.episode);
-  return {scenes,characters,props,castPlan,warnings,beatsByType};
+  for(const b of beats) if(b?.kind!==undefined) (beatsByKind[b.kind]??=[]).push(b?.episode);
+  return {scenes,characters,props,castPlan,warnings,beatsByKind};
 }

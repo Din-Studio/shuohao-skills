@@ -6,7 +6,7 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertOutlineV2, assetProductionProblems, creativeBackground, check, blocking, mark } from './lib/contracts.mjs';
+import { assertOutlineV3, assetProductionProblems, creativeBackground, check, blocking, mark } from './lib/contracts.mjs';
 export { creativeBackground } from './lib/contracts.mjs';
 import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
 
@@ -619,7 +619,7 @@ export const TIER_TO_IMPORTANCE = { lead: 'protagonist', support: 'supporting', 
  * 字段缺失，那是预期的。
  */
 export function seedFromOutline(outline) {
-  assertOutlineV2(outline);
+  assertOutlineV3(outline);
   const characters = (outline?.characters ?? []).map((c) => {
     const note = [
       c?.id ? `角色码 ${c.id}` : null,
@@ -946,9 +946,7 @@ export function renderMarkdown(characters, source, summary = '', lang = DEFAULT_
   const out = [t.mdTitle(source), '', t.mdCast(characters.length, characters.map((c) => c.name).join('、')), ''];
   if (summary) out.push(t.mdSynopsis, '', summary, '');
   const background = creativeBackground(production);
-  if (background) out.push(`> ${lang === 'en' ? 'Creative background (record only)' : '创作背景（仅记录）'}: ${JSON.stringify(background)}`, '');
-  for (const g of gateReport(characters, null, contentLang, production)) out.push(`- ${mark(g)} ${g.id}: ${g.status}${g.reason ? ` (${g.reason})` : ''}${g.detail ? ` — ${g.detail}` : ''}`);
-  out.push(lang === 'en' ? 'Content review: not performed.' : '内容评审：未执行。', '');
+  if (background) out.push(`> ${lang === 'en' ? 'Creative brief' : '创作要求'}: ${JSON.stringify(background)}`, '');
 
   for (const c of characters) {
     const { persona, image, voice } = c;
@@ -993,6 +991,9 @@ export function renderMarkdown(characters, source, summary = '', lang = DEFAULT_
     out.push(`**${t.voice.prompt}**`, '', '```text', voice.prompt, '```', '');
   }
 
+  out.push(lang === 'en' ? '## Structural checks' : '## 结构检查', '');
+  for (const g of gateReport(characters, null, contentLang, production)) out.push(`- ${mark(g)} ${g.id}: ${g.status}${g.reason ? ` (${g.reason})` : ''}${g.detail ? ` — ${g.detail}` : ''}`);
+  out.push(lang === 'en' ? 'Content review: not performed.' : '内容评审：未执行。', '');
   return out.join('\n');
 }
 
@@ -1607,7 +1608,7 @@ button{font-family:inherit}
   body{background:#fff}
 }
 </style></head><body>
-<section class="checks" aria-label="Checks"><p>${esc(lang === 'en' ? 'Content review: not performed.' : '内容评审：未执行。')}</p>${background ? `<p>${esc(JSON.stringify(background))}</p>` : ''}${checks.map(g => `<p data-status="${g.status}">${mark(g)} ${esc(g.id)}: ${g.status}${g.reason ? ` (${g.reason})` : ''}${g.detail ? ` — ${esc(g.detail)}` : ''}</p>`).join('')}</section>
+
 
 <header class="top">
   <div class="brand"><h1>${esc(source)}</h1></div>
@@ -1640,6 +1641,7 @@ button{font-family:inherit}
   <main class="main">
     ${renderGraph(ordered, t)}
     ${ordered.map((c, i) => renderCharacter(c, i, t)).join('\n')}
+    <section class="checks" aria-label="Checks"><p>${esc(lang === 'en' ? 'Content review: not performed.' : '内容评审：未执行。')}</p>${background ? `<p>${esc(JSON.stringify(background))}</p>` : ''}${checks.map(g => `<p data-status="${g.status}">${mark(g)} ${esc(g.id)}: ${g.status}${g.reason ? ` (${g.reason})` : ''}${g.detail ? ` — ${esc(g.detail)}` : ''}</p>`).join('')}</section>
   </main>
 </div>
 
@@ -2000,7 +2002,7 @@ function announceProduction(p, docPath = null) {
   else if (p.path) {
     console.error(`↳ 生产参数：${p.path}`);
     const background = creativeBackground(p.doc);
-    if (background) console.error(`↳ 创作背景（仅记录）：${JSON.stringify(background)}；不加载 profile，不生成摘要`);
+    if (background) console.error(`↳ 创作要求：${JSON.stringify(background)}；内容评审未执行`);
     if (autopilotOf(p.doc)) console.error(`↳ ${AUTOPILOT_NOTE}`);
     const note = stageDirNote(docPath, p.path);
     if (note) console.error(`⚠️ ${note}`);

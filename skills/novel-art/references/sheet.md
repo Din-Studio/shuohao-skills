@@ -76,4 +76,4 @@ node <baseDir>/scripts/novel-art.mjs images <剧名>-art.json --out image-plan.j
 
 ## 创作与制作参数分离
 
-本地 profile 是否安装不影响资产阶段，不加载 profile、不生成摘要。出图仍必须提供 production 的完整视觉正文、模型、分辨率和资产画幅，不能由创作背景或 CLI 默认值代替。缺制作参数时生成任务报错。参考依赖与目标路径由计划保留；生成、上传及透明底编辑交给外部工具。
+创作要求不替代技术参数。出图仍必须提供 production 的完整视觉正文、模型、分辨率和资产画幅，不能由 creativeBrief 或 CLI 默认值代替。缺制作参数时生成任务报错。参考依赖与目标路径由计划保留；生成、上传及透明底编辑交给外部工具。

@@ -1,33 +1,30 @@
-# 资产阶段创作背景与上游契约
+# 资产阶段创作要求与上游契约
 
-## 本阶段只记录背景
+## 自然语言要求
 
-从项目 `production.json.creative.selection` 读取 `genre` 和 `narrativeStyle` 的 ID、明确版本，作为创作背景展示。没有 production 或 creative 时说明未提供，不猜测题材或默认策略。
+读取 `production.creativeBrief` 原文作为背景。提供时必须是非空字符串，不解析成规则、分类或模型参数。省略时不显示空配置区，不推断默认要求。资产 JSON 不保存要求副本。
 
-- 不读取任何本地或兄弟 skill 的 profile 文件。
-- 不新增 profile 应用命令，不写 `creativeContext`，不生成 profile 摘要。
-- `structure` / `pacing` 不属于资产阶段职责。完整 selection 的结构可以检查，但不解释这两个维度的规则。
-- 本地 profile 缺失不影响资产阶段。项目选择的格式错误仍须修复，不能伪造已加载、已应用或来源已核验。
-- 创作背景不是视觉正文。画风仍唯一来自 `production.style`；制作参数来自 `production.image`。已有有效参数不因背景变化被隐式替换。
+production 必须包含 `schemaVersion: 3`。拒绝旧 creative/creativeContext、selection/decisions/overrides、params.rules/defaults/preferences，并指向显式迁移。创作要求不是视觉正文：画风仍唯一来自 production.style，制作参数来自 production.image。要求变化后由 Agent 评审受影响设计，不自动改变技术参数。
 
-## 接受的上游版本与字段
+## outline v3 消费投影
 
-`seed` 只接受显式 `outline.schemaVersion: 2`。拒绝缺版本、旧版、未知版本、损坏或不可读上游。迁移见 [migration.md](migration.md)。
+seed 只接受显式 `outline.schemaVersion: 3`。检查自己消费的字段，不声称已验证完整大纲：
 
-本地入口检查自己消费的投影：非空 source；characters/scenes 数组；稳定 C/S/P/B ID 与唯一性；角色 name/tier/from/role/arc；场景 name/primary 和可选 reusePlan；可选 props 的 name/function/beatIds；提供的 beats/episodes 的类型、节点 kind/position/setup/outcome、所属集与资产引用。未生成节点和分集的合法骨架可用于资产设计。本阶段不重复实现大纲策略、Q 计划和内容评审，不能声称已验证完整大纲。
+- source 非空；characters/scenes 数组。
+- C/S/P/B ID 合法且唯一；角色 name/tier、场景 name/primary、道具 name/function。
+- characters.from、arc、role 可以省略。提供时检查类型；from 是非空字符串元素组成的数组。
+- scenes.reusePlan、props、props.beatIds、beats、episodes 按消费需要提供。未完成节点和分集的骨架可以用于资产设计。
+- 节点必须有 id/episode/setup/outcome；kind、position 可选，提供时检查合法枚举。weight 仅 kind=payoff 时允许，仍可省略。
+- 节点集号不递减；已提供的集数与分集、资产引用及道具 beatIds 必须一致。未分类节点照常按 B ID 引用。
+- 拒绝旧 beats.type、story.drive、adaptation.core、episodes.stateChange 及创作配置，不静默忽略。
+- 不重复实现大纲 Q 回收、完整叙事契约与内容评审。
 
-`reusePlan` 是可选建议，一次性场景没有复用方案合法。`props[].beatIds` 可以引用 event/pressure/turn/payoff 任意节点，不限于兑现。引用不存在的节点仍失败。seed 保留道具 usage.beatIds，并计算用于展示的 usage.beats 类型。场景 usage.beats 只表示其出现集中的节点类型，不证明该节点实际发生在这个场景；不得伪造场景落点认领。
+seed 保留道具 usage.beatIds，usage.beats 的阅读文本来自节点 outcome。场景 usage.beats 仅展示其出现集中的节点结果，不证明事件发生在该场景；不凭同集出现伪造精确事件关联。缺少 from/arc 不妨碍角色骨架生成；角色卡成品仍遵循自身原输出协议。
 
-## 检查结果
+## 技术检查与独立运行
 
-检查对象使用 `{ id, label, status, category, level, detail, reason? }`。
-`status` 为 pass/fail/skipped；资产基础检查 `category=base, level=error`。不再输出检查用的 ok 布尔值。生成批次的成功计数不是检查对象。
+检查对象为 status=pass/fail/skipped、category=base、level=error。缺少 production/原文/角色上游只跳过依赖项（missing-upstream），不适用项单列 not-applicable。提供损坏或不可读上游必须失败，不当作缺失。出图仍须完整视觉正文、模型、分辨率、资产比例。
 
-- 缺少生产参数、原文或角色上游，仅跳过依赖该输入的检查，原因 missing-upstream。
-- 没有道具等不适用项为 skipped / not-applicable。
-- 提供损坏的生产参数、缺视觉正文、错误画幅或损坏上游均失败，不伪装成缺少上游。
-- 出图必须提供合法视觉正文、模型、分辨率、资产比例；无 production 的历史报告可以读取，不代表可投产。
-- 结构通过不等于内容评审通过。报告明确内容评审未执行。
-- 无 profile 加载，所以不产生 policy-disabled 检查或策略通过项。
+结构通过不等于内容评审通过。报告明确内容评审未执行；导出 JSON 不增加要求副本或统计。资产输出、参考图身份顺序及媒体计划协议不变。
 
-每个 skill 的本地脚本、指南、样例和测试可一起拷走。运行时没有兄弟代码或样例依赖。
+本 skill 的脚本、指南、样例和测试可整体独立复制，不读取兄弟目录。迁移说明见 [migration.md](migration.md)。

@@ -19,32 +19,24 @@
 
 | Skill | 做什么 |
 | --- | --- |
-| [**novel-setup**](skills/novel-setup) | 确认制作参数、视觉正文和四维创作选择，写入工作目录根的 `production.json`。画幅不决定叙事节奏，选择不代表下游策略已安装 |
-| [**novel-outline**](skills/novel-outline) | 建立作品承诺、稳定剧情节点、分集与集尾计划、可选阶段里程碑和资产清单。兑现频率、悬念要求与终局方式由显式策略决定 |
+| [**novel-setup**](skills/novel-setup) | 确认制作参数、视觉正文和自然语言创作要求，写入工作目录根的 `production.json`。画幅不决定叙事节奏 |
+| [**novel-outline**](skills/novel-outline) | 建立作品承诺、稳定剧情节点、分集与集尾计划、可选阶段里程碑和资产清单。创作方法读取本地指南，不强制兑现频率、悬念或终局胜利 |
 | [**novel-characters**](skills/novel-characters) | 把大纲定下的角色做成角色设定集：人物画像、形象提示词、音色提示词、角色设定图。吃 outline.json 预填角色表，报告语言可选，画风整块取自 `production.json`。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
 | [**novel-art**](skills/novel-art) | 给 AI 短剧出美术设定集（场景 + 叙事道具）：一致性锚点、光照与状态变体、尺度参照、无人无手白底提示词。吃 outline.json 预填清单，基础契约与制作参数由脚本检查。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
-| [**novel-script**](skills/novel-script) | 编写场次与节拍流，按 ID 认领大纲节点，定位开场与集尾，严格对账上游目标时长。台词长度和开场窗口按当前策略检查；估算不等于真实表演时长 |
-| [**novel-creation**](skills/novel-creation) | 参考图直出视频：按剧本分段、切镜，直接挂载已有的角色、场景与道具设定图，不生成中间分镜图。视频提示词按模型选择结构，`export` 输出投产包，`videos` 导出离线计划，独立安装的 ly-video 负责生成与恢复。镜头表达策略与模型技术限制分别检查 |
+| [**novel-script**](skills/novel-script) | 编写场次与节拍流，按 ID 认领大纲节点，定位开场与集尾，严格对账上游目标时长。开场落点按需标记，结束坐标由正文计算；估算不等于真实表演时长 |
+| [**novel-creation**](skills/novel-creation) | 参考图直出视频：按剧本分段、切镜，直接挂载已有的角色、场景与道具设定图，不生成中间分镜图。视频提示词按模型选择结构，`export` 输出投产包，`videos` 导出离线计划，独立安装的 ly-video 负责生成与恢复。镜头表达按指南评审，模型技术限制由工具检查 |
 
 **五个创作 skill 的报告都支持中英双语界面**：默认中文，`render --lang en` 切换为英文界面（故事内容与原始诊断保持原文）。界面语言也可以在 `production.json` 里一处定死。
 
 **要一路跑到底不被打断**，就在 `production.json` 里打开自动驾驶（`novel-setup init --autopilot`）：五个创作 skill 读到 `"autopilot": true` 就各自把自己那一段一口气跑完——不提问、不等拍板，该做的决定自己做，做过的决定全部写进汇报。**转移的是审批权，不是取消检查点**：质量门照样是门、花钱前照样先算账、失败的止损照样止损。默认是关的。
 
-## 创作策略与版本边界
+## 创作指南与数据版本
 
-主流程和基础契约保持稳定。题材 `genre`、叙事风格 `narrativeStyle`、结构 `structure`、节奏 `pacing` 分别选择明确版本的本地 profile。视觉正文仍只来自 `production.json.style`。
+创作方法集中在 outline、script、creation 各自的 `references/创作指南.md`。项目可在 `production.json.creativeBrief` 保存自然语言要求，不再选择四维 profile、维护指南版本或执行策略应用命令。视觉正文仍只来自 `production.json.style`。画幅不决定叙事节奏。
 
-首批支持三种组合：连续追更＋密集兑现、连续故事＋渐进累积、单元故事＋舒缓推进。题材与风格可以独立组合。慢热作品不必每集兑现，生活单元可以普通集收束；基础引用、真实位置、明确的问题承诺和技术限制不能关闭。
+JSON 保存故事内容和必要交接关系。原创不强制填写改编取舍；问题追踪、阶段规划和事件分类按需填写。重要节点认领、资产引用、明确的问题承诺和模型技术限制仍检查。时长估算是提醒，不等于真实表演时长。
 
-outline、script、creation 各自提供 `profiles`、`profile`、`apply-profile`。新增已支持规则范围内的策略只需增加本 skill 的 `references/profiles/`；无共享运行库，不执行策略代码。先预览差异，再明确决定旧覆盖，确认后备份并写入阶段参数。`validate/render` 只读取当前有效参数，不重新应用模板。同版本来源漂移只提醒历史读取；继续创作须恢复来源或明确升级版本。
-
-```bash
-node skills/novel-outline/scripts/novel-outline.mjs profiles
-node skills/novel-outline/scripts/novel-outline.mjs apply-profile outline/story-outline.json --production production.json
-# 预览后按 schema 填写覆盖决策，再增加 --confirm；剧本与视频创作使用相同命令
-```
-
-**破坏性升级**：大纲和剧本要求 `schemaVersion: 2`。旧数据先备份，按各 skill 的迁移说明重新判断节点、集尾和正文认领；不能仅重命名旧字段。既有项目缺少 `creative` 不自动获得新策略。检查结果区分基础失败、策略失败／提醒、关闭或缺上游的跳过，以及内容评审状态；没有全量上游对账时不得称为完整联合交付。
+**破坏性升级**：production、outline、script、creation 使用 `schemaVersion: 3`。旧项目先备份，按各 skill 的迁移说明执行 `migrate-v3` 预览，再审阅语义合并项并输出新文件；不能仅修改版本号。指南修改不会令既有产物失效。结构检查和内容评审分开报告，缺少上游时不得宣称联合交付通过。
 
 ## 合成一张单页
 
@@ -54,7 +46,7 @@ node skills/novel-outline/scripts/novel-outline.mjs apply-profile outline/story-
 node scripts/report.mjs --from <demo目录> --out report.html
 ```
 
-`--from` 按下面的[工作目录约定](#工作目录约定)自动发现五份 json；也可以逐个指定（`--outline` `--cast` `--art` `--script` `--creation`）。只跑了角色那一段就只有一个面板，不报错。`production.json` 不单独生成面板；各阶段报告展示当前有效参数和策略来源，`novel-setup show` 展示项目选择。自动发现遇到同阶段多份 JSON 时要求显式指定，不猜测版本。渲染失败的面板会明确标注，并返回非零退出码。
+`--from` 按下面的[工作目录约定](#工作目录约定)自动发现五份 json；也可以逐个指定（`--outline` `--cast` `--art` `--script` `--creation`）。只跑了角色那一段就只有一个面板，不报错。`production.json` 不单独生成面板；各阶段报告优先展示正文、交接关系与检查结果，`novel-setup show` 展示项目要求。自动发现遇到同阶段多份 JSON 时要求显式指定，不猜测版本。渲染失败的面板会明确标注，并返回非零退出码。
 
 它是**组装器，不是独立 skill**：不 import 任何 skill 的代码，而是调各自的 `render --html` 拿产物再拼装。五个创作 skill 各自提供渲染入口，仍然独立可跑、可以单独拷走；某个 skill 改了渲染，这边自动跟上。
 
@@ -187,7 +179,7 @@ skills/<skill-name>/
 for f in skills/*/scripts/*selftest.mjs scripts/*-selftest.mjs; do node "$f" || exit; done
 ```
 
-没有配置 CI。自测在本地运行，包含三种组合联合测试、策略切换和独立拷贝检查。**已在 macOS + Node 22/24 上验证**；代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但没验。
+没有配置 CI。自测在本地运行，包含跨阶段联合测试、旧数据迁移和独立拷贝检查。**已在 macOS + Node 22/24 上验证**；代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但没验。
 
 ## 工作目录约定
 

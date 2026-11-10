@@ -1,26 +1,22 @@
 # novel-creation
 
-Build reference-image video plans from v2 scripts. **No storyboard image generation; no story rewriting.**
+Build reference-image video plans from v3 scripts. **No storyboard image generation or story rewriting.**
 
-- Model capabilities limit generation segments. Creative profiles guide shot expression separately.
-- `params.rules.cutDuration` supports off/warn/error. There is no universal 2–5 second hard gate.
-- Consume opening, ending, openingBeat, endBeat and outline beat IDs. Preserve closure and open endings.
-- Report base failures, policy warnings, disabled checks, missing upstream and unperformed content review separately.
-- Preserve reference mounts, model prompt contracts, bilingual reports, original JSON export and offline generation plans. Use the independently installed ly-video skill for actual generation; see [handoff](references/media-handoff.md).
+- JSON stores segments, cuts, real beat coverage, and asset references. Creative methods live in one local [guide](references/创作指南.md).
+- Read opening/ending plans from the current outline or an independent script. Compute the end from actual script flow; never persist it. Optional openingBeat only mirrors an explicit upstream annotation.
+- No strategy selection, hashes, or application step. A project has one natural-language creativeBrief.
+- Preserve model duration limits, ordered reference identities, verbatim dialogue, and contiguous shot coverage. Suggested shot lengths are not universal hard limits.
+- Chinese/English reports put storyboards first, then assets and current handoff relationships, timing, structural checks, and review status.
+- Explicit v2 migration previews by default, retains original input and semantic review records, and refuses to overwrite output.
 
-See [SKILL.md](SKILL.md), [schema](references/schema.md), [profile contract](references/profile-contract.md), and [migration](references/migration.md). Node 18+, standard library only. Copy this skill independently; no sibling skill code or references are required.
+## Usage
 
-```bash
-node scripts/novel-creation.mjs profiles
-node scripts/novel-creation.mjs profile --production examples/production.json
-node scripts/selftest.mjs
-node scripts/strategy-selftest.mjs
-node scripts/profile-selftest.mjs
-node scripts/fixes-selftest.mjs
-```
+[SKILL.md](SKILL.md) is the authoritative workflow and command reference, including all six local test entry points. See [schema](references/schema.md) and [migration](references/migration.md). Node 18+, standard library only. This directory works independently without sibling skill code or guides.
 
-Seed a document, then explicitly apply profiles. Preview changes and decide existing overrides before confirming a backed-up atomic write. Validation and rendering never reapply templates. Read model and creative guides separately. Actual generation requires authorization and cost disclosure; tests do not call models.
+Production and unique upstream documents are discovered locally. Ambiguous, unreadable, or damaged inputs fail; missing upstream checks are honestly skipped. Media handoff protocols remain unchanged. Actual generation requires separate authorization and cost disclosure. Tests never call paid models.
 
-The original local sample, The Book Collector (收书人), has one episode, four segments, nine cuts and ten script beats. Its target is 30 seconds and its shot plan is 32 seconds. A spoken confirmation added after content review makes the sisters' connection audible. Its open ending confirms a book's connection to a missing sister, not a reunion. See [fixture migration notes](examples/MIGRATION.md). Existing reference images are test assets, not results generated during this change.
+## Owned example
 
-Rendered HTML is reproducible and excluded from version control. No cumulative gate-failure logging or statistics feature is added.
+The Book Buyer has one episode, four segments, nine cuts, and ten script beats: a 30-second target and a 32-second shot plan. It ends with a personal connection to a missing sister, not a successful search. This revision only migrates representation; it does not rewrite the story, dialogue, or shots. Existing images are reused as fixtures, not claimed as newly generated. See [example migration notes](examples/MIGRATION.md).
+
+Generated HTML is rebuildable and not versioned. Structural validity does not prove creative quality or generated-video continuity.

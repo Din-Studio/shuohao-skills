@@ -2,9 +2,9 @@
 
 # novel-art
 
-## 2.0.0 创作契约与迁移
+## v3 上游契约与迁移
 
-seed 只接受显式 `outline.schemaVersion: 2`。只读取 production 中 genre/narrativeStyle 作为背景，不加载 profile，不新增应用流程或 creativeContext，不伪造摘要。本地 profile 缺失不影响资产阶段。缺 production 的历史读取仅跳过上游对账；提供损坏上游或缺视觉正文的 production 必须失败。出图仍须合法视觉正文及制作参数。
+seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schemaVersion: 3`。读取可选非空 `production.creativeBrief`，不解释策略配置。人物来源、弧光、节点分类与位置可以省略。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
 
 检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-background.md) 和 [迁移说明](references/migration.md)。
 
@@ -120,6 +120,8 @@ assets/
 
 ```bash
 node scripts/selftest.mjs
+node scripts/v3-selftest.mjs
+node scripts/upstream-selftest.mjs
 ```
 
 离线自测覆盖创作契约、渲染和交接计划，包括参考依赖、提示词原文、文件检查和退役选项。不调用网关或模型。
@@ -130,10 +132,10 @@ node scripts/selftest.mjs
 
 ## 独立样例运行
 
-以下输入全部属于《雨棚留言》。outline-v2 文件仅用于资产消费投影测试，不是完整大纲交付。
+以下输入全部属于《雨棚留言》。outline-v3 文件仅用于资产消费投影测试，不是完整大纲交付。
 
 ```bash
 node scripts/novel-art.mjs validate examples/雨棚留言-art.json --production examples/雨棚留言-production.json --cast examples/雨棚留言-cast-names.json
 node scripts/novel-art.mjs render examples/雨棚留言-art.json --production examples/雨棚留言-production.json --cast examples/雨棚留言-cast-names.json --html
 ```
-无需安装创作 profile，也不需要真实图片。生成的 HTML 不进入版本控制。
+无需安装其他 skill，也不需要真实图片。生成的 HTML 不进入版本控制。

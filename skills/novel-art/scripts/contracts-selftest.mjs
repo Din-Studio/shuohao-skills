@@ -5,15 +5,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { seedFromOutline, gateReport, creativeBackground, imageJobsFrom, renderHtml, slug } from './novel-art.mjs';
-import { assertOutlineV2, assetProductionProblems } from './lib/contracts.mjs';
+import { assertOutlineV3, assetProductionProblems } from './lib/contracts.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
-const outline = JSON.parse(readFileSync(join(here, '../examples/雨棚留言-outline-v2.json'), 'utf8'));
+const outline = JSON.parse(readFileSync(join(here, '../examples/雨棚留言-outline-v3.json'), 'utf8'));
 const doc = JSON.parse(readFileSync(join(here, '../examples/雨棚留言-art.json'), 'utf8'));
-const selection = Object.fromEntries(['genre','narrativeStyle','structure','pacing'].map(k => [k, { id: 'not-installed-local-profile', version: '9.1.0' }]));
+// Natural language requirements do not select strategy implementations.
 const blockName = 'scene';
 // Deliberately local synthetic production projection. No sibling fixture or profile read.
 const production = {
-  source: '雨棚留言', creative: { version: 1, selection },
+  source: '雨棚留言', schemaVersion: 3, creativeBrief: 'Express restrained everyday choices.',
   style: { label: { zh: '真人实拍', en: 'Live action' }, phrase: 'live action',
     [blockName]: { render: 'Photorealistic live-action film environment',
       surface: 'authentic materials', lighting: 'soft directional light', negative: 'watermark', tags: ['photorealistic'] } },
@@ -22,8 +22,9 @@ const production = {
 const input = doc;
 const checks = prod => gateReport(doc, [], prod);
 assert.equal(existsSync(join(here, '../references/profiles')), false, 'asset stage installs no placeholder profiles');
-assert.deepEqual(Object.keys(creativeBackground(production)), ['genre','narrativeStyle']);
-assert.equal(creativeBackground({}), null);
+assert.equal(creativeBackground(production), production.creativeBrief);
+assert.equal(creativeBackground({ schemaVersion: 3 }), null);
+assert.throws(() => creativeBackground({}), /schemaVersion/);
 assert.equal(assetProductionProblems(production, blockName).length, 0);
 const before = JSON.stringify(doc);
 assert.ok(checks(production).every(g => g.status !== 'fail'));
@@ -40,7 +41,7 @@ for (const mutate of [
   p => { p.style[blockName].tags = []; }, p => { p.image.asset.aspectRatio = '9:16'; },
   p => { p.image.asset.resolution = ''; }, p => { p.image.asset.resolution = '   '; }, p => { p.image.asset.resolution = 2; },
   ...['', '   ', 123, null, false, {}, []].map(model => p => { p.image.model = model; }),
-  p => { p.creative.selection.genre.version = 'latest'; }
+  p => { p.creative = {}; }, p => { p.creativeBrief = ' '; }, p => { p.schemaVersion = 2; }
 ]) {
   const bad = structuredClone(production); mutate(bad);
   assert.ok(checks(bad).some(g => g.status === 'fail'));
@@ -48,8 +49,8 @@ for (const mutate of [
 }
 assert.ok(imageJobsFrom(input, null).problems.length, 'generation cannot guess production');
 assert.equal(imageJobsFrom(input, production).problems.length, 0);
-for (const bad of [null, {}, [], { ...outline, schemaVersion: 1 }, { ...outline, schemaVersion: '2' }, { ...outline, schemaVersion: 3 }, { ...outline, characters: 'broken' }, { ...outline, scenes: null }])
-  assert.throws(() => seedFromOutline(bad), /outline v2/);
+for (const bad of [null, {}, [], { ...outline, schemaVersion: 1 }, { ...outline, schemaVersion: '2' }, { ...outline, schemaVersion: 2 }, { ...outline, characters: 'broken' }, { ...outline, scenes: null }])
+  assert.throws(() => seedFromOutline(bad), /outline v3/);
 for (const mutate of [
   o => { o.characters[0].id = '../C01'; },
   o => { o.characters[0].id = ['C01']; },
@@ -58,14 +59,14 @@ for (const mutate of [
   o => { o.characters[0].tier = 'unknown'; },
   o => { o.characters[0].from = 'wrong'; }
 ]) {
-  const bad = structuredClone(outline); mutate(bad); assert.throws(() => seedFromOutline(bad), /outline v2/);
+  const bad = structuredClone(outline); mutate(bad); assert.throws(() => seedFromOutline(bad), /outline v3/);
 }
 for (const kind of ['event','pressure','turn','payoff']) {
   const o = structuredClone(outline); o.beats[0].kind = kind;
   if (kind === 'payoff') o.beats[0].weight = 'minor';
   const seeded = seedFromOutline(o);
   assert.equal(seeded.props[0].usage.beatIds[0], 'B01');
-  assert.ok(seeded.props[0].usage.beats.includes(o.beats[0].type));
+  assert.ok(seeded.props[0].usage.beats.includes(o.beats[0].outcome));
 }
 const oneOff = structuredClone(outline); for (const s of oneOff.scenes) delete s.reusePlan;
 assert.ok(seedFromOutline(oneOff).scenes.every(s => !s.seedNote));
@@ -73,13 +74,13 @@ for (const mutate of [
   o => { o.props[0].beatIds = ['B99']; }, o => { o.props[0].beatIds = ['B01','B01']; },
   o => { o.beats[0].episode = 99; }, o => { o.beats[0].kind = 'reward'; },
   o => { o.episodes[0].sceneIds = ['S99']; }, o => { o.scenes[0].reusePlan = null; }
-]) { const bad = structuredClone(outline); mutate(bad); assert.throws(() => assertOutlineV2(bad), /outline v2/); }
+]) { const bad = structuredClone(outline); mutate(bad); assert.throws(() => assertOutlineV3(bad), /outline v3/); }
 const noProps = { ...doc, props: [] };
 assert.ok(gateReport(noProps).filter(g => g.id.startsWith('prop-')).every(g => g.status === 'skipped' && g.reason === 'not-applicable'));
 const malformed = structuredClone(doc); malformed.scenes[0].lighting = 'wrong';
 assert.ok(gateReport(malformed).some(g => g.status === 'fail'));
 const html = renderHtml(doc, 'en', production);
-assert.ok(html.includes('not-installed-local-profile'));
+assert.ok(html.includes(production.creativeBrief));
 assert.ok(html.includes('Content review: not performed'));
 
 assert.equal(JSON.stringify(doc), before, 'render does not write context or inferred defaults');
@@ -178,4 +179,4 @@ try {
   assert.equal(cli('validate', asset, '--production', join(dir, 'missing.json')).status, 1);
   assert.equal(cli('validate', asset, '--production', prod, '--no-production').status, 1);
 } finally { rmSync(dir, { recursive: true, force: true }); }
-console.log('✓ art v2 上游、创作背景及检查状态回归通过');
+console.log('✓ art v3 上游、创作背景及检查状态回归通过');

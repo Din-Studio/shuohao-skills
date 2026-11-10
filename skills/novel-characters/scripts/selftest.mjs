@@ -222,7 +222,7 @@ eq(
 
 {
   // 本 skill 自有上游投影夹具，不读取兄弟正式样例。
-  const outlinePath = join(examples, '渡口-outline-v2.json');
+  const outlinePath = join(examples, '渡口-outline-v3.json');
   const outline = JSON.parse(readFileSync(outlinePath, 'utf8'));
   const seeded = seedFromOutline(outline);
 
@@ -259,7 +259,7 @@ eq(
   ok(problems.length > 0, 'seed 产出是骨架不是成品，直接 validate 会报缺字段');
 
   for (const bad of [{}, null, { ...outline, schemaVersion: 1 }, { ...outline, characters: [{ name: '张三' }] }])
-    throws(() => seedFromOutline(bad), /outline v2/, '损坏或旧版上游必须拒绝');
+    throws(() => seedFromOutline(bad), /outline v3/, '损坏或旧版上游必须拒绝');
 }
 
 /* ---------------- assembleCast ---------------- */
@@ -381,6 +381,7 @@ const CHARACTER_STYLE = {
   tags: ['photorealistic', 'live-action', 'character sheet', 'subsurface skin', 'directional key light'],
 };
 const PRODUCTION = {
+  schemaVersion: 3,
   source: '渡口',
   style: {
     label: { zh: '真人实拍', en: 'Photorealistic live-action' },

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Self-contained outline v2 CLI. Node 18+; no third-party dependencies.
-import {existsSync,mkdirSync,readFileSync,realpathSync,writeFileSync,copyFileSync,lstatSync} from 'node:fs';
+// Self-contained outline v3 CLI. Node 18+; no third-party dependencies.
+import {mkdirSync,readFileSync,realpathSync,writeFileSync,lstatSync} from 'node:fs';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {handleCreativeCommand,neutralParams} from './lib/creative.mjs';
+import {migrateFile} from './lib/migration.mjs';
+export {migrationDraft} from './lib/migration.mjs';
 import {checkup,validateOutline,computeAssets,STAGES,SKILL_ROOT} from './lib/outline-core.mjs';
 import {renderHtml,renderMarkdown} from './lib/outline-report.mjs';
 import {checkKnownDownstream} from './lib/outline-downstream.mjs';
@@ -33,7 +34,7 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
  * Step 0 缺的参数（集数 × 时长、题材）自己定，Step 3 的快版骨架不等用户拍板，
  * 做过的决定全部写进最后的汇报。
  *
- * 转移的是**审批权**，不是取消检查点：基础与当前策略检查照常执行、快版骨架照样要出、
+ * 转移的是**审批权**，不是取消检查点：结构与引用检查照常执行、快版骨架照样要出、
  * `--stage beats` 照样要过——只是不再等人点头。
  *
  * **只认布尔真值**：JSON 里写成字符串 "false" 在 JS 里是真的，那种写法会让
@@ -144,90 +145,74 @@ export function slug(name) {
 
 const readJson=p=>JSON.parse(readFileSync(resolve(p),'utf8'));
 const flag=(args,key,fallback=null)=>{const i=args.indexOf(key);if(i<0)return fallback;if(!args[i+1]||args[i+1].startsWith('--'))throw Error(key+' requires a value');return args[i+1];};
+function validateOptions(args,start,values=[],toggles=[]) {
+ const seen=new Set();
+ for(let i=start;i<args.length;i++) {
+  const key=args[i];
+  if(seen.has(key)||(!values.includes(key)&&!toggles.includes(key)))throw Error('Unknown or duplicate option '+key);
+  seen.add(key);
+  if(values.includes(key)){if(!args[i+1]||args[i+1].startsWith('--'))throw Error(key+' requires a value');i++;}
+ }
+}
 export function loadProduction(docPath,explicit) {
  const path=explicit??findProduction(dirname(resolve(docPath)));
  if(!path)return {};
  try {const production=readJson(path);if(!production||typeof production!=='object'||Array.isArray(production))throw Error('production.json must be an object');return {production,productionPath:path};}
  catch(error){return {productionError:path+': '+error.message,productionPath:path};}
 }
-// Only structural carrying. No guess about old payoff kinds, endings or question plans.
-export function migrationDraft(old) {
- if(old?.schemaVersion===2)throw Error('Already schemaVersion 2');
- const p={...old?.params,...neutralParams('outline')};
- for(const key of ['pacing','maxBeatGap','hookWindow','maxLineChars','minCutSeconds','maxCutSeconds'])delete p[key];
- if(p.thresholds){p.thresholds={...p.thresholds};delete p.thresholds.maxBeatGap;}
- const draft={schemaVersion:2,source:old?.source,params:p,story:{focusCharacterIds:[],premise:'',throughline:'',audiencePromise:'',ending:''},adaptation:structuredClone(old?.adaptation??{core:'',keep:[],cut:[],merge:[],risks:[]}),characters:structuredClone(old?.characters??[]),scenes:structuredClone(old?.scenes??[]),...(old?.props?{props:structuredClone(old.props)}:{}),beats:[],episodes:[]};
- if(old?.lang!==undefined)draft.lang=old.lang;
- return {document:draft,review:{status:'manual-review-required',instructions:'Confirm story, classify each old beat, rebuild endings/questions, apply chosen profiles; do not treat structural carrying as semantic migration.',legacyBeats:old?.beats??[],legacyEpisodes:old?.episodes??[],legacyParams:old?.params??{}}};
-}
-const USAGE=`novel-outline v2
+const USAGE=`novel-outline v3
   chunk BOOK WORKDIR [--per-volume N]
   validate DOC [--stage skeleton|beats|full] [--production FILE]
-  checkup DOC [--stage skeleton|beats|full] [--production FILE] [--json]
+  checkup DOC [--stage skeleton|beats|full] [--production FILE] [--json] [--downstream]
   render DOC [--html|--md] [--lang zh|en] [--stage STAGE] [--production FILE]
   assets DOC
-  migrate OLD NEW                 backup OLD, create incomplete v2 draft and review sidecar
-  profiles
-  profile --selection FILE
-  apply-profile DOC --production FILE | --selection FILE [--overrides FILE] [--decisions FILE] [--confirm]
+  migrate-v3 INPUT [--out OUTPUT] [--confirm]  preview first; never overwrite input
   slug NAME
-Validate/render never reapply profiles. See references/migration.md and profile-contract.md.`;
+Read references/创作指南.md. Structural validation is not content review.`;
 async function main(argv) {
- if(await handleCreativeCommand(argv,{skillRoot:SKILL_ROOT,stage:'outline'})) {
-  if(argv[0]==='apply-profile'&&argv.includes('--confirm')) {
-   const positional=[];
-   for(let i=1;i<argv.length;i++) {
-    if(['--selection','--production','--overrides','--decisions'].includes(argv[i])) {i++;continue;}
-    if(argv[i]!=='--confirm') positional.push(argv[i]);
-   }
-   const file=positional[0], context=loadProduction(file,flag(argv,'--production'));
-   const doc=readJson(file), result=checkup(doc,context);
-   const root=context.productionPath?dirname(resolve(context.productionPath)):dirname(dirname(resolve(file)));
-   const downstream=checkKnownDownstream(doc,root);
-   console.error(JSON.stringify({postApplicationChecks:result.stats,downstream,contentReview:result.contentReview}));
-   console.error('已执行本阶段检查及已知下游本地接口检查；完整下游联合验证尚未执行，应用流程未完成。内容评审未执行。');
-   if(result.stats.fail||downstream.stats.fail)process.exitCode=1;
-  }
-  return;
- }
  const [cmd,...args]=argv;
  if(!cmd||['-h','--help'].includes(cmd)){console.log(USAGE);return;}
  if(cmd==='slug'){console.log(slug(args[0]??''));return;}
  if(cmd==='chunk'){
   const [book,workdir]=args;if(!book||!workdir)throw Error('chunk BOOK WORKDIR');
+  validateOptions(args,2,['--per-volume']);
   const result=chunkVolumes(readFileSync(resolve(book),'utf8'),Number(flag(args,'--per-volume',DEFAULT_PER_VOLUME)));
   mkdirSync(resolve(workdir),{recursive:true});
   result.volumes.forEach((v,i)=>writeFileSync(join(resolve(workdir),'vol-'+String(i).padStart(2,'0')+'.txt'),v));
   console.log(JSON.stringify({...result,volumes:result.volumes.length,workdir:resolve(workdir)},null,2));return;
  }
- if(cmd==='migrate'){
-  const [from,to]=args;if(!from||!to||resolve(from)===resolve(to))throw Error('migrate requires different OLD and NEW paths');
-  if(existsSync(to)||existsSync(to+'.review.json'))throw Error('Migration destination already exists');
-  const result=migrationDraft(readJson(from)),backup=from+'.bak-'+Date.now();
-  copyFileSync(from,backup);
-  writeFileSync(to,JSON.stringify(result.document,null,2)+'\n',{flag:'wx'});
-  writeFileSync(to+'.review.json',JSON.stringify(result.review,null,2)+'\n',{flag:'wx'});
-  console.log(JSON.stringify({backup,draft:to,review:to+'.review.json',status:'incomplete'}));return;
+ if(cmd==='migrate-v3'){
+  if(!args[0]||args[0].startsWith('--'))throw Error('migrate-v3 requires INPUT');
+  validateOptions(args,1,['--out'],['--confirm']);
+  const output=flag(args,'--out'),result=migrateFile(args[0],output,{confirm:args.includes('--confirm')});
+  console.log(JSON.stringify(result,null,2));if(output&&!result.written)process.exitCode=1;return;
  }
  if(!['validate','checkup','render','assets'].includes(cmd))throw Error('Unknown command '+cmd+'\n'+USAGE);
- if(!args[0])throw Error(cmd+' requires DOC');
+ if(!args[0]||args[0].startsWith('--'))throw Error(cmd+' requires DOC');
+ validateOptions(args,1,['--stage','--production',...(cmd==='render'?['--lang']:[])],cmd==='render'?['--html','--md']:cmd==='checkup'?['--json','--downstream']:[]);
+ if(args.includes('--html')&&args.includes('--md'))throw Error('Choose --html or --md, not both');
  const file=args[0],doc=readJson(file),stage=flag(args,'--stage','full');
  if(!STAGES.includes(stage))throw Error('Unknown stage '+stage);
  const context={...loadProduction(file,flag(args,'--production')),stage};
- if(cmd==='assets'){console.log(JSON.stringify(computeAssets(doc),null,2));return;}
+ if(cmd==='assets'){const result=checkup(doc,context);console.log(JSON.stringify(computeAssets(doc),null,2));if(result.stats.fail)process.exitCode=1;return;}
  if(cmd==='render'){
   const lang=flag(args,'--lang',doc?.lang??context.production?.lang??'zh');
   process.stdout.write((args.includes('--html')?renderHtml(doc,lang,context):renderMarkdown(doc,lang,context))+'\n');
-  if(context.productionError)process.exitCode=1;
+  if(checkup(doc,context).stats.fail)process.exitCode=1;
   return;
  }
  if(autopilotOf(context.production))console.error(AUTOPILOT_NOTE);
  const note=stageDirNote(file,context.productionPath);if(note)console.error(note);
  const report=checkup(doc,context);
+ if(args.includes('--downstream')) {
+  const root=context.productionPath?dirname(resolve(context.productionPath)):dirname(dirname(resolve(file)));
+  report.downstream=checkKnownDownstream(doc,root,context);
+  if(report.downstream.stats.fail)process.exitCode=1;
+ }
  if(cmd==='checkup'&&args.includes('--json'))console.log(JSON.stringify(report,null,2));
  else {
   for(const g of report.gates)console.log(`${g.status} [${g.category}/${g.level}] ${g.id}${g.reason?' ('+g.reason+')':''}${g.messages.length?': '+g.messages.join('; '):''}`);
-  console.log(JSON.stringify({stage,stats:report.stats,contentReview:report.contentReview}));
+  console.log(JSON.stringify({stage,stats:report.stats,contentReview:report.contentReview,downstream:report.downstream}));
  }
  if(report.stats.fail)process.exitCode=1;
 }
