@@ -4,7 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseWorksheet, serializeWorksheet, RESPONSE_PLACEHOLDER, REVIEW_PLACEHOLDER } from './lib/worksheet.mjs';
+import { parseWorksheet, serializeWorksheet, submitProblems, submittedText, RESPONSE_PLACEHOLDER, REVIEW_PLACEHOLDER } from './lib/worksheet.mjs';
 
 export const DEFAULT_VIDEO_MODEL = 'MiniMax H3';
 export const promptFamilyOf = model => (/seedance/i.test(String(model ?? '')) ? 'seedance' : 'h3');
@@ -96,13 +96,9 @@ export function lintWorksheet(sheet) {
 
 /** 提交审核：自查通过后进入 in_review，轮次加一，旧批准与旧摘要一并作废。 */
 export function submitWorksheet(sheet) {
-  const problems = lintWorksheet(sheet);
-  if (sheet.meta.status === 'in_review') problems.push('工作单已经处于 in_review，等待审核结论，不能重复提交');
-  if (sheet.meta.status === 'changes_requested' && (!sheet.response || sheet.response === RESPONSE_PLACEHOLDER)) {
-    problems.push('上一轮审核要求修改：先在「编写回应（仅本轮）」逐条写明如何处理，再提交');
-  }
+  const problems = [...lintWorksheet(sheet), ...submitProblems(sheet)];
   if (problems.length) return { problems };
-  return { problems, text: serializeWorksheet({ ...sheet, meta: { ...sheet.meta, status: 'in_review', round: sheet.meta.round + 1, bodyHash: '' } }) };
+  return { problems, text: submittedText(sheet) };
 }
 
 const USAGE = `novel-video-prompt.mjs — 视频提示词编写方的确定性工具

@@ -5,6 +5,7 @@ round: 1
 model: MiniMax H3
 promptLang: en
 bodyHash:
+inputHash:
 ---
 
 # E01-01 · 视频提示词工作单

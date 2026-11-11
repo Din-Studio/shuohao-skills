@@ -1,6 +1,6 @@
 # H3 提示词指南 · 内化版（挂 MiniMax H3 才读这份）
 
-> 文中提到的门名称（如 `dialogue-verbatim`、`size-phrase`）是调度方完整结构检查里的检查项名称。本 skill 不依赖调度方即可写作；本地自查见 `scripts/novel-video-prompt.mjs lint`。
+> 文中提到的门名称（如 `dialogue-verbatim`、`size-phrase`）是调度方完整结构检查里的检查项名称。本文件在编写方 `novel-video-prompt` 与调度方 `novel-creation` 各有一份相同副本，修改时两份一起修改；编写方的本地自查是它自己的 `lint` 命令，调度方的完整检查是 `prompts check`。
 
 **学习来源**：MiniMax-H3 官方提示词指南（I2VA / 多图对齐模式）。方法论**内化成本 skill
 自带文档，不依赖任何外部 skill**——搬过来的是判断，不是链接。

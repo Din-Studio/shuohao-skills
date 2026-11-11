@@ -24,7 +24,7 @@ Here is the whole pipeline — **the production parameters lock the aspect and t
 | [**novel-script**](skills/novel-script/README.en.md) | Writes scenes and beat flow, claims outline beats by stable ID, locates openings and endings, and reconciles upstream target duration. Opening landings are optional, ending coordinates are computed, and estimated time is not measured performance |
 | [**novel-creation**](skills/novel-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` exports an offline plan; the separately installed ly-video skill generates and recovers tasks. Shot expression is reviewed against the guide; model limits remain deterministic checks |
 | [**novel-video-prompt**](skills/novel-video-prompt/README.en.md) | The prompt writer: splits an episode into segments and cuts, writes each segment's prompt into a worksheet (`<segment>/prompt.md`) and submits it for review; revises and resubmits when changes are requested. Invoked as a subagent by novel-creation, or used on its own |
-| [**novel-video-prompt-review**](skills/novel-video-prompt-review/README.en.md) | The prompt reviewer: independently checks worksheets against the script, assets, project brief and model conventions, records comments in the same worksheet and registers `approved` or `changes_requested`. It never rewrites the prompt |
+| [**novel-video-prompt-review**](skills/novel-video-prompt-review/README.en.md) | The prompt reviewer: independently checks worksheets against the script, assets, project brief and model conventions, records comments in the same worksheet and registers `approved`, `changes_requested` or `blocked`. It never rewrites the prompt |
 
 **Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for English interface labels (story content and raw diagnostics retain their original language). The UI language can also be settled once in `production.json`.
 
@@ -85,7 +85,7 @@ The following screenshots show historical interfaces. Render the local samples f
 
 Includes its own example and offline report renderer. See [novel-creation](skills/novel-creation/README.en.md).
 
-The main session only dispatches in this stage: after `seed` it launches a **writer subagent** (novel-video-prompt), runs the structural checks, then launches a **reviewer subagent** (novel-video-prompt-review), and loops until every segment worksheet is approved before writing back to creation.json, exporting and handing off generation. A segment still unapproved after three submissions stops the loop and goes to the user. On pi, which has no subagents, both roles run serially in one session and the report says the review was not independent.
+The main session only dispatches in this stage: after `seed` it launches a **writer subagent** (novel-video-prompt), runs the structural checks, then launches a **reviewer subagent** (novel-video-prompt-review), and loops until every segment worksheet is approved before writing back to creation.json, exporting and handing off generation. Approval is bound to a segment's content and to the inputs it relies on, so regenerating a reference image, editing a claimed line or changing model parameters sends only the affected segments back to review. A segment still unapproved after three submissions, or one the reviewer marked as blocked, stops the loop and goes to the user. Without the two sibling skills installed, the subagents read the guide copies bundled with novel-creation; in an environment without subagents both roles run serially in one session and the report says the review was not independent.
 
 ## Install
 
@@ -102,7 +102,7 @@ It detects whether you have pi, Claude Code, or codex installed and **symlinks**
 ./scripts/install.sh --codex            # only into codex
 ./scripts/install.sh --pi               # only into pi
 ./scripts/install.sh --uninstall        # remove the symlinks
-# Installing to Claude Code also links the two subagent definitions in agents/ into ~/.claude/agents
+# Installing to Claude Code also links the two subagent definitions in agents/ into ~/.claude/agents; the matching pi role definitions live in .pi/agents/
 ```
 
 Prefer to do it by hand:

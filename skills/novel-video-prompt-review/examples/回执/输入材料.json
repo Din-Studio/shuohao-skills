@@ -27,13 +27,15 @@
         "id": "C01",
         "name": "何穗",
         "sheet": "../characters/images/何穗-sheet.png",
-        "sheetExists": false
+        "sheetExists": false,
+        "sheetHash": null
       },
       {
         "id": "C02",
         "name": "老冯",
         "sheet": "../characters/images/老冯-sheet.png",
-        "sheetExists": false
+        "sheetExists": false,
+        "sheetHash": null
       }
     ],
     "scenes": [
@@ -41,7 +43,8 @@
         "id": "S01",
         "name": "快递站分拣区",
         "sheet": "../art/images/快递站分拣区-sheet.png",
-        "sheetExists": false
+        "sheetExists": false,
+        "sheetHash": null
       }
     ],
     "props": [
@@ -49,7 +52,8 @@
         "id": "P01",
         "name": "拒收回执",
         "sheet": "../art/images/拒收回执-sheet.png",
-        "sheetExists": false
+        "sheetExists": false,
+        "sheetHash": null
       }
     ]
   },

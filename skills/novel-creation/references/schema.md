@@ -17,7 +17,7 @@
 }
 ```
 
-`video.model` 可省略（默认继承 `production.json` 的 `video.model`，两边都没有就按 `MiniMax H3` 算）——本 skill 的骨架跨模型通用，模型只影响三件事：`promptLang` 的默认值、**编写方载入哪一份填法指南**（指南由 `novel-video-prompt` 维护：H3 读它的 `h3-prompt.md`，seedance 系列读 `seedance2-prompt.md`，没收录的模型照 `creation-prompt.md` 的通用骨架写），以及挂 seedance 时那条「全程不许出现精确时刻」的官方硬约束（`prompt-model-fit` 门查）。
+`video.model` 可省略（默认继承 `production.json` 的 `video.model`，两边都没有就按 `MiniMax H3` 算）——本 skill 的骨架跨模型通用，模型只影响三件事：`promptLang` 的默认值、**编写方载入哪一份填法指南**（H3 读 `references/h3-prompt.md`，seedance 系列读 `references/seedance2-prompt.md`，没收录的模型照 `references/creation-prompt.md` 的通用骨架写；`novel-video-prompt` 持有同一份副本），以及挂 seedance 时那条「全程不许出现精确时刻」的官方硬约束（`prompt-model-fit` 门查）。
 
 `promptLang` 也可省略，默认跟着模型走：挂 seedance 系列默认 `zh`（官方指南通篇中文术语与中文案例），其余默认 `en`（「参考图 + 提示词」这条能力跨模型通用，英文提示词兼容面最广）。两种都能手动切到另一种语言，中文模式人名放行。**没有 `style` 字段**——画风一致性完全由参考图本身保证（角色/场景/道具设定图早就按各自 skill 的画风出好了），不需要在提示词里重复交代一遍。
 
@@ -29,7 +29,7 @@
 | `sceneIndex` | int | 这一段在剧本该集的第几场（1 起）。段内全部分镜同场 |
 | `cuts` | cut[] | 段内分镜，按时间顺序。段总秒数 = 分镜秒数之和，**不单独存** |
 | `images` | image[] | **参考图挂载清单**，按 Picture 序（提示词里引用的顺序 = 数组顺序）。见下 |
-| `prompt` | string | **一段一条通用视频提示词**，正文语言跟 `promptLang`，由编写方在工作单里写成、审核方批准后经 `prompts apply` 回写；骨架与模型填法指南由 `novel-video-prompt` 维护，本文件只规定下面三道门检查的结构 |
+| `prompt` | string | **一段一条通用视频提示词**，正文语言跟 `promptLang`，由编写方在工作单里写成、审核方批准后经 `prompts apply` 回写；骨架见 `references/creation-prompt.md`，填法按 `video.model` 读取对应指南，本文件只规定下面三道门检查的结构 |
 | `note` | string | 备注，可选 |
 
 ## image（参考图挂载）
@@ -61,7 +61,7 @@
 
 ## prompt 的结构（三道门盯着）
 
-骨架的写法与模型填法由编写方 skill `novel-video-prompt` 维护；这里只列出本 skill 的结构检查所依赖的形状：
+骨架的写法见 `references/creation-prompt.md`，模型填法见对应指南；这里只列出结构检查所依赖的形状：
 
 ```text
 Picture 1 is the young man carrying the worn poetry book. Picture 2 is the night-only secondhand bookstore, shelves crowded with old books under a warm desk lamp.
@@ -116,11 +116,12 @@ CLI 从产物所在目录向上最多五层寻找 production.json；随后在项
 ```text
 ---
 segment: E01-01
-status: draft | in_review | changes_requested | approved
+status: draft | in_review | changes_requested | blocked | approved
 round: 2
 model: MiniMax H3
 promptLang: en
 bodyHash: <批准时写入的内容摘要>
+inputHash: <批准时写入的输入摘要>
 ---
 # E01-01 · 视频提示词工作单
 ## 分镜结构        ← json 代码块：本文件 segment 表里除 prompt 以外的全部字段
@@ -134,14 +135,19 @@ bodyHash: <批准时写入的内容摘要>
 | --- | --- | --- | --- |
 | `prompts brief` | 上游 | 无（stdout） | 需要剧本 |
 | `prompts init` | creation.json 已有的段 | 缺少的工作单（draft） | 不覆盖已有工作单 |
+| `prompts new` | creation.json 的有效模型与语言 | 一份空白工作单（draft） | 拒绝覆盖；编写方命令的本地等价物 |
 | `prompts check` | creation.json 骨架 + 全部工作单 | 无 | 拼入内存后执行全部结构检查；不看审核状态 |
-| `prompts status` | 全部工作单 | 无 | 全部批准且批准有效时退出码为零 |
+| `prompts submit` | 同 check | 工作单状态头 | 结构检查通过；被退回或阻塞的段已写回应；编写方命令的本地等价物 |
+| `prompts verdict` | 工作单 + 当前上游 | 工作单状态头 | 审核意见符合结论；批准时绑定当前输入；审核方命令的本地等价物 |
+| `prompts status` | 全部工作单 + 当前上游 | 无 | 全部批准且两重绑定有效时退出码为零 |
 | `prompts apply` | 同 check | creation.json 的 segments；移除 seedScenes | 结构检查通过，全部批准且批准有效 |
-| `export` | creation.json + 工作单 | manifest.json | 每段工作单已批准、批准有效、与 creation.json 一致 |
-| `videos` | manifest.json + 工作单 | 无（计划） | 每段工作单已批准且批准有效 |
+| `export` | creation.json + 工作单 + 当前上游 | manifest.json | 每段工作单已批准、两重绑定有效、与 creation.json 一致 |
+| `videos` | manifest.json + creation.json + 工作单 + 当前上游 | 无（计划） | 同 export，并且 manifest 的视频参数与当前配置一致 |
 
-- **批准绑定内容**：`bodyHash` 是分镜结构与正文的摘要。批准之后任何一处被改动，批准失效，`status`、`apply`、`export`、`videos` 全部拒绝。
-- **状态头不由本 skill 改写**：`in_review` 由编写方的命令写入，`approved` 与 `changes_requested` 由审核方的命令写入。本 skill 只在 `prompts init` 时写出草稿。
+- **批准绑定内容与输入**：`bodyHash` 是分镜结构与正文的摘要；`inputHash` 是这一段依据的输入的摘要——认领节拍的原文、挂载参考图的内容、视频模型与参数、提示词语言、单段上限和项目要求。任何一样变化，这一段的批准失效，`status`、`apply`、`export`、`videos` 全部拒绝。绑定范围只到这一段：别的段、别的集、上游文件里无关的字段发生变化，不影响它。开场与集尾计划的措辞不在绑定之内，修改之后由调度方决定是否重新审核首尾两段。
+- **状态头只由角色命令改写**：`in_review` 由编写方的提交命令写入，`approved`、`changes_requested` 与 `blocked` 由审核方的结论命令写入。主会话只在 `prompts init` 时写出草稿；`prompts new|submit|verdict` 是给没有安装兄弟 skill 的 subagent 使用的本地等价物，不是给主会话代替两个角色使用的。
+- **manifest 记录来源**：`creation` 是 creation.json 相对 manifest 的路径，`videos` 靠它重新核对；每段的 `prompt` 与参考图路径同样相对 manifest。没有 `creation` 的旧 manifest 需要重新导出。
+- **二级标题只有三个**：意见或回应里多出二级标题的工作单被所有命令拒绝，避免它之下的内容在改写时丢失。
 - **模型一致**：状态头的 `model` 与当前有效视频模型不同则检查失败——更换模型后需要重新编写并审核。
 - **意见不累积**：审核意见与编写回应只保留本轮，轮次只由 `round` 计数；`round` 达到三轮仍为 `changes_requested` 时 `prompts status` 提示交给用户决定。
-- 三个 skill 各自携带一份相同的工作单解析库 `scripts/lib/worksheet.mjs`，仓库级自测核对三份一致。
+- 三个 skill 各自携带一份相同的工作单解析库 `scripts/lib/worksheet.mjs`；本 skill 的 `references/` 还保存编写方与审核方指南的副本（`creation-prompt.md`、`h3-prompt.md`、`seedance2-prompt.md`、`分镜指南.md`、`worksheet.md`、`审核清单.md`）。仓库级自测核对这些副本逐字一致，修改时各处一起修改。

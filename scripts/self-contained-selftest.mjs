@@ -61,6 +61,14 @@ try {
     assert.equal(copies[1], copies[0]); assert.equal(copies[2], copies[0]);
     assert.equal(readFileSync(join(root, 'skills/novel-video-prompt/references/worksheet.md'), 'utf8'), readFileSync(join(root, 'skills/novel-video-prompt-review/references/worksheet.md'), 'utf8'), '两份工作单格式说明一致');
   });
+  // 调度方可以单独拷走：它保存编写方与审核方指南的副本，必须与两个角色 skill 逐字一致
+  check('novel-creation 的指南副本与编写方、审核方一致', () => {
+    const ref = (skill, file) => readFileSync(join(root, 'skills', skill, 'references', file), 'utf8');
+    for (const file of ['creation-prompt.md', 'h3-prompt.md', 'seedance2-prompt.md', '分镜指南.md', 'worksheet.md']) assert.equal(ref('novel-creation', file), ref('novel-video-prompt', file), file);
+    for (const file of ['审核清单.md', 'worksheet.md']) assert.equal(ref('novel-creation', file), ref('novel-video-prompt-review', file), file);
+    const dispatch = ref('novel-creation', 'dispatch.md');
+    assert.ok(!/\{baseDir\}\/\.\./.test(dispatch + readFileSync(join(root, 'skills/novel-creation/SKILL.md'), 'utf8')), '调度方不按相对位置读取兄弟 skill');
+  });
   // 编写方与审核方各自的样例工作单，必须通过调度方的完整结构检查
   check('新 skill 的样例工作单通过 novel-creation 结构检查', () => {
     const cli = join(root, 'skills/novel-creation/scripts/novel-creation.mjs');

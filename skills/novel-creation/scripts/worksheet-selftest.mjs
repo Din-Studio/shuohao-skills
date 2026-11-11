@@ -20,9 +20,11 @@ try {
   const original = JSON.parse(readFileSync(join(cwd, file), 'utf8'));
   const sheetPath = id => join(cwd, id, 'prompt.md');
   const rewrite = (id, fn) => writeFileSync(sheetPath(id), fn(readFileSync(sheetPath(id), 'utf8')));
-  // 测试替身：审核方 skill 的 verdict 命令做的就是这件事
-  const approve = id => { const s = W.parseWorksheet(readFileSync(sheetPath(id), 'utf8'));
-    writeFileSync(sheetPath(id), W.serializeWorksheet({...s, meta: {...s.meta, status: 'approved', round: Math.max(1, s.meta.round), bodyHash: W.hashOf(s.structure, s.body)}, review: '结论：通过。'})); };
+  // 审核方的动作：写好意见，再用本 skill 的本地等价命令登记结论（与审核方 skill 的 verdict 共用同一份规则）
+  const review = (id, text) => { const s = W.parseWorksheet(readFileSync(sheetPath(id), 'utf8'));
+    writeFileSync(sheetPath(id), W.serializeWorksheet({...s, meta: {...s.meta, status: 'in_review', round: Math.max(1, s.meta.round), bodyHash: '', inputHash: ''}, review: text})); };
+  const approve = id => { review(id, '结论：通过。'); const r = cli('prompts', 'verdict', file, 'approved', id); assert.equal(r.status, 0, r.stderr); };
+  const staleIds = () => cli('prompts', 'status', file).stdout.split('\n').filter(l => l.startsWith('✗')).map(l => l.split(/\s+/)[1]);
 
   test('parse and serialize round trip; body below the last separator only', () => {
     const structure = {id: 'E01-01', sceneIndex: 1, cuts: [], images: []};
@@ -102,6 +104,82 @@ try {
     const r = cli('videos', 'manifest.json', '--dry-run'); assert.equal(r.status, 1); assert.match(r.stderr, /批准已失效/);
     approve('E01-03');
     const stale = cli('export', file, '--out', '.'); assert.equal(stale.status, 1); assert.match(stale.stderr, /prompts apply/);
+  });
+
+  test('approval is bound to the inputs of its own segment only', () => {
+    for (const id of ['E01-03']) approve(id);
+    assert.equal(cli('prompts', 'apply', file).status, 0); assert.equal(cli('export', file, '--out', '.').status, 0);
+    const manifest = JSON.parse(readFileSync(join(cwd, 'manifest.json'), 'utf8'));
+    assert.equal(manifest.creation, file); assert.equal(manifest.segments[0].prompt, 'E01-01/prompt.md');
+    // 与任何一段都无关的上游字段不影响批准
+    const prodPath = join(temp, 'examples/production.json'), prod = readFileSync(prodPath, 'utf8');
+    writeFileSync(prodPath, JSON.stringify({...JSON.parse(prod), note: '无关备注'}));
+    assert.deepEqual(staleIds(), []); assert.equal(cli('videos', 'manifest.json', '--dry-run').status, 0);
+    writeFileSync(prodPath, prod);
+    // 设定图重新生成：只有挂载它的段失效
+    const uses = new Map();
+    for (const s of manifest.segments) for (const img of s.images) uses.set(img.path, [...(uses.get(img.path) ?? []), s.segment]);
+    const [imagePath, users] = [...uses].sort((x, y) => x[1].length - y[1].length)[0];
+    assert.ok(users.length < manifest.segments.length, '样例里至少有一张设定图不是每段都挂载');
+    const image = join(cwd, imagePath), bytes = readFileSync(image);
+    writeFileSync(image, Buffer.concat([bytes, Buffer.from('regenerated')]));
+    assert.deepEqual(staleIds(), users);
+    let r = cli('videos', 'manifest.json', '--dry-run', '--only', users[0]); assert.equal(r.status, 1); assert.match(r.stderr, /输入发生变化/);
+    const untouched = manifest.segments.map(s => s.segment).find(id => !users.includes(id));
+    assert.equal(cli('videos', 'manifest.json', '--dry-run', '--only', untouched).status, 0, '没有挂载这张图的段仍然可以进入计划');
+    assert.equal(cli('export', file, '--out', '.').status, 1);
+    writeFileSync(image, bytes); assert.deepEqual(staleIds(), []);
+    // 剧本里一句台词被修改：只有认领这一拍的段失效
+    const scriptPath = join(temp, 'examples/script/收书人-script.json'), scriptText = readFileSync(scriptPath, 'utf8');
+    writeFileSync(scriptPath, scriptText.replace('还开着吗？我想卖一本书。', '还开着吗？我想买一本书。'));
+    assert.deepEqual(staleIds(), ['E01-01']);
+    r = cli('videos', 'manifest.json', '--dry-run'); assert.equal(r.status, 1); assert.match(r.stderr, /E01-01.*输入发生变化/);
+    writeFileSync(scriptPath, scriptText);
+    // 视频参数变化：全部失效
+    writeFileSync(prodPath, prod.replace('768p', '2K')); assert.equal(staleIds().length, 4); writeFileSync(prodPath, prod);
+    assert.deepEqual(staleIds(), []);
+  });
+
+  test('export to another directory references worksheets and images relative to the manifest', () => {
+    const pack = join(temp, 'pack');
+    let r = cli('export', file, '--out', pack); assert.equal(r.status, 0, r.stderr);
+    const manifest = JSON.parse(readFileSync(join(pack, 'manifest.json'), 'utf8'));
+    assert.equal(manifest.creation, `../examples/creation/${file}`); assert.equal(manifest.segments[0].prompt, '../examples/creation/E01-01/prompt.md');
+    for (const s of manifest.segments) for (const img of s.images) assert.ok(existsSync(resolve(pack, img.path)), img.path);
+    r = spawnSync(process.execPath, [join(root, 'scripts/novel-creation.mjs'), 'videos', join(pack, 'manifest.json'), '--dry-run'], {cwd: temp, encoding: 'utf8'});
+    assert.equal(r.status, 0, r.stderr); assert.equal(JSON.parse(r.stdout).jobs.length, 4);
+  });
+
+  test('verdict cannot be talked around; blocked pauses the loop until the writer responds', () => {
+    const before = readFileSync(sheetPath('E01-04'), 'utf8');
+    review('E01-04', '结论：通过。\n\n* [必须修改] 镜头 1：台词被改写。');
+    let r = cli('prompts', 'verdict', file, 'approved', 'E01-04'); assert.equal(r.status, 1); assert.match(r.stderr, /不能批准/);
+    review('E01-04', '结论：通过，上一轮的 [必须修改] 仍然没有解决。');
+    r = cli('prompts', 'verdict', file, 'approved', 'E01-04'); assert.equal(r.status, 1); assert.match(r.stderr, /不是清单条目/);
+    rewrite('E01-04', md => md.replace('结论：通过，上一轮的 [必须修改] 仍然没有解决。', '结论：通过。\n\n## 复审补充\n\n小标题之下的意见。'));
+    r = cli('prompts', 'verdict', file, 'approved', 'E01-04'); assert.equal(r.status, 1); assert.match(r.stderr, /多余的二级标题/);
+    assert.match(readFileSync(sheetPath('E01-04'), 'utf8'), /小标题之下的意见/, '被拒绝的工作单原样保留，不丢内容');
+    writeFileSync(sheetPath('E01-04'), before);
+    review('E01-04', '结论：无法继续。\n\n- [阻塞] 参考图：这一段需要的设定图内容与剧本描述不符，需要美术确认。');
+    r = cli('prompts', 'verdict', file, 'changes_requested', 'E01-04'); assert.equal(r.status, 1);
+    r = cli('prompts', 'verdict', file, 'blocked', 'E01-04'); assert.equal(r.status, 0, r.stderr);
+    r = cli('prompts', 'status', file); assert.equal(r.status, 1); assert.match(r.stdout, /E01-04\s+blocked.*登记了阻塞/);
+    assert.equal(cli('prompts', 'apply', file).status, 1); assert.equal(cli('videos', 'manifest.json', '--dry-run').status, 1);
+    r = cli('prompts', 'submit', file); assert.equal(r.status, 1); assert.match(r.stderr, /编写回应/);
+    rewrite('E01-04', md => md.replace('（无）', '- 参考图：美术确认设定图无误，剧本描述以设定图为准。'));
+    r = cli('prompts', 'submit', file); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /E01-04 已提交审核/);
+    assert.equal(W.parseWorksheet(readFileSync(sheetPath('E01-04'), 'utf8')).meta.status, 'in_review');
+    assert.match(cli('prompts', 'submit', file).stdout, /没有需要提交/);
+    approve('E01-04'); assert.equal(cli('prompts', 'status', file).status, 0);
+  });
+
+  test('new creates a blank draft with the effective model and refuses to overwrite', () => {
+    let r = cli('prompts', 'new', file, 'E01-05', '--scene', '1'); assert.equal(r.status, 0, r.stderr);
+    const s = W.parseWorksheet(readFileSync(sheetPath('E01-05'), 'utf8'));
+    assert.deepEqual(s.problems, []); assert.equal(s.meta.status, 'draft'); assert.equal(s.meta.model, 'MiniMax H3'); assert.equal(s.meta.promptLang, 'en');
+    assert.equal(cli('prompts', 'new', file, 'E01-05').status, 1);
+    assert.equal(cli('prompts', 'submit', file, 'E01-05').status, 1, '空白工作单过不了结构检查，不能提交');
+    rmSync(join(cwd, 'E01-05'), {recursive: true});
   });
 
   test('seed skeleton plus writer-created worksheets assemble into a valid creation', () => {

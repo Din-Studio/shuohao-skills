@@ -208,6 +208,13 @@ try {
     ok(text.includes(`name: ${agent}\n`) && text.includes(`skills: [${skill}]`), `${agent} 预载 ${skill}`);
     ok(existsSync(join(root, 'skills', skill, 'SKILL.md')) && !/^tools:.*\bAgent\b/m.test(text), `${agent} 预载的 skill 存在且不能继续派发`);
   }
+  // pi 的项目级角色定义与 Claude Code 的同名，不预载 skill，指南路径由任务简报给出
+  for (const agent of ['novel-video-prompt-writer', 'novel-video-prompt-reviewer']) {
+    const text = readFileSync(join(root, '.pi/agents', `${agent}.md`), 'utf8');
+    ok(text.startsWith('---\n') && text.includes(`name: ${agent}\n`) && /^tools: [a-z, ]+$/m.test(text), `pi 角色定义 ${agent} 的 frontmatter 完整`);
+    ok(/不启动其他代理/.test(text), `pi 角色 ${agent} 不继续派发`);
+  }
+  ok(!/\bwrite\b/.test(readFileSync(join(root, '.pi/agents/novel-video-prompt-reviewer.md'), 'utf8').match(/^tools:.*$/m)[0]), 'pi 审核方不能新建文件');
   eq(claude('--uninstall').status, 0, '从 Claude Code 卸载成功');
   ok(!lstatSync(agentLink('novel-video-prompt-writer'), { throwIfNoEntry: false }), '卸载删除 subagent 软链');
 } finally {

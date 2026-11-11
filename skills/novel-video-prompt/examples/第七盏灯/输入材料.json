@@ -27,13 +27,15 @@
         "id": "C01",
         "name": "林栀",
         "sheet": "../characters/images/林栀-sheet.png",
-        "sheetExists": false
+        "sheetExists": false,
+        "sheetHash": null
       },
       {
         "id": "C02",
         "name": "阿禾",
         "sheet": "../characters/images/阿禾-sheet.png",
-        "sheetExists": false
+        "sheetExists": false,
+        "sheetHash": null
       }
     ],
     "scenes": [
@@ -41,7 +43,8 @@
         "id": "S01",
         "name": "山村教室",
         "sheet": "../art/images/山村教室-sheet.png",
-        "sheetExists": false
+        "sheetExists": false,
+        "sheetHash": null
       }
     ],
     "props": [
@@ -49,7 +52,8 @@
         "id": "P01",
         "name": "第七盏煤油灯",
         "sheet": "../art/images/第七盏煤油灯-sheet.png",
-        "sheetExists": false
+        "sheetExists": false,
+        "sheetHash": null
       }
     ]
   },

@@ -5,14 +5,17 @@
 **novel-creation 3.1.0 · novel-video-prompt 1.0.0（新增）· novel-video-prompt-review 1.0.0（新增）**
 
 - novel-creation 的主会话改为只调度：`seed` → 编写 subagent → 结构检查 → 审核 subagent，循环到全部批准，再回写、导出、交接生成。主会话不再编写分镜与提示词，也不再自己评审自己。
-- 新增 **novel-video-prompt**（编写方）：分段、分镜、提示词，产物为每段一份的工作单 `<段号>/prompt.md`。提示词骨架与 H3、seedance 两份填法指南从 novel-creation 迁入，成为唯一权威位置。
+- 新增 **novel-video-prompt**（编写方）：分段、分镜、提示词，产物为每段一份的工作单 `<段号>/prompt.md`。提示词骨架与 H3、seedance 两份填法指南与 novel-creation 各持一份相同副本。
 - 新增 **novel-video-prompt-review**（审核方）：按七个维度审核，意见分为必须修改与建议，写进同一份工作单并登记结论。只审核，不改写。
-- **工作单格式变更**：`prompt.md` 增加状态头（status、round、model、bodyHash）、分镜结构、审核意见与编写回应；提示词正文改为取**最后一条**分隔线之下。批准绑定内容摘要，批准后改动即失效。
-- **命令语义变更**：新增 `prompts brief|init|check|status|apply`。`export` 要求每段工作单已批准并与 creation.json 一致，只写 manifest.json，不再覆盖 prompt.md。`videos` 拒绝没有状态头、尚未批准或批准已失效的工作单。已有的 creation.json 先运行 `prompts init` 生成草稿工作单，再走编写与审核。
-- 止损：同一段提交三轮仍未批准时停止循环，交给用户决定；autopilot 不取消这一条。没有子代理的运行环境串行完成，并注明审核不独立。
-- 新增 `agents/` 下两个 Claude Code subagent 定义（编写方、审核方），预载对应 skill 并限定工具；`install.sh` 安装到 Claude Code 时一并链接。其他运行环境派发通用 subagent，任务简报始终给出 SKILL.md 路径。
+- **工作单格式变更**：`prompt.md` 增加状态头（status、round、model、bodyHash、inputHash）、分镜结构、审核意见与编写回应；提示词正文改为取**最后一条**分隔线之下。二级标题只允许这三个区域，多出的会被拒绝，避免内容在改写时丢失。
+- **批准的两重绑定**：`bodyHash` 绑定这一段的分镜结构与正文；`inputHash` 绑定这一段依据的输入——认领节拍的原文、挂载参考图的内容、视频模型与参数、提示词语言、单段上限和项目要求。任何一样变化，这一段的批准失效；别的段、别的集、上游里无关的字段不受影响。审核方批准时带着输入材料登记（`verdict approved --inputs`）。
+- **新增 `blocked` 状态与 `[阻塞]` 意见**：审核方发现编写方无法单独解决的问题（缺少设定图、剧本台词有误、目标时长无法容纳）时登记阻塞，循环暂停，协调之后编写方写明回应再提交。
+- 批准门识别 `-`、`*`、`+` 与数字编号的条目，条目之外提到 `[必须修改]` 或 `[阻塞]` 同样拒绝批准。
+- **命令语义变更**：新增 `prompts brief|init|check|status|apply`，以及编写方与审核方命令的本地等价物 `prompts new|submit|verdict`。`export` 要求每段工作单已批准、绑定有效并与 creation.json 一致，只写 manifest.json，不再覆盖 prompt.md；`--out` 指向其他目录时 manifest 里的路径相对 manifest 自己。`videos` 按 manifest 记录的 creation.json 与当前上游重新核对批准，拒绝没有状态头、尚未批准或批准已失效的工作单，计划带有 `approval.input` 供提交前比对。已有的 creation.json 先运行 `prompts init` 生成草稿工作单，再走编写与审核；旧版本导出的 manifest 需要重新导出。
+- 止损：同一段提交三轮仍未批准，或审核方登记阻塞时停止循环，交给用户决定；autopilot 不取消这一条。没有子代理能力的运行环境串行完成，并注明审核不独立。
+- 新增 `agents/` 下两个 Claude Code subagent 定义（编写方、审核方），预载对应 skill 并限定工具；`install.sh` 安装到 Claude Code 时一并链接。新增 `.pi/agents/` 下两个同名的 pi 项目级角色定义。其他运行环境派发通用 subagent，任务简报始终给出指南的绝对路径。
 - 审核意见与编写回应只保留本轮，轮次只计数。未新增评分或门失败累积日志。
-- novel-creation 的编写与审核依赖两个兄弟 skill（缺少时停止并提示安装）；结构检查、报告、导出与交接计划仍可单独拷走运行。三个 skill 各自携带一份相同的工作单解析库，仓库级自测核对一致。
+- novel-creation 仍然可以单独拷走：`references/` 保存编写方与审核方指南的副本，没有安装兄弟 skill 时由 subagent 读取副本并使用本地等价命令，审核仍在独立上下文里完成。三个 skill 各自携带一份相同的工作单解析库；指南副本与解析库由仓库级自测核对逐字一致，修改时各处一起修改。
 
 ## 外部媒体生成交接 — 2026-11-08
 

@@ -52,16 +52,24 @@ try {
     const d=short();d.episodes[0].segments[0].cuts[0].seconds=5.04;
     d.episodes.push({...clone(d.episodes[0]),ep:2});assert.equal(C.computeStats(d).totals.seconds,10.08);
   });
-  const manifestPath=join(temp,'pack/manifest.json');mkdirSync(join(temp,'pack/E01-01'),{recursive:true});
-  const approvedSheet=(body,model='MiniMax H3')=>{const structure={id:'E01-01',sceneIndex:1,cuts:[],images:[]};return W.serializeWorksheet({meta:{segment:'E01-01',status:'approved',round:1,model,promptLang:'en',bodyHash:W.hashOf(structure,body)},structure,review:'结论：通过。',body});};
-  const sheetPath=join(temp,'pack/E01-01/prompt.md');writeFileSync(sheetPath,approvedSheet('shots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.'));
+  // 最小可核对的投产包：manifest 指向的 creation.json、剧本与已批准的工作单都在临时目录里，批准的两重绑定按真实规则计算
+  const manifestPath=join(temp,'pack/manifest.json'),sheetPath=join(temp,'pack/E01-01/prompt.md'),BODY='shots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.';
+  mkdirSync(join(temp,'pack/E01-01'),{recursive:true});json(join(temp,'pack/script/s.json'),script);
+  const publish=(m,body=BODY)=>{
+    const structure={id:'E01-01',sceneIndex:1,cuts:[],images:[]};
+    const creation={schemaVersion:3,source:script.source,promptLang:'en',video:m.video,episodes:[{ep:1,segments:[{...structure,prompt:body}]}]};
+    json(join(temp,'pack/c.json'),creation);
+    const material=C.dispatchBrief(creation,{script},1);
+    writeFileSync(sheetPath,W.serializeWorksheet({meta:{segment:'E01-01',status:'approved',round:1,model:m.video.model,promptLang:'en',bodyHash:W.hashOf(structure,body),inputHash:W.inputHashOf(structure,material)},structure,review:'结论：通过。',body}));
+    return json(manifestPath,{creation:'c.json',...m});
+  };
   const manifest=seconds=>({video:{model:'MiniMax H3'},segments:[{segment:'E01-01',seconds,prompt:'E01-01/prompt.md',images:[]}]});
   for(const seconds of [30,15.04,0,-1,null,'5']) await test(`R2 videos rejects ${JSON.stringify(seconds)} before any job`,()=>{
-    json(manifestPath,manifest(seconds));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1,r.stdout+r.stderr);assert.equal(r.stdout,'');
+    publish(manifest(seconds));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1,r.stdout+r.stderr);assert.equal(r.stdout,'');
   });
   for(const seconds of [NaN,Infinity,undefined]) await test(`R2 non-finite duration ${seconds}`,()=>assert.equal(C.clampDuration(seconds,'MiniMax H3').duration,null));
   await test('R2 valid decimal rounds up; short clip pads, never truncates',()=>{
-    json(manifestPath,manifest(12.5));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,0,r.stderr);assert.equal(JSON.parse(r.stdout).jobs[0].params.duration,13);assert.equal(C.clampDuration(3,'MiniMax H3').duration,5);
+    publish(manifest(12.5));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,0,r.stderr);assert.equal(JSON.parse(r.stdout).jobs[0].params.duration,13);assert.equal(C.clampDuration(3,'MiniMax H3').duration,5);
   });
   await test('handoff CLI preserves ordered references, roles, prompt and output from another cwd',()=>{
     const m=manifest(7);m.video.aspectRatio='9:16';m.video.resolution='768p';
@@ -69,7 +77,7 @@ try {
       {path:'../first.png',kind:'character',ref:'C02',name:'测试角色',role:'identity reference'}];
     m.segments[0].images=refs;
     writeFileSync(join(temp,'first.png'),'fixture one');writeFileSync(join(temp,'second.png'),'fixture two');
-    json(manifestPath,m);
+    publish(m);
     const out=join(temp,'handoff.json'),r=cli('videos',manifestPath,'--only','E01-01','--out',out);
     assert.equal(r.status,0,r.stderr);const plan=JSON.parse(r.stdout),j=plan.jobs[0];
     assert.equal(plan.status,'planned');assert.equal(plan.skill,'ly-video');assert.equal(plan.model,'MiniMax H3');
@@ -124,14 +132,20 @@ try {
     const d=short();d.video={model:'seedance2.0'};d.promptLang='zh';d.episodes[0].segments[0].prompt='镜头描述：\n[镜头 1] 全景，固定 — 缓慢观察。\n环境声与配乐：无配乐。';assert.deepEqual(C.validateCreation(d),[]);
   });
   await test('R8 videos validates seedance prompt again after export',()=>{
-    const m=manifest(5);m.video.model='seedance2.0';json(manifestPath,m);writeFileSync(sheetPath,approvedSheet('0–3 秒观察','seedance2.0'));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/seedance/);
+    const m=manifest(5);m.video.model='seedance2.0';publish(m,'0–3 秒观察');const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/seedance/);
   });
   await test('videos rejects unapproved, stale and legacy prompt files',()=>{
-    json(manifestPath,manifest(5));const good=approvedSheet('shots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.');
-    writeFileSync(sheetPath,good);assert.equal(cli('videos',manifestPath,'--dry-run').status,0);
+    publish(manifest(5));const good=readFileSync(sheetPath,'utf8');
+    const ok=cli('videos',manifestPath,'--dry-run');assert.equal(ok.status,0,ok.stderr);assert.match(JSON.parse(ok.stdout).approval.input,/^[0-9a-f]{16}$/);
     writeFileSync(sheetPath,good.replace('status: approved','status: in_review'));let r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/尚未批准/);
     writeFileSync(sheetPath,good.replace('observe.','observe closely.'));r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/批准已失效/);
     writeFileSync(sheetPath,'# E01-01\n\n---\nshots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.');r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/状态头/);
+    // 批准还绑定输入：模型参数、认领节拍的原文发生变化，旧批准失效；旧版本导出的 manifest 需要重新导出
+    writeFileSync(sheetPath,good);const m=manifest(5);m.video.resolution='2K';json(manifestPath,{creation:'c.json',...m});
+    r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/视频参数.*不一致/);
+    const cPath=join(temp,'pack/c.json'),c=JSON.parse(readFileSync(cPath,'utf8'));c.video.resolution='2K';json(cPath,c);
+    r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/输入发生变化/);
+    publish(manifest(5));json(manifestPath,manifest(5));r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/重新运行 export/);
   });
   console.log(`✓ ${count} creation fixes tests passed; offline only`);
 } finally { rmSync(temp,{recursive:true,force:true}); }

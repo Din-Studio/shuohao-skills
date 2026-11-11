@@ -96,8 +96,14 @@ try {
     // 已批准的工作单被修改后重新提交：旧摘要作废
     const approved = W.parseWorksheet(W.serializeWorksheet({ ...s, meta: { ...s.meta, status: 'approved', bodyHash: W.hashOf(s.structure, s.body) } }));
     assert.equal(W.approvalProblem(approved), null);
-    const again = W.parseWorksheet(submitWorksheet(approved).text);
-    assert.equal(again.meta.status, 'in_review'); assert.equal(again.meta.bodyHash, ''); assert.equal(again.meta.round, 3);
+    const again = W.parseWorksheet(submitWorksheet({ ...approved, meta: { ...approved.meta, inputHash: 'abc' } }).text);
+    assert.equal(again.meta.status, 'in_review'); assert.equal(again.meta.bodyHash, ''); assert.equal(again.meta.inputHash, ''); assert.equal(again.meta.round, 3);
+    // 审核方登记阻塞之后：协调完成、写明回应才能再次提交
+    const blocked = W.parseWorksheet(W.serializeWorksheet({ ...s, meta: { ...s.meta, status: 'blocked' }, response: '' }));
+    assert.ok(submitWorksheet(blocked).problems.some(p => /编写回应/.test(p)));
+    assert.equal(W.parseWorksheet(submitWorksheet({ ...blocked, response: '- 参考图：设定图已补齐。' }).text).meta.status, 'in_review');
+    // 回应里多出二级标题会让它之下的内容丢失，自查直接拒绝
+    assert.ok(lintWorksheet(W.parseWorksheet(readFileSync(a, 'utf8').replace('## 编写回应（仅本轮）', '## 编写回应（仅本轮）\n\n## 补充说明'))).some(p => /多余的二级标题/.test(p)));
   });
 
   console.log(`✓ ${count} 项自测通过；离线`);

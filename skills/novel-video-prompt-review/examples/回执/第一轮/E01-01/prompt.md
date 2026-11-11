@@ -5,6 +5,7 @@ round: 1
 model: seedance2.0
 promptLang: zh
 bodyHash:
+inputHash:
 ---
 
 # E01-01 · 视频提示词工作单

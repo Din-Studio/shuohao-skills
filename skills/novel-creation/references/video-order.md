@@ -1,6 +1,6 @@
 # 视频生成交接
 
-`export` 产出根部 manifest.json，引用每段已批准的工作单 prompt.md。`videos` 只读取这个投产包、核对每段工作单的批准仍然有效、校验素材并导出离线计划。生成交给独立安装的 **ly-video**；先阅读 [交接与恢复流程](media-handoff.md)。
+`export` 产出根部 manifest.json，引用每段已批准的工作单 prompt.md。`videos` 读取这个投产包，按 manifest 记录的 creation.json 与当前上游核对每段工作单的批准仍然有效，校验素材并导出离线计划。生成交给独立安装的 **ly-video**；先阅读 [交接与恢复流程](media-handoff.md)。
 
 ```bash
 node <baseDir>/scripts/novel-creation.mjs videos manifest.json --out video-plan.json
@@ -13,7 +13,8 @@ node <baseDir>/scripts/novel-creation.mjs videos manifest.json --only E01-01 --d
 ## 参数与参考图
 
 - manifest.video.model 指定模型；aspectRatio、resolution 映射为计划 params.aspect_ratio、params.resolution。
-- 每段 prompt.md 最后一条分隔线以下的正文原样进入 prompt；状态头、分镜结构与审核区不会进入。没有状态头、尚未批准或批准后被改动的工作单直接失败。参考图按 manifest 顺序输出绝对路径，保持 Picture 编号；文件缺失、为空或不是普通文件时停止。
+- 每段 prompt.md 最后一条分隔线以下的正文原样进入 prompt；状态头、分镜结构与审核区不会进入。没有状态头、尚未批准、批准后内容被改动，或者这一段依据的输入（节拍原文、参考图内容、模型与参数、项目要求）发生变化的工作单直接失败；`--only` 只核对选中的段。参考图按 manifest 顺序输出绝对路径，保持 Picture 编号；文件缺失、为空或不是普通文件时停止。
+- 计划带有 `approval.manifest` 与 `approval.input`。提交之前重新运行 `videos` 并比对 `input`；不一致说明计划生成之后内容或输入又变了，回到编写与审核，不提交。
 - 计划不指定上传字段。ly-video 必须发现实时 schema 后绑定 inputs；不能假设每个视频模型都接受 images。
 - 每段目标路径为该段目录的 video.mp4。外部下载后核验内容和容器，再放入目标路径；render 之后才汇报实际完成。
 

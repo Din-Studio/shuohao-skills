@@ -1,6 +1,6 @@
 # 视频提示词 · 写法规范（本 skill 自己的方法论）
 
-> 文中提到的门名称（如 `dialogue-verbatim`、`size-phrase`）是调度方完整结构检查里的检查项名称。本 skill 不依赖调度方即可写作；本地自查见 `scripts/novel-video-prompt.mjs lint`。
+> 文中提到的门名称（如 `dialogue-verbatim`、`size-phrase`）是调度方完整结构检查里的检查项名称。本文件在编写方 `novel-video-prompt` 与调度方 `novel-creation` 各有一份相同副本，修改时两份一起修改；编写方的本地自查是它自己的 `lint` 命令，调度方的完整检查是 `prompts check`。
 
 **这不是任何一个模型的内化版。** 「每个分镜配一张精确钉住秒数的关键帧图」那条路才用得上对齐指令、`<Picture k>` 钉秒数、`<d>` 标签——它们是 MiniMax H3 的私有语法，`seedance` 系列的 `input_schema` 里根本没有这些字段。本 skill 的参考图不按秒数分配、按「这段戏里出现的人物/场景/道具」整段挂载，所以这份文档写的是一条**任何视频模型都吃得下**的自然语言提示词规范。
 
@@ -33,7 +33,7 @@
 2. **换了 `video.model` 就重读新那一族的指南，并重写这一批的填法**：语言默认、时刻能不能写、台词用什么符号，两族全不一样
 3. **没有对应指南不等于随便写**——门一道都不少
 
-运行 `scripts/novel-video-prompt.mjs guide --model <模型>` 会打印该读哪一份，照它读。
+编写方的 `guide --model <模型>` 命令会打印该读哪一份；调度方运行 `prompts check` 时也会打印。照它读。
 
 ## 语言分工
 
