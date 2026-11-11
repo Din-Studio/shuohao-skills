@@ -141,7 +141,7 @@ try {
     assert.ok(!md.includes('overridePaths')&&!md.includes('selection')&&!md.includes('sha256'));
     assert.equal(JSON.stringify(d),before);
     assert.deepEqual(JSON.parse(html.match(/<script type="application\/json" id="creation-data">([\s\S]*?)<\/script>/)[1]),d);
-    assert.ok(renderHtml(d,{...ctx,lang:'en'}).includes('Content review not performed'));
+    assert.ok(renderHtml(d,{...ctx,lang:'en'}).includes('Structural checks do not perform content review'));
   });
   test('partial upstream still catches known invalid reference',()=>{
     const d=clone(doc);d.episodes[0].segments[0].images[1].ref='S99';assert.equal(find(d,'refimage-coverage',{art:ctx.art}).status,'fail');

@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import * as C from './novel-creation.mjs';
 import {scriptProblems} from './lib/contracts.mjs';
+import {hash, structureHash, reviewDocument, parsePrompt, updateReview, reviewBinding} from './lib/prompt-review.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const read=p=>JSON.parse(readFileSync(join(root,'examples',p),'utf8'));
 const doc=read('creation/收书人-creation.json'), script=read('script/收书人-script.json');
@@ -52,22 +53,41 @@ try {
     d.episodes.push({...clone(d.episodes[0]),ep:2});assert.equal(C.computeStats(d).totals.seconds,10.08);
   });
   const manifestPath=join(temp,'pack/manifest.json');mkdirSync(join(temp,'pack/E01-01'),{recursive:true});
-  writeFileSync(join(temp,'pack/E01-01/prompt.md'),'# E01-01\n\n---\nshots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.');
-  const manifest=seconds=>({video:{model:'MiniMax H3'},segments:[{segment:'E01-01',seconds,prompt:'E01-01/prompt.md',images:[]}]});
+  const promptPath=join(temp,'pack/E01-01/prompt.md');
+  writeFileSync(promptPath,reviewDocument('# E01-01','shots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.'));
+  const fixtureSource=json(join(temp,'pack/source.json'),{});
+  const fixtureContext={recipes:null,outline:{characters:[{id:'C02',name:'测试角色'}]},art:{scenes:[{id:'S01',name:'测试场景'}],props:[]}};
+  const fixtureOutline=json(join(temp,'fixture-outline.json'),fixtureContext.outline);
+  const fixtureArt=json(join(temp,'fixture-art.json'),fixtureContext.art);
+  const manifest=seconds=>({video:{model:'MiniMax H3'},reviewSource:{path:fixtureSource,args:['--no-production'],structureHash:structureHash({}),contextHash:hash(fixtureContext)},segments:[{segment:'E01-01',seconds,prompt:'E01-01/prompt.md',images:[]}]});
+  // Synthetic approval fixture isolates the existing transport/duration checks.
+  const approvedManifest=m=>{
+    const source=short();source.video=m.video;source.episodes[0].segments[0].cuts[0].seconds=m.segments[0].seconds;
+    source.episodes[0].segments[0].images=m.segments[0].images.map(({kind,ref,role})=>({kind,ref,role}));
+    json(fixtureSource,source);
+    m.source=source.source;m.segments[0].cuts=1;m.segments[0].missing=[];
+    m.reviewSource.structureHash=structureHash(source);
+    m.reviewSource.args=['--no-production','--outline',fixtureOutline,'--art',fixtureArt];
+    json(manifestPath,m);
+    writeFileSync(promptPath,C.exportPack(source,null,{resolveImage:(kind,ref)=>m.segments[0].images.find(i=>i.kind===kind&&i.ref===ref)}).files[0].content);
+    const parsed=parsePrompt(readFileSync(promptPath,'utf8'));
+    const input=reviewBinding(m,join(temp,'pack'),fixtureContext);
+    writeFileSync(promptPath,updateReview(parsed,{...parsed.meta,status:'approved',reviewer:'fixture',reviewedRevision:parsed.meta.revision,approvedInput:input},'Synthetic transport fixture, not a content review.'));
+  };
   for(const seconds of [30,15.04,0,-1,null,'5']) await test(`R2 videos rejects ${JSON.stringify(seconds)} before any job`,()=>{
-    json(manifestPath,manifest(seconds));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1,r.stdout+r.stderr);assert.equal(r.stdout,'');
+    approvedManifest(manifest(seconds));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1,r.stdout+r.stderr);assert.equal(r.stdout,'');
   });
   for(const seconds of [NaN,Infinity,undefined]) await test(`R2 non-finite duration ${seconds}`,()=>assert.equal(C.clampDuration(seconds,'MiniMax H3').duration,null));
   await test('R2 valid decimal rounds up; short clip pads, never truncates',()=>{
-    json(manifestPath,manifest(12.5));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,0,r.stderr);assert.equal(JSON.parse(r.stdout).jobs[0].params.duration,13);assert.equal(C.clampDuration(3,'MiniMax H3').duration,5);
+    approvedManifest(manifest(12.5));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,0,r.stderr);assert.equal(JSON.parse(r.stdout).jobs[0].params.duration,13);assert.equal(C.clampDuration(3,'MiniMax H3').duration,5);
   });
   await test('handoff CLI preserves ordered references, roles, prompt and output from another cwd',()=>{
     const m=manifest(7);m.video.aspectRatio='9:16';m.video.resolution='768p';
-    const refs=[{path:'../second.png',kind:'scene',ref:'S01',name:'测试场景',role:'environment reference'},
-      {path:'../first.png',kind:'character',ref:'C02',name:'测试角色',role:'identity reference'}];
+    const refs=[{path:'../art/images/测试场景-sheet.png',kind:'scene',ref:'S01',name:'测试场景',role:'environment reference',exists:true},
+      {path:'../characters/images/测试角色-sheet.png',kind:'character',ref:'C02',name:'测试角色',role:'identity reference',exists:true}];
     m.segments[0].images=refs;
-    writeFileSync(join(temp,'first.png'),'fixture one');writeFileSync(join(temp,'second.png'),'fixture two');
-    json(manifestPath,m);
+    for (const ref of refs) {const path=resolve(temp,'pack',ref.path);mkdirSync(dirname(path),{recursive:true});writeFileSync(path,'fixture image');}
+    approvedManifest(m);
     const out=join(temp,'handoff.json'),r=cli('videos',manifestPath,'--only','E01-01','--out',out);
     assert.equal(r.status,0,r.stderr);const plan=JSON.parse(r.stdout),j=plan.jobs[0];
     assert.equal(plan.status,'planned');assert.equal(plan.skill,'ly-video');assert.equal(plan.model,'MiniMax H3');
@@ -80,7 +100,7 @@ try {
     assert.equal(cli('videos',manifestPath,'--out',out).status,1,'plan output must not be overwritten');
     for(const option of ['--force','--cutout','--timeout','--concurrency'])
       assert.equal(cli('videos',manifestPath,option,'1').status,1);
-    rmSync(join(temp,'second.png'));
+    rmSync(resolve(temp,'pack',refs[0].path));
     assert.equal(cli('videos',manifestPath,'--dry-run').status,1,'missing reference fails even in preview');
   });
   for(const stage of ['script','outline']) await test(`R4 project and ${stage} brief conflict requires manual merge`,()=>{

@@ -643,7 +643,7 @@ ok(validateCreation({ source: 'x', episodes: [] }).some((x) => x.includes('episo
   eq(pack.missingTotal, 0, '全部解析成功时缺失数为 0');
   eq(pack.files[0].path, 'out/E01-01/prompt.md', '带 --out 前缀落盘路径');
   ok(pack.files[0].content.includes('Picture 1 = 周亦'), 'prompt.md 头部列出参考图身份 + 相对路径');
-  ok(pack.files[0].content.includes('---\n\nPicture 1 is'), 'prompt.md 分隔线以下是 prompt 原文，一个字不改');
+  ok(pack.files[0].content.includes('<!-- prompt:start -->\nPicture 1 is'), 'prompt.md 正文区域保留 prompt 原文');
   const manifestContent = JSON.parse(pack.files.find((f) => f.path === 'out/manifest.json').content);
   eq(manifestContent.video.model, 'MiniMax H3', 'manifest 顶层带生产参数的视频字段');
   eq(manifestContent.segments[0].images[0].path, '../characters/images/周亦-sheet.png', 'manifest 每段记参考图相对路径');
@@ -685,7 +685,7 @@ ok(validateCreation({ source: 'x', episodes: [] }).some((x) => x.includes('episo
   ok(html.includes('>配音对齐单<'), '有配音对齐单区块');
   ok(html.includes('>质量门<'), '有质量门区块');
   eq((html.match(/<li class="ok">/g) || []).length, gateReport(FIXTURE, CTX_IMG).filter(g => g.status === 'pass').length, '报告通过项只计真实 pass');
-  ok(html.includes('提醒') && html.includes('跳过') && html.includes('内容未评审'), '提醒、跳过和内容状态分别展示');
+  ok(html.includes('提醒') && html.includes('跳过') && html.includes('结构检查不含内容审核'), '提醒、跳过和内容状态分别展示');
   ok(html.includes('gatepill pass'), '页眉徽章通过态');
   ok(!html.includes('class="reftile-ph"'), '真实文件都存在时不出现缺图占位');
 }

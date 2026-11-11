@@ -390,7 +390,10 @@ try{
       for(const [i,segment] of segments.entries()){
         assert.deepEqual(pack.manifest[i].images.map(x=>[x.kind,x.ref,x.path]),segment.images.map(x=>[x.kind,x.ref,`${x.kind}/${x.ref}.png`]));
         const prompt=pack.files.find(f=>f.path===pack.manifest[i].prompt).content;
-        assert.ok(prompt.endsWith(segment.prompt+'\n'),'不改写已创作的视频提示词');
+        const body=prompt.split('<!-- prompt:start -->\n')[1]?.split('\n<!-- prompt:end -->')[0];
+        assert.equal(body,segment.prompt,'不改写已创作的视频提示词');
+        assert.ok(prompt.includes('## 当前审核\n'),'审核区域与正文共存');
+        assert.ok(!body.includes('尚未审核。'),'审核意见不进入正文');
         segment.images.forEach((x,k)=>assert.ok(prompt.includes(`Picture ${k+1} = ${names.get(x.ref)}`)));
       }
       const target=join(temp,'must-not-export');

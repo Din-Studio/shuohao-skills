@@ -81,7 +81,7 @@ The following screenshots show historical interfaces. Render the local samples f
 
 **novel-creation · video creation (segments, cuts, reference mounts, prompts and ordering)**
 
-Includes its own example and offline report renderer. See [novel-creation](skills/novel-creation/README.en.md).
+Includes its own example and offline report renderer. See [novel-creation](skills/novel-creation/README.en.md). The main session coordinates independent [prompt-writing](skills/video-prompt-writing) and [prompt-review](skills/video-prompt-review) subagents until the whole batch is approved. Both new skills are self-contained.
 
 ## Install
 
@@ -108,7 +108,7 @@ ln -s "$PWD/skills/novel-characters" ~/.codex/skills/novel-characters
 ln -s "$PWD/skills/novel-characters" ~/.pi/agent/skills/novel-characters
 ```
 
-**pi has a second route**: install the whole repository as a pi package and all six skills come in at once, with `git pull` still taking effect immediately:
+**pi has a second route**: install the whole repository as a pi package and all eight skills are installed together, with `git pull` still taking effect immediately:
 
 ```bash
 pi install /path/to/shuohao-skills                        # local directory

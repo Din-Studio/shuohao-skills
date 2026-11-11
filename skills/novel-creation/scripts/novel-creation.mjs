@@ -4,7 +4,7 @@
 // without an npm install. Node 18+ (stdlib only).
 
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { projectProblems, scriptParams, endPosition, episodeIntent } from './lib/document.mjs';
 import { migrateFile } from './lib/migration.mjs';
@@ -23,6 +23,8 @@ export function checkup(doc, ctx = {}) {
     skipped: gates.filter(g => g.status === 'skipped').length, contentReview: 'not-performed' };
 }
 import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
+import { hash, structureHash, reviewDocument, parsePrompt, hydrate, reviewBinding, requireApproved, updateReview, loadReview, sourceArgs } from './lib/prompt-review.mjs';
+const reviewContext = ctx => ({script:ctx.script,outline:ctx.outline,cast:ctx.cast,art:ctx.art,production:ctx.production,recipes:ctx.recipes ? [...ctx.recipes] : null});
 
 /* ------------------------------------------------------------------ */
 /* 常量                                                                */
@@ -912,7 +914,7 @@ export function exportPack(doc, script, { resolveImage = () => ({ name: '', path
             .map((img, i) => `- Picture ${i + 1} = ${img.name || img.ref}${img.role ? `（${img.role}）` : ''} · ${img.path}${img.exists ? '' : '（⚠️ 文件不存在）'}`)
             .join('\n')
         : '（本段没有挂载参考图）';
-      const promptMd = `# ${seg.id} · 视频提示词\n\n${videoLine}参考图按 Picture 序号挂载：\n\n${mapping}\n\n---\n\n${seg.prompt ?? ''}\n`;
+      const promptMd = reviewDocument(`# ${seg.id} · 视频提示词\n\n${videoLine}参考图按 Picture 序号挂载：\n\n${mapping}\n`, seg.prompt ?? '');
       files.push({ path: `${prefix}${seg.id}/prompt.md`, content: promptMd });
       const missing = images.filter((i) => !i.exists).map((i) => i.path);
       manifest.push({
@@ -985,7 +987,7 @@ const I18N = {
     docTitle: (s, a, b) => `${s} · 创作${a === b ? `（第 ${a} 集）` : `（第 ${a}–${b} 集）`}`,
     epRange: (a, b) => (a === b ? `第 ${a} 集` : `第 ${a}–${b} 集`),
     exportJson: '导出 JSON',
-    gatesPass: '无阻断失败；提醒与跳过另列，内容未评审',
+    gatesPass: '无阻断失败；提醒、跳过与内容审核另列',
     gatesFail: (n2) => `${n2} 项未过`,
     gatePill: (okN, total) => `质量门 ${okN} / ${total}`,
     kpi: {
@@ -1040,7 +1042,7 @@ const I18N = {
     docTitle: (s, a, b) => `${s} · Creation (${a === b ? `Episode ${a}` : `Episodes ${a}–${b}`})`,
     epRange: (a, b) => (a === b ? `Episode ${a}` : `Episodes ${a}–${b}`),
     exportJson: 'Export JSON',
-    gatesPass: 'No blocking failures; warnings and skips listed separately. Content review not performed.',
+    gatesPass: 'No blocking failures; warnings, skips and content review are reported separately.',
     gatesFail: (n2) => `${n2} failed`,
     gatePill: (okN, total) => `Quality gates ${okN} / ${total}`,
     kpi: {
@@ -1097,8 +1099,8 @@ const summaryText = (gates, lang) => {
   const n = {pass:gates.filter(g => g.status === 'pass' && g.category !== 'source').length,
     blocking:gates.filter(isBlocking).length, warnings:gates.filter(g => g.status === 'fail' && g.level === 'warn').length,
     skipped:gates.filter(g => g.status === 'skipped').length};
-  return lang === 'en' ? `Structural passes ${n.pass}; blocking ${n.blocking}; warnings ${n.warnings}; skipped ${n.skipped}. Content review not performed. Timings are estimates, not generated results.`
-    : `结构通过 ${n.pass}；阻断失败 ${n.blocking}；提醒 ${n.warnings}；跳过 ${n.skipped}。内容未评审。时长为估算，不是生成结果。`;
+  return lang === 'en' ? `Structural passes ${n.pass}; blocking ${n.blocking}; warnings ${n.warnings}; skipped ${n.skipped}. Structural checks do not perform content review; see separate review results. Timings are estimates, not generated results.`
+    : `结构通过 ${n.pass}；阻断失败 ${n.blocking}；提醒 ${n.warnings}；跳过 ${n.skipped}。结构检查不含内容审核，审核结果另列。时长为估算，不是生成结果。`;
 };
 export function reportContext(doc, ctx) {
   const locate = (ep, pos) => ep.segments.flatMap(seg => seg.cuts.flatMap((cut, i) =>
@@ -1716,10 +1718,13 @@ const USAGE = `novel-creation.mjs — novel-creation skill 的确定性工具（
           [--outline] [--art] [--shots ...]     只打印质量门 ✓/✗，有未过项 exit 1
   render <creation.json> --script <script.json>
          [--html|--md] [--outline] [--art]      渲染报告到 stdout（默认 --md）
+         [--pack DIR]                          validate/checkup/render 的 Markdown 投产目录，默认 JSON 所在目录
          [--lang zh|en]                         报告界面语言（默认 zh；未指定时读取 JSON 顶层 lang 字段）
   export <creation.json> --script <script.json> [--out .]
                                                 导出投产包：每段一个文件夹 <段号>/prompt.md，根部 manifest.json
-  videos <manifest.json>          导出离线交接计划，交给 ly-video 生成
+  review <manifest.json> --segment ID --status pending_review|approved|changes_requested|blocked
+         [--reviewer NAME --opinion FILE]       审核者提供非空意见，写回同一 prompt.md
+  videos <manifest.json>          整批有效 approved 后导出离线计划，交给 ly-video 生成
          [--only <ID列表>]                仅选择指定任务（图片自动补齐参考依赖）
          [--dry-run]                      只预览计划；本命令始终不上传、不提交
          [--out <plan.json>]              另存计划（不覆盖已有文件）
@@ -1779,6 +1784,8 @@ function loadCtx(rest, fromDir = '.') {
   const ctx = {
     script: get('--script'), outline: get('--outline'), cast: get('--cast'), art: get('--art'),
     recipes: shots ? loadShots(shots) : null, production, productionPath,
+    inputPaths: Object.fromEntries(['script','outline','cast','art'].filter(k => flag(rest, '--'+k)).map(k => [k, resolve(flag(rest,'--'+k))])),
+    shotsPath: shots ? resolve(shots) : null,
   };
   const root = productionPath ? dirname(resolve(productionPath))
     : ['creation','script','outline','art','characters'].includes(basename(resolve(fromDir))) ? dirname(resolve(fromDir)) : resolve(fromDir);
@@ -1788,7 +1795,10 @@ function loadCtx(rest, fromDir = '.') {
     try { lstatSync(dir); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
     const candidates = readdirSync(dir).filter(name => name.endsWith('.json') && !name.startsWith('.') && !/manifest|\.backup|\.bak|\.tmp|\.review|\.migration|\.v2-backup/i.test(name)).sort();
     if (candidates.length > 1) throw new Error(`上游 ${key} 不唯一，请显式提供路径：${candidates.join(', ')}`);
-    if (candidates.length === 1) ctx[key] = readJson(join(dir,candidates[0]));
+    if (candidates.length === 1) {
+      ctx.inputPaths[key] = resolve(dir,candidates[0]);
+      ctx[key] = readJson(ctx.inputPaths[key]);
+    }
   }
   return ctx;
 }
@@ -1818,14 +1828,47 @@ function announceProduction(ctx, rest, docPath = null, doc = null) {
 }
 
 /** manifest.json 里的 prompt 字段只是一个路径，真正的提示词取 prompt.md 分隔线以下的原文。 */
+function packForReview(doc, ctx, sourceDir, packDir) {
+  const n = namer(ctx);
+  const resolveImage = (kind,ref) => {
+    const name = n.nameOf(kind,ref);
+    if (!name) return {name:'',path:'',exists:false};
+    const r = resolveReferenceImage(kind,name,sourceDir);
+    return {name,path:relative(packDir,resolve(sourceDir,r.path)),exists:r.exists};
+  };
+  return exportPack(doc,ctx.script,{resolveImage,dir:packDir,production:ctx.production});
+}
+function assertPackCurrent(manifest,doc,ctx,base) {
+  const pack = packForReview(doc,ctx,dirname(manifest.reviewSource.path),base);
+  for (const file of pack.files.filter(f=>basename(f.path)==='prompt.md')) {
+    const header = text => text.slice(0,text.indexOf('<!-- review-meta:start -->'));
+    if (header(readFileSync(file.path,'utf8')) !== header(file.content)) throw new Error('提示词参数或参考图说明已过期，请重新 export');
+  }
+  const expected = JSON.parse(pack.files.find(f=>basename(f.path)==='manifest.json').content);
+  for (const s of expected.segments) s.prompt = `${s.segment}/prompt.md`;
+  if (hash({video:manifest.video,segments:manifest.segments,source:manifest.source}) !== hash(expected)) throw new Error('投产包与当前结构不一致，请重新 export');
+}
+function reviewSummary(base) {
+  const path = resolve(base,'manifest.json');
+  if (!existsSync(path)) return '尚未导出审核文档，内容未审核。';
+  try {
+    const manifest = readJson(path);
+    const ctx = loadCtx(sourceArgs(manifest),dirname(manifest.reviewSource.path));
+    const binding = reviewBinding(manifest,base,reviewContext(ctx));
+    return manifest.segments.map(seg => {
+      const parsed = loadReview(resolve(base,seg.prompt));
+      const valid = parsed.meta.status === 'approved' && parsed.meta.approvedInput === binding && parsed.meta.reviewedRevision === parsed.meta.revision;
+      return `${seg.segment}: ${parsed.meta.status}${parsed.meta.status === 'approved' ? valid ? '（当前输入有效）' : '（批准已失效）' : ''}\n${parsed.text.split('## 当前审核\n')[1]}`;
+    }).join('\n');
+  } catch(error) {return `审核不可用于生成：${error.message}`;}
+}
 function promptBodyOf(md) {
-  const idx = String(md ?? '').indexOf('\n---\n');
-  return (idx < 0 ? String(md ?? '') : String(md).slice(idx + 5)).trim();
+  return parsePrompt(String(md ?? '')).prompt;
 }
 
 async function main(argv) {
   if (argv.includes('--production') && argv.includes('--no-production')) throw new Error('--production 与 --no-production 互斥');
-  for (const name of ['--script','--outline','--cast','--art','--shots','--production','--eps','--lang','--out','--only','--timeout','--concurrency']) {
+  for (const name of ['--script','--outline','--cast','--art','--shots','--production','--eps','--lang','--out','--pack','--segment','--status','--reviewer','--opinion','--only','--timeout','--concurrency']) {
     if (argv.includes(name)) flag(argv, name);
   }
   const [cmd, ...rest] = argv;
@@ -1864,13 +1907,60 @@ async function main(argv) {
     return;
   }
 
+  if (cmd === 'review') {
+    const [path] = rest;
+    if (!path) throw new Error('review <manifest.json> --segment ID --status STATUS [--reviewer NAME --opinion FILE]');
+    const manifest = readJson(path), base = dirname(resolve(path));
+    if (flag(rest,'--status') === 'blocked') {
+      const seg = manifest.segments.find(s=>s.segment === flag(rest,'--segment'));
+      const reviewer = flag(rest,'--reviewer'), opinionPath = flag(rest,'--opinion');
+      if (!seg || !reviewer?.trim() || !opinionPath) throw new Error('blocked 需要段号、审核者和意见');
+      const mdPath = resolve(base,seg.prompt), parsed = loadReview(mdPath), opinion = readFileSync(opinionPath,'utf8');
+      if (!opinion.trim()) throw new Error('审核意见不得为空');
+      writeFileSync(mdPath,updateReview(parsed,{...parsed.meta,status:'blocked',reviewer,reviewedRevision:parsed.meta.revision,approvedInput:null},opinion));
+      console.log(`${seg.segment}: blocked`); return;
+    }
+    const ctx = loadCtx(sourceArgs(manifest), dirname(manifest.reviewSource.path));
+    const doc = hydrate(readJson(manifest.reviewSource.path), base);
+    ctx.imageExists = rel => existsSync(resolve(dirname(manifest.reviewSource.path), rel));
+    const id = flag(rest,'--segment'), status = flag(rest,'--status');
+    const seg = manifest.segments.find(s => s.segment === id);
+    if (!seg) throw new Error('必须指定存在的 --segment');
+    const mdPath = resolve(base,seg.prompt), parsed = loadReview(mdPath);
+    const binding = reviewBinding(manifest,base,reviewContext(ctx));
+    assertPackCurrent(manifest,doc,ctx,base);
+    const meta = {...parsed.meta};
+    let opinion;
+    if (status === 'pending_review') {
+      meta.revision += 1; meta.status = status; meta.reviewedRevision = null;
+      meta.approvedInput = null; meta.submittedInput = binding; delete meta.reviewer;
+    } else {
+      if (!['approved','changes_requested'].includes(status)) throw new Error('审核状态非法');
+      if (meta.status !== 'pending_review' || meta.submittedInput !== binding) throw new Error('先提交当前内容待审核；审核期间输入不得变化');
+      const reviewer = flag(rest,'--reviewer'), opinionPath = flag(rest,'--opinion');
+      if (!reviewer?.trim() || !opinionPath) throw new Error('审核需要 --reviewer 和 --opinion');
+      opinion = readFileSync(opinionPath,'utf8');
+      if (!opinion.trim()) throw new Error('审核意见不得为空');
+      if (status === 'approved') {
+        if (!ctx.script) throw new Error('批准需要实际剧本');
+        const problems = validateCreation(doc,ctx);
+        if (problems.length) throw new Error(`批准前结构检查失败：${problems.join('；')}`);
+      }
+      Object.assign(meta,{status,reviewer,reviewedRevision:meta.revision,approvedInput:status === 'approved' ? binding : null});
+    }
+    writeFileSync(mdPath,updateReview(parsed,meta,opinion));
+    console.log(`${id}: ${status}`);
+    return;
+  }
+
   if (cmd === 'validate' || cmd === 'checkup') {
     const [path] = rest;
     if (!path) throw new Error(`用法：${cmd} <creation.json> --script <script.json> [--outline] [--cast] [--art]`);
-    const doc = readJson(path);
+    const reviewDir = resolve(flag(rest,'--pack',dirname(resolve(path))));
+    const doc = hydrate(readJson(path), reviewDir);
     const ctx = loadCtx(rest, resolve(path, '..'));
     if (!ctx.outline || !ctx.art) console.error('⚠️ 没给 --outline / --art，跳过参考图挂载核对（refimage-coverage）与提示词人名检查');
-    ctx.imageExists = (rel) => existsSync(resolve(rel));
+    ctx.imageExists = (rel) => existsSync(resolve(dirname(resolve(path)),rel));
     announceProduction(ctx, rest, path, doc);
 
     // 不落 .gates.jsonl、不加 stats 子命令——本 skill 不累积门失败统计，结果只在当次输出里
@@ -1879,7 +1969,8 @@ async function main(argv) {
       const gates = gateReport(doc, ctx);
       for (const g of gates) console.log(`${statusLabel(g, 'zh')} (${g.status}) [${g.category}/${g.level}${g.reason ? '/' + g.reason : ''}] ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
       const failedN = gates.filter(isBlocking).length;
-      console.log(`\n阻断失败 ${failedN}；提醒 ${gates.filter(g => g.status === 'fail' && g.level === 'warn').length}；跳过 ${gates.filter(g => g.status === 'skipped').length}；内容未评审`);
+      console.log(`\n阻断失败 ${failedN}；提醒 ${gates.filter(g => g.status === 'fail' && g.level === 'warn').length}；跳过 ${gates.filter(g => g.status === 'skipped').length}；内容审核见下方独立结果`);
+      console.log(reviewSummary(reviewDir));
       if (ctx.recipes) {
         const drifted = [];
         for (const ep of doc?.episodes ?? []) {
@@ -1917,38 +2008,57 @@ async function main(argv) {
   if (cmd === 'render') {
     const [path] = rest;
     if (!path) throw new Error('用法：render <creation.json> --script <script.json> [--html|--md] [--lang zh|en] [--outline] [--art]');
-    const doc = readJson(path);
+    const reviewDir = resolve(flag(rest,'--pack',dirname(resolve(path))));
+    const doc = hydrate(readJson(path),reviewDir);
     const ctx = loadCtx(rest, resolve(path, '..'));
     const langFlag = flag(rest, '--lang');
     if (langFlag) ctx.lang = langFlag;
-    ctx.imageExists = (rel) => existsSync(resolve(rel));
-    process.stdout.write((rest.includes('--html') ? renderHtml(doc, ctx) : renderMarkdown(doc, ctx)) + '\n');
+    ctx.imageExists = (rel) => existsSync(resolve(dirname(resolve(path)),rel));
+    const review = reviewSummary(reviewDir);
+    if (rest.includes('--html')) {
+      const escaped = review.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+      process.stdout.write(renderHtml(doc,ctx).replace('</body>',`<section><h2>Prompt 审核</h2><pre>${escaped}</pre></section></body>`)+'\n');
+    } else process.stdout.write(renderMarkdown(doc,ctx)+'\n\n## Prompt 审核\n\n'+review+'\n');
     return;
   }
 
   if (cmd === 'export') {
     const [path] = rest;
     if (!path) throw new Error('用法：export <creation.json> --script <script.json> [--out .]');
-    const doc = readJson(path);
+    const packDir = resolve(flag(rest,'--out','.'));
+    const doc = hydrate(readJson(path), packDir);
     const ctx = loadCtx(rest, resolve(path, '..'));
     if (!ctx.outline || !ctx.art) console.error('⚠️ 没给 --outline / --art，参考图路径解不出来，投产包的 images 会是空的');
     announceProduction(ctx, rest, path, doc);
     if (!ctx.script) throw new Error('导出投产包必须提供 --script；独立校验不等于可投产');
-    ctx.imageExists = rel => existsSync(resolve(rel));
+    ctx.imageExists = rel => existsSync(resolve(dirname(resolve(path)),rel));
     const problems = validateCreation(doc, ctx);
     if (problems.length) throw new Error(`投产前检查失败：${problems.join('；')}`);
-    const n = namer(ctx);
-    const resolveImage = (kind, ref) => {
-      const name = n.nameOf(kind, ref);
-      if (!name) return { name: '', path: '', exists: false };
-      return { name, ...resolveReferenceImage(kind, name, '.') };
-    };
     const dir = flag(rest, '--out', '.');
-    const pack = exportPack(doc, ctx.script, { resolveImage, dir, production: ctx.production });
+    const pack = packForReview(doc,ctx,dirname(resolve(path)),packDir);
+    const mf = pack.files.find(f => basename(f.path) === 'manifest.json');
+    const manifest = JSON.parse(mf.content);
+    manifest.reviewSource = {path:resolve(path), structureHash:structureHash(doc), contextHash:hash(reviewContext(ctx)), args:[
+      ...Object.entries(ctx.inputPaths).flatMap(([k,v]) => ['--'+k,v]),
+      ...(ctx.productionPath ? ['--production',resolve(ctx.productionPath)] : rest.includes('--no-production') ? ['--no-production'] : []),
+      ...(ctx.shotsPath ? ['--shots',ctx.shotsPath] : [])
+    ]};
+    // Paths in the manifest are relative to the manifest, never prefixed twice.
+    for (const s of manifest.segments) s.prompt = `${s.segment}/prompt.md`;
+    mf.content = JSON.stringify(manifest,null,2)+'\n';
+    // Preflight existing documents before writing anything; legacy files require explicit conversion.
+    for (const f of pack.files) if (basename(f.path) === 'prompt.md' && existsSync(resolve(f.path))) loadReview(resolve(f.path));
     for (const f of pack.files) {
       mkdirSync(resolve(f.path, '..'), { recursive: true });
+      if (basename(f.path) === 'prompt.md' && existsSync(resolve(f.path))) {
+        const old = readFileSync(resolve(f.path),'utf8');
+        // Refresh machine-owned parameter/reference header, preserving all authored regions.
+        f.content = f.content.slice(0,f.content.indexOf('<!-- review-meta:start -->')) + old.slice(old.indexOf('<!-- review-meta:start -->'));
+      }
       writeFileSync(resolve(f.path), f.content, 'utf8');
     }
+    // Compatibility mirror only; Markdown remains authoritative after export.
+    writeFileSync(resolve(path),JSON.stringify(doc,null,2)+'\n');
     const segN = pack.manifest.length;
     console.log(`✓ ${segN} 段投产包 → ${resolve(dir)}/（每段一个文件夹：prompt.md；根部 manifest.json）`);
     if (pack.missingTotal) console.log(`⚠️ 缺 ${pack.missingTotal} 张参考图，已在 manifest 的 missing 里标注——下单前先补齐`);
@@ -1964,6 +2074,10 @@ async function main(argv) {
     const video = manifest.video ?? null;
     if (!video?.model) throw new Error('manifest.json 顶层缺 video.model——先跑 export（工作目录要挂 production.json，没有就跑 /novel-setup 生成一份）');
 
+    const reviewCtx = loadCtx(sourceArgs(manifest), dirname(manifest.reviewSource.path));
+    const binding = reviewBinding(manifest,outDir,reviewContext(reviewCtx));
+    const currentDoc = hydrate(readJson(manifest.reviewSource.path),outDir);
+    assertPackCurrent(manifest,currentDoc,reviewCtx,outDir);
     const only = flag(rest, '--only');
     const segs = only
       ? (() => {
@@ -1975,6 +2089,7 @@ async function main(argv) {
         })()
       : (manifest.segments ?? []);
 
+    requireApproved(manifest,outDir,binding); // Default whole-batch gate, including --only.
     const inputBase = {};
     if (video.aspectRatio) inputBase.aspect_ratio = video.aspectRatio;
     if (video.resolution) inputBase.resolution = video.resolution;
@@ -1998,6 +2113,7 @@ async function main(argv) {
     if (durationNotes.length) console.error(`⚠️ duration 折算：\n${durationNotes.map((x) => '  ' + x).join('\n')}`);
 
     const plan = mediaPlan(jobs, { kind: 'video', model: video.model, inputBase, outDir, only });
+    plan.approval = {input:binding, manifest:resolve(path), note:'提交前重新执行 videos 并比对 input；请求正文、参考图及参数必须与本计划一致。'};
     printPlan(plan, flag(rest, '--out'));
     console.error('✓ 交接计划已准备；未提交、未生成。请继续使用 ' + plan.skill + '。');
     return;

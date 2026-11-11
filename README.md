@@ -83,7 +83,7 @@ node scripts/pipeline-selftest.mjs # 真实渲染、交互适配与隔离安装�
 
 **novel-creation · 视频创作（分段切镜、参考图挂载、视频提示词与下单）**
 
-自带《收书人》样例与离线报告渲染，详见 [novel-creation](skills/novel-creation)。
+自带《收书人》样例与离线报告渲染，详见 [novel-creation](skills/novel-creation)。主 session 调度独立的 [视频prompt编写](skills/video-prompt-writing) 与 [视频prompt审核](skills/video-prompt-review) subagent，循环修改与审核，整批批准后交接生成。两个新增 skill 均可单独复制使用。
 
 ## 安装
 
@@ -110,7 +110,7 @@ ln -s "$PWD/skills/novel-characters" ~/.codex/skills/novel-characters
 ln -s "$PWD/skills/novel-characters" ~/.pi/agent/skills/novel-characters
 ```
 
-**pi 还有第二条路**：把整个仓库当成 pi 包安装，六个 skill 一次全进来，`git pull` 同样立刻生效：
+**pi 还有第二条路**：把整个仓库当成 pi 包安装，八个 skill 一次全部安装，`git pull` 同样立刻生效：
 
 ```bash
 pi install /path/to/shuohao-skills                        # 本地目录

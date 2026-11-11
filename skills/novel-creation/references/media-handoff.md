@@ -16,6 +16,8 @@ npx skills@latest add Din-Studio/skills --agent codex --skill ly-image ly-video 
 
 ## 从计划到生成
 
+本阶段的视频计划必须带 `approval.input` 和 `approval.manifest`。提交前重新执行 `videos <approval.manifest> --dry-run`，核对当前 input 与待提交计划一致。严格按计划正文、有序素材及参数构造请求，不将编写说明或审核意见发送给模型。实时 schema 要求修改内容或参数时返回编写与独立审核流程；批准不是付费授权。旧计划缺少批准标识时停止，不绕过审核直接提交。
+
 1. 本地 `images` / `videos` 输出 `status: planned`。默认和 `--dry-run` 都不访问网络。`--out plan.json` 另存计划，不覆盖现有文件；不用该选项则只有 stdout。
 2. 计划包含明确模型、每项 `id`、原文 `prompt`、原生类型 `params`、有序 `references`、`dependsOn`、目标 `output`。路径均为本机绝对路径；移动项目后重新导出。计划不是外部 skill 的请求 JSON，不可直接传给 `generate`。
 3. 读取已安装的目标 skill；从其真实安装目录定位 `scripts/image.mjs` 或 `scripts/video.mjs`。执行 `models` 和 `models --model <明确ID>`，核对当前 input_schema、限制和价格。不静默换模型，不把本地能力快照当成实时承诺。

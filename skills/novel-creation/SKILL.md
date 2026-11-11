@@ -1,6 +1,6 @@
 ---
 name: novel-creation
-version: 3.0.0
+version: 3.1.0
 description: |
   将 v3 剧本转换为参考图直出视频方案：生成段、分镜、节拍认领、既有参考图挂载、通用视频提示词。
   不生成分镜图。不保存上游计划副本或结束坐标。创作方法与模型技术检查分离。
@@ -22,6 +22,14 @@ metadata:
 
 `{baseDir}` 是本文件目录。Node 18+，只有标准库依赖。整个目录可以单独拷走；不读取兄弟 skill 的实现或指南，不依赖第三方 skill。允许读取项目 JSON 和已经落盘的参考图。
 
+## 0. 主 session 调度
+
+完整读取 `references/prompt-workflow.md`。主 session 只准备输入、调度两个独立 subagent、处理阻塞和交接生成，不亲自编写或批准 prompt。
+
+编写 subagent 使用“视频prompt编写”skill（或本 skill 自带完整编写规范）；审核 subagent 使用“视频prompt审核”skill（或本 skill 自带完整审核规范）。两者独立上下文、串行修改同一文档。编写完成通知主 session，主 session 启动审核，收到 changes_requested 后再次启动编写与审核，直到整批有效 approved。缺少独立子代理能力时明确暂停，不冒称已独立审核。
+
+角色输入包、权限、状态、命令与恢复以该本地协议为准。新 skill 不作为本目录的代码依赖。
+
 ## 1. 确认输入与创作要求
 
 完整读取 `references/创作指南.md` 和 `references/schema.md`。创作方法与评审问题只在本地指南维护。先确定故事，再写分镜，不为了通过结构检查改写故事。
@@ -32,7 +40,7 @@ script、outline、creation 和 production 都要求 `schemaVersion:3`。旧数�
 
 命令自动从产物目录向上最多五层寻找 production.json，再从项目的 script、outline、art、characters 目录发现唯一 JSON。显式路径优先。缺少上游显示跳过；损坏、不可读或多候选输入失败，不能当作缺少上游。独立剧本没有大纲时，不要求伪造计划。
 
-## 2. 分段与提示词
+## 2. 编写 subagent：分段与提示词
 
 ```bash
 node {baseDir}/scripts/novel-creation.mjs seed script/作品-script.json --eps 1-3 > creation/作品-creation.json
@@ -46,7 +54,7 @@ seed 只预填节拍工作底稿 seedScenes，segments 留空。完成分镜后�
 
 完整读取 `references/creation-prompt.md`，再按有效 video.model 读取技术指南：MiniMax H3 对应 `references/h3-prompt.md`；seedance 系列对应 `references/seedance2-prompt.md`；未知模型只使用通用骨架，并明确能力未核实。每段按 Picture 身份说明和 `[Shot k]` 组织，参考图数组顺序、景别、运镜和台词原文保持一致。
 
-## 3. 结构检查与内容评审
+## 3. 独立审核 subagent：结构检查与内容评审
 
 产物位于 `<工作目录>/creation/`，参考图相对该目录。先进入此目录：
 
@@ -61,7 +69,7 @@ node {baseDir}/scripts/novel-creation.mjs validate 作品-creation.json --script
 
 状态为 pass/fail/skipped，失败的 error 阻断。缺少上游为 missing-upstream。骨架没有镜头时不能交付。按创作指南引用镜号完成内容评审，单独报告“结构检查通过”“提醒”“缺少上游未检查”“内容评审未执行”。修改正文、项目要求、视觉要求或模型后重新检查引用、覆盖与实际内容，不按策略身份判断是否过期。
 
-## 4. 报告与投产包
+## 4. 审核文档、报告与投产包
 
 ```bash
 node {baseDir}/scripts/novel-creation.mjs render 作品-creation.json --md > 作品-creation.md
@@ -71,11 +79,13 @@ node {baseDir}/scripts/novel-creation.mjs export 作品-creation.json --out .
 
 报告正文优先，随后展示当前上游交接、资产、估时和检查状态。zh/en 是报告语言，与 promptLang 分开。展示的上游计划不是新编辑源；导出 JSON 仍为原始 creation。HTML 可重建，不进入版本控制。
 
-export 要求实际剧本并执行检查。输出每段 prompt.md 和 manifest，保持参考图顺序与路径，不复制图像。投产包不表示已生成视频。
+export 要求实际剧本并执行检查。首次输出每段 draft 状态的 prompt.md 和 manifest，保持参考图顺序与路径，不复制图像。再次导出保留已有正文和审核意见，并同步 JSON prompt 兼容镜像。首次导出后 Markdown 是提示词编辑源；JSON 仍是分段分镜结构源。render/checkup 展示独立审核结果。投产包不表示已通过审核或生成视频。
+
+编写完成后使用 `review manifest.json --segment E01-01 --status pending_review` 提交。审核代理使用 `review manifest.json --segment E01-01 --status approved|changes_requested|blocked --reviewer prompt-reviewer --opinion /absolute/current-opinion.txt` 写回同一 Markdown。完整流程和旧文档显式转换见 `references/prompt-workflow.md`。只有审核代理执行结论命令，不手填 approved。
 
 ## 5. 授权后的可选生成
 
-读取 `references/video-order.md` 和 `references/media-handoff.md`。`videos manifest.json --dry-run` 只输出离线计划，`--out video-plan.json` 另存且拒绝覆盖。没有媒体执行工具或授权时交付计划并明确未生成。
+整批审核均为当前输入的有效 approved 后，读取 `references/video-order.md` 和 `references/media-handoff.md`。正文、上游、参考图或模型参数变化后必须重新审核。`videos manifest.json --dry-run` 只输出离线计划，`--out video-plan.json` 另存且拒绝覆盖。没有媒体执行工具或授权时交付计划并明确未生成。
 
 用户授权后，外部执行工具发现实时模型与 schema，预览请求、告知最终秒数和费用，然后在授权范围内提交。可以选择已安装的 ly-video，但本 skill 不依赖它完成方案交付。超模型上限失败，不截短故事。恢复原任务，不因等待到期重复提交。下载核验后才报告完成。
 
@@ -92,6 +102,7 @@ node {baseDir}/scripts/fixes-selftest.mjs
 node {baseDir}/scripts/discovery-selftest.mjs
 node {baseDir}/scripts/media-plan-selftest.mjs
 node {baseDir}/scripts/migration-selftest.mjs
+node {baseDir}/scripts/review-selftest.mjs
 ```
 
 全部为本地确定性检查，不调用模型，不访问网关。

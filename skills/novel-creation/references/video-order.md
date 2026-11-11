@@ -13,7 +13,8 @@ node <baseDir>/scripts/novel-creation.mjs videos manifest.json --only E01-01 --d
 ## 参数与参考图
 
 - manifest.video.model 指定模型；aspectRatio、resolution 映射为计划 params.aspect_ratio、params.resolution。
-- 每段 prompt.md 分隔线以下的正文原样进入 prompt。参考图按 manifest 顺序输出绝对路径，保持 Picture 编号；文件缺失、为空或不是普通文件时停止。
+- 每段 prompt.md 仅 `<!-- prompt:start -->` 与 `<!-- prompt:end -->` 之间的正文进入 prompt，审核意见不得进入请求。参考图按 manifest 顺序输出绝对路径，保持 Picture 编号；文件缺失、为空或不是普通文件时停止。
+- 整批必须拥有有效 approved；--only 和 --dry-run 不绕过审核。计划带 approval.input，提交前重新运行 videos 并比对该标识和请求内容。上游或结构变化先重新 export，再完整审核；正文、素材或参数变化使旧批准失效。
 - 计划不指定上传字段。ly-video 必须发现实时 schema 后绑定 inputs；不能假设每个视频模型都接受 images。
 - 每段目标路径为该段目录的 video.mp4。外部下载后核验内容和容器，再放入目标路径；render 之后才汇报实际完成。
 

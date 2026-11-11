@@ -20,18 +20,26 @@ const walk = dir => readdirSync(dir).flatMap(name => {
   return statSync(path).isDirectory() ? walk(path) : [path];
 });
 try {
-  for (const name of readdirSync(join(root, 'skills')).filter(n => n.startsWith('novel-')).sort()) {
+  for (const name of readdirSync(join(root, 'skills')).filter(n => existsSync(join(root,'skills',n,'SKILL.md'))).sort()) {
     const source = join(root, 'skills', name);
     const isolated = join(temp, name, 'standalone');
     cpSync(source, isolated, { recursive: true });
-    check(`${name} 自测入口存在`, () => assert.ok(existsSync(join(isolated, 'scripts/selftest.mjs'))));
+    const documentOnly = ['video-prompt-writing','video-prompt-review'].includes(name);
+    if (documentOnly) check(`${name} 自包含角色协议`, () => {
+      for (const file of ['SKILL.md','references/method.md','references/protocol.md','references/h3-prompt.md','references/seedance2-prompt.md','examples/story.md']) assert.ok(existsSync(join(isolated,file)),file);
+      const text = readFileSync(join(isolated,'SKILL.md'),'utf8');
+      assert.ok(text.includes('不读取兄弟 skill'));
+      assert.ok(text.includes('主 session'));
+      assert.ok(!walk(isolated).some(p=>readFileSync(p,'utf8').includes('《收书人》')),'不能借用兄弟样例');
+    });
+    else check(`${name} 自测入口存在`, () => assert.ok(existsSync(join(isolated, 'scripts/selftest.mjs'))));
     if (['novel-outline', 'novel-script', 'novel-creation'].includes(name)) check(`${name} v3 自包含指南`, () => {
       assert.ok(existsSync(join(isolated, 'references/创作指南.md')));
       assert.ok(!existsSync(join(isolated, 'references/profiles')));
       assert.ok(!existsSync(join(isolated, 'references/profile-contract.md')));
       assert.ok(!existsSync(join(isolated, 'scripts/lib/creative.mjs')));
     });
-    for (const file of readdirSync(join(isolated, 'scripts')).filter(n => n.endsWith('selftest.mjs')).sort()) {
+    for (const file of (documentOnly ? [] : readdirSync(join(isolated, 'scripts'))).filter(n => n.endsWith('selftest.mjs')).sort()) {
       entries++;
       check(`${name}/${file} 独立拷贝`, () => {
         const run = spawnSync(process.execPath, [join(isolated, 'scripts', file)], {
