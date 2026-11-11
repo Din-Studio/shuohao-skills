@@ -31,15 +31,57 @@
 
 ## 派发哪一种 subagent
 
-| 运行环境 | 编写方 | 审核方 |
-| --- | --- | --- |
-| Claude Code，已安装 subagent 定义 | `novel-video-prompt-writer` | `novel-video-prompt-reviewer` |
-| pi，已安装子代理扩展，项目里有 `.pi/agents/` 角色定义 | `novel-video-prompt-writer` | `novel-video-prompt-reviewer` |
-| 其他支持子代理的环境，或没有角色定义 | 通用 subagent | 通用 subagent |
+| 运行环境 | 派发方式 | 编写方 | 审核方 |
+| --- | --- | --- | --- |
+| pi，已安装子代理扩展与角色定义 | `subagent` 工具 | `novel-video-prompt-writer` | `novel-video-prompt-reviewer` |
+| pi，没有子代理扩展 | bash 启动独立的 `pi -p` 进程 | 编写方工具集 | 审核方工具集 |
+| Claude Code，已安装 subagent 定义 | 按名字派发 | `novel-video-prompt-writer` | `novel-video-prompt-reviewer` |
+| 其他支持子代理的环境，或没有角色定义 | 通用 subagent | 能写文件的通用 subagent | 通用 subagent |
 
-Claude Code 的定义预载对应的 skill 并限定工具，位于本仓库 `agents/`，由 `install.sh --claude` 链接到 `~/.claude/agents/`。pi 的定义位于本仓库 `.pi/agents/`，是项目级角色：调用子代理工具时指定对应角色并把范围设为项目，指南路径由任务简报给出。角色定义只是便利，不是必需品；单独拷走本 skill 不会带上它们，此时派发通用 subagent。通用 subagent 必须能够写文件，不要把只读的评审代理当作编写方。
+角色定义只是便利，不是必需品；单独拷走本 skill 不会带上它们，此时按上表的后两种方式派发。不要把只读的评审代理当作编写方。
 
 **简报里始终写明指南的绝对路径**，不只写 skill 名称：subagent 看不到主会话已经加载的内容，按名称加载在不同环境里不一定成功。派发前确认文件存在。
+
+### pi：子代理扩展
+
+pi 的核心不带子代理，子代理来自扩展（pi 自带示例 `examples/extensions/subagent`，或同类扩展）。扩展为每次派发启动一个独立的 `pi -p --no-session` 进程，按角色定义的 `tools` 白名单限定工具，把角色定义正文追加到系统提示，任务简报作为唯一的用户消息。
+
+- **角色定义的位置**：本仓库 `agents/pi/`，由 `install.sh --pi` 链接到 `~/.pi/agent/agents/`。这是扩展默认读取的用户级目录，调用时不需要设置 `agentScope`。项目级 `.pi/agents/` 只从当前工作目录向上查找，小说项目里没有它，而且每次运行都要确认信任，所以不使用。`pi install` 安装包只带 skill，不带角色定义，仍需运行一次 `install.sh --pi` 或手工链接。
+- **调用**：
+
+  ```text
+  subagent({ agent: "novel-video-prompt-writer", task: "<编写简报全文>", cwd: "<creation 目录绝对路径>" })
+  ```
+
+  多集并发使用 `tasks` 数组，每项给出 `agent`、`task`、`cwd`（一次最多 8 项，同时运行 4 项）；一批只放同一种角色。**不使用 `chain`**：编写与审核之间必须由调度方运行 `prompts check`，而且 `chain` 用 `{previous}` 把上一步的输出交给下一步，等于把编写方的回报转给审核方。
+- **模型**：角色定义不写 `model`，子代理继承调度会话的模型与思考级别。需要固定模型时，由用户在自己的定义里加 `model`。
+- **工具**：编写方 `read, write, edit, bash, grep, find, ls`；审核方去掉 `write`，只能用 `edit` 改写已有工作单。白名单不含 `subagent`，子代理不能继续派发。
+- **非交互**：子代理不能向用户提问，只有最后一条回复交还调度方（并发时每项最多 50 KB）。回报必须写在最后一条回复里；需要用户决定的问题由调度方转达，协调后重新派发。
+
+### pi：没有子代理扩展
+
+通过 bash 启动独立的 pi 进程，效果与扩展相同：新的进程、新的上下文，只拿到简报。
+
+```bash
+cd <creation 目录>
+mkdir -p .work/briefs
+# 先把编写简报写入 .work/briefs/E01-writer-r1.md
+pi -p --no-session \
+  --tools read,write,edit,bash,grep,find,ls \
+  --skill <novel-video-prompt 目录的绝对路径> \
+  --append-system-prompt <agents/pi/novel-video-prompt-writer.md 的绝对路径> \
+  @.work/briefs/E01-writer-r1.md "按上面的任务简报执行。" > .work/briefs/E01-writer-r1.out.md
+```
+
+- 审核方：`--tools read,edit,bash,grep,find,ls`，`--skill` 换成 novel-video-prompt-review 的目录，`--append-system-prompt` 换成审核方的角色定义。
+- `--skill` 让子进程无论是否安装都能加载这个 skill；使用本地来源时省略，简报给出指南副本的路径。`--append-system-prompt` 接受文件路径；没有角色定义文件（单独拷走本 skill）时省略，简报开头的角色说明已经足够。
+- 不带 `--model` 时子进程使用 pi 的默认模型，不一定是当前会话的模型；需要一致时加 `--model <provider>/<id>`。
+- 子进程的标准输出就是回报。一次派发可能运行数分钟，不要给 bash 设置短超时。多集并发时在同一条命令里把多个进程放到后台、各自重定向输出，最后 `wait`，全部结束后再读取输出文件。
+- 简报与输出放在 `.work/` 下，不进入版本控制；不要把编写方的输出文件交给审核方。
+
+### Claude Code
+
+定义位于本仓库 `agents/`，预载对应的 skill 并限定工具，由 `install.sh --claude` 链接到 `~/.claude/agents/`，按名字派发。
 
 ## 指南与命令的两处来源
 
@@ -113,11 +155,11 @@ Claude Code 的定义预载对应的 skill 并限定工具，位于本仓库 `ag
 
 ## 并发
 
-多集可以并发：每一集一个编写 subagent，所有调用放在同一条消息里；审核同理。同一集的编写与审核必须先后进行。不要让两个 subagent 同时写同一份工作单。
+多集可以并发：每一集一个编写 subagent，所有调用放在同一条消息里（pi 的子代理扩展使用 `tasks` 数组，没有扩展时在后台启动多个 `pi -p` 进程）；审核同理。同一集的编写与审核必须先后进行。不要让两个 subagent 同时写同一份工作单。
 
 ## 没有子代理时
 
-在当前会话先按编写方指南完成编写与提交，运行 `prompts check`，再按审核方指南完成审核。命令、工作单格式与结束条件完全相同。向用户汇报时注明审核与编写在同一会话完成，审核不独立。
+pi 不属于这种情况：没有子代理扩展时按上文通过 bash 启动独立进程。只有既没有子代理、也不能启动独立进程的环境，才在当前会话先按编写方指南完成编写与提交，运行 `prompts check`，再按审核方指南完成审核。命令、工作单格式与结束条件完全相同。向用户汇报时注明审核与编写在同一会话完成，审核不独立。
 
 ## 向用户汇报
 

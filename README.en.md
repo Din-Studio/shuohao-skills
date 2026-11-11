@@ -85,7 +85,7 @@ The following screenshots show historical interfaces. Render the local samples f
 
 Includes its own example and offline report renderer. See [novel-creation](skills/novel-creation/README.en.md).
 
-The main session only dispatches in this stage: after `seed` it launches a **writer subagent** (novel-video-prompt), runs the structural checks, then launches a **reviewer subagent** (novel-video-prompt-review), and loops until every segment worksheet is approved before writing back to creation.json, exporting and handing off generation. Approval is bound to a segment's content and to the inputs it relies on, so regenerating a reference image, editing a claimed line or changing model parameters sends only the affected segments back to review. A segment still unapproved after three submissions, or one the reviewer marked as blocked, stops the loop and goes to the user. Without the two sibling skills installed, the subagents read the guide copies bundled with novel-creation; in an environment without subagents both roles run serially in one session and the report says the review was not independent.
+The main session only dispatches in this stage: after `seed` it launches a **writer subagent** (novel-video-prompt), runs the structural checks, then launches a **reviewer subagent** (novel-video-prompt-review), and loops until every segment worksheet is approved before writing back to creation.json, exporting and handing off generation. Approval is bound to a segment's content and to the inputs it relies on, so regenerating a reference image, editing a claimed line or changing model parameters sends only the affected segments back to review. A segment still unapproved after three submissions, or one the reviewer marked as blocked, stops the loop and goes to the user. Without the two sibling skills installed, the subagents read the guide copies bundled with novel-creation; pi without a subagent extension launches separate `pi -p` processes through bash; only an environment that can neither dispatch nor start a separate process runs both roles serially in one session, and the report says the review was not independent.
 
 ## Install
 
@@ -102,7 +102,8 @@ It detects whether you have pi, Claude Code, or codex installed and **symlinks**
 ./scripts/install.sh --codex            # only into codex
 ./scripts/install.sh --pi               # only into pi
 ./scripts/install.sh --uninstall        # remove the symlinks
-# Installing to Claude Code also links the two subagent definitions in agents/ into ~/.claude/agents; the matching pi role definitions live in .pi/agents/
+# Installing to pi also links the two role definitions in agents/pi/ into ~/.pi/agent/agents (the directory the subagent extension reads by default)
+# Installing to Claude Code also links the two subagent definitions in agents/ into ~/.claude/agents
 ```
 
 Prefer to do it by hand:
@@ -120,7 +121,7 @@ pi install /path/to/shuohao-skills                        # local directory
 pi install git:github.com/eternityspring/shuohao-skills   # straight from GitHub
 ```
 
-The repository's root `skills/` directory is pi's convention directory — **no `package.json` required**. Once installed, `pi config` toggles them individually.
+The repository's root `skills/` directory is pi's convention directory — **no `package.json` required**. Once installed, `pi config` toggles them individually. A pi package does not carry role definitions; run `./scripts/install.sh --pi` once more if you want the writer and reviewer roles.
 
 ## What differs between the three agents
 
@@ -129,7 +130,7 @@ The workflow, the scripts and the artifacts are identical across all three. Only
 | | pi | Claude Code | codex |
 | --- | --- | --- | --- |
 | Skill command | `/skill:novel-outline` | `/novel-outline` | `/novel-outline` |
-| Sub-agent concurrency | **None** — the core ships without sub-agents, built-in todos or background bash | Task | subagent |
+| Sub-agent concurrency | The core ships without sub-agents, built-in todos or background bash; a subagent extension adds the `subagent` tool. Without it, novel-creation launches separate `pi -p` processes through bash for writing and review | Task | subagent |
 
 Asking in plain words ("break this book down into characters", plus the path) works on all three and is equivalent to typing the command.
 

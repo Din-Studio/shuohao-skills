@@ -13,7 +13,7 @@
 - 批准门识别 `-`、`*`、`+` 与数字编号的条目，条目之外提到 `[必须修改]` 或 `[阻塞]` 同样拒绝批准。
 - **命令语义变更**：新增 `prompts brief|init|check|status|apply`，以及编写方与审核方命令的本地等价物 `prompts new|submit|verdict`。`export` 要求每段工作单已批准、绑定有效并与 creation.json 一致，只写 manifest.json，不再覆盖 prompt.md；`--out` 指向其他目录时 manifest 里的路径相对 manifest 自己。`videos` 按 manifest 记录的 creation.json 与当前上游重新核对批准，拒绝没有状态头、尚未批准或批准已失效的工作单，计划带有 `approval.input` 供提交前比对。已有的 creation.json 先运行 `prompts init` 生成草稿工作单，再走编写与审核；旧版本导出的 manifest 需要重新导出。
 - 止损：同一段提交三轮仍未批准，或审核方登记阻塞时停止循环，交给用户决定；autopilot 不取消这一条。没有子代理能力的运行环境串行完成，并注明审核不独立。
-- 新增 `agents/` 下两个 Claude Code subagent 定义（编写方、审核方），预载对应 skill 并限定工具；`install.sh` 安装到 Claude Code 时一并链接。新增 `.pi/agents/` 下两个同名的 pi 项目级角色定义。其他运行环境派发通用 subagent，任务简报始终给出指南的绝对路径。
+- 新增 `agents/` 下两个 Claude Code subagent 定义（编写方、审核方），预载对应 skill 并限定工具；`install.sh` 安装到 Claude Code 时一并链接。新增 `agents/pi/` 下两个同名的 pi 角色定义，`install.sh` 安装到 pi 时链接到子代理扩展默认读取的 `~/.pi/agent/agents/`；角色定义不写模型，继承调度会话的模型与思考级别，审核方没有 `write`。pi 没有子代理扩展时，调度方通过 bash 启动独立的 `pi -p --no-session` 进程（`--tools` 限定工具、`--skill` 加载角色 skill、`--append-system-prompt` 追加角色定义），审核仍在独立上下文里完成。其他运行环境派发通用 subagent，任务简报始终给出指南的绝对路径。
 - 审核意见与编写回应只保留本轮，轮次只计数。未新增评分或门失败累积日志。
 - novel-creation 仍然可以单独拷走：`references/` 保存编写方与审核方指南的副本，没有安装兄弟 skill 时由 subagent 读取副本并使用本地等价命令，审核仍在独立上下文里完成。三个 skill 各自携带一份相同的工作单解析库；指南副本与解析库由仓库级自测核对逐字一致，修改时各处一起修改。
 

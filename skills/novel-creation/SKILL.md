@@ -7,7 +7,7 @@ description: |
   不生成分镜图。不保存上游计划副本或结束坐标。产出 creation.json、每段工作单、报告与投产包。
   视频生成是需要授权的可选步骤。
   Use when asked to 直出视频、参考图生视频、不出分镜图、跳过分镜图 for AI drama。
-allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
+allowed-tools: read write edit bash grep find ls subagent Read Write Edit Bash Glob Grep Task
 triggers:
   - novel-creation
   - 直出视频
@@ -52,7 +52,7 @@ seed ─→ 编写 subagent ─→ prompts check ─→ 审核 subagent ─→ �
 ./scripts/install.sh novel-video-prompt novel-video-prompt-review   # 在本仓库根目录
 ```
 
-安装到 Claude Code 时会同时链接两个 subagent 定义 `novel-video-prompt-writer` 与 `novel-video-prompt-reviewer`，它们预载对应的 skill；pi 的同名角色定义位于仓库的 `.pi/agents/`。没有安装兄弟 skill 时不停止，按 `references/dispatch.md` 的「本地来源」派发。
+安装到 pi 时会同时把两个角色定义 `novel-video-prompt-writer` 与 `novel-video-prompt-reviewer` 链接到 `~/.pi/agent/agents/`，供子代理扩展的 `subagent` 工具按名字派发；没有子代理扩展时通过 bash 启动独立的 `pi -p` 进程。安装到 Claude Code 时链接同名的 subagent 定义，它们预载对应的 skill。没有安装兄弟 skill 时不停止，按 `references/dispatch.md` 的「本地来源」派发。
 
 ## 2. 准备骨架
 
@@ -79,7 +79,7 @@ node {baseDir}/scripts/novel-creation.mjs prompts brief 作品-creation.json --e
 
 每一轮：
 
-1. **派发编写 subagent**：有 `novel-video-prompt-writer` 定义时按名字派发；没有时派发通用 subagent，并在简报里给出编写方指南的绝对路径（兄弟 skill 的 SKILL.md，或本地来源的指南副本）。首轮传入输入材料路径、有效视频模型与工作单目录；修改轮指明哪些段被退回，以及结构检查的输出。
+1. **派发编写 subagent**：有 `novel-video-prompt-writer` 定义时按名字派发（pi 为 `subagent` 工具）；pi 没有子代理扩展时按 `references/dispatch.md` 通过 bash 启动独立的 `pi -p` 进程；其他环境派发通用 subagent，并在简报里给出编写方指南的绝对路径（兄弟 skill 的 SKILL.md，或本地来源的指南副本）。首轮传入输入材料路径、有效视频模型与工作单目录；修改轮指明哪些段被退回，以及结构检查的输出。
 2. **运行结构检查**：
 
    ```bash
@@ -102,7 +102,7 @@ node {baseDir}/scripts/novel-creation.mjs prompts brief 作品-creation.json --e
 
 主会话不修改工作单的任何区域。状态头只由编写方与审核方的命令改写；发现状态与内容对不上时，按 `prompts status` 的提示重新派发，不手工修正。
 
-**没有子代理能力的运行环境**：在当前会话依次承担两个角色，串行完成编写与审核，流程与命令不变。汇报中必须注明「审核与编写在同一会话完成，审核不独立」。
+**没有子代理能力的运行环境**：pi 不属于这种情况，没有子代理扩展时仍可通过 bash 启动独立进程。既不能派发、也不能启动独立进程的环境，在当前会话依次承担两个角色，串行完成编写与审核，流程与命令不变。汇报中必须注明「审核与编写在同一会话完成，审核不独立」。
 
 ## 4. 回写、检查与报告
 

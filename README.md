@@ -87,7 +87,7 @@ node scripts/pipeline-selftest.mjs # 真实渲染、交互适配与隔离安装�
 
 自带《收书人》样例与离线报告渲染，详见 [novel-creation](skills/novel-creation)。
 
-这一阶段的主会话只调度：`seed` 之后派发**编写 subagent**（加载 novel-video-prompt）写分镜与提示词，结构检查通过后派发**审核 subagent**（加载 novel-video-prompt-review），循环到每段工作单都是 approved，再回写 creation.json、导出投产包、交接生成。批准绑定这一段的内容与它依据的输入，设定图重新生成、认领的台词被修改或更换模型参数之后，只有受影响的段需要重新审核。同一段提交三轮仍未批准，或审核方登记了阻塞时停止循环，交给用户。没有安装两个兄弟 skill 时，subagent 读取 novel-creation 自带的指南副本；没有子代理能力的运行环境在同一会话串行完成，并注明审核不独立。
+这一阶段的主会话只调度：`seed` 之后派发**编写 subagent**（加载 novel-video-prompt）写分镜与提示词，结构检查通过后派发**审核 subagent**（加载 novel-video-prompt-review），循环到每段工作单都是 approved，再回写 creation.json、导出投产包、交接生成。批准绑定这一段的内容与它依据的输入，设定图重新生成、认领的台词被修改或更换模型参数之后，只有受影响的段需要重新审核。同一段提交三轮仍未批准，或审核方登记了阻塞时停止循环，交给用户。没有安装两个兄弟 skill 时，subagent 读取 novel-creation 自带的指南副本；pi 没有子代理扩展时通过 bash 启动独立的 `pi -p` 进程；只有不能派发、也不能启动独立进程的环境才在同一会话串行完成，并注明审核不独立。
 
 ## 安装
 
@@ -104,7 +104,8 @@ cd shuohao-skills
 ./scripts/install.sh --codex            # 只安装到 codex
 ./scripts/install.sh --pi               # 只安装到 pi
 ./scripts/install.sh --uninstall        # 取消软链
-# 安装到 Claude Code 时，同时把 agents/ 下的两个 subagent 定义链接到 ~/.claude/agents；pi 的同名角色定义在 .pi/agents/
+# 安装到 pi 时，同时把 agents/pi/ 下的两个角色定义链接到 ~/.pi/agent/agents（子代理扩展默认读取的目录）
+# 安装到 Claude Code 时，同时把 agents/ 下的两个 subagent 定义链接到 ~/.claude/agents
 ```
 
 不想用脚本就自己链：
@@ -122,7 +123,7 @@ pi install /path/to/shuohao-skills                        # 本地目录
 pi install git:github.com/eternityspring/shuohao-skills   # 直接从 GitHub
 ```
 
-仓库根的 `skills/` 就是 pi 的约定目录，**不需要 `package.json`**。安装完 `pi config` 里可以逐个开关。
+仓库根的 `skills/` 就是 pi 的约定目录，**不需要 `package.json`**。安装完 `pi config` 里可以逐个开关。pi 包不携带角色定义；需要编写方与审核方的角色定义时，再运行一次 `./scripts/install.sh --pi`。
 
 ## 三个 agent 的差别
 
@@ -131,7 +132,7 @@ pi install git:github.com/eternityspring/shuohao-skills   # 直接从 GitHub
 | | pi | Claude Code | codex |
 | --- | --- | --- | --- |
 | skill 命令 | `/skill:novel-outline` | `/novel-outline` | `/novel-outline` |
-| 子代理并发 | **没有**——内核不带子代理，也没有内置待办与后台 bash | Task | subagent |
+| 子代理并发 | 内核不带子代理，也没有内置待办与后台 bash；安装子代理扩展后有 `subagent` 工具。novel-creation 没有扩展时通过 bash 启动独立的 `pi -p` 进程完成编写与审核 | Task | subagent |
 
 直接用中文说「帮我拆一下这本书的角色」并给出路径，三家都能唤起，与打命令等价。
 

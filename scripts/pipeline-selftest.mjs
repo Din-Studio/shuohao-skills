@@ -179,6 +179,10 @@ try {
   };
   symlinkSync(own, old);
   eq(install().status, 0, '默认安装成功');
+  const piAgent = name => join(home, '.pi/agent/agents', `${name}.md`);
+  for (const agent of ['novel-video-prompt-writer', 'novel-video-prompt-reviewer']) {
+    eq(readlinkSync(piAgent(agent)), join(root, 'agents/pi', `${agent}.md`), `安装到 pi 时链接角色定义 ${agent}`);
+  }
   ok(!existsSync(old) && !lstatSync(old, { throwIfNoEntry: false }), '默认安装清理本仓库旧软链');
   eq(readlinkSync(join(skills, 'novel-creation')), join(root, 'skills/novel-creation'), '安装当前视频创作 skill');
   symlinkSync(own, old);
@@ -197,6 +201,7 @@ try {
   rmSync(old, { recursive: true }); symlinkSync(own, old);
   eq(install('--uninstall').status, 0, '默认卸载可清理退役链接');
   ok(!lstatSync(old, { throwIfNoEntry: false }), '默认卸载删除本仓库旧软链');
+  ok(!lstatSync(piAgent('novel-video-prompt-writer'), { throwIfNoEntry: false }), '卸载删除 pi 角色定义软链');
   // subagent 定义只随 Claude Code 安装
   ok(!existsSync(join(home, '.claude')), '只安装到 pi 时不创建 Claude Code 目录');
   const claude = (...args) => run('bash', ['scripts/install.sh', '--claude', ...args], { env: { ...process.env, HOME: home } });
@@ -208,13 +213,20 @@ try {
     ok(text.includes(`name: ${agent}\n`) && text.includes(`skills: [${skill}]`), `${agent} 预载 ${skill}`);
     ok(existsSync(join(root, 'skills', skill, 'SKILL.md')) && !/^tools:.*\bAgent\b/m.test(text), `${agent} 预载的 skill 存在且不能继续派发`);
   }
-  // pi 的项目级角色定义与 Claude Code 的同名，不预载 skill，指南路径由任务简报给出
-  for (const agent of ['novel-video-prompt-writer', 'novel-video-prompt-reviewer']) {
-    const text = readFileSync(join(root, '.pi/agents', `${agent}.md`), 'utf8');
-    ok(text.startsWith('---\n') && text.includes(`name: ${agent}\n`) && /^tools: [a-z, ]+$/m.test(text), `pi 角色定义 ${agent} 的 frontmatter 完整`);
+  // pi 的角色定义与 Claude Code 的同名：只用子代理扩展认识的字段，不写模型（继承调度会话），指南路径由任务简报给出
+  const piTools = {
+    'novel-video-prompt-writer': 'read, write, edit, bash, grep, find, ls',
+    'novel-video-prompt-reviewer': 'read, edit, bash, grep, find, ls',
+  };
+  for (const [agent, tools] of Object.entries(piTools)) {
+    const text = readFileSync(join(root, 'agents/pi', `${agent}.md`), 'utf8');
+    const front = text.match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? '';
+    eq(front.split('\n').map(line => line.split(':')[0]).join(','), 'name,description,tools', `pi 角色定义 ${agent} 只有 name、description、tools`);
+    ok(front.includes(`name: ${agent}`) && front.includes(`tools: ${tools}`), `pi 角色定义 ${agent} 的工具白名单`);
+    ok(/最后一条回复/.test(text) && /不能向用户提问/.test(text), `pi 角色 ${agent} 说明非交互与回报方式`);
     ok(/不启动其他代理/.test(text), `pi 角色 ${agent} 不继续派发`);
   }
-  ok(!/\bwrite\b/.test(readFileSync(join(root, '.pi/agents/novel-video-prompt-reviewer.md'), 'utf8').match(/^tools:.*$/m)[0]), 'pi 审核方不能新建文件');
+  ok(!existsSync(join(root, '.pi')), '仓库不保留项目级 .pi 角色定义');
   eq(claude('--uninstall').status, 0, '从 Claude Code 卸载成功');
   ok(!lstatSync(agentLink('novel-video-prompt-writer'), { throwIfNoEntry: false }), '卸载删除 subagent 软链');
 } finally {
