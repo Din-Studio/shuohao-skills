@@ -104,6 +104,7 @@ cd shuohao-skills
 ./scripts/install.sh --codex            # 只安装到 codex
 ./scripts/install.sh --pi               # 只安装到 pi
 ./scripts/install.sh --uninstall        # 取消软链
+# 安装到 Claude Code 时，同时把 agents/ 下的两个 subagent 定义链接到 ~/.claude/agents
 ```
 
 不想用脚本就自己链：

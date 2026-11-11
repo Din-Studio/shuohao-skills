@@ -197,6 +197,19 @@ try {
   rmSync(old, { recursive: true }); symlinkSync(own, old);
   eq(install('--uninstall').status, 0, '默认卸载可清理退役链接');
   ok(!lstatSync(old, { throwIfNoEntry: false }), '默认卸载删除本仓库旧软链');
+  // subagent 定义只随 Claude Code 安装
+  ok(!existsSync(join(home, '.claude')), '只安装到 pi 时不创建 Claude Code 目录');
+  const claude = (...args) => run('bash', ['scripts/install.sh', '--claude', ...args], { env: { ...process.env, HOME: home } });
+  const agentLink = name => join(home, '.claude/agents', `${name}.md`);
+  eq(claude().status, 0, '安装到 Claude Code 成功');
+  for (const [agent, skill] of [['novel-video-prompt-writer', 'novel-video-prompt'], ['novel-video-prompt-reviewer', 'novel-video-prompt-review']]) {
+    eq(readlinkSync(agentLink(agent)), join(root, 'agents', `${agent}.md`), `软链 subagent 定义 ${agent}`);
+    const text = readFileSync(join(root, 'agents', `${agent}.md`), 'utf8');
+    ok(text.includes(`name: ${agent}\n`) && text.includes(`skills: [${skill}]`), `${agent} 预载 ${skill}`);
+    ok(existsSync(join(root, 'skills', skill, 'SKILL.md')) && !/^tools:.*\bAgent\b/m.test(text), `${agent} 预载的 skill 存在且不能继续派发`);
+  }
+  eq(claude('--uninstall').status, 0, '从 Claude Code 卸载成功');
+  ok(!lstatSync(agentLink('novel-video-prompt-writer'), { throwIfNoEntry: false }), '卸载删除 subagent 软链');
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }

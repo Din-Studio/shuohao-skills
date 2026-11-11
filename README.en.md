@@ -102,6 +102,7 @@ It detects whether you have pi, Claude Code, or codex installed and **symlinks**
 ./scripts/install.sh --codex            # only into codex
 ./scripts/install.sh --pi               # only into pi
 ./scripts/install.sh --uninstall        # remove the symlinks
+# Installing to Claude Code also links the two subagent definitions in agents/ into ~/.claude/agents
 ```
 
 Prefer to do it by hand:

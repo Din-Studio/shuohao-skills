@@ -10,6 +10,7 @@
 - **工作单格式变更**：`prompt.md` 增加状态头（status、round、model、bodyHash）、分镜结构、审核意见与编写回应；提示词正文改为取**最后一条**分隔线之下。批准绑定内容摘要，批准后改动即失效。
 - **命令语义变更**：新增 `prompts brief|init|check|status|apply`。`export` 要求每段工作单已批准并与 creation.json 一致，只写 manifest.json，不再覆盖 prompt.md。`videos` 拒绝没有状态头、尚未批准或批准已失效的工作单。已有的 creation.json 先运行 `prompts init` 生成草稿工作单，再走编写与审核。
 - 止损：同一段提交三轮仍未批准时停止循环，交给用户决定；autopilot 不取消这一条。没有子代理的运行环境串行完成，并注明审核不独立。
+- 新增 `agents/` 下两个 Claude Code subagent 定义（编写方、审核方），预载对应 skill 并限定工具；`install.sh` 安装到 Claude Code 时一并链接。其他运行环境派发通用 subagent，任务简报始终给出 SKILL.md 路径。
 - 审核意见与编写回应只保留本轮，轮次只计数。未新增评分或门失败累积日志。
 - novel-creation 的编写与审核依赖两个兄弟 skill（缺少时停止并提示安装）；结构检查、报告、导出与交接计划仍可单独拷走运行。三个 skill 各自携带一份相同的工作单解析库，仓库级自测核对一致。
 

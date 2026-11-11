@@ -29,10 +29,21 @@
 
 剧本、项目要求或模型发生变化后重新生成输入材料，再派发。
 
+## 派发哪一种 subagent
+
+| 运行环境 | 编写方 | 审核方 |
+| --- | --- | --- |
+| Claude Code，已安装 subagent 定义 | `novel-video-prompt-writer` | `novel-video-prompt-reviewer` |
+| 其他支持子代理的环境，或没有安装定义 | 通用 subagent | 通用 subagent |
+
+subagent 定义预载对应的 skill 并限定工具，位于本仓库 `agents/`，由 `install.sh --claude` 链接到 `~/.claude/agents/`。它们只是 Claude Code 上的便利，不是必需品。
+
+**简报里始终写明 SKILL.md 的路径**，不只写 skill 名称：subagent 看不到主会话已经加载的内容，按名称加载在不同环境里不一定成功。两个兄弟 skill 通常与本 skill 同级：`{baseDir}/../novel-video-prompt/SKILL.md` 与 `{baseDir}/../novel-video-prompt-review/SKILL.md`。派发前确认文件存在，并在简报里写成绝对路径。
+
 ## 编写 subagent 的任务简报
 
 ```text
-你是视频提示词编写方。加载 novel-video-prompt skill 并严格按它执行。
+你是视频提示词编写方。完整读取 <novel-video-prompt 的 SKILL.md 绝对路径> 并严格按它执行（已预载时不必重读）。
 
 任务：为《<作品>》第 <N> 集编写分段、分镜与视频提示词。
 输入材料：<creation 目录>/.work/E<NN>-输入材料.json
@@ -52,7 +63,7 @@
 ## 审核 subagent 的任务简报
 
 ```text
-你是视频提示词审核方。加载 novel-video-prompt-review skill 并严格按它执行。
+你是视频提示词审核方。完整读取 <novel-video-prompt-review 的 SKILL.md 绝对路径> 并严格按它执行（已预载时不必重读）。
 
 任务：审核《<作品>》第 <N> 集的视频提示词工作单。
 输入材料：<creation 目录>/.work/E<NN>-输入材料.json

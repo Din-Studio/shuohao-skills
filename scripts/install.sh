@@ -8,6 +8,8 @@
 #   ./scripts/install.sh --claude     只安装到 Claude Code
 #   ./scripts/install.sh --codex      只安装到 codex
 #   ./scripts/install.sh --uninstall  取消软链
+#
+# 安装到 Claude Code 时，同时把 agents/ 下的 subagent 定义软链到 ~/.claude/agents。
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,7 +25,7 @@ for arg in "$@"; do
     --claude)    targets+=("$HOME/.claude/skills") ;;
     --codex)     targets+=("$HOME/.codex/skills") ;;
     --uninstall) uninstall=1 ;;
-    -h|--help)   sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)   sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*)          echo "未知选项 $arg" >&2; exit 1 ;;
     *)           wanted+=("$arg") ;;
   esac
@@ -77,4 +79,23 @@ for target in "${targets[@]}"; do
     ln -sfn "$src" "$dst"
     echo "✓ $dst → $src"
   done
+  # subagent 定义只有 Claude Code 使用；只管理指向本仓库的软链
+  if [ "$target" = "$HOME/.claude/skills" ]; then
+    agents="$HOME/.claude/agents"
+    for src in "$REPO"/agents/*.md; do
+      [ -f "$src" ] || continue
+      dst="$agents/$(basename "$src")"
+      if [ "$uninstall" -eq 1 ]; then
+        if [ -L "$dst" ] && [ "$(readlink "$dst")" = "$src" ]; then rm "$dst"; echo "− $dst"; fi
+        continue
+      fi
+      if [ -e "$dst" ] && [ ! -L "$dst" ]; then
+        echo "✗ $dst 已存在且不是软链，跳过" >&2
+        continue
+      fi
+      mkdir -p "$agents"
+      ln -sfn "$src" "$dst"
+      echo "✓ $dst → $src"
+    done
+  fi
 done

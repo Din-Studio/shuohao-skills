@@ -47,6 +47,8 @@ seed ─→ 编写 subagent ─→ prompts check ─→ 审核 subagent ─→ �
 ./scripts/install.sh novel-video-prompt novel-video-prompt-review   # 在本仓库根目录
 ```
 
+安装到 Claude Code 时会同时链接两个 subagent 定义 `novel-video-prompt-writer` 与 `novel-video-prompt-reviewer`，它们预载对应的 skill。
+
 ## 2. 准备骨架
 
 产物位于 `<工作目录>/creation/`，参考图相对该目录。先进入此目录：
@@ -72,7 +74,7 @@ node {baseDir}/scripts/novel-creation.mjs prompts brief 作品-creation.json --e
 
 每一轮：
 
-1. **派发编写 subagent**，要求它加载 `novel-video-prompt`。首轮传入输入材料路径、有效视频模型与工作单目录；修改轮指明哪些段被退回，以及结构检查的输出。
+1. **派发编写 subagent**：有 `novel-video-prompt-writer` 定义时按名字派发；没有时派发通用 subagent，并在简报里给出 `novel-video-prompt` 的 SKILL.md 路径。首轮传入输入材料路径、有效视频模型与工作单目录；修改轮指明哪些段被退回，以及结构检查的输出。
 2. **运行结构检查**：
 
    ```bash
@@ -80,7 +82,7 @@ node {baseDir}/scripts/novel-creation.mjs prompts brief 作品-creation.json --e
    ```
 
    它把工作单拼入内存中的 creation 并执行全部确定性检查（节拍覆盖、台词逐字、时长、模型限制、骨架短语、参考图），不要求已经批准，也不改写任何文件。失败时把输出原样交还编写 subagent，**不启动审核**——不让审核方把轮次花在工具能够判断的问题上。
-3. **派发审核 subagent**，要求它加载 `novel-video-prompt-review`。传入与编写方相同的材料和工作单路径，**不转述编写方的回报或自我评价**。
+3. **派发审核 subagent**：有 `novel-video-prompt-reviewer` 定义时按名字派发；没有时派发通用 subagent，并在简报里给出 `novel-video-prompt-review` 的 SKILL.md 路径。传入与编写方相同的材料和工作单路径，**不转述编写方的回报或自我评价**。
 4. **查看状态**：
 
    ```bash
