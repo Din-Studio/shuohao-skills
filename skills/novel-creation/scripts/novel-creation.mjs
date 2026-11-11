@@ -4,7 +4,8 @@
 // without an npm install. Node 18+ (stdlib only).
 
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { projectProblems, scriptParams, endPosition, episodeIntent } from './lib/document.mjs';
 import { migrateFile } from './lib/migration.mjs';
@@ -23,6 +24,7 @@ export function checkup(doc, ctx = {}) {
     skipped: gates.filter(g => g.status === 'skipped').length, contentReview: 'not-performed' };
 }
 import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
+import { parseWorksheet, serializeWorksheet, approvalProblem, inputProblem, submitProblems, submittedText, recordVerdict, stable, MAX_ROUNDS, VERDICTS } from './lib/worksheet.mjs';
 
 /* ------------------------------------------------------------------ */
 /* 常量                                                                */
@@ -127,6 +129,8 @@ export const FAMILY_LABEL = { h3: 'MiniMax H3', seedance: 'seedance 系列' };
 
 /*
  * 填法指南按模型动态解出：骨架永远是 creation-prompt.md，这一份只改怎么填。
+ * 指南文件在本 skill 与编写方 skill（novel-video-prompt）的 references 各有一份相同副本，
+ * 仓库级自测核对一致；这里的文件名映射供调度时告诉编写方该读哪一份。
  * 注意它比 promptFamilyOf 严一档——promptFamilyOf 是「归不进 seedance 的都算
  * h3 族」（默认模型就是 H3），但**一个全新的模型不该被塞去读 MiniMax 的官方
  * 口径**：解不出指南就返回 null，照通用骨架写，别拿另一族的顶上。
@@ -890,13 +894,16 @@ export function computeStats(doc, script) {
  * 清单，落盘在 CLI 层——可测性。resolveImage 由 CLI 注入（真实文件系统），
  * 测试注入合成实现。
  */
+/** 投产包与输入材料共用的视频参数：production 打底，creation 覆盖；两边都没有就是 null。 */
+export const packVideoOf = (doc, production = null) => (production?.video || doc?.video ? { ...production?.video, ...doc?.video } : null);
+
 export function exportPack(doc, script, { resolveImage = () => ({ name: '', path: '', exists: false }), dir = '.', production = null } = {}) {
   const prefix = dir === '.' ? '' : `${dir}/`;
   const files = [];
 
   const manifest = [];
   let missingTotal = 0;
-  const video = production?.video || doc?.video ? {...production?.video, ...doc?.video} : null;
+  const video = packVideoOf(doc, production);
   const videoLine = video
     ? `生成参数：${video.model || '（未填模型）'} · aspect_ratio ${video.aspectRatio || '（未填）'} · resolution ${video.resolution || '（未填）'}\n\n`
     : '';
@@ -1717,8 +1724,17 @@ const USAGE = `novel-creation.mjs — novel-creation skill 的确定性工具（
   render <creation.json> --script <script.json>
          [--html|--md] [--outline] [--art]      渲染报告到 stdout（默认 --md）
          [--lang zh|en]                         报告界面语言（默认 zh；未指定时读取 JSON 顶层 lang 字段）
-  export <creation.json> --script <script.json> [--out .]
-                                                导出投产包：每段一个文件夹 <段号>/prompt.md，根部 manifest.json
+  prompts brief <creation.json> --ep <集号>     打印派发给编写方与审核方的输入材料（节拍底稿、资产表、项目要求、模型）
+  prompts init <creation.json> [--dir .]        为已有的段生成工作单 <段号>/prompt.md（status: draft；不覆盖已有工作单）
+  prompts check <creation.json> [--dir .]       把工作单拼入内存中的 creation 并执行全部结构检查；不要求已批准
+  prompts status <creation.json> [--dir .]      汇总各段审核状态；存在未批准、阻塞或批准失效的段时 exit 1
+  prompts apply <creation.json> [--dir .]       全部批准、绑定有效且检查通过后，把分镜与提示词回写 creation.json
+  prompts new <creation.json> <段号> [--scene N]            ┐ 编写方与审核方命令的本地等价物：
+  prompts submit <creation.json> [段号...]                  │ 没有单独安装 novel-video-prompt 与
+  prompts verdict <creation.json> <approved|changes_requested|blocked> <段号>...
+                                                            ┘ novel-video-prompt-review 时使用
+  export <creation.json> --script <script.json> [--out .] [--dir <工作单目录>]
+                                                导出投产包：根部 manifest.json，引用已批准的 <段号>/prompt.md 工作单
   videos <manifest.json>          导出离线交接计划，交给 ly-video 生成
          [--only <ID列表>]                仅选择指定任务（图片自动补齐参考依赖）
          [--dry-run]                      只预览计划；本命令始终不上传、不提交
@@ -1808,8 +1824,8 @@ function announceProduction(ctx, rest, docPath = null, doc = null) {
     const guide = promptGuideOf(model);
     console.error(
       guide
-        ? `↳ 视频模型 ${model} → 填法指南 references/${guide}（骨架仍是 references/creation-prompt.md）`
-        : `↳ 视频模型 ${model} 没有对应的填法指南 → 照 references/creation-prompt.md 的通用骨架写`,
+        ? `↳ 视频模型 ${model} → 编写方读取填法指南 references/${guide}（骨架仍是 references/creation-prompt.md）`
+        : `↳ 视频模型 ${model} 没有对应的填法指南 → 编写方照 references/creation-prompt.md 的通用骨架写`,
     );
     if (autopilotOf(ctx.production)) console.error(`↳ ${AUTOPILOT_NOTE}`);
     const note = stageDirNote(docPath, ctx.productionPath);
@@ -1817,15 +1833,133 @@ function announceProduction(ctx, rest, docPath = null, doc = null) {
   } else console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，${which}跳过——跑 /novel-setup 生成一份可以打开它`);
 }
 
-/** manifest.json 里的 prompt 字段只是一个路径，真正的提示词取 prompt.md 分隔线以下的原文。 */
-function promptBodyOf(md) {
-  const idx = String(md ?? '').indexOf('\n---\n');
-  return (idx < 0 ? String(md ?? '') : String(md).slice(idx + 5)).trim();
+/* ------------------------------------------------------------------ */
+/* 工作单：<段号>/prompt.md                                             */
+/* ------------------------------------------------------------------ */
+/*
+ * 提示词的编写与审核发生在工作单里（编写方、审核方两个独立 skill 各写各的区域），
+ * creation.json 仍是机器侧唯一数据源：全部批准后由 apply 回写。纯函数在前，
+ * 文件读写在 CLI 层。
+ */
+const WORKSHEET_FILE = 'prompt.md';
+const SEGMENT_DIR_RE = /^E(\d{2,})-\d{2,}$/;
+
+export function listWorksheets(dir) {
+  const root = resolve(dir);
+  if (!existsSync(root)) return [];
+  return readdirSync(root).filter(name => SEGMENT_DIR_RE.test(name) && existsSync(join(root, name, WORKSHEET_FILE))).sort()
+    .map(name => ({ id: name, path: join(root, name, WORKSHEET_FILE), sheet: parseWorksheet(readFileSync(join(root, name, WORKSHEET_FILE), 'utf8')) }));
+}
+
+/** 把工作单拼入 creation 的副本：每集的 segments 整体替换，seedScenes 工作底稿移除。 */
+export function assembleFromWorksheets(doc, worksheets, ctx = {}) {
+  const problems = [];
+  const out = structuredClone(doc);
+  const model = videoModelOf(doc, ctx.production);
+  const byEp = new Map();
+  for (const w of worksheets) {
+    const tag = `${w.id}/${WORKSHEET_FILE}`;
+    if (w.sheet.problems.length) { problems.push(...w.sheet.problems.map(x => `${tag}：${x}`)); continue; }
+    if (w.sheet.meta.segment !== w.id) { problems.push(`${tag}：状态头 segment（${w.sheet.meta.segment}）与文件夹名不一致`); continue; }
+    if (w.sheet.meta.model && w.sheet.meta.model !== model) problems.push(`${tag}：工作单按 ${w.sheet.meta.model} 编写，当前有效视频模型为 ${model}——更换模型后需要重新编写并审核`);
+    if (!w.sheet.body) problems.push(`${tag}：提示词正文为空`);
+    const ep = Number(w.id.match(SEGMENT_DIR_RE)[1]);
+    if (!byEp.has(ep)) byEp.set(ep, []);
+    byEp.get(ep).push({ ...w.sheet.structure, prompt: w.sheet.body });
+  }
+  const known = new Set((out.episodes ?? []).map(e => e.ep));
+  for (const ep of byEp.keys()) if (!known.has(ep)) problems.push(`存在第 ${ep} 集的工作单，但 creation.json 没有这一集——先运行 seed 生成这一集的骨架`);
+  for (const ep of out.episodes ?? []) {
+    ep.segments = byEp.get(ep.ep) ?? [];
+    delete ep.seedScenes;
+    if (!ep.segments.length) problems.push(`第 ${ep.ep} 集没有任何工作单`);
+  }
+  return { doc: out, problems };
+}
+
+/** 导出、回写与生成计划共用：工作单必须已批准，批准的两重绑定仍然有效，并且与 creation.json 里的这一段完全一致。 */
+export function worksheetSyncProblem(seg, sheet, load = null) {
+  const approval = load ? bindingProblem(sheet, load) : approvalProblem(sheet);
+  if (approval) return approval;
+  const { prompt, ...structure } = seg;
+  if (stable(structure) !== stable(sheet.structure) || String(prompt ?? '').trim() !== sheet.body) {
+    return '工作单与 creation.json 不一致——先运行 prompts apply 回写';
+  }
+  return null;
+}
+
+/**
+ * 派发给编写方与审核方的输入材料：全部来自现有上游，原样摘出，不改写。
+ * 从当前剧本重新展开节拍，所以回写之后（seedScenes 已移除）仍然可以再次派发。
+ * 资产附设定图的内容摘要 sheetHash：批准绑定它，设定图重新生成后旧批准失效。
+ */
+export function dispatchBrief(doc, ctx = {}, epNo, { exists = () => false, hashFile = () => null } = {}) {
+  if (!ctx.script) throw new Error('生成输入材料需要剧本');
+  const seed = seedFromScript(ctx.script, [epNo, epNo], ctx).episodes[0];
+  if (!seed) throw new Error(`剧本没有第 ${epNo} 集`);
+  const model = videoModelOf(doc, ctx.production);
+  const asset = (kind, x) => { const r = referenceImagePath(kind, x.name); return { id: x.id, name: x.name, sheet: r, sheetExists: exists(r), sheetHash: hashFile(r) }; };
+  const brief = doc?.creativeBrief ?? ctx.production?.creativeBrief;
+  const { planSource, endBeat, openingBeat, ...intent } = episodeIntent(epNo, ctx);
+  return {
+    source: doc?.source ?? ctx.script.source ?? '', ep: epNo,
+    targetSeconds: ctx.script.episodes.find(e => e.ep === epNo)?.targetSeconds,
+    video: { ...packVideoOf(doc, ctx.production), model }, promptLang: promptLangOf(doc, ctx.production, promptFamilyOf(model)),
+    maxSegmentSeconds: paramsOf(doc).maxSegmentSeconds, maxOnScreen: paramsOf(doc).maxOnScreen,
+    ...(brief ? { creativeBrief: brief } : {}),
+    intent: { planSource, ...intent, ...(openingBeat ? { openingBeat } : {}), ...(endBeat ? { endBeat } : {}) },
+    assets: {
+      characters: (ctx.outline?.characters ?? []).filter(c => c?.id && c?.name).map(c => asset('character', c)),
+      scenes: (ctx.art?.scenes ?? []).filter(x => x?.id && x?.name).map(x => asset('scene', x)),
+      props: (ctx.art?.props ?? []).filter(x => x?.id && x?.name).map(x => asset('prop', x)),
+    },
+    seedScenes: seed.seedScenes,
+  };
+}
+
+const fileDigest = path => { try { return createHash('sha256').update(readFileSync(path)).digest('hex').slice(0, 16); } catch { return null; } };
+/** 设定图路径相对 creation.json 所在目录。 */
+const briefFiles = baseDir => ({ exists: rel => existsSync(resolve(baseDir, rel)), hashFile: rel => fileDigest(resolve(baseDir, rel)) });
+const epOf = id => Number(String(id ?? '').match(SEGMENT_DIR_RE)?.[1]);
+
+/** 按集生成当前的输入材料，同一次命令内只生成一次。生成不了时返回原因，由调用方当作批准无法核对。 */
+function materialLoader(doc, ctx, baseDir) {
+  const cache = new Map();
+  return ep => {
+    if (!cache.has(ep)) {
+      let value;
+      if (!ctx.script) value = { problem: '没有剧本，无法核对批准绑定的输入材料' };
+      else try { value = { material: dispatchBrief(doc, ctx, ep, briefFiles(baseDir)) }; }
+      catch (error) { value = { problem: `无法生成第 ${ep} 集的输入材料：${error.message}` }; }
+      cache.set(ep, value);
+    }
+    return cache.get(ep);
+  };
+}
+
+/** 批准的两重绑定：内容没有改动，这一段依据的输入材料也还是当前的。 */
+function bindingProblem(sheet, load) {
+  const approval = approvalProblem(sheet);
+  if (approval) return approval;
+  const { material, problem } = load(epOf(sheet.meta.segment));
+  return problem ?? inputProblem(sheet, material);
+}
+
+function statusRows(worksheets, load) {
+  return worksheets.map(w => {
+    const invalid = w.sheet.problems.length ? `格式有误：${w.sheet.problems[0]}` : null;
+    const stale = !invalid && w.sheet.meta.status === 'approved' ? bindingProblem(w.sheet, load) : null;
+    const capped = !invalid && w.sheet.meta.status === 'changes_requested' && w.sheet.meta.round >= MAX_ROUNDS;
+    const blocked = !invalid && w.sheet.meta.status === 'blocked';
+    return { id: w.id, status: w.sheet.meta.status ?? '?', round: w.sheet.meta.round ?? 0,
+      ok: !invalid && !stale && w.sheet.meta.status === 'approved',
+      note: invalid ?? stale ?? (blocked ? '审核方登记了阻塞——停止这一段的循环，先协调缺少的材料或交给用户决定' : capped ? `已满 ${MAX_ROUNDS} 轮仍未批准——停止循环，把分歧交给用户决定` : '') };
+  });
 }
 
 async function main(argv) {
   if (argv.includes('--production') && argv.includes('--no-production')) throw new Error('--production 与 --no-production 互斥');
-  for (const name of ['--script','--outline','--cast','--art','--shots','--production','--eps','--lang','--out','--only','--timeout','--concurrency']) {
+  for (const name of ['--script','--outline','--cast','--art','--shots','--production','--eps','--lang','--out','--dir','--ep','--scene','--only','--timeout','--concurrency']) {
     if (argv.includes(name)) flag(argv, name);
   }
   const [cmd, ...rest] = argv;
@@ -1914,6 +2048,118 @@ async function main(argv) {
     return;
   }
 
+  if (cmd === 'prompts') {
+    const [sub, path] = rest;
+    const SUBS = ['brief', 'init', 'new', 'check', 'submit', 'verdict', 'status', 'apply'];
+    if (!SUBS.includes(sub) || !path) throw new Error(`用法：prompts ${SUBS.join('|')} <creation.json> [--dir .]`);
+    const doc = readJson(path);
+    const creationDir = dirname(resolve(path));
+    const dir = flag(rest, '--dir', creationDir);
+    const args = rest.slice(2);
+    const ctx = loadCtx(args, resolve(path, '..'));
+    ctx.imageExists = (rel) => existsSync(resolve(creationDir, rel));
+    const load = materialLoader(doc, ctx, creationDir);
+    const model = videoModelOf(doc, ctx.production);
+    const promptLang = promptLangOf(doc, ctx.production, promptFamilyOf(model));
+    const ids = args.filter((a, i) => SEGMENT_DIR_RE.test(a) && !String(args[i - 1] ?? '').startsWith('--'));
+
+    if (sub === 'brief') {
+      const ep = Number(flag(rest, '--ep'));
+      if (!Number.isInteger(ep) || ep < 1) throw new Error('用法：prompts brief <creation.json> --ep <集号>');
+      if (!ctx.outline || !ctx.art) console.error('⚠️ 没有 outline / art，资产表不完整——编写方无法挂载缺少的参考图');
+      console.log(JSON.stringify(dispatchBrief(doc, ctx, ep, briefFiles(creationDir)), null, 2));
+      return;
+    }
+
+    if (sub === 'init') {
+      let made = 0, kept = 0;
+      for (const ep of doc.episodes ?? []) for (const seg of ep.segments ?? []) {
+        const target = join(resolve(dir), seg.id, WORKSHEET_FILE);
+        if (existsSync(target)) { kept += 1; continue; }
+        const { prompt, ...structure } = seg;
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, serializeWorksheet({ meta: { segment: seg.id, status: 'draft', round: 0, model, promptLang }, structure, body: prompt }), 'utf8');
+        made += 1;
+      }
+      console.log(`✓ 新建 ${made} 份工作单，保留已有 ${kept} 份 → ${resolve(dir)}/<段号>/${WORKSHEET_FILE}`);
+      if (!made && !kept) console.log('creation.json 还没有段：由编写方按 seedScenes 创建工作单（prompts new，或 novel-video-prompt 的 new）');
+      return;
+    }
+
+    // new、submit、verdict 是编写方与审核方命令的本地等价物：没有单独安装两个兄弟 skill 时，
+    // 由拿着本 skill 指南副本的 subagent（或同一会话）调用。状态规则与兄弟 skill 共用同一份解析库。
+    if (sub === 'new') {
+      if (ids.length !== 1) throw new Error('用法：prompts new <creation.json> <段号> [--scene N] [--dir .]');
+      const sceneIndex = Number(flag(rest, '--scene', '1'));
+      if (!Number.isInteger(sceneIndex) || sceneIndex < 1) throw new Error('--scene 必须为从 1 起的整数');
+      const target = join(resolve(dir), ids[0], WORKSHEET_FILE);
+      if (existsSync(target)) throw new Error(`${target} 已存在，拒绝覆盖——直接修改现有工作单`);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, serializeWorksheet({ meta: { segment: ids[0], status: 'draft', round: 0, model, promptLang }, structure: { id: ids[0], sceneIndex, cuts: [], images: [] }, body: '' }), 'utf8');
+      console.log(`✓ 新建工作单 ${target}`);
+      return;
+    }
+
+    const worksheets = listWorksheets(dir);
+    const pick = () => {
+      const missing = ids.filter(id => !worksheets.some(w => w.id === id));
+      if (missing.length) throw new Error(`没有这些段的工作单：${missing.join('、')}`);
+      return worksheets.filter(w => ids.includes(w.id));
+    };
+
+    if (sub === 'verdict') {
+      const verdict = args.find(a => VERDICTS.includes(a));
+      if (!verdict || !ids.length) throw new Error(`用法：prompts verdict <creation.json> <${VERDICTS.join('|')}> <段号>...`);
+      const results = pick().map(w => {
+        const { material, problem } = verdict === 'approved' ? load(epOf(w.id)) : {};
+        return { ...w, ...(problem ? { problems: [problem] } : recordVerdict(w.sheet, verdict, material ?? null)) };
+      });
+      const failed = results.filter(r => r.problems.length);
+      for (const r of failed) console.error(`✗ ${r.id}\n${r.problems.map(x => '  ' + x).join('\n')}`);
+      if (failed.length) process.exit(1);
+      for (const r of results) { writeFileSync(r.path, r.text, 'utf8'); console.log(`✓ ${r.id} → ${verdict}`); }
+      return;
+    }
+
+    if (sub === 'status') {
+      const rows = statusRows(worksheets, load);
+      for (const r of rows) console.log(`${r.ok ? '✓' : '✗'} ${r.id}  ${r.status}  第 ${r.round} 轮${r.note ? `  — ${r.note}` : ''}`);
+      const pending = rows.filter(r => !r.ok).length;
+      console.log(`\n共 ${rows.length} 段；已批准 ${rows.length - pending}；未批准 ${pending}`);
+      if (!rows.length || pending) process.exit(1);
+      return;
+    }
+
+    announceProduction(ctx, args, path, doc);
+    const assembled = assembleFromWorksheets(doc, worksheets, ctx);
+    const problems = [...assembled.problems];
+    if (!problems.length) problems.push(...validateCreation(assembled.doc, ctx));
+    // 没有点名时提交所有需要提交的工作单：草稿、被退回、阻塞，以及批准已失效的
+    const targets = sub !== 'submit' ? [] : ids.length ? pick()
+      : worksheets.filter(w => ['draft', 'changes_requested', 'blocked'].includes(w.sheet.meta.status) || (w.sheet.meta.status === 'approved' && bindingProblem(w.sheet, load)));
+    if (sub === 'submit' && !problems.length) for (const w of targets) problems.push(...submitProblems(w.sheet).map(x => `${w.id}：${x}`));
+    if (sub === 'apply' && !problems.length) {
+      for (const w of worksheets) { const p = bindingProblem(w.sheet, load); if (p) problems.push(`${w.id}：${p}`); }
+    }
+    if (problems.length) {
+      console.error(`✗ ${problems.length} 处问题：\n`);
+      for (const x of problems) console.error('  ' + x);
+      process.exit(1);
+    }
+    if (sub === 'check') {
+      console.log(`✓ ${worksheets.length} 份工作单拼入后无阻断失败；审核状态另见 prompts status`);
+      return;
+    }
+    if (sub === 'submit') {
+      if (!targets.length) { console.log('没有需要提交的工作单'); return; }
+      for (const w of targets) { writeFileSync(w.path, submittedText(w.sheet), 'utf8'); console.log(`✓ ${w.id} 已提交审核（第 ${w.sheet.meta.round + 1} 轮）`); }
+      return;
+    }
+    writeFileSync(resolve(path), JSON.stringify(assembled.doc, null, 2) + '\n', 'utf8');
+    console.log(`✓ ${worksheets.length} 段已批准的分镜与提示词回写 → ${resolve(path)}`);
+    return;
+  }
+
   if (cmd === 'render') {
     const [path] = rest;
     if (!path) throw new Error('用法：render <creation.json> --script <script.json> [--html|--md] [--lang zh|en] [--outline] [--art]');
@@ -1928,29 +2174,45 @@ async function main(argv) {
 
   if (cmd === 'export') {
     const [path] = rest;
-    if (!path) throw new Error('用法：export <creation.json> --script <script.json> [--out .]');
+    if (!path) throw new Error('用法：export <creation.json> --script <script.json> [--out .] [--dir <工作单目录>]');
     const doc = readJson(path);
     const ctx = loadCtx(rest, resolve(path, '..'));
     if (!ctx.outline || !ctx.art) console.error('⚠️ 没给 --outline / --art，参考图路径解不出来，投产包的 images 会是空的');
     announceProduction(ctx, rest, path, doc);
     if (!ctx.script) throw new Error('导出投产包必须提供 --script；独立校验不等于可投产');
-    ctx.imageExists = rel => existsSync(resolve(rel));
+    // 设定图相对 creation.json 所在目录；工作单默认也在那里。manifest 里的路径一律相对 manifest 自己
+    const creationDir = dirname(resolve(path));
+    const outDir = resolve(flag(rest, '--out', '.'));
+    const sheetDir = resolve(flag(rest, '--dir', creationDir));
+    const toPack = (target) => relative(outDir, target).split('\\').join('/');
+    ctx.imageExists = rel => existsSync(resolve(creationDir, rel));
     const problems = validateCreation(doc, ctx);
     if (problems.length) throw new Error(`投产前检查失败：${problems.join('；')}`);
     const n = namer(ctx);
     const resolveImage = (kind, ref) => {
       const name = n.nameOf(kind, ref);
       if (!name) return { name: '', path: '', exists: false };
-      return { name, ...resolveReferenceImage(kind, name, '.') };
+      const r = resolveReferenceImage(kind, name, creationDir);
+      return { name, path: toPack(resolve(creationDir, r.path)), exists: r.exists };
     };
-    const dir = flag(rest, '--out', '.');
-    const pack = exportPack(doc, ctx.script, { resolveImage, dir, production: ctx.production });
-    for (const f of pack.files) {
-      mkdirSync(resolve(f.path, '..'), { recursive: true });
-      writeFileSync(resolve(f.path), f.content, 'utf8');
+    const pack = exportPack(doc, ctx.script, { resolveImage, dir: '.', production: ctx.production });
+    // 工作单就是投产包里的 prompt.md：必须已批准、绑定仍然有效并与 creation.json 一致；导出不改写它
+    const load = materialLoader(doc, ctx, creationDir);
+    const unapproved = [];
+    for (const ep of doc.episodes ?? []) for (const seg of ep.segments ?? []) {
+      const target = join(sheetDir, seg.id, WORKSHEET_FILE);
+      if (!existsSync(target)) { unapproved.push(`${seg.id}：没有工作单——已有的段先运行 prompts init，再走编写与审核`); continue; }
+      const p = worksheetSyncProblem(seg, parseWorksheet(readFileSync(target, 'utf8')), load);
+      if (p) unapproved.push(`${seg.id}：${p}`);
     }
+    if (unapproved.length) throw new Error(`存在未批准的段，不能导出投产包：\n  ${unapproved.join('\n  ')}`);
+    const manifest = JSON.parse(pack.files.find(f => f.path === 'manifest.json').content);
+    manifest.creation = toPack(resolve(path));
+    for (const s of manifest.segments) s.prompt = toPack(join(sheetDir, s.segment, WORKSHEET_FILE));
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
     const segN = pack.manifest.length;
-    console.log(`✓ ${segN} 段投产包 → ${resolve(dir)}/（每段一个文件夹：prompt.md；根部 manifest.json）`);
+    console.log(`✓ ${segN} 段投产包 → ${outDir}/（根部 manifest.json；每段引用已批准的工作单 prompt.md）`);
     if (pack.missingTotal) console.log(`⚠️ 缺 ${pack.missingTotal} 张参考图，已在 manifest 的 missing 里标注——下单前先补齐`);
     return;
   }
@@ -1975,6 +2237,16 @@ async function main(argv) {
         })()
       : (manifest.segments ?? []);
 
+    // 批准绑定的是内容与输入：这里按当前的 creation.json 与上游重新核对，不信任导出那一刻的结论
+    if (!manifest.creation) throw new Error('manifest.json 没有记录 creation.json 的位置——它由旧版本导出，重新运行 export');
+    const creationPath = resolve(outDir, manifest.creation);
+    const doc = readJson(creationPath);
+    const ctx = loadCtx(rest, dirname(creationPath));
+    if (stable(video) !== stable(packVideoOf(doc, ctx.production))) throw new Error('manifest.json 的视频参数与当前 creation.json、production.json 不一致——重新运行 export');
+    const load = materialLoader(doc, ctx, dirname(creationPath));
+    const segById = new Map((doc.episodes ?? []).flatMap(ep => ep.segments ?? []).map(seg => [seg.id, seg]));
+    const bound = [];
+
     const inputBase = {};
     if (video.aspectRatio) inputBase.aspect_ratio = video.aspectRatio;
     if (video.resolution) inputBase.resolution = video.resolution;
@@ -1983,7 +2255,13 @@ async function main(argv) {
     const jobs = segs.map((s) => {
       const mdPath = resolve(outDir, s.prompt);
       const md = readFileSync(mdPath, 'utf8');
-      const prompt = promptBodyOf(md);
+      const sheet = parseWorksheet(md);
+      const seg = segById.get(s.segment);
+      const unapproved = seg ? worksheetSyncProblem(seg, sheet, load) : 'creation.json 没有这一段——重新运行 export';
+      if (unapproved) throw new Error(`${s.segment}：${unapproved}——只有已批准的工作单可以进入生成计划`);
+      if (sheet.meta.model !== video.model) throw new Error(`${s.segment}：工作单按 ${sheet.meta.model} 编写，投产包的视频模型为 ${video.model}——更换模型后需要重新编写并审核`);
+      bound.push({ segment: s.segment, bodyHash: sheet.meta.bodyHash, inputHash: sheet.meta.inputHash });
+      const prompt = sheet.body;
       if (!prompt) throw new Error(`${s.segment} 提示词为空`);
       if (promptFamilyOf(video.model) === 'seedance' && TIMECODE_RE.test(prompt)) throw new Error(`${s.segment} seedance 提示词禁止精确时刻／秒数区间`);
       const { duration, note } = clampDuration(s.seconds, video.model);
@@ -1998,6 +2276,9 @@ async function main(argv) {
     if (durationNotes.length) console.error(`⚠️ duration 折算：\n${durationNotes.map((x) => '  ' + x).join('\n')}`);
 
     const plan = mediaPlan(jobs, { kind: 'video', model: video.model, inputBase, outDir, only });
+    // 外部执行工具提交前重新运行本命令并比对 input：不一致说明计划生成之后内容或输入又变了
+    plan.approval = { manifest: resolve(path), input: createHash('sha256').update(stable({ video, bound }), 'utf8').digest('hex').slice(0, 16),
+      note: '提交前重新运行 videos 并比对 input；请求的提示词、参考图顺序和参数必须与本计划一致。内容批准不等于付费授权。' };
     printPlan(plan, flag(rest, '--out'));
     console.error('✓ 交接计划已准备；未提交、未生成。请继续使用 ' + plan.skill + '。');
     return;

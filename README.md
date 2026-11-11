@@ -25,6 +25,8 @@
 | [**novel-art**](skills/novel-art) | 给 AI 短剧出美术设定集（场景 + 叙事道具）：一致性锚点、光照与状态变体、尺度参照、无人无手白底提示词。吃 outline.json 预填清单，基础契约与制作参数由脚本检查。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
 | [**novel-script**](skills/novel-script) | 编写场次与节拍流，按 ID 认领大纲节点，定位开场与集尾，严格对账上游目标时长。开场落点按需标记，结束坐标由正文计算；估算不等于真实表演时长 |
 | [**novel-creation**](skills/novel-creation) | 参考图直出视频：按剧本分段、切镜，直接挂载已有的角色、场景与道具设定图，不生成中间分镜图。视频提示词按模型选择结构，`export` 输出投产包，`videos` 导出离线计划，独立安装的 ly-video 负责生成与恢复。镜头表达按指南评审，模型技术限制由工具检查 |
+| [**novel-video-prompt**](skills/novel-video-prompt) | 视频提示词编写方：按剧本节拍完成一集的分段、分镜与提示词，写入每段一份的工作单 `<段号>/prompt.md` 并提交审核；被退回后逐条修改再提交。由 novel-creation 以 subagent 方式调用，也可以单独使用 |
+| [**novel-video-prompt-review**](skills/novel-video-prompt-review) | 视频提示词审核方：独立对照剧本、资产、项目要求与模型口径审核工作单，把意见写进同一份工作单并登记 approved、changes_requested 或 blocked。只审核，不改写提示词 |
 
 **五个创作 skill 的报告都支持中英双语界面**：默认中文，`render --lang en` 切换为英文界面（故事内容与原始诊断保持原文）。界面语言也可以在 `production.json` 里一处定死。
 
@@ -85,6 +87,8 @@ node scripts/pipeline-selftest.mjs # 真实渲染、交互适配与隔离安装�
 
 自带《收书人》样例与离线报告渲染，详见 [novel-creation](skills/novel-creation)。
 
+这一阶段的主会话只调度：`seed` 之后派发**编写 subagent**（加载 novel-video-prompt）写分镜与提示词，结构检查通过后派发**审核 subagent**（加载 novel-video-prompt-review），循环到每段工作单都是 approved，再回写 creation.json、导出投产包、交接生成。批准绑定这一段的内容与它依据的输入，设定图重新生成、认领的台词被修改或更换模型参数之后，只有受影响的段需要重新审核。同一段提交三轮仍未批准，或审核方登记了阻塞时停止循环，交给用户。没有安装两个兄弟 skill 时，subagent 读取 novel-creation 自带的指南副本；pi 没有子代理扩展时通过 bash 启动独立的 `pi -p` 进程；只有不能派发、也不能启动独立进程的环境才在同一会话串行完成，并注明审核不独立。
+
 ## 安装
 
 ```bash
@@ -100,6 +104,8 @@ cd shuohao-skills
 ./scripts/install.sh --codex            # 只安装到 codex
 ./scripts/install.sh --pi               # 只安装到 pi
 ./scripts/install.sh --uninstall        # 取消软链
+# 安装到 pi 时，同时把 agents/pi/ 下的两个角色定义链接到 ~/.pi/agent/agents（子代理扩展默认读取的目录）
+# 安装到 Claude Code 时，同时把 agents/ 下的两个 subagent 定义链接到 ~/.claude/agents
 ```
 
 不想用脚本就自己链：
@@ -117,7 +123,7 @@ pi install /path/to/shuohao-skills                        # 本地目录
 pi install git:github.com/eternityspring/shuohao-skills   # 直接从 GitHub
 ```
 
-仓库根的 `skills/` 就是 pi 的约定目录，**不需要 `package.json`**。安装完 `pi config` 里可以逐个开关。
+仓库根的 `skills/` 就是 pi 的约定目录，**不需要 `package.json`**。安装完 `pi config` 里可以逐个开关。pi 包不携带角色定义；需要编写方与审核方的角色定义时，再运行一次 `./scripts/install.sh --pi`。
 
 ## 三个 agent 的差别
 
@@ -126,7 +132,7 @@ pi install git:github.com/eternityspring/shuohao-skills   # 直接从 GitHub
 | | pi | Claude Code | codex |
 | --- | --- | --- | --- |
 | skill 命令 | `/skill:novel-outline` | `/novel-outline` | `/novel-outline` |
-| 子代理并发 | **没有**——内核不带子代理，也没有内置待办与后台 bash | Task | subagent |
+| 子代理并发 | 内核不带子代理，也没有内置待办与后台 bash；安装子代理扩展后有 `subagent` 工具。novel-creation 没有扩展时通过 bash 启动独立的 `pi -p` 进程完成编写与审核 | Task | subagent |
 
 直接用中文说「帮我拆一下这本书的角色」并给出路径，三家都能唤起，与打命令等价。
 
@@ -194,7 +200,7 @@ for f in skills/*/scripts/*selftest.mjs scripts/*-selftest.mjs; do node "$f" || 
 ├── script/        ← novel-script 产出：<剧>-script.json / .md / -report.html
 ├── creation/      ← novel-creation 产出：<剧>-creation.json / .md / -report.html
 │   ├── manifest.json  ← export 产出（每段的参考图挂载清单，不复制设定图文件）
-│   └── E01-01/…       ← 每段一个文件夹（prompt.md + 下单后的 video.mp4，没有分镜图）
+│   └── E01-01/…       ← 每段一个文件夹（prompt.md 工作单：审核状态、分镜结构、审核意见与提示词正文；下单后的 video.mp4，没有分镜图）
 ├── docs/          ← 自己写的使用说明、PR 草稿等（与机器产物解耦）
 └── scripts/       ← 跑管线的辅助脚本（探索期脚本用 _ 前缀保留溯源）
 ```

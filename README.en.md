@@ -23,6 +23,8 @@ Here is the whole pipeline — **the production parameters lock the aspect and t
 | [**novel-art**](skills/novel-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; base contracts and production parameters are checked |
 | [**novel-script**](skills/novel-script/README.en.md) | Writes scenes and beat flow, claims outline beats by stable ID, locates openings and endings, and reconciles upstream target duration. Opening landings are optional, ending coordinates are computed, and estimated time is not measured performance |
 | [**novel-creation**](skills/novel-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` exports an offline plan; the separately installed ly-video skill generates and recovers tasks. Shot expression is reviewed against the guide; model limits remain deterministic checks |
+| [**novel-video-prompt**](skills/novel-video-prompt/README.en.md) | The prompt writer: splits an episode into segments and cuts, writes each segment's prompt into a worksheet (`<segment>/prompt.md`) and submits it for review; revises and resubmits when changes are requested. Invoked as a subagent by novel-creation, or used on its own |
+| [**novel-video-prompt-review**](skills/novel-video-prompt-review/README.en.md) | The prompt reviewer: independently checks worksheets against the script, assets, project brief and model conventions, records comments in the same worksheet and registers `approved`, `changes_requested` or `blocked`. It never rewrites the prompt |
 
 **Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for English interface labels (story content and raw diagnostics retain their original language). The UI language can also be settled once in `production.json`.
 
@@ -83,6 +85,8 @@ The following screenshots show historical interfaces. Render the local samples f
 
 Includes its own example and offline report renderer. See [novel-creation](skills/novel-creation/README.en.md).
 
+The main session only dispatches in this stage: after `seed` it launches a **writer subagent** (novel-video-prompt), runs the structural checks, then launches a **reviewer subagent** (novel-video-prompt-review), and loops until every segment worksheet is approved before writing back to creation.json, exporting and handing off generation. Approval is bound to a segment's content and to the inputs it relies on, so regenerating a reference image, editing a claimed line or changing model parameters sends only the affected segments back to review. A segment still unapproved after three submissions, or one the reviewer marked as blocked, stops the loop and goes to the user. Without the two sibling skills installed, the subagents read the guide copies bundled with novel-creation; pi without a subagent extension launches separate `pi -p` processes through bash; only an environment that can neither dispatch nor start a separate process runs both roles serially in one session, and the report says the review was not independent.
+
 ## Install
 
 ```bash
@@ -98,6 +102,8 @@ It detects whether you have pi, Claude Code, or codex installed and **symlinks**
 ./scripts/install.sh --codex            # only into codex
 ./scripts/install.sh --pi               # only into pi
 ./scripts/install.sh --uninstall        # remove the symlinks
+# Installing to pi also links the two role definitions in agents/pi/ into ~/.pi/agent/agents (the directory the subagent extension reads by default)
+# Installing to Claude Code also links the two subagent definitions in agents/ into ~/.claude/agents
 ```
 
 Prefer to do it by hand:
@@ -115,7 +121,7 @@ pi install /path/to/shuohao-skills                        # local directory
 pi install git:github.com/eternityspring/shuohao-skills   # straight from GitHub
 ```
 
-The repository's root `skills/` directory is pi's convention directory — **no `package.json` required**. Once installed, `pi config` toggles them individually.
+The repository's root `skills/` directory is pi's convention directory — **no `package.json` required**. Once installed, `pi config` toggles them individually. A pi package does not carry role definitions; run `./scripts/install.sh --pi` once more if you want the writer and reviewer roles.
 
 ## What differs between the three agents
 
@@ -124,7 +130,7 @@ The workflow, the scripts and the artifacts are identical across all three. Only
 | | pi | Claude Code | codex |
 | --- | --- | --- | --- |
 | Skill command | `/skill:novel-outline` | `/novel-outline` | `/novel-outline` |
-| Sub-agent concurrency | **None** — the core ships without sub-agents, built-in todos or background bash | Task | subagent |
+| Sub-agent concurrency | The core ships without sub-agents, built-in todos or background bash; a subagent extension adds the `subagent` tool. Without it, novel-creation launches separate `pi -p` processes through bash for writing and review | Task | subagent |
 
 Asking in plain words ("break this book down into characters", plus the path) works on all three and is equivalent to typing the command.
 
