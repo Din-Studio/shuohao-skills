@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import * as C from './novel-creation.mjs';
 import {scriptProblems} from './lib/contracts.mjs';
+import * as W from './lib/worksheet.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const read=p=>JSON.parse(readFileSync(join(root,'examples',p),'utf8'));
 const doc=read('creation/收书人-creation.json'), script=read('script/收书人-script.json');
@@ -52,7 +53,8 @@ try {
     d.episodes.push({...clone(d.episodes[0]),ep:2});assert.equal(C.computeStats(d).totals.seconds,10.08);
   });
   const manifestPath=join(temp,'pack/manifest.json');mkdirSync(join(temp,'pack/E01-01'),{recursive:true});
-  writeFileSync(join(temp,'pack/E01-01/prompt.md'),'# E01-01\n\n---\nshots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.');
+  const approvedSheet=(body,model='MiniMax H3')=>{const structure={id:'E01-01',sceneIndex:1,cuts:[],images:[]};return W.serializeWorksheet({meta:{segment:'E01-01',status:'approved',round:1,model,promptLang:'en',bodyHash:W.hashOf(structure,body)},structure,review:'结论：通过。',body});};
+  const sheetPath=join(temp,'pack/E01-01/prompt.md');writeFileSync(sheetPath,approvedSheet('shots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.'));
   const manifest=seconds=>({video:{model:'MiniMax H3'},segments:[{segment:'E01-01',seconds,prompt:'E01-01/prompt.md',images:[]}]});
   for(const seconds of [30,15.04,0,-1,null,'5']) await test(`R2 videos rejects ${JSON.stringify(seconds)} before any job`,()=>{
     json(manifestPath,manifest(seconds));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1,r.stdout+r.stderr);assert.equal(r.stdout,'');
@@ -122,7 +124,14 @@ try {
     const d=short();d.video={model:'seedance2.0'};d.promptLang='zh';d.episodes[0].segments[0].prompt='镜头描述：\n[镜头 1] 全景，固定 — 缓慢观察。\n环境声与配乐：无配乐。';assert.deepEqual(C.validateCreation(d),[]);
   });
   await test('R8 videos validates seedance prompt again after export',()=>{
-    const m=manifest(5);m.video.model='seedance2.0';json(manifestPath,m);writeFileSync(join(temp,'pack/E01-01/prompt.md'),'0–3 秒观察');assert.equal(cli('videos',manifestPath,'--dry-run').status,1);
+    const m=manifest(5);m.video.model='seedance2.0';json(manifestPath,m);writeFileSync(sheetPath,approvedSheet('0–3 秒观察','seedance2.0'));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/seedance/);
+  });
+  await test('videos rejects unapproved, stale and legacy prompt files',()=>{
+    json(manifestPath,manifest(5));const good=approvedSheet('shots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.');
+    writeFileSync(sheetPath,good);assert.equal(cli('videos',manifestPath,'--dry-run').status,0);
+    writeFileSync(sheetPath,good.replace('status: approved','status: in_review'));let r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/尚未批准/);
+    writeFileSync(sheetPath,good.replace('observe.','observe closely.'));r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/批准已失效/);
+    writeFileSync(sheetPath,'# E01-01\n\n---\nshots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.');r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/状态头/);
   });
   console.log(`✓ ${count} creation fixes tests passed; offline only`);
 } finally { rmSync(temp,{recursive:true,force:true}); }

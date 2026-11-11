@@ -23,6 +23,8 @@ Here is the whole pipeline — **the production parameters lock the aspect and t
 | [**novel-art**](skills/novel-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; base contracts and production parameters are checked |
 | [**novel-script**](skills/novel-script/README.en.md) | Writes scenes and beat flow, claims outline beats by stable ID, locates openings and endings, and reconciles upstream target duration. Opening landings are optional, ending coordinates are computed, and estimated time is not measured performance |
 | [**novel-creation**](skills/novel-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` exports an offline plan; the separately installed ly-video skill generates and recovers tasks. Shot expression is reviewed against the guide; model limits remain deterministic checks |
+| [**novel-video-prompt**](skills/novel-video-prompt/README.en.md) | The prompt writer: splits an episode into segments and cuts, writes each segment's prompt into a worksheet (`<segment>/prompt.md`) and submits it for review; revises and resubmits when changes are requested. Invoked as a subagent by novel-creation, or used on its own |
+| [**novel-video-prompt-review**](skills/novel-video-prompt-review/README.en.md) | The prompt reviewer: independently checks worksheets against the script, assets, project brief and model conventions, records comments in the same worksheet and registers `approved` or `changes_requested`. It never rewrites the prompt |
 
 **Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for English interface labels (story content and raw diagnostics retain their original language). The UI language can also be settled once in `production.json`.
 
@@ -82,6 +84,8 @@ The following screenshots show historical interfaces. Render the local samples f
 **novel-creation · video creation (segments, cuts, reference mounts, prompts and ordering)**
 
 Includes its own example and offline report renderer. See [novel-creation](skills/novel-creation/README.en.md).
+
+The main session only dispatches in this stage: after `seed` it launches a **writer subagent** (novel-video-prompt), runs the structural checks, then launches a **reviewer subagent** (novel-video-prompt-review), and loops until every segment worksheet is approved before writing back to creation.json, exporting and handing off generation. A segment still unapproved after three submissions stops the loop and goes to the user. On pi, which has no subagents, both roles run serially in one session and the report says the review was not independent.
 
 ## Install
 

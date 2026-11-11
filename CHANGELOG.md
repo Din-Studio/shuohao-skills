@@ -1,5 +1,18 @@
 # Changelog
 
+## 视频提示词编写与审核分离 — 2026-11-11
+
+**novel-creation 3.1.0 · novel-video-prompt 1.0.0（新增）· novel-video-prompt-review 1.0.0（新增）**
+
+- novel-creation 的主会话改为只调度：`seed` → 编写 subagent → 结构检查 → 审核 subagent，循环到全部批准，再回写、导出、交接生成。主会话不再编写分镜与提示词，也不再自己评审自己。
+- 新增 **novel-video-prompt**（编写方）：分段、分镜、提示词，产物为每段一份的工作单 `<段号>/prompt.md`。提示词骨架与 H3、seedance 两份填法指南从 novel-creation 迁入，成为唯一权威位置。
+- 新增 **novel-video-prompt-review**（审核方）：按七个维度审核，意见分为必须修改与建议，写进同一份工作单并登记结论。只审核，不改写。
+- **工作单格式变更**：`prompt.md` 增加状态头（status、round、model、bodyHash）、分镜结构、审核意见与编写回应；提示词正文改为取**最后一条**分隔线之下。批准绑定内容摘要，批准后改动即失效。
+- **命令语义变更**：新增 `prompts brief|init|check|status|apply`。`export` 要求每段工作单已批准并与 creation.json 一致，只写 manifest.json，不再覆盖 prompt.md。`videos` 拒绝没有状态头、尚未批准或批准已失效的工作单。已有的 creation.json 先运行 `prompts init` 生成草稿工作单，再走编写与审核。
+- 止损：同一段提交三轮仍未批准时停止循环，交给用户决定；autopilot 不取消这一条。没有子代理的运行环境串行完成，并注明审核不独立。
+- 审核意见与编写回应只保留本轮，轮次只计数。未新增评分或门失败累积日志。
+- novel-creation 的编写与审核依赖两个兄弟 skill（缺少时停止并提示安装）；结构检查、报告、导出与交接计划仍可单独拷走运行。三个 skill 各自携带一份相同的工作单解析库，仓库级自测核对一致。
+
 ## 外部媒体生成交接 — 2026-11-08
 
 - 删除角色、美术、视频创作三份内置 `lib/lingying.mjs`，不再维护上传、提交、轮询和下载。

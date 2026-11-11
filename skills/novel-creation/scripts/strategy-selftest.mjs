@@ -155,10 +155,12 @@ try {
     const local=join(temp,'standalone');cpSync(root,local,{recursive:true});
     const r=spawnSync(process.execPath,[join(local,'scripts/selftest.mjs')],{cwd:temp,encoding:'utf8'});assert.equal(r.status,0,r.stderr+r.stdout);
     const cwd=join(local,'examples/creation'),entry=join(local,'scripts/novel-creation.mjs');
-    for(const args of [['validate','收书人-creation.json'],['render','收书人-creation.json','--html','--lang','en'],['render','收书人-creation.json','--md'],['export','收书人-creation.json','--out','.']]){
+    for(const args of [['validate','收书人-creation.json'],['render','收书人-creation.json','--html','--lang','en'],['render','收书人-creation.json','--md']]){
       const result=spawnSync(process.execPath,[entry,...args],{cwd,encoding:'utf8'});assert.equal(result.status,0,result.stderr+result.stdout);
     }
-    assert.ok(existsSync(join(cwd,'manifest.json'))&&!existsSync(join(cwd,'E01-01/video.mp4')));
+    const unreviewed=spawnSync(process.execPath,[entry,'export','收书人-creation.json','--out','.'],{cwd,encoding:'utf8'});
+    assert.equal(unreviewed.status,1,'未经审核的样例不能导出投产包');assert.match(unreviewed.stderr,/没有工作单/);
+    assert.ok(!existsSync(join(cwd,'manifest.json'))&&!existsSync(join(cwd,'E01-01/video.mp4')));
   });
   test('optional tables omitted and special delivery retained in seed',()=>{
     const d=clone(doc);d.episodes[0].segments.forEach(s=>s.images=[]);
