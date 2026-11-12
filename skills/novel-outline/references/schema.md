@@ -1,104 +1,72 @@
-# outline.json 结构
+# outline.json v3 数据契约
 
-五件套的载体。**模型只管填这份 JSON**，Markdown 和 report.html 由 `render` 渲染出来，资产清单由脚本汇总——五件套是四件模型写 + 一件算出来的。
+正式运行严格要求 schemaVersion: 3，拒绝旧字段并提示显式迁移，不双读旧格式。完整样例见 [旧站时刻](../examples/旧站时刻-outline.json)。创作方法见 [创作指南](创作指南.md)。
 
-```json
-{
-  "source": "书名",
-  "lang": "zh",
-  "params": { "episodes": 60, "minutesPerEpisode": 2, "genre": "女频逆袭", "adaptMode": "抽核", "preferences": [] },
-  "adaptation": { "core": "…", "keep": [], "cut": [], "merge": [], "risks": [] },
-  "characters": [ { "id": "C01", "name": "…", "role": "…", "arc": "…", "from": ["原著…", "合并：…"] } ],
-  "scenes": [ { "id": "S01", "name": "…", "primary": true, "reusePlan": "…" } ],
-  "beats": [ { "id": "B01", "type": "打脸", "weight": "major", "episode": 3, "setup": "…", "payoff": "…" } ],
-  "episodes": [ { "ep": 1, "synopsis": "…", "hook": "…", "suspense": "…", "sceneIds": ["S01"], "characterIds": ["C01"], "propIds": ["P01"], "crowdPlan": "…", "warnings": [] } ]
-}
-```
+## 核心与阶段
 
-## params
+必需：schemaVersion、非空 source、params、story、characters、scenes。可选 lang=zh/en、creativeBrief、adaptation、props、arcs。节点阶段增加 beats 与 story.endingBeatId；完整阶段增加 episodes。
 
-| 字段 | 必填 | 说明 |
-| --- | --- | --- |
-| `episodes` | 是 | 总集数，正整数。分集数量必须与它一致 |
-| `minutesPerEpisode` | 是 | 单集时长（分钟） |
-| `genre` | 是 | 题材，**决定爽点类型**，不许缺。投放平台的差异不单设字段，直接体现在 `thresholds` 上 |
-| `adaptMode` | 是 | `忠实` / `抽核` / `借壳`，只能这三个 |
-| `preferences` | 否 | 用户点名要保的角色、戏 |
-| `thresholds` | 否 | 逐项覆盖质量门阈值：`maxLeads`(5) / `maxSupport`(10) / `maxFunctional`(10) / `maxBeatGap`(3) / `maxPrimaryScenes`（缺省不是常数，**随集数动态**：4 + ⌈集数/10⌉ 夹在 5–15，60 集 → 10。按 AI 短剧定的——场景是生成的，上限守的是一致性资产不是搭景钱）。短篇建议收紧角色档 |
+skeleton 检查核心故事、参数与资产；beats 增加事件、结束节点、阶段和道具节点引用；full 增加分集、资产使用及问题回收。未到阶段明确 stage-incomplete，不冒充完整交付。
 
-## adaptation 改编说明
+params.episodes 为正整数；minutesPerEpisode 为有限正数；genre 为非空题材描述；adaptMode 为原创/忠实/抽核/借壳。genre 不选择规则。params.preferences/rules/defaults 已删除。legacy pacing、maxBeatGap、hookWindow、maxLineChars、minCutSeconds、maxCutSeconds 同样拒绝。
 
-`core` 一句话核心，必填。`keep` / `cut` / `merge` 每条 `{what, why}`，`keep` 至少一条；**`adaptMode` 不是忠实时 `cut` 不能为空**。`keep` 可带 `evidence`——**原文逐字片段**，禁止凭书名脑补的对策就在这：关键取舍要能指回原文。`risks` 每条 `{what, plan}`。
+creativeBrief 提供时必须为非空字符串。production 使用 schemaVersion 3；项目要求只在 production 保存，本地要求必须先人工合并再删除副本。旧 creative、creativeContext、selection、decisions、overrides 拒绝。修改指南不影响数据结构有效性。
 
-两个可选的**决策补注**，报告的「关键决策」区块会展示：
+## 故事与改编
 
-- `cutNote` — 砍线的结论句（「这意味着：全剧终点是……原著后 30 章基本不用」这种），说清砍完之后故事的终点变成了什么
-- `mergeNote` — 合人的补注，通常写主角组入选理由（谁有完整转变弧）
+story.focusCharacterIds 为非空、无重复、存在的 C ID 数组；premise、throughline、ending 为非空字符串。audiencePromise 可选，提供则非空。endingBeatId 必须指向最终集的明确结束节点，不能用数组最后一项隐式替代。不要求兑现终点。drive 已删除。
 
-给了就不能是空字符串，`validate` 会拦。大爆点落点列表**不用写**——报告从 `beats` 里自动算。
+adaptation 整体可选。keep/cut/merge 按需为数组，条目含非空 what/why；risks 含 what/plan。条目的 evidence 或 adaptation.evidence 提供时为非空逐字原文；真实性由内容评审判断。sourceNote、cutNote、mergeNote 可选非空字符串。core 已删除；独有信息迁入 story。原创不强制填写空数组或伪造来源。
 
-## characters 人物表
+## 人物、场景、道具
 
-每个字段都以校验器为准，一个不多一个不少：
+ID 为前缀加至少两位数字，各表不重复，始终保持稳定：
 
-| 字段 | 必填 | 说明 |
-| --- | --- | --- |
-| `id` | 是 | `C01` 格式，全局唯一，分集靠它引用 |
-| `name` | 是 | 姓名；功能性角色用称呼标签（「急诊医生」） |
-| `role` | 是 | 定位一句话：女主 / 搅局配角 / 渡口的报时人…… |
-| `tier` | 是 | 三档之一，见下表 |
-| `arc` | lead / support 必填 | 人物弧；functional 可省——医生就是来缝针的 |
-| `from` | 是 | **← 改动记录**，非空数组：原著对应谁、合并了谁、纯原创写 `["原创"]` |
+- characters：id=C01、name、role 非空，tier=lead/support/functional。from 可选非空字符串数组；arc 可选非空字符串，静态人物不必编造变化。
+- scenes：id=S01、name 非空、primary 布尔。reusePlan 可选非空。
+- props：可选数组，id=P01、name/function 非空；beatIds 可选无重复有效 B ID。明确引用校验，不从同集推断精确关联。
+- full 时所有登记资产至少被一集引用。聚合使用次数、人物工作量、场景关联由工具计算。不接受顶层 assets/crowdPlan。
 
-- `tier` 只能三档——一刀切的角色上限混淆了「观众要记住谁」和「制作要维护多少张脸」，分档把它拆开：
+## 重要事件与阶段规划
 
-  | tier | 是谁 | 上限 | 规则 |
-  | --- | --- | --- | --- |
-  | `lead` | 主角组（男女主 + 主反派） | 1–5 人 | `arc` 必填 |
-  | `support` | 有名字的重要配角（亲属、闺蜜、副反派） | ≤ 10 | `arc` 必填 |
-  | `functional` | 功能性角色（医生、秘书、店员） | ≤ 10 | **占脸不占名**：`name` 用称呼标签（「急诊医生」）；`arc` 可省——医生就是来缝针的 |
+beats 为非空数组，每项 id=B01、episode（1..总集数）、setup/outcome 非空。
+数组按 episode 不递减；同集使用数组顺序。position 可选 opening/early/middle/late/ending，提供仅校验枚举，不重新排序。kind 可选 event/pressure/turn/payoff；weight 仅 kind=payoff 时可提供 minor/major。分类、强度均不强制。type/payoff 旧字段拒绝。resolves 可选无重复 Q ID 数组。
 
-  无名背景人不进表、不追踪、不限量。
+arcs 可省或为空；条目 id=A01、startEp/endEp 合法区间、非空 goal、endBeatId 指向 endEp 节点。按起始集排序且不重叠；不强制连续覆盖或兑现结束。
 
-  **这份表是下游 novel-characters 的角色清单**：谁进谁不进、谁是主角组在这里定死，角色设定照着做，不用再判断一遍轻重（`tier` 对应过去就是 `importance`：`lead` → protagonist、`support` → supporting、`functional` → minor）。反过来，手上已经有 cast.json 的话也能映射进来：protagonist/major → `lead`，supporting → `support`，minor → `functional`
+## 分集与问题
 
-## scenes
+episodes 恰好 params.episodes 项，ep 从 1 连续排列。opening/synopsis 为非空字符串。characterIds/sceneIds 为非空、无重复、有效引用；propIds 可选；warnings 可选非空字符串数组。stateChange、hook、suspense、crowdPlan、beatIds 旧字段拒绝。
 
-- `id` 格式 `S01`，全局唯一；`name` 必填；`primary` 必填布尔（主场景上限随集数动态，见 `thresholds`）
-- **在全剧只出现一次的场景必须带 `reusePlan`**（规避方案：复用哪个现有环境资产、换什么时段天气改出来）
+ending 仅含 mode=suspense/closure/open、非空 event、可选 question。suspense 无 question 合法；closure 禁止新待答问题。question 仅含 id/text/resolution/reason/dueByEp：
 
-## props 叙事道具
+- id 为唯一 Q ID，text 非空，resolution=required/optional。
+- reason 可选非空；optional 不携带 dueByEp。
+- dueByEp 可选，明确提供时为提出集 < 期限 <= 总集数的整数；不自动填写。
+- required 由后续唯一节点解决，最终集不能新登记 required。optional 可不解决，若解决仍须唯一且后续。
+- 未登记引用、重复、提前或超期解决均失败。不得删去未解决承诺来规避校验。
 
-- **可选字段**。没写照常通过全部质量门（`prop-cap` 与 `refs` 两道会明说跳过）；写了就按下面查
-- `id` 格式 `P01`，全局唯一；`name` 必填
-- **`function` 必填——这一层唯一要拍板的东西：这件物件在戏里承载什么。** 填不出来说明它不是叙事道具，是场景陈设，那归 `novel-art` 的场景锚点管，不进这张表
-- `beatIds` 可选：它托起哪几个爽点。写了就必须指向 `beats` 里真实存在的 id
-- 上限 `maxProps` 默认 8 件（进 `params.thresholds` 可覆盖）。跟主角数量一个量级——**只收有特写、跨集出现、承载剧情的**
-- 分集用 `episodes[].propIds` 引用。**没有任何一集引用的道具会被 `refs` 门点名**——跟失业角色、空转场景同一个判据
+## 制作预算与状态
 
-边界：尺度、锚点、状态变体、白底提示词都是 `novel-art` 的活，不在这里定。这张表回答「哪几件物件承载剧情、各自承载什么」，美术层回答「它长什么样、怎么保证六集都长一样」。
+params.thresholds 可选对象，合法键 maxLeads/maxSupport/maxFunctional/maxProps/maxPrimaryScenes，值为正整数。只有用户明确提供的键阻断超额；其余工具参考值为 5/10/10/8 与 clamp(4+ceil(集数/10),5,15)，仅提醒。报告逐项区分“用户预算”和“工具参考值”。
 
-## beats 爽点表
+gate 使用 id/category/level/status/messages/reason?；status=pass/fail/skipped。error 失败阻断，warn 失败是提醒，缺上游与阶段未完成明确跳过。contentReview 固定 not-performed。complete 仅代表 full 本地结构无阻断；不等于内容或联合交付通过。validate/render 只读，不自动补字段。
 
-- `id` 格式 `B01`；`type` 自由文本（打脸/揭破/反转…）；`weight` 只能 `major` / `minor`（缺省算 minor）
-- `episode` 是**唯一数据源**——分集不再列 beatIds，节奏条和资产清单都从这里算
-- 硬规则：相邻爽点间隔 ≤ `maxBeatGap`，开头结尾无真空；**至少一个 major，且最早的 major 不能落在最后一集**
+## 本地下游接口
 
-## episodes 分集梗概
+checkup 的 --downstream 读取项目根 script/creation 中直接存放的 JSON，不执行兄弟代码。项目根来自 production，否则按 outline/ 目录约定定位。接口检查：
 
-- `ep` 从 1 连续编号，总数等于 `params.episodes`
-- `synopsis` / `hook` / `suspense` 三栏**都必填**——【钩子】【悬念】空了视为未完成
-- **叙述体**：三栏里出现 `「」『』“”` 引号对白就是在写剧本，越界，validate 会拦
-- `sceneIds` / `characterIds` 必填且必须指向已登记的 id；每个角色至少出现一集、每个场景至少用一次
-- `propIds` 可选（写了 `props` 才有意义），必须指向已登记的道具 id；每件道具至少出现一集
-- `characterIds` ≥ 3 的集必须写 `crowdPlan`（同框拆解方案）。**校验按人数判，是代理指标**——如果这一集三人实际不同框（分处不同场次），把这个事实写成方案即可：「三人分处两场，无同框，分场拍」，照样通过
-- `warnings`：梗概里扫到生成难点关键词（雨戏/肢体接触/人群/手部特写）就必须列进来，宁可多报
+- schemaVersion 3、source 一致、无旧配置字段；集号递增唯一且存在于 outline，允许合法批次。
+- script.targetSeconds 严格对齐大纲分钟数乘 60；拒绝重复 opening/ending 与持久化 endBeat。openingBeat 可选，缺省不伪造核验。beatClaims 按序认领当集所有 B ID，验证真实 flow 坐标、重复、倒序和重叠。
+- creation 拒绝项目计划副本/endBeat；检查镜头范围的顺序、连续、重叠和真实覆盖。唯一 script 匹配时覆盖全部实际 flow，结束位置由正文推导。openingBeat 缺省不新增映射。
+- creation 镜头秒数合法且总时长对齐目标，tolerance 缺省 0.15，明确覆盖须在 [0,1)。
+- 缺少 script 只跳过依赖上游的覆盖检查；损坏、悬空链接、不支持版本及多候选均失败。
 
-## 校验
+本地接口零失败不代表模型技术、媒体交接或各阶段完整联合校验通过。结果标记 fullDownstreamValidation/contentReview: not-performed。
 
-```bash
-node scripts/novel-outline.mjs validate outline.json --stage skeleton|beats|full
-node scripts/novel-outline.mjs checkup outline.json   # 只打印 14 道质量门 ✓/✗
-```
+## API
 
-stage 就是流程门：骨架拍板前过 `skeleton`，**写分集之前必须过 `beats`**（爽点间隔和 major 时机错了，分集写完全废），交付前过 `full`。
+createSkeleton(options) 返回未完成草稿；newQuestion(question) 只复制，不生成期限。
+checkup(doc,options) 返回 stage/gates/stats/complete/contentReview/thresholds；validateOutline 返回错误字符串；gateReport 返回 gates。
+computeAssets 计算资产使用、castPlan、warnings、可选分类汇总 beatsByKind。
+renderHtml/renderMarkdown 为只读派生报告，导出 JSON 保持输入值。

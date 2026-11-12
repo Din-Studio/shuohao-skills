@@ -3,6 +3,7 @@
 // 仅在临时目录写入文件，不调用模型，不修改真实 HOME。
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -22,15 +23,29 @@ const run = (bin, args, opts = {}) => spawnSync(bin, args, {
 const report = (...args) => run(process.execPath, ['scripts/report.mjs', ...args]);
 
 try {
+  // demo-script.json 是被忽略的本地历史数据；干净克隆没有它时明确说明未检查。
+  if (existsSync(join(root, 'demo-script.json'))) {
+    const demo = JSON.parse(readFileSync(join(root, 'demo-script.json'), 'utf8'));
+    eq(demo.schemaVersion, 3, '根目录独立剧本采用 v3');
+    eq(demo.episodes.length, 40, '早期剧本迁移保持原有40集');
+    const prose = demo.episodes.map(e => ({ ep: e.ep, targetSeconds: e.targetSeconds, scenes: e.scenes }));
+    eq(createHash('sha256').update(JSON.stringify(prose)).digest('hex'), '168ce5a1f2321d87b56884a579bd2231fd63a8344d78d0aa4c5100ceaeb81862', '正文、资产、目标时长与特殊 delivery 保持原值');
+    for (const ep of demo.episodes) {
+      for (const field of ['endBeat', 'seedNote', 'hook', 'cliff', 'beatsClaimed', 'hookBeat']) ok(!(field in ep), `独立剧本 E${ep.ep} 不携带 ${field}`);
+      ok(ep.scenes.every(scene => Array.isArray(scene.flow) && scene.flow.length > 0), '剧本正文没有因迁移删除');
+    }
+  } else console.log('未检查 demo-script.json：本地历史数据不存在。');
   ok(!existsSync(join(root, 'skills/novel-storyboard')), '退役 skill 目录不存在');
   for (const lang of ['zh', 'en']) {
     const out = join(temp, `merged-${lang}.html`);
     const r = report('--from', sample, '--out', out, '--lang', lang);
-    eq(r.status, 0, r.stderr);
-    // creation 自带上游文件只是身份/节拍夹具，不是其他 skill 的完整报告输入。
-    ok(r.stdout.includes('1 个面板'), 'creation 的独立样例渲染视频创作面板');
+    // creation 自有上游是消费接口夹具，不是完整角色／美术设定。
+    // 部分消费者可渲染错误报告，部分拒绝不完整上游；均不得静默冒充成功。
+    eq(r.status, 1, '不完整上游面板使合并命令返回非零');
+    ok(/[1-5] 个面板/.test(r.stdout), '仍交付可渲染面板；完整五面板另以各自正式样例及联合 fixture 验证');
     const html = readFileSync(out, 'utf8');
     ok(html.includes('id="pane-creation"'), 'creation 接入合并报告');
+    ok(html.includes(lang === 'en' ? 'Unavailable pane:' : '面板未生成：'), '无法渲染的资产面板在正文中明确标注');
     ok(!html.includes('pane-storyboard'), '不存在旧面板');
     ok(html.includes('id="creation--creation-data"'), 'creation 导出数据带作用域');
     ok(html.includes(lang === 'en' ? '>Creation<' : '>视频创作<'), '导航语言正确');
@@ -44,18 +59,40 @@ try {
     }
   }
 
-  // 合并器的技术兼容测试：各 renderer 使用自己的完整夹具，不声称是同一部剧的剧情验收。
-  const fixture = (skill, file) => join(root, 'skills', skill, 'examples', file);
+  // 不同正式故事不得被组合成伪联合交付。完整五面板正例在三组合联合测试中。
+  const fixture = (skill, suffix) => {
+    const stories = { 'novel-script': '修伞簿', 'novel-outline': '旧站时刻', 'novel-art': '雨棚留言', 'novel-characters': '渡口' };
+    return join(root, 'skills', skill, 'examples', stories[skill] + suffix);
+  };
   const explicit = report('--creation', join(sample, 'creation/收书人-creation.json'),
-    '--script', fixture('novel-script', '渡口-script.json'),
-    '--outline', fixture('novel-outline', '渡口-outline.json'),
-    '--art', fixture('novel-art', '渡口-art.json'),
-    '--cast', fixture('novel-characters', '渡口-cast.json'), '--out', join(temp, 'explicit.html'));
-  eq(explicit.status, 0, explicit.stderr);
-  ok(explicit.stdout.includes('5 个面板'), '显式参数可渲染全部阶段');
-  const partial = report('--cast', fixture('novel-characters', '渡口-cast.json'), '--out', join(temp, 'partial.html'));
+    '--script', fixture('novel-script', '-script.json'),
+    '--outline', fixture('novel-outline', '-outline.json'),
+    '--art', fixture('novel-art', '-art.json'),
+    '--cast', fixture('novel-characters', '-cast.json'), '--out', join(temp, 'explicit.html'));
+  eq(explicit.status, 1, '不同故事的上游投影不匹配，必须报告失败');
+  const mixed = readFileSync(join(temp, 'explicit.html'), 'utf8');
+  ok(mixed.includes('面板未生成：novel-script'), '不同故事组合不能伪装成剧本联合通过');
+  ok(mixed.includes('id="pane-creation"'), '其他可渲染面板仍然保留');
+  const urlTextArt = JSON.parse(readFileSync(fixture('novel-art', '-art.json'), 'utf8'));
+  urlTextArt.scenes[0].summary += ' 资料路径记作 url(images/reference.png)，这是正文。';
+  urlTextArt.exportNote = 'url(../original.png)';
+  const urlTextFile = join(temp, 'url-text-art.json'); writeFileSync(urlTextFile, JSON.stringify(urlTextArt));
+  const urlTextResult = report('--art', urlTextFile, '--out', join(temp, 'url-text.html'));
+  eq(urlTextResult.status, 0, urlTextResult.stderr);
+  const urlTextHtml = readFileSync(join(temp, 'url-text.html'), 'utf8');
+  const embeddedArt = urlTextHtml.match(/<script type="application\/json" id="art--art-data">([\s\S]*?)<\/script>/)[1];
+  assert.deepEqual(JSON.parse(embeddedArt), urlTextArt); passed++;
+  ok(urlTextHtml.includes('资料路径记作 url(images/reference.png)'), '真实美术正文中的路径文本不被显示层改写');
+  const partial = report('--cast', fixture('novel-characters', '-cast.json'), '--out', join(temp, 'partial.html'));
   eq(partial.status, 0, partial.stderr);
   ok(partial.stdout.includes('1 个面板'), '单阶段渲染保持可用');
+  const conflict = report('--cast', fixture('novel-characters', '-cast.json'), '--production', 'production.json', '--no-production', '--out', join(temp, 'conflict.html'));
+  eq(conflict.status, 1, '独立模式和显式制作配置不能混用');
+  ok(!existsSync(join(temp, 'conflict.html')), '冲突参数不写入报告');
+  const malformedProduction = join(temp, 'broken-production.json'); writeFileSync(malformedProduction, '{broken');
+  const brokenProduction = report('--cast', fixture('novel-characters', '-cast.json'), '--production', malformedProduction, '--out', join(temp, 'broken-production.html'));
+  eq(brokenProduction.status, 1, '损坏的显式制作配置不静默变成独立模式');
+  ok(!existsSync(join(temp, 'broken-production.html')), '没有成功面板时不生成报告');
   const retired = report('--storyboard', 'old.json', '--cast', join(sample, 'characters/收书人-cast.json'), '--out', join(temp, 'retired.html'));
   eq(retired.status, 1, '旧参数不再静默忽略');
   ok(retired.stderr.includes('未知选项 --storyboard'), '旧参数明确报错');
@@ -108,6 +145,17 @@ try {
   await clicks[1]({ target: { closest: () => button }, preventDefault() {} });
   eq(clipboardCalls, 1, '当前面板复制只调用一次');
 
+  // 实际大纲 renderer 的后半集定位，在合并报告重命名ID之后仍能展开并定位。
+  const outlineRendered = run(process.execPath, [join(root, 'skills/novel-outline/scripts/novel-outline.mjs'), 'render', fixture('novel-outline', '-outline.json'), '--html']);
+  eq(outlineRendered.status, 0, outlineRendered.stderr);
+  const locateCode = splitDoc(outlineRendered.stdout).scripts.join('\n').match(/function locateEpisode\(hash\)\{[\s\S]*?\n\}/)?.[0];
+  ok(locateCode, '实际 renderer 包含分集定位逻辑');
+  const locationState = { expanded: false, scrolled: false };
+  const episodeTarget = { scrollIntoView() { locationState.scrolled = true; ok(locationState.expanded, '先展开后滚动'); } };
+  const locationWindow = { document: { getElementById: () => ({ querySelector: selector => selector === '#outline--ep-6' ? episodeTarget : null }) }, state: locationState };
+  new Function('window', scopeJs(`function expandEpisodes(){window.state.expanded=true;}\n${locateCode}\nlocateEpisode('#outline--ep-6');`, 'pane-outline', 'outline--'))(locationWindow);
+  ok(locationState.scrolled, '带作用域的第6集链接执行真实定位函数');
+
   // 两个面板共享 document 时，点击监听仍各自归属，互不复制对方内容。
   const events = { a: [], b: [] };
   let active = 'a';
@@ -131,6 +179,10 @@ try {
   };
   symlinkSync(own, old);
   eq(install().status, 0, '默认安装成功');
+  const piAgent = name => join(home, '.pi/agent/agents', `${name}.md`);
+  for (const agent of ['novel-video-prompt-writer', 'novel-video-prompt-reviewer']) {
+    eq(readlinkSync(piAgent(agent)), join(root, 'agents/pi', `${agent}.md`), `安装到 pi 时链接角色定义 ${agent}`);
+  }
   ok(!existsSync(old) && !lstatSync(old, { throwIfNoEntry: false }), '默认安装清理本仓库旧软链');
   eq(readlinkSync(join(skills, 'novel-creation')), join(root, 'skills/novel-creation'), '安装当前视频创作 skill');
   symlinkSync(own, old);
@@ -149,6 +201,34 @@ try {
   rmSync(old, { recursive: true }); symlinkSync(own, old);
   eq(install('--uninstall').status, 0, '默认卸载可清理退役链接');
   ok(!lstatSync(old, { throwIfNoEntry: false }), '默认卸载删除本仓库旧软链');
+  ok(!lstatSync(piAgent('novel-video-prompt-writer'), { throwIfNoEntry: false }), '卸载删除 pi 角色定义软链');
+  // subagent 定义只随 Claude Code 安装
+  ok(!existsSync(join(home, '.claude')), '只安装到 pi 时不创建 Claude Code 目录');
+  const claude = (...args) => run('bash', ['scripts/install.sh', '--claude', ...args], { env: { ...process.env, HOME: home } });
+  const agentLink = name => join(home, '.claude/agents', `${name}.md`);
+  eq(claude().status, 0, '安装到 Claude Code 成功');
+  for (const [agent, skill] of [['novel-video-prompt-writer', 'novel-video-prompt'], ['novel-video-prompt-reviewer', 'novel-video-prompt-review']]) {
+    eq(readlinkSync(agentLink(agent)), join(root, 'agents', `${agent}.md`), `软链 subagent 定义 ${agent}`);
+    const text = readFileSync(join(root, 'agents', `${agent}.md`), 'utf8');
+    ok(text.includes(`name: ${agent}\n`) && text.includes(`skills: [${skill}]`), `${agent} 预载 ${skill}`);
+    ok(existsSync(join(root, 'skills', skill, 'SKILL.md')) && !/^tools:.*\bAgent\b/m.test(text), `${agent} 预载的 skill 存在且不能继续派发`);
+  }
+  // pi 的角色定义与 Claude Code 的同名：只用子代理扩展认识的字段，不写模型（继承调度会话），指南路径由任务简报给出
+  const piTools = {
+    'novel-video-prompt-writer': 'read, write, edit, bash, grep, find, ls',
+    'novel-video-prompt-reviewer': 'read, edit, bash, grep, find, ls',
+  };
+  for (const [agent, tools] of Object.entries(piTools)) {
+    const text = readFileSync(join(root, 'agents/pi', `${agent}.md`), 'utf8');
+    const front = text.match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? '';
+    eq(front.split('\n').map(line => line.split(':')[0]).join(','), 'name,description,tools', `pi 角色定义 ${agent} 只有 name、description、tools`);
+    ok(front.includes(`name: ${agent}`) && front.includes(`tools: ${tools}`), `pi 角色定义 ${agent} 的工具白名单`);
+    ok(/最后一条回复/.test(text) && /不能向用户提问/.test(text), `pi 角色 ${agent} 说明非交互与回报方式`);
+    ok(/不启动其他代理/.test(text), `pi 角色 ${agent} 不继续派发`);
+  }
+  ok(!existsSync(join(root, '.pi')), '仓库不保留项目级 .pi 角色定义');
+  eq(claude('--uninstall').status, 0, '从 Claude Code 卸载成功');
+  ok(!lstatSync(agentLink('novel-video-prompt-writer'), { throwIfNoEntry: false }), '卸载删除 subagent 软链');
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }

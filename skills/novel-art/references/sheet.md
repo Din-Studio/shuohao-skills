@@ -1,74 +1,21 @@
 # 设定图出图（场景 + 道具）· 版面与提示词
 
-出图走 **lingying**（灵影网关）。**调用不用你写**——提交、轮询、落盘、续传全在
-`scripts/lib/lingying.mjs` 里，一条命令跑完：
+本 skill 只导出出图计划；实际生成使用独立安装的 **ly-image**。先阅读 [交接与恢复流程](media-handoff.md)。
 
 ```bash
-cd <段目录>            # <段目录> = <工作目录>/art/
-node <baseDir>/scripts/novel-art.mjs images <剧名>-art.json
+node <baseDir>/scripts/novel-art.mjs images <剧名>-art.json --out image-plan.json
 ```
 
-| 选项 | 作用 |
-| --- | --- |
-| `--dry-run` | 只打印将要提交的参数，不提交。参数存疑先跑这个 |
-| `--only S01,P01` | 只出这几个（变体的母场景会自动跟着出，否则参考图挂不上） |
-| `--force` | 已有产物也重出。默认跳过已经出好的 |
-| `--cutout` | 道具白底图再走一次抠图，另存 `-cutout.png` |
-| `--timeout <秒>` | 单张总超时，默认 300 秒 |
-| `--concurrency <n>` | 同时在跑的任务数，默认 4 |
+可使用 `--only` 选择任务，`--dry-run` 预览；默认同样不会生成。变体自动补齐母场景依赖，并按先母后子的顺序导出。
+模型、档位和画幅来自显式 production.json，提示词来自 image.sheet 与 image.negativePrompt。缺完整制作参数时先补齐，不能使用隐式默认值。设定图画幅与视频画幅分别读取，不折算像素。实时 schema 由 ly-image 核对。
 
-**这一步以前是一段可以复制的 bash，那是错的分工。** 写提示词是模型的活，把提示词
-提交给网关、等它跑完、把图存下来是代码的活——判据是「换个模型跑会不会得到不同
-结果」。会，交给模型；不会，交给代码。
-
-## 命令替你保证的七件事
-
-以前这七件靠模型每次重新拼一遍 bash，于是同一个接口有无数种拼错的方式：
-
-1. **参数不经过 shell**——`execFile` 收数组，提示词里的引号、换行、`$`、反引号、
-   中文原样抵达。`--input_data` 由 `JSON.stringify` 生成，手拼字符串炸掉的那一类
-   故障不存在了
-2. **只读 `data.status`**——响应里的 `"message": "success"` 恒为 success，在整段
-   JSON 里搜 `success` 第一次轮询就假命中。读不到 `data.status` 直接报错，不猜
-3. **超时是有限的**——单张到点标记 timeout 继续下一张，不阻断整批；退避从 3 秒
-   逐步拉开到 15 秒封顶，不是固定空转
-4. **产物即状态**——已有非空产物就跳过，先写 `.part` 再改名，半截文件不会被当成
-   成品。重跑不重复花钱
-5. **断点续传**——提交成功立刻把 task_id 写进 `images/.tasks.json`，中断后重跑接着
-   轮询那些任务，不重复提交。图落地这条就消掉，产物本身才是完成的凭据
-6. **先母后子**——变体场景等母场景落盘、`upload` 成 URL 再提交，次序由代码保证
-7. **提交之前失败**——提示词空着、变体指向不存在的母场景、两个名字算出同一个
-   文件名、凭证缺失，全部在花钱之前一次说完
-
-失败不阻断批次，但**最后有失败就 exit 1**——重跑会跳过已有产物，成本很低。
-stdout 是一行 JSON 汇总（`summary` + 逐条 `results`），进度与错误走 stderr。
-
-没装 lingying 就整步跳过，只交提示词，其余产出照常——命令会明说跳过原因。
-
-## 出图参数从 production.json 来
-
-命令自己从段目录**向上最多 5 层**找 `production.json`（`novel-setup` 的产出）：
-`image.model` 定模型，`image.asset.resolution` 定分辨率**档位**，`image.asset.aspectRatio`
-定版面画幅。这三个值原样进 `--input_data`，**不折算像素、提示词里也不写像素**——
-它们是 lingying `input_schema` 里的枚举字段，而且已经被 `novel-setup` 的能力表校验
-过一遍，这里不维护第二份枚举表。
-
-**资产图的画幅与成片画幅是两件事**：成片拍竖屏，设定图仍然是横构图——L 形版面靠
-横向铺开，竖过来细节格会被压扁。`novel-setup` 有一道门专门盯着这条。
-
-找不到 `production.json` 就按 `nanobanana2` + `2K` + `16:9` 出，命令会警告，汇报里
-要说清。提交报 `input validation failed` 时错误信息会指向 `novel-setup caps --model <名>`。
-
----
-
-以下是**你要写的部分**：版面与提示词。它们落在 `art.json` 的 `image.sheet`
-（设定图版面指令）与 `image.negativePrompt`（反向词）里，命令直接拿去提交。
+以下是版面和提示词的创作要求；计划不等于图片。
 
 ## 每个场景、每件道具各一张图
 
 ### 场景
 
-一张横构图（画幅按生产参数，默认 16:9），主视角大图 + **底部和右侧的 L 形细节边框**，
+一张横向或方形画布（画幅读取 `production.image.asset.aspectRatio`），主视角大图 + **底部和右侧的 L 形细节边框**，
 细线分隔：
 
 ```
@@ -94,7 +41,7 @@ stdout 是一行 JSON 汇总（`summary` + 逐条 `results`），进度与错误
 同一套 L 形版面，差别三处：**纯白背景**（每个面板都是，要抠图）、主视角是主状态的
 四分之三角度、底行放**其他状态 + 侧面正交视图**。全图**无人且无手**——拿着道具的手
 是最常见污染，出现就重生成。尺度短语（`handheld scale` 等）必须在提示词里，否则
-皮箱会被画成衣柜。
+手持铁盒会被画成柜子。
 
 场景和道具的产物都落到 `./images/<slug>-sheet.png`（`slug` 命令生成安全文件名），
 `render` 按同一个算法找图。
@@ -112,18 +59,21 @@ stdout 是一行 JSON 汇总（`summary` + 逐条 `results`），进度与错误
 
 ## 变体场景的提示词
 
-`variantOf` 的场景由命令自动拿母场景的成图当参考图，**你只管写提示词**：
+`variantOf` 进入计划的参考依赖；ly-image 必须先完成母场景，再绑定其成图作为参考：
 母场景主视角 + `changes` 的改动描述 + 一句
 `keep the structure, materials and wear identical to the reference image`。
 这比从零生成一致得多——变体机制的意义就在这。
 
 ## 道具的透明底
 
-白底出图之后再走一次抠图，比让生图模型直接出透明底稳。加 `--cutout` 就行，
-抠完另存 `-cutout.png`——`render` 找的仍然是 `<slug>-sheet.png`。
+白底出图之后，可另交 ly-image 执行透明底编辑；先查实时模型、参数和价格。核验后放到 optionalCutoutOutput，保留原白底主图；render 仍读取 `<slug>-sheet.png`。
 
 ## 画风一致性
 
 同一部剧的所有场景应该像同一个美术组画的。压不住的话，把第一个主场景的成图当风格
 参考喂给后面的场景（提示词里引一句它的渲染特征）。代价与角色 skill 相同：第一张
 定基调，出得不好就得重来。
+
+## 创作与制作参数分离
+
+创作要求不替代技术参数。出图仍必须提供 production 的完整视觉正文、模型、分辨率和资产画幅，不能由 creativeBrief 或 CLI 默认值代替。缺制作参数时生成任务报错。参考依赖与目标路径由计划保留；生成、上传及透明底编辑交给外部工具。

@@ -3,9 +3,13 @@
 // Zero dependencies on purpose: 和其余 skill 一样，任何目录里 node 直接跑。
 // Node 18+ (stdlib only).
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { documentProblems, check, blocking, mark } from './lib/contracts.mjs';
+export { documentProblems } from './lib/contracts.mjs';
+import { migrateProduction } from './lib/migration.mjs';
+export { migrateProduction } from './lib/migration.mjs';
 
 /* ------------------------------------------------------------------ */
 /* 文件名与查找                                                         */
@@ -26,7 +30,7 @@ export function findProduction(fromDir = '.', depth = LOOKUP_DEPTH) {
   let dir = resolve(fromDir);
   for (let i = 0; i <= depth; i++) {
     const hit = resolve(dir, PRODUCTION_FILE);
-    if (existsSync(hit)) return hit;
+    try { lstatSync(hit); return hit; } catch (error) { if (error.code !== 'ENOENT') throw error; }
     const up = dirname(dir);
     if (up === dir) break; // 到根了
     dir = up;
@@ -38,11 +42,11 @@ export function findProduction(fromDir = '.', depth = LOOKUP_DEPTH) {
 /* 生图模型能力表                                                       */
 /* ------------------------------------------------------------------ */
 /*
- * 出图与生视频都走 lingying（灵影网关）CLI。它的 `model get` 会把每个模型的
+ * 能力表来自历史采集。外部 ly-image / ly-video 的 models --model 提供当前
  * input_schema 原样打出来，所以这两张表**有本机可查的确凿依据**，
  * 不是凭记忆编的——每条都注明了取数命令，过期了重新跑一次就能对账。
  *
- * 关键差别（相对旧的按像素下单）：lingying 的 resolution 就是**档位本身**
+ * 关键差别（相对旧的按像素下单）：网关 的 resolution 就是**档位本身**
  * （1K / 2K / 4K），aspect_ratio 是**枚举**，两者都是结构化字段。
  * 所以本 skill 不再需要把档位折算成像素，也不再往提示词里写 `Render at …`。
  *
@@ -52,7 +56,7 @@ export function findProduction(fromDir = '.', depth = LOOKUP_DEPTH) {
 export const IMAGE_MODELS = {
   nanobanana2: {
     label: 'nanobanana2 · 灵影网关',
-    source: 'lingying model get f0621c54-167a-4319-a067-30c36eff2c3d',
+    source: '历史 CLI 采集，模型 UUID： f0621c54-167a-4319-a067-30c36eff2c3d',
     modelId: 'f0621c54-167a-4319-a067-30c36eff2c3d',
     resolutions: ['1K', '2K', '4K'],
     aspectRatios: ['1:1', '2:3', '3:2', '9:16', '16:9'],
@@ -62,7 +66,7 @@ export const IMAGE_MODELS = {
   },
   'image-2': {
     label: 'image-2 · 灵影网关',
-    source: 'lingying model get fac7474d-8dd2-4830-b792-02715820cfd6',
+    source: '历史 CLI 采集，模型 UUID： fac7474d-8dd2-4830-b792-02715820cfd6',
     modelId: 'fac7474d-8dd2-4830-b792-02715820cfd6',
     resolutions: ['1K', '2K', '4K'],
     aspectRatios: ['1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16'],
@@ -79,8 +83,8 @@ export const IMAGE_MODELS = {
 /* ------------------------------------------------------------------ */
 /*
  * 这张表以前是**有意留空**的——各家 resolution 口径不同、版本之间还会变，
- * 没有本机文档可依据时凭记忆编一张比不查更坏。改走 lingying 之后依据有了：
- * `lingying model list --model_type video` 加 `model get`，逐条抄下来。
+ * 没有本机文档可依据时凭记忆编一张比不查更坏。改走 网关 之后依据有了：
+ * 历史模型发现与详情采集，逐条记录；实际调用前必须重新查询。
  *
  * 各家的 resolution 口径不一样（`768p` / `2K` 与 `480p` / `720p` / `1080p` 并存），
  * 所以这张表逐个模型抄枚举，不做任何归一。
@@ -93,7 +97,7 @@ export const IMAGE_MODELS = {
 export const VIDEO_MODELS = {
   'MiniMax H3': {
     label: 'MiniMax H3 · 灵影网关',
-    source: 'lingying model get 7809cb1a-4f09-40de-a9e9-dd3841016138',
+    source: '历史 CLI 采集，模型 UUID： 7809cb1a-4f09-40de-a9e9-dd3841016138',
     modelId: '7809cb1a-4f09-40de-a9e9-dd3841016138',
     resolutions: ['768p', '2K'],
     aspectRatios: ['16:9', '21:9', '4:3', '1:1', '3:4', '9:16', 'adaptive'],
@@ -102,7 +106,7 @@ export const VIDEO_MODELS = {
   },
   'seedance2.5': {
     label: 'seedance2.5 · 灵影网关',
-    source: 'lingying model get 927e312f-795c-4558-9696-3226e51ecc08',
+    source: '历史 CLI 采集，模型 UUID： 927e312f-795c-4558-9696-3226e51ecc08',
     modelId: '927e312f-795c-4558-9696-3226e51ecc08',
     resolutions: ['480p', '720p'],
     aspectRatios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'],
@@ -112,7 +116,7 @@ export const VIDEO_MODELS = {
   },
   'seedance2.0': {
     label: 'seedance2.0 · 灵影网关',
-    source: 'lingying model get 67a84596-7d39-499e-8118-bd47075f753a',
+    source: '历史 CLI 采集，模型 UUID： 67a84596-7d39-499e-8118-bd47075f753a',
     modelId: '67a84596-7d39-499e-8118-bd47075f753a',
     resolutions: ['480p', '720p', '1080p'],
     aspectRatios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'],
@@ -121,7 +125,7 @@ export const VIDEO_MODELS = {
   },
   'seedance2.0 fast': {
     label: 'seedance2.0 fast · 灵影网关',
-    source: 'lingying model get 19dd94a3-a727-4753-8cc1-e67be689cb4f',
+    source: '历史 CLI 采集，模型 UUID： 19dd94a3-a727-4753-8cc1-e67be689cb4f',
     modelId: '19dd94a3-a727-4753-8cc1-e67be689cb4f',
     resolutions: ['480p', '720p'],
     aspectRatios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'],
@@ -130,7 +134,7 @@ export const VIDEO_MODELS = {
   },
   'seedance2.0 mini': {
     label: 'seedance2.0 mini · 灵影网关',
-    source: 'lingying model get 3d04b2de-9329-4bfa-aa99-c2d978bc8746',
+    source: '历史 CLI 采集，模型 UUID： 3d04b2de-9329-4bfa-aa99-c2d978bc8746',
     modelId: '3d04b2de-9329-4bfa-aa99-c2d978bc8746',
     resolutions: ['480p', '720p'],
     aspectRatios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'],
@@ -222,7 +226,7 @@ export const mentionsTerm = (haystack, term) =>
 export const autopilotOf = (doc) => doc?.autopilot === true;
 
 /** 出图与生视频统一走这个 CLI；skill 只认名字，装在哪由使用方决定。 */
-export const GENERATION_CLI = 'lingying';
+export const GENERATION_SKILLS = { image: 'ly-image', video: 'ly-video' };
 
 /* ------------------------------------------------------------------ */
 /* 比例与档位                                                           */
@@ -276,7 +280,7 @@ export function imageCaps(model, resolution = '') {
 }
 
 /**
- * 把段秒数折成 lingying 能接受的 duration。
+ * 把段秒数折成 网关 能接受的 duration。
  *
  * H3 只收 5~15 的**整数秒**，而分镜的段秒数是按节拍算出来的，可能是 3 秒、
  * 也可能是 12.5 秒。折算规则写死在这里，免得每个下单脚本各折各的：
@@ -320,6 +324,8 @@ export function initProduction({
   videoModel = '',
   videoResolution = '',
   style = null,
+  creativeBrief = undefined,
+  selection = undefined,
   lang = 'zh',
   promptLang = 'en',
 } = {}) {
@@ -330,8 +336,13 @@ export function initProduction({
     );
   }
 
+  if (selection !== undefined) throw new Error('selection 已废弃；使用 creativeBrief');
+  const problems = documentProblems({ schemaVersion: 3, ...(creativeBrief === undefined ? {} : { creativeBrief }) });
+  if (problems.length) throw new Error(problems.join('；'));
   return {
     source,
+    schemaVersion: 3,
+    ...(creativeBrief === undefined ? {} : { creativeBrief }),
     autopilot: autopilot === true,
     // 画风没有内置类型也没有默认值：给一份空骨架，用户填。
     // 没填 style-blocks 门会拦，不会静默用回某一档写死的画风。
@@ -358,7 +369,7 @@ export function initProduction({
  *   会导致重出图的（比例对不上、档位模型不收、画风缺块或自相矛盾）——拦；
  *   只影响阅读的（报告界面语言）——不设门，下游继承就好。
  *
- * 改走 lingying 之后多出来的那道是 model-caps：档位与比例都是模型的**枚举值**，
+ * 改走 网关 之后多出来的那道是 model-caps：档位与比例都是模型的**枚举值**，
  * 能在这里查死。以前档位要折成像素、折算规则在使用方的 CLI 里，
  * 所以只能查非空；现在枚举就在 input_schema 里，查得起。
  *
@@ -368,7 +379,9 @@ export function initProduction({
 
 export function gateReport(doc) {
   const gates = [];
-  const add = (id, label, ok, detail = '') => gates.push({ id, label, ok, detail });
+  const add = (id, label, passed, detail = '') => gates.push(check(id, label, passed ? 'pass' : 'fail', detail));
+  const documentBad = documentProblems(doc);
+  add('document-contract', 'v3 数据契约与创作要求', !documentBad.length, documentBad.join('；'));
 
   const img = doc?.image ?? {};
   const asset = img.asset ?? {};
@@ -377,9 +390,9 @@ export function gateReport(doc) {
   /* 1 — 字段齐全且枚举合法 */
   {
     const bad = [];
-    if (!String(img.model ?? '').trim()) bad.push('image.model 为空');
-    if (!String(asset.resolution ?? '').trim()) bad.push('image.asset.resolution 为空');
-    if (!String(asset.aspectRatio ?? '').trim()) bad.push('image.asset.aspectRatio 为空');
+    if (typeof img.model !== 'string' || !img.model.trim()) bad.push('image.model 为空');
+    if (typeof asset.resolution !== 'string' || !asset.resolution.trim()) bad.push('image.asset.resolution 为空');
+    if (typeof asset.aspectRatio !== 'string' || !asset.aspectRatio.trim()) bad.push('image.asset.aspectRatio 为空');
     // style 的内容归下面两道门查，这里只确认它是个对象——画风已经不是枚举了
     if (!doc?.style || typeof doc.style !== 'object' || Array.isArray(doc.style)) {
       bad.push('style 要是一个对象（画风没有内置类型，正文在这一段填；跑 style-template 拿骨架）');
@@ -407,7 +420,7 @@ export function gateReport(doc) {
       'aspect-format',
       '比例都是 W:H 写法',
       bad.length === 0,
-      bad.length ? `${bad.join('；')}——lingying 的 adaptive 在本管线里不能用：成片需要固定画幅，不能让模型逐段选择` : '',
+      bad.length ? `${bad.join('；')}——网关 的 adaptive 在本管线里不能用：成片需要固定画幅，不能让模型逐段选择` : '',
     );
   }
 
@@ -426,7 +439,7 @@ export function gateReport(doc) {
   /* 4 — 视频 resolution 已填（资产图非空归 fields，枚举归模型门） */
   {
     const bad = [];
-    if (!String(video.resolution ?? '').trim()) bad.push('video.resolution 为空');
+    if (typeof video.resolution !== 'string' || !video.resolution.trim()) bad.push('video.resolution 为空');
     add(
       'resolution-filled',
       '资产图与视频分辨率档位都已填',
@@ -441,11 +454,11 @@ export function gateReport(doc) {
   {
     const bad = [];
     const model = String(video.model ?? '').trim();
-    if (!model) bad.push('video.model 为空');
-    const entry = VIDEO_MODELS[model];
+    if (typeof video.model !== 'string' || !model) bad.push('video.model 必须是非空字符串');
+    const entry = Object.hasOwn(VIDEO_MODELS, model) ? VIDEO_MODELS[model] : null;
     let note = '';
     if (model && !entry) {
-      note = `${model} 不在能力表里，只查了非空（能力表来自 lingying model get，加一条就自动开始查）`;
+      note = `${model} 不在能力表里，只查了非空（能力表来自 历史模型采集，加一条就自动开始查）`;
     } else if (entry) {
       const caps = videoCaps(model);
       if (caps && !matchTier(video.resolution, caps.resolutions)) {
@@ -461,14 +474,14 @@ export function gateReport(doc) {
     add('video-model', '视频模型与参数合法', bad.length === 0, bad.length ? bad.join('；') : note);
   }
 
-  /* 6 — 档位与比例被生图模型收（lingying 的 input_schema 是枚举，查得死） */
+  /* 6 — 档位与比例被生图模型收（网关 的 input_schema 是枚举，查得死） */
   {
     const model = String(img.model ?? '').trim();
-    const entry = IMAGE_MODELS[model];
+    const entry = Object.hasOwn(IMAGE_MODELS, model) ? IMAGE_MODELS[model] : null;
     const bad = [];
     let note = '';
     if (model && !entry) {
-      note = `${model} 不在能力表里，档位与比例都跳过检查（能力表来自 lingying model get，加一条就自动开始查）`;
+      note = `${model} 不在能力表里，档位与比例都跳过检查（能力表来自 历史模型采集，加一条就自动开始查）`;
     } else if (entry) {
       for (const [label, slot] of [['资产图', asset]]) {
         const res = String(slot?.resolution ?? '').trim();
@@ -507,9 +520,9 @@ export function gateReport(doc) {
     if (!style || typeof style !== 'object' || Array.isArray(style)) {
       bad.push('style 不是对象');
     } else {
-      if (!String(style.label?.zh ?? '').trim()) bad.push('style.label.zh 为空（画风的中文名，报告里显示它）');
+      if (typeof style.label?.zh !== 'string' || !style.label.zh.trim()) bad.push('style.label.zh 为空（画风的中文名，报告里显示它）');
       const phrase = String(style.phrase ?? '').trim();
-      if (!phrase) {
+      if (typeof style.phrase !== 'string' || !phrase) {
         bad.push('style.phrase 为空（视频提示词指南使用的英文画风短语）');
       } else if (/[^\x20-\x7e]/.test(phrase)) {
         bad.push(`style.phrase「${phrase}」含非 ASCII 字符——请填写英文画风短语`);
@@ -522,10 +535,10 @@ export function gateReport(doc) {
         }
         for (const f of fields) {
           if (f === 'tags') {
-            if (!Array.isArray(b.tags) || b.tags.filter((t) => String(t ?? '').trim()).length === 0) {
+            if (!Array.isArray(b.tags) || b.tags.length === 0 || b.tags.some(t => typeof t !== 'string' || !t.trim())) {
               bad.push(`style.${block}.tags 要是非空数组`);
             }
-          } else if (!String(b[f] ?? '').trim()) {
+          } else if (typeof b[f] !== 'string' || !b[f].trim()) {
             bad.push(`style.${block}.${f} 为空`);
           }
         }
@@ -567,12 +580,18 @@ export function gateReport(doc) {
     );
   }
 
+  for (const [id, model, table] of [['model-caps', img.model, IMAGE_MODELS], ['video-model', video.model, VIDEO_MODELS]]) {
+    if (typeof model === 'string' && model.trim() && !Object.hasOwn(table, model.trim())) {
+      const g = gates.find(g => g.id === id);
+      if (g.status === 'pass') { g.status = 'skipped'; g.reason = 'not-applicable'; }
+    }
+  }
   return gates;
 }
 
 export function validateProduction(doc) {
   return gateReport(doc)
-    .filter((g) => !g.ok)
+    .filter(blocking)
     .map((g) => `[${g.id}] ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
 }
 
@@ -584,8 +603,8 @@ export function validateProduction(doc) {
  * 它们直接读 production.json。resolve 是给「想一行拿到参数」的场合用的：
  * 出图前 shell 一句就知道这次该用哪个模型、哪个档位、哪个比例。
  *
- * 最值钱的一个字段是 inputData：**直接展开进 lingying 的 --input_data**，
- * 每个 skill 只要补一个 prompt（和参考图 URL）就能提交，
+ * inputData 保留制作参数接口；执行方将其作为 params 候选，按实时 schema 核对。
+ * 提示词与素材交接给 ly-image / ly-video，不在本仓库提交。
  * 省得各拼各的——拼法一漂就又是一处不一致。
  */
 
@@ -605,10 +624,13 @@ export function resolveStage(doc, stage) {
   const meta = STAGES[stage];
   if (!meta) throw new Error(`未知阶段 ${stage}（可用：${Object.keys(STAGES).join(' / ')}）`);
 
+  const problems = documentProblems(doc);
+  if (problems.length) throw new Error(problems.join('；'));
   const style = doc?.style ?? {};
   const common = {
     stage,
     what: meta.what,
+    ...(doc?.creativeBrief ? { creativeBrief: doc.creativeBrief } : {}),
     style: {
       label: style.label ?? {},
       phrase: style.phrase ?? '',
@@ -616,7 +638,7 @@ export function resolveStage(doc, stage) {
     },
     lang: doc?.lang,
     autopilot: autopilotOf(doc),
-    cli: GENERATION_CLI,
+    skill: meta.kind === 'video' ? GENERATION_SKILLS.video : GENERATION_SKILLS.image,
   };
 
   if (meta.kind === 'video') {
@@ -635,7 +657,7 @@ export function resolveStage(doc, stage) {
       // duration 逐段不同，下单时用 clampDuration 折算后补进去
       inputData,
       durationRange: caps?.duration ?? null,
-      command: `${GENERATION_CLI} video create --model ${JSON.stringify(model)} --input_data '<JSON>' --json`,
+      command: 'node <ly-video-dir>/scripts/video.mjs models --model ' + JSON.stringify(model),
     };
   }
 
@@ -648,13 +670,13 @@ export function resolveStage(doc, stage) {
     model,
     resolution,
     aspectRatio,
-    // 补一个 prompt（要参考图再补 images）就能提交，不用自己拼。
+    // 这里只提供候选参数；素材字段必须由执行方按实时 schema 绑定。
     // 档位回填成枚举里的写法：用户写了 2k，网关只认 2K
     inputData: {
       aspect_ratio: aspectRatio,
       resolution: matchTier(resolution, IMAGE_MODELS[model]?.resolutions ?? []) ?? resolution,
     },
-    command: `${GENERATION_CLI} image create --model ${JSON.stringify(model)} --input_data '<JSON>' --json`,
+    command: 'node <ly-image-dir>/scripts/image.mjs models --model ' + JSON.stringify(model),
   };
 }
 
@@ -665,12 +687,16 @@ export function resolveStage(doc, stage) {
 const dash = (v) => (String(v ?? '').trim() ? String(v) : '—');
 
 export function renderMarkdown(doc) {
+  const problems = documentProblems(doc);
+  if (problems.length) throw new Error(problems.join('；'));
   const img = doc?.image ?? {};
   const gates = gateReport(doc);
-  const failed = gates.filter((g) => !g.ok);
+  const failed = gates.filter(blocking);
 
   const out = [];
   out.push(`# 生产参数${doc?.source ? ` · ${doc.source}` : ''}`, '');
+  if (doc?.creativeBrief) out.push(`创作要求：${doc.creativeBrief}`);
+  out.push('');
   out.push('| 参数 | 值 |', '| --- | --- |');
   out.push(`| 生图模型 | ${dash(img.model)} |`);
   out.push(`| 资产图分辨率 | ${dash(img.asset?.resolution)} |`);
@@ -682,13 +708,14 @@ export function renderMarkdown(doc) {
   out.push(`| 画风短语 | ${dash(doc?.style?.phrase)} |`);
   out.push(`| 报告界面语言 | ${dash(doc?.lang)} |`);
   out.push(`| 提示词语言 | ${dash(doc?.promptLang)} |`);
-  out.push(`| 自动驾驶 | ${autopilotOf(doc) ? '开（下游跑完整段不打断）' : '关（该问就问）'} |`);
+  out.push(`| 自动驾驶 | ${autopilotOf(doc) ? '开启（下游跑完整段不打断）' : '关闭（该问就问）'} |`);
   out.push('');
-  out.push(`> 出图与生视频都走 \`${GENERATION_CLI}\`：分辨率与比例是它的**枚举值**，原样填进 \`--input_data\`，提示词里不写像素。`, '');
+  out.push('> 实际生图使用 ly-image，生视频使用 ly-video。此处只提供制作参数；档位与比例需按实时 schema 核对，不折算像素。', '');
   out.push('## 质量门', '');
   for (const g of gates) {
-    out.push(`- ${g.ok ? '✅' : '❌'} ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
+    out.push(`- ${mark(g)} ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
   }
+  out.push('', '结构检查不代表创作要求已重新评审。内容评审：未执行。');
   if (failed.length) out.push('', `**${failed.length} 道门没过，先修再往下跑。**`);
   return out.join('\n');
 }
@@ -706,11 +733,13 @@ const USAGE = `novel-setup.mjs — novel-setup skill 的确定性工具（生产
        [--asset-resolution <档位>]        资产图分辨率档位，默认 2K
        [--asset-aspect <W:H>]            资产图比例（默认 16:9——设定图版面要横构图）
        [--image-model <名>]              默认 nanobanana2
-       [--video-model <名>]              视频模型，取 lingying model list 的 ID 列
+       [--video-model <名>]              视频模型，取 ly-video 实时 models 返回的 id
        [--video-resolution <档位>]        视频分辨率档位（如 768p）
+       [--creative-brief <正文>]          可选自然语言创作要求，不推导规则
        [--style <style.json>]            画风正文；不给就留一份空骨架待填
        [--lang zh|en]                    报告界面语言，默认 zh
        [--prompt-lang zh|en]             H3 提示词语言，默认 en
+  migrate-v3 INPUT [--out OUTPUT] [--confirm]  预览迁移；显式确认语义项后写入新文件
   style-template                         打印画风骨架与逐字段说明（填好放进顶层 style）
   style <production.json>                打印这部剧的画风
         [--for character|scene]          只打印某一块（下游 skill 抄的就是它）
@@ -724,17 +753,17 @@ const USAGE = `novel-setup.mjs — novel-setup skill 的确定性工具（生产
   find [--from <目录>]                    只打印找到的 production.json 路径
   models                                 打印内置的生图与生视频模型能力表
 
-出图与生视频都走 ${GENERATION_CLI} CLI。分辨率与比例是它的**枚举值**（1K/2K/4K、16:9…），
-原样填进 --input_data，不折算像素、提示词里也不写像素。能力表抄自 \`${GENERATION_CLI} model get\`，
+实际生成使用 ly-image / ly-video，本命令只管理制作参数。
+能力表是历史快照；提交前通过外部 skill 的 models --model 查询实时 schema，
 每条都注明取数命令；表里没有的模型不是错误，相关的门明说跳过。
 
 production.json 住在**工作目录根**，下游从自己的输出目录向上找（最多 ${LOOKUP_DEPTH} 层）。`;
 
 function readJson(path) {
-  return JSON.parse(readFileSync(resolve(path), 'utf8'));
+  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(resolve(path))));
 }
 
-function flag(rest, name, fallback = null) {
+function flag(rest, name, fallback) {
   const i = rest.indexOf(name);
   return i >= 0 && rest[i + 1] ? rest[i + 1] : fallback;
 }
@@ -758,11 +787,43 @@ function main(argv) {
     process.exit(cmd ? 0 : 1);
   }
 
+  if (cmd === 'migrate-v3') {
+    const [input, ...options] = rest;
+    if (!input || input.startsWith('--')) throw new Error('用法：migrate-v3 INPUT [--out OUTPUT] [--confirm]');
+    let output;
+    let confirm = false;
+    for (let i = 0; i < options.length; i++) {
+      if (options[i] === '--confirm' && !confirm) confirm = true;
+      else if (options[i] === '--out' && !output && options[i + 1] && !options[i + 1].startsWith('--')) output = options[++i];
+      else throw new Error('无效或重复迁移选项：' + options[i]);
+    }
+    const inputPath = resolve(input);
+    if (!lstatSync(inputPath).isFile()) throw new Error('迁移输入必须为常规文件，不能使用符号链接');
+    const original = readFileSync(inputPath);
+    const result = migrateProduction(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(original)), validateProduction);
+    if (output) {
+      if (resolve(output) === resolve(input)) throw new Error('迁移不能覆盖原文件；请选择新路径');
+      if (result.pending.length && !confirm) {
+        console.log(JSON.stringify(result, null, 2));
+        throw new Error('存在待人工确认项；检查预览后使用 --confirm，或先人工合并');
+      }
+      if (!readFileSync(inputPath).equals(original)) throw new Error('迁移期间输入已变化，请重新预览');
+      // Exclusive create also rejects existing files, directories and symlinks.
+      writeFileSync(resolve(output), JSON.stringify(result.candidate, null, 2) + '\n', { flag: 'wx' });
+      result.status = 'written';
+      result.output = resolve(output);
+      result.contentReview = 'not-performed';
+    }
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
   if (cmd === 'init') {
-    const allowed = new Set(['--aspect', '--source', '--autopilot', '--asset-resolution', '--asset-aspect', '--image-model', '--video-model', '--video-resolution', '--style', '--lang', '--prompt-lang']);
+    const allowed = new Set(['--aspect', '--source', '--autopilot', '--asset-resolution', '--asset-aspect', '--image-model', '--video-model', '--video-resolution', '--style', '--creative-brief', '--lang', '--prompt-lang']);
     for (const arg of rest) {
       if (arg.startsWith('--') && !allowed.has(arg)) throw new Error(`未知选项 ${arg}`);
     }
+    if (rest.includes('--creative-brief') && (!flag(rest, '--creative-brief') || flag(rest, '--creative-brief').startsWith('--'))) throw new Error('--creative-brief 需要非空正文');
     const doc = initProduction({
       aspect: flag(rest, '--aspect'),
       source: flag(rest, '--source', ''),
@@ -772,11 +833,13 @@ function main(argv) {
       imageModel: flag(rest, '--image-model', 'nanobanana2'),
       videoModel: flag(rest, '--video-model', ''),
       videoResolution: flag(rest, '--video-resolution', ''),
+      creativeBrief: flag(rest, '--creative-brief', undefined),
       style: flag(rest, '--style') ? readJson(flag(rest, '--style')) : null,
       lang: flag(rest, '--lang', 'zh'),
       promptLang: flag(rest, '--prompt-lang', 'en'),
     });
     console.log(JSON.stringify(doc, null, 2));
+    // Omitted creativeBrief is valid; do not invent creative requirements.
     if (!flag(rest, '--style')) {
       console.error('⚠️ 画风留了空骨架——填满顶层 style 再跑 validate（style-template 有逐字段说明）');
     }
@@ -815,6 +878,8 @@ function main(argv) {
     const [path] = rest;
     if (!path) throw new Error('用法：style <production.json> [--for character|scene]');
     const doc = readJson(path);
+    const problems = documentProblems(doc);
+    if (problems.length) throw new Error(problems.join('；'));
     const only = flag(rest, '--for');
     if (only && !Object.keys(STYLE_BLOCKS).includes(only)) {
       throw new Error(`--for 要是 ${Object.keys(STYLE_BLOCKS).join(' / ')}`);
@@ -840,10 +905,10 @@ function main(argv) {
     if (cmd === 'checkup') {
       const gates = gateReport(doc);
       for (const g of gates) {
-        console.log(`${g.ok ? '✓' : '✗'} ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
+        console.log(`${mark(g)} ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
       }
-      const failedN = gates.filter((g) => !g.ok).length;
-      console.log(failedN ? `\n✗ ${failedN} 项未过` : '\n✓ 全部通过');
+      const failedN = gates.filter(blocking).length;
+      console.log(`\n阻断失败 ${failedN}；通过 ${gates.filter(g => g.status === 'pass').length}；跳过 ${gates.filter(g => g.status === 'skipped').length}；内容未评审`);
       if (failedN) process.exit(1);
       return;
     }
@@ -855,7 +920,7 @@ function main(argv) {
       process.exit(1);
     }
     console.log(
-      `✓ 生产参数全部通过校验（成片 ${doc.video?.aspectRatio} · 资产图 ${doc.image?.asset?.resolution} ${doc.image?.asset?.aspectRatio} · 画风 ${styleLabelOf(doc?.style)} · 自动驾驶 ${autopilotOf(doc) ? '开' : '关'}）`,
+      `✓ 生产参数无阻断失败（跳过 ${gateReport(doc).filter(g => g.status === 'skipped').length} 项，内容未评审）（成片 ${doc.video?.aspectRatio} · 资产图 ${doc.image?.asset?.resolution} ${doc.image?.asset?.aspectRatio} · 画风 ${styleLabelOf(doc?.style)} · 自动驾驶 ${autopilotOf(doc) ? '开启' : '关闭'}）`,
     );
     return;
   }
@@ -870,7 +935,7 @@ function main(argv) {
   if (cmd === 'caps') {
     const model = flag(rest, '--model');
     if (!model) {
-      console.log(`${GENERATION_CLI} 能力表（抄自 ${GENERATION_CLI} model get，每条都注明取数命令）\n`);
+      console.log('历史能力快照（每条保留来源；实时约束请通过 ly-image / ly-video 查询）\n');
       console.log('生图：');
       for (const [name, m] of Object.entries(IMAGE_MODELS)) {
         console.log(`  ${name.padEnd(14)} 档位 ${m.resolutions.join(' / ')}　比例 ${m.aspectRatios.join(' / ')}`);
@@ -891,7 +956,7 @@ function main(argv) {
     if (!entry) {
       throw new Error(
         `能力表里没有 ${model}（生图：${Object.keys(IMAGE_MODELS).join(' / ')}；生视频：${Object.keys(VIDEO_MODELS).join(' / ')}）\n` +
-          `跑 \`${GENERATION_CLI} model list\` 看网关上现在有什么，确认口径后往表里加一条就自动开始查。`,
+          '请使用 ly-image / ly-video 的 models 发现当前模型，再读取 models --model 的实时 schema。',
       );
     }
     console.log(JSON.stringify({ model, ...entry }, null, 2));
@@ -926,8 +991,8 @@ function main(argv) {
     console.log(
       JSON.stringify(
         {
-          cli: GENERATION_CLI,
-          note: `能力表抄自 \`${GENERATION_CLI} model get\`，每条都带取数命令；表里没有的模型不是错误，相关的门明说跳过`,
+          skills: GENERATION_SKILLS,
+          note: '历史能力快照，非实时发现；实际生成前使用 ly-image / ly-video 核对 schema。表外模型的能力检查明确跳过。',
           image: IMAGE_MODELS,
           video: VIDEO_MODELS,
         },

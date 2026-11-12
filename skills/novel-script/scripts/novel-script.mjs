@@ -1,1197 +1,530 @@
 #!/usr/bin/env node
-// novel-script — deterministic helpers for the novel-script skill (剧本).
-// Zero dependencies on purpose: the skill must work in any directory
-// without an npm install. Node 18+ (stdlib only).
-
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+// Self-contained script v3 consumer. No sibling imports.
+import { lstatSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_PARAMS, effectiveParams, parameterErrors, documentErrors, productionErrors } from './lib/document.mjs';
+import { migrateFile, readJsonStrict } from './lib/migration.mjs';
+import { projectRoot, loadKnownUpstreams, checkKnownCreation } from './lib/downstream.mjs';
 
-/* ------------------------------------------------------------------ */
-/* 时长引擎                                                             */
-/* ------------------------------------------------------------------ */
-/*
- * 剧本层不分镜头（分镜是下一个 skill 的活），但时长预算必须在这层守住：
- * AI 短剧一集就是三分钟上下，台词写超了后面全盘返工。
- *
- * 估算模型：台词秒数 = 非空白字符数 ÷ 语速；动作节拍按固定秒数计。
- * 是估算不是秒表，所以容差给到 ±15%（可配）——但估算也比不算强得多，
- * 一集写到五分钟的剧本在这里就会被拦下，不会流到生成环节才发现。
- */
-
-export const DEFAULT_PARAMS = {
-  charsPerSecond: 4.5, // 中文口语偏快档
-  actionSeconds: 2.5,  // 每个动作节拍的估时
-  tolerance: 0.15,     // 时长容差 ±15%
-  maxLineChars: 35,    // 单句台词上限——一口气说不完的台词也生成不了
-  hookWindow: 3,       // 开场钩子必须在全集前几拍内兑现——短剧开场 3 秒定生死
-};
-
-
-/* ------------------------------------------------------------------ */
-/* 生产参数（production.json）                                          */
-/* ------------------------------------------------------------------ */
-/*
- * novel-setup 产出的一份 JSON，住在**工作目录根**。本 skill 不出图，
- * 只从里面取一样东西：报告界面语言。
- *
- * 语言走**继承不设门**——优先级 --lang > 本 JSON 顶层 lang > 生产参数 > zh。
- * 改一次显示语言不该被拦，它不产生任何浪费；画风、画幅那种改了要整批重出图
- * 的参数才设门，那两道在出图的三个 skill 里。
- *
- * 这十几行查找逻辑与 novel-setup 那边是**有意重复**的：本 skill 必须能整个
- * 拷走单独跑，不 import 任何兄弟 skill 的代码。
- */
-
+export const SKILL_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+export { DEFAULT_PARAMS };
 export const PRODUCTION_FILE = 'production.json';
 export const PRODUCTION_DEPTH = 5;
-
+export const STAGE_DIR = 'script';
+export const autopilotOf = p => p?.autopilot === true;
+export const AUTOPILOT_NOTE = '自动驾驶：开启；继续检查并汇报每项决定，不要停下来问用户。';
+const arr = x => Array.isArray(x) ? x : [];
+const obj = x => x !== null && typeof x === 'object' && !Array.isArray(x);
+const text = x => typeof x === 'string' && x.trim().length > 0;
+const positive = x => typeof x === 'number' && Number.isFinite(x) && x > 0;
+const integer = x => Number.isSafeInteger(x) && x > 0;
+const own = (x, k) => obj(x) && Object.hasOwn(x, k);
+const idOK = (x, prefix) => typeof x === 'string' && new RegExp(`^${prefix}\\d{2,}$`).test(x);
+const r1 = x => Number.isFinite(x) ? Math.round(x * 10) / 10 : null;
+export const lineChars = line => String(line ?? '').replace(/\s+/g, '').length;
+export const paramsOf = doc => effectiveParams(doc?.params);
+export function endBeatOf(ep) {
+  for (let si = arr(ep?.scenes).length - 1; si >= 0; si--) {
+    const count = arr(ep.scenes[si]?.flow).length;
+    if (count) return [si + 1, count];
+  }
+  return null;
+}
+export function plansFor(ep, ctx = {}) {
+  return own(ctx, 'outline') ? arr(ctx.outline?.episodes).find(e => e?.ep === ep?.ep) ?? {} : ep ?? {};
+}
 export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
   let dir = resolve(fromDir);
   for (let i = 0; i <= depth; i++) {
-    const hit = resolve(dir, PRODUCTION_FILE);
-    if (existsSync(hit)) return hit;
+    const p = resolve(dir, PRODUCTION_FILE);
+    try { lstatSync(p); return p; } catch (error) { if (error.code !== 'ENOENT') throw error; }
     const up = dirname(dir);
-    if (up === dir) break; // 到根了
+    if (dir === up) break;
     dir = up;
   }
   return null;
 }
-
-/* ------------------------------------------------------------------ */
-/* 自动驾驶                                                            */
-/* ------------------------------------------------------------------ */
-/*
- * production.json 顶层的 autopilot。为 true 时本 skill 的全部流程一口气跑完：
- * 没有 outline.json 也不问「要不要先跑 novel-outline」，批次之间不停下来等确认，
- * 做过的决定全部写进最后的汇报。
- *
- * 转移的是**审批权**，不是取消检查点：10 道门照样要过、写超写欠照样自己改到
- * 落进容差——只是不再等人点头。
- *
- * **只认布尔真值**：JSON 里写成字符串 "false" 在 JS 里是真的，那种写法会让
- * 一整条管线闷头跑完，比没写更坏。novel-setup 的 fields 门查这个类型。
- */
-
-export const autopilotOf = (production) => production?.autopilot === true;
-
-/** 开着才打印——关着就是原来的样子，没有新信息。 */
-export const AUTOPILOT_NOTE =
-  '自动驾驶：开——本段流程一口气跑完，不要停下来问用户；替用户做的决定全部写进最后的汇报';
-
-/* ------------------------------------------------------------------ */
-/* 产物落点                                                            */
-/* ------------------------------------------------------------------ */
-/*
- * 工作目录约定：每个 skill 的产物归自己的段目录（outline / characters /
- * art / script / creation），工作目录根只住 production.json。
- *
- * 落点写错了不用重出图，所以这里是提示不是门——但必须说出来：合并报告的
- * `--from` 自动发现是按段目录名找 JSON 的，产物平铺在根目录它就找不到。
- *
- * 只有找得到 production.json 才判断得了——那份文件定义了工作目录根在哪。
- * 单独跑某一段、没跑过 novel-setup 的场合无从判断，那就不提示。
- */
-
-/** 本 skill 的产物该住的段目录名。 */
-export const STAGE_DIR = 'script';
-
-/** 落点不对就返回一句人读的提示；落点对了、或无从判断，返回 null。 */
 export function stageDirNote(docPath, productionPath, stage = STAGE_DIR) {
   if (!docPath || !productionPath) return null;
   const want = resolve(dirname(resolve(productionPath)), stage);
-  const got = dirname(resolve(docPath));
-  if (got === want) return null;
-  return `产物落在 ${got}，按工作目录约定该住在 ${want}——每个 skill 的产物归自己的段目录，放错了合并报告的 --from 自动发现找不到它`;
+  return dirname(resolve(docPath)) === want ? null : `Expected artifact directory: ${want}`;
+}
+export function slug(name) {
+  return String(name ?? '').trim().replace(/[\s/\\:*?"<>|·]+/g, '-').replace(/^-+|-+$/g, '') || 'script';
 }
 
-export function paramsOf(doc) {
-  return { ...DEFAULT_PARAMS, ...(doc?.params ?? {}) };
+// One unrounded clock for every scene, episode, position and inclusive claim.
+export function beatSeconds(beat, params = DEFAULT_PARAMS) {
+  params = effectiveParams(params);
+  if (!obj(beat) || own(beat, 'action') === own(beat, 'line')) return null;
+  if (own(beat, 'action')) return text(beat.action) && positive(params.actionSeconds) ? params.actionSeconds : null;
+  if (!text(beat.line) || !positive(params.charsPerSecond)) return null;
+  const seconds = lineChars(beat.line) / params.charsPerSecond;
+  return positive(seconds) ? seconds : null;
 }
-
-/** 台词计秒用的字符数：去空白，标点算时间（停顿也是时间）。 */
-export const lineChars = (line) => String(line ?? '').replace(/\s+/g, '').length;
-
-const r1 = (n) => Math.round(n * 10) / 10;
-
-/** 一场戏的估秒。flow 里台词按语速折算，动作节拍按固定秒数。 */
+export function episodeTimeline(ep, params = DEFAULT_PARAMS) {
+  let clock = 0;
+  const rows = [];
+  arr(ep?.scenes).forEach((scene, si) => arr(scene?.flow).forEach((beat, bi) => {
+    const seconds = beatSeconds(beat, params);
+    const startSeconds = clock;
+    const next = clock === null || seconds === null ? null : clock + seconds;
+    clock = Number.isFinite(next) ? next : null;
+    rows.push({ coord: [si + 1, bi + 1], index: rows.length + 1, startSeconds, endSeconds: clock, seconds, beat });
+  }));
+  return rows;
+}
+export function coordinateIndex(ep, coord) {
+  if (!Array.isArray(coord) || coord.length !== 2 || !coord.every(integer)) return null;
+  const scenes = arr(ep?.scenes);
+  if (coord[0] > scenes.length || coord[1] > arr(scenes[coord[0] - 1]?.flow).length) return null;
+  return scenes.slice(0, coord[0] - 1).reduce((n, s) => n + arr(s?.flow).length, 0) + coord[1] - 1;
+}
+export function claimRange(ep, claim, params = DEFAULT_PARAMS) {
+  const start = coordinateIndex(ep, claim?.start), end = coordinateIndex(ep, claim?.end);
+  if (start === null || end === null || start > end) return null;
+  const rows = episodeTimeline(ep, params).slice(start, end + 1);
+  if (rows.some(r => r.startSeconds === null || r.endSeconds === null)) return null;
+  return { startIndex: start, endIndex: end, startSeconds: rows[0].startSeconds, endSeconds: rows.at(-1).endSeconds, rows };
+}
 export function sceneSeconds(scene, params = DEFAULT_PARAMS) {
-  let dlg = 0;
-  let act = 0;
-  for (const b of scene?.flow ?? []) {
-    if (typeof b?.line === 'string') dlg += lineChars(b.line) / params.charsPerSecond;
-    else if (typeof b?.action === 'string') act += params.actionSeconds;
-  }
-  return { dialogue: r1(dlg), action: r1(act), total: r1(dlg + act) };
+  const rows = episodeTimeline({ scenes: [scene] }, params);
+  if (rows.some(r => r.seconds === null || r.endSeconds === null)) return { dialogue: null, action: null, total: null };
+  const dialogue = rows.filter(r => own(r.beat, 'line')).reduce((n, r) => n + r.seconds, 0);
+  const action = rows.filter(r => own(r.beat, 'action')).reduce((n, r) => n + r.seconds, 0);
+  return { dialogue, action, total: rows.at(-1)?.endSeconds ?? 0 };
 }
-
-/* ------------------------------------------------------------------ */
-/* stats — 报告与质量门共用的确定性统计                                   */
-/* ------------------------------------------------------------------ */
-
 export function computeStats(doc) {
-  const params = paramsOf(doc);
-  const episodes = [];
-  const sceneTable = [];
-  const byCharacter = new Map(); // C01 → { lines: [...], chars }
-
-  for (const ep of doc?.episodes ?? []) {
-    let dlg = 0;
-    let act = 0;
-    let lines = 0;
-    (ep?.scenes ?? []).forEach((sc, idx) => {
-      const sec = sceneSeconds(sc, params);
-      dlg += sec.dialogue;
-      act += sec.action;
-      let lineCount = 0;
-      for (const b of sc?.flow ?? []) {
-        if (typeof b?.line !== 'string') continue;
-        lineCount++;
-        lines++;
-        const key = b.speaker ?? '?';
-        if (!byCharacter.has(key)) byCharacter.set(key, { lines: [], chars: 0 });
-        const entry = byCharacter.get(key);
-        entry.lines.push({ ep: ep.ep, sceneIndex: idx + 1, sceneId: sc.sceneId, line: b.line, delivery: b.delivery ?? '' });
+  const params = paramsOf(doc), sceneTable = [], byCharacter = new Map();
+  const episodes = arr(doc?.episodes).map(ep => {
+    const timeline = episodeTimeline(ep, params);
+    const valid = timeline.every(r => r.seconds !== null && r.endSeconds !== null);
+    const dialogueSeconds = valid ? timeline.filter(r => own(r.beat, 'line')).reduce((n, r) => n + r.seconds, 0) : null;
+    const actionSeconds = valid ? timeline.filter(r => own(r.beat, 'action')).reduce((n, r) => n + r.seconds, 0) : null;
+    arr(ep?.scenes).forEach((sc, i) => {
+      const lines = arr(sc?.flow).filter(b => typeof b?.line === 'string');
+      sceneTable.push({ ep: ep?.ep, index: i + 1, sceneId: sc?.sceneId, lighting: sc?.lighting, characters: arr(sc?.characters), props: arr(sc?.props), lineCount: lines.length, estSeconds: sceneSeconds(sc, params).total });
+      for (const b of lines) {
+        const entry = byCharacter.get(b.speaker) ?? { id: b.speaker, lines: [], chars: 0 };
+        entry.lines.push({ ep: ep?.ep, sceneIndex: i + 1, sceneId: sc?.sceneId, line: b.line, delivery: b.delivery });
         entry.chars += lineChars(b.line);
+        byCharacter.set(b.speaker, entry);
       }
-      sceneTable.push({
-        ep: ep.ep, index: idx + 1, sceneId: sc.sceneId, lighting: sc.lighting ?? '',
-        characters: sc.characters ?? [], props: sc.props ?? [],
-        lineCount, estSeconds: sec.total,
-      });
     });
-    episodes.push({
-      ep: ep.ep,
-      target: ep.targetSeconds,
-      est: r1(dlg + act),
-      dialogueSeconds: r1(dlg),
-      actionSeconds: r1(act),
-      lines,
-      sceneCount: (ep?.scenes ?? []).length,
-    });
-  }
-
-  const totals = {
-    episodes: episodes.length,
-    scenes: sceneTable.length,
-    lines: episodes.reduce((n, e) => n + e.lines, 0),
-    estSeconds: r1(episodes.reduce((n, e) => n + e.est, 0)),
-    targetSeconds: episodes.reduce((n, e) => n + (e.target ?? 0), 0),
-    dialogueSeconds: r1(episodes.reduce((n, e) => n + e.dialogueSeconds, 0)),
-  };
-
-  const castLines = [...byCharacter.entries()]
-    .map(([id, v]) => ({ id, count: v.lines.length, chars: v.chars, lines: v.lines }))
-    .sort((a, b) => b.count - a.count);
-
-  return { params, episodes, sceneTable, castLines, totals };
+    return { ep: ep?.ep, target: ep?.targetSeconds, est: timeline.at(-1)?.endSeconds ?? (timeline.length ? null : 0), dialogueSeconds, actionSeconds, lines: timeline.filter(r => own(r.beat, 'line')).length, sceneCount: arr(ep?.scenes).length, timeline };
+  });
+  const sum = key => episodes.some(e => !Number.isFinite(e[key])) ? null : episodes.reduce((n, e) => n + e[key], 0);
+  return { params, episodes, sceneTable, castLines: [...byCharacter.values()].map(c => ({ ...c, count: c.lines.length })).sort((a, b) => b.count - a.count), totals: { episodes: episodes.length, scenes: sceneTable.length, lines: episodes.reduce((n, e) => n + e.lines, 0), estSeconds: sum('est'), targetSeconds: sum('target'), dialogueSeconds: sum('dialogueSeconds') } };
 }
 
-/* ------------------------------------------------------------------ */
-/* 质量门                                                               */
-/* ------------------------------------------------------------------ */
-/*
- * 与仓库里其他 skill 同一主张：checklist 是代码，不是给模型读的文字。
- * 需要上游对账的门（角色 / 场景与光照 / 爽点认领）在没给上游文件时
- * 明说跳过——静默通过和撒谎只差一步。
- */
-
-const thText = (s) => typeof s === 'string' && s.trim();
-/** 动作描述必须是叙述体——台词只能进 dialogue 字段，混进 action 就没法计秒。 */
-const QUOTE_RE = /「|」|『|』|“|”/;
-
-export function gateReport(doc, ctx = {}) {
-  const gates = [];
-  const add = (id, label, ok, detail = '') => gates.push({ id, label, ok, detail });
-  const eps = Array.isArray(doc?.episodes) ? doc.episodes : [];
-  const params = paramsOf(doc);
-  const stats = computeStats(doc);
-  const bad = { duration: [], lineLen: [], speaker: [], hook: [], hookOpen: [], noAction: [], prose: [], beats: [], chars: [], scenes: [] };
-
-  for (const [i, ep] of eps.entries()) {
-    const st = stats.episodes[i];
-    const label = `第 ${ep?.ep} 集`;
-
-    // 时长预算：写超写欠都在这层拦，别流到生成环节才发现
-    if (ep?.targetSeconds > 0) {
-      const lo = ep.targetSeconds * (1 - params.tolerance);
-      const hi = ep.targetSeconds * (1 + params.tolerance);
-      if (st.est < lo) bad.duration.push(`${label}欠 ${r1(lo - st.est)} 秒（估 ${st.est}s / 目标 ${ep.targetSeconds}s）`);
-      if (st.est > hi) bad.duration.push(`${label}超 ${r1(st.est - hi)} 秒（估 ${st.est}s / 目标 ${ep.targetSeconds}s）`);
+const MODES = ['suspense', 'closure', 'open'];
+function endingErrors(ending, path, script = true) {
+  const errors = [];
+  if (!obj(ending)) return [`${path}: expected object`];
+  if (!MODES.includes(ending.mode)) errors.push(`${path}.mode: expected suspense/closure/open`);
+  if (!text(ending.event)) errors.push(`${path}.event: expected nonempty text`);
+  if (script && Object.keys(ending).some(k => !['mode', 'event'].includes(k))) errors.push(`${path}: only mode/event allowed; Q plans belong to outline`);
+  return errors;
+}
+// Consumer boundary validation, not a replacement for the outline's full story/Q validator.
+export function outlineInputErrors(outline) {
+  const errors = [];
+  if (!obj(outline) || outline.schemaVersion !== 3) return ['outline.schemaVersion must be 3; see references/migration.md'];
+  errors.push(...documentErrors(outline, 'outline'));
+  if (own(outline.story, 'drive') || own(outline.adaptation, 'core')) errors.push('outline: retired story.drive/adaptation.core; run migrate-v3');
+  for (const ep of arr(outline.episodes)) if (own(ep, 'stateChange')) errors.push('outline.episodes.stateChange: retired field; run migrate-v3');
+  for (const [key, prefix] of [['scenes', 'S'], ['props', 'P']]) {
+    if (key === 'props' && !own(outline, key)) continue;
+    if (!Array.isArray(outline[key])) { errors.push(`outline.${key}: expected array`); continue; }
+    const seen = new Set();
+    for (const item of outline[key]) {
+      if (!idOK(item?.id, prefix) || seen.has(item?.id)) errors.push(`outline.${key}: invalid/duplicate ID`);
+      seen.add(item?.id);
     }
-
-    // 开场钩子与结尾悬念：说明必须落在纸面
-    if (!thText(ep?.hook) || !thText(ep?.cliff)) bad.hook.push(label);
-
-    // 钩子不是标签是第一拍：hookBeat 认领具象落在哪一拍，必须在全集前几拍内。
-    // 只有说明没有认领，就会出现「钩子说皮箱、开场拍了八拍雾」的衔接断裂
-    {
-      const hb = ep?.hookBeat;
-      if (!Array.isArray(hb) || hb.length !== 2 || !Number.isInteger(hb[0]) || !Number.isInteger(hb[1])) {
-        bad.hookOpen.push(`${label}缺 hookBeat（[场, 拍]，认领钩子具象的位置）`);
-      } else {
-        const scene = ep?.scenes?.[hb[0] - 1];
-        if (!scene || hb[1] < 1 || hb[1] > (scene.flow ?? []).length) {
-          bad.hookOpen.push(`${label}的 hookBeat [${hb[0]}, ${hb[1]}] 指向不存在的节拍`);
+  }
+  if (!text(outline.source)) errors.push('outline.source: expected nonempty text');
+  if (!positive(outline.params?.minutesPerEpisode) || !Number.isFinite(outline.params.minutesPerEpisode * 60)) errors.push('outline.params.minutesPerEpisode: expected finite positive number');
+  if (!Array.isArray(outline.episodes) || !outline.episodes.length) errors.push('outline.episodes: expected nonempty array');
+  const epIds = new Set();
+  let previousEp = 0;
+  for (const ep of arr(outline.episodes)) {
+    if (!integer(ep?.ep) || epIds.has(ep?.ep) || ep?.ep <= previousEp) errors.push('outline.episodes: invalid, duplicate or out-of-order ep');
+    epIds.add(ep?.ep); previousEp = ep?.ep;
+    if (!text(ep?.opening)) errors.push(`outline E${ep?.ep}.opening: expected nonempty text`);
+    errors.push(...endingErrors(ep?.ending, `outline E${ep?.ep}.ending`, false));
+  }
+  if (!Array.isArray(outline.beats)) errors.push('outline.beats: expected array');
+  const ids = new Set(), positions = ['opening', 'early', 'middle', 'late', 'ending'];
+  let lastEp = 0;
+  for (const beat of arr(outline.beats)) {
+    if (!idOK(beat?.id, 'B') || ids.has(beat?.id)) errors.push('outline.beats: invalid or duplicate ID');
+    ids.add(beat?.id);
+    if (!epIds.has(beat?.episode)) errors.push(`outline ${beat?.id}: unknown episode`);
+    const pos = positions.indexOf(beat?.position);
+    if ((own(beat, 'position') && pos < 0) || beat?.episode < lastEp) errors.push(`outline ${beat?.id}: invalid position/order`);
+    lastEp = beat?.episode;
+    if ((own(beat, 'kind') && !['event', 'pressure', 'turn', 'payoff'].includes(beat.kind)) || !text(beat?.setup) || !text(beat?.outcome)) errors.push(`outline ${beat?.id}: malformed beat`);
+    if (own(beat, 'type')) errors.push(`outline ${beat?.id}.type: retired field; run migrate-v3`);
+    if (own(beat, 'weight') && (beat?.kind !== 'payoff' || !['minor', 'major'].includes(beat.weight))) errors.push(`outline ${beat?.id}: invalid weight`);
+    if (own(beat, 'resolves') && (!Array.isArray(beat.resolves) || beat.resolves.some(q => !idOK(q, 'Q')) || new Set(beat.resolves).size !== beat.resolves.length)) errors.push(`outline ${beat?.id}: malformed resolves`);
+  }
+  if (!Array.isArray(outline.characters)) errors.push('outline.characters: expected array');
+  const chars = new Set();
+  for (const c of arr(outline.characters)) {
+    if (!idOK(c?.id, 'C') || chars.has(c?.id)) errors.push('outline.characters: invalid or duplicate ID');
+    chars.add(c?.id);
+  }
+  return errors;
+}
+function artInputErrors(art) {
+  if (!obj(art) || !Array.isArray(art.scenes) || !Array.isArray(art.props)) return ['art: expected scenes and props arrays'];
+  const errors = [];
+  if (own(art, 'schemaVersion') && art.schemaVersion !== 1) errors.push('art.schemaVersion: supported input is unversioned legacy art or version 1');
+  for (const [key, prefix] of [['scenes', 'S'], ['props', 'P']]) {
+    const seen = new Set();
+    for (const item of art[key]) {
+      if (!idOK(item?.id, prefix) || seen.has(item?.id)) errors.push(`art.${key}: invalid or duplicate ID`);
+      seen.add(item?.id);
+      if (key === 'scenes' && own(item, 'lighting') && (!Array.isArray(item.lighting) || item.lighting.some(l => !text(l?.state)))) errors.push(`art ${item?.id}: malformed lighting`);
+    }
+  }
+  return errors;
+}
+function castInputErrors(cast) {
+  if (!obj(cast) || !Array.isArray(cast.characters)) return ['cast: expected characters array'];
+  const errors = [], seen = new Set();
+  if (own(cast, 'schemaVersion') && cast.schemaVersion !== 1) errors.push('cast.schemaVersion: supported input is unversioned legacy cast or version 1');
+  for (const c of cast.characters) {
+    if (!obj(c) || !text(c.name)) errors.push('cast.characters: expected named character objects');
+    if (own(c, 'id')) {
+      if (!idOK(c.id, 'C') || seen.has(c.id)) errors.push('cast.characters: invalid or duplicate ID');
+      seen.add(c.id);
+    }
+    if (own(c, 'voice') && (!obj(c.voice) || own(c.voice, 'prompt') && !text(c.voice.prompt))) errors.push('cast.voice.prompt: expected nonempty text when supplied');
+  }
+  return errors;
+}
+function localErrors(doc, stage) {
+  const errors = [];
+  if (!obj(doc)) return ['script: expected object'];
+  if (doc.schemaVersion !== 3) errors.push('schemaVersion must be 3; see references/migration.md');
+  errors.push(...documentErrors(doc, 'script'));
+  if (!text(doc.source)) errors.push('source: expected nonempty text');
+  if (own(doc, 'lang') && !['zh', 'en'].includes(doc.lang)) errors.push('lang: expected zh/en');
+  if (!['full', 'skeleton'].includes(stage)) errors.push('stage: expected full/skeleton');
+  errors.push(...parameterErrors(doc));
+  if (!Array.isArray(doc.episodes) || !doc.episodes.length) errors.push('episodes: expected nonempty array');
+  const eps = new Set(), claims = new Set();
+  let lastEp = 0;
+  for (const ep of arr(doc.episodes)) {
+    const path = `E${ep?.ep}`;
+    if (!integer(ep?.ep) || eps.has(ep?.ep) || ep?.ep <= lastEp) errors.push(`${path}: invalid/duplicate/out-of-order ep`);
+    eps.add(ep?.ep); lastEp = ep?.ep;
+    if (!positive(ep?.targetSeconds)) errors.push(`${path}.targetSeconds: expected finite positive number`);
+    if (own(ep, 'opening') && !text(ep.opening)) errors.push(`${path}.opening: expected nonempty text`);
+    if (own(ep, 'ending')) errors.push(...endingErrors(ep.ending, `${path}.ending`));
+    for (const key of ['endBeat', 'seedNote']) if (own(ep, key)) errors.push(`${path}.${key}: retired field; run migrate-v3`);
+    for (const key of ['hook', 'hookBeat', 'cliff', 'closure', 'beatsClaimed']) if (own(ep, key)) errors.push(`${path}.${key}: v1 field rejected; see references/migration.md`);
+    if (!Array.isArray(ep?.scenes) || (stage === 'full' && !ep.scenes.length)) errors.push(`${path}.scenes: expected ${stage === 'full' ? 'nonempty ' : ''}array`);
+    if (own(ep, 'openingBeat') && coordinateIndex(ep, ep.openingBeat) === null) errors.push(`${path}.openingBeat: invalid coordinate`);
+    if (own(ep, 'beatClaims') && !Array.isArray(ep.beatClaims)) errors.push(`${path}.beatClaims: expected array`);
+    let lastEnd = -1;
+    for (const claim of arr(ep?.beatClaims)) {
+      if (!obj(claim) || Object.keys(claim).some(k => !['beatId', 'start', 'end'].includes(k))) errors.push(`${path}.beatClaims: only beatId/start/end allowed`);
+      if (!idOK(claim?.beatId, 'B') || claims.has(claim?.beatId)) errors.push(`${path}.beatClaims: invalid/duplicate beatId ${claim?.beatId}`);
+      claims.add(claim?.beatId);
+      if (stage === 'skeleton' && claim?.start === null && claim?.end === null) continue;
+      const start = coordinateIndex(ep, claim?.start), end = coordinateIndex(ep, claim?.end);
+      if (start === null || end === null || start > end) errors.push(`${path} ${claim?.beatId}: invalid/reversed range`);
+      else {
+        if (start <= lastEnd) errors.push(`${path} ${claim?.beatId}: core ranges must be ordered and non-overlapping`);
+        lastEnd = end;
+      }
+    }
+    for (const [si, sc] of arr(ep?.scenes).entries()) {
+      const at = `${path} S${si + 1}`;
+      if (!idOK(sc?.sceneId, 'S')) errors.push(`${at}.sceneId: invalid ID`);
+      for (const [key, prefix] of [['characters', 'C'], ['props', 'P']]) {
+        if (key === 'props' && !own(sc, key)) continue;
+        if (!Array.isArray(sc?.[key]) || sc[key].some(id => !idOK(id, prefix)) || new Set(sc[key]).size !== sc[key].length) errors.push(`${at}.${key}: expected unique valid IDs`);
+      }
+      if (own(sc, 'lighting') && !text(sc.lighting)) errors.push(`${at}.lighting: expected nonempty text`);
+      if (!Array.isArray(sc?.flow) || !sc.flow.length) errors.push(`${at}.flow: expected nonempty array`);
+      for (const [bi, b] of arr(sc?.flow).entries()) {
+        const bp = `${at} beat ${bi + 1}`;
+        if (!obj(b) || own(b, 'action') === own(b, 'line')) { errors.push(`${bp}: action/line are exclusive`); continue; }
+        if (own(b, 'action')) {
+          if (!text(b.action)) errors.push(`${bp}: empty action`);
+          if (own(b, 'speaker') || own(b, 'delivery')) errors.push(`${bp}: speaker/delivery require a line`);
         } else {
-          let pos = hb[1];
-          for (let i = 0; i < hb[0] - 1; i++) pos += (ep.scenes[i]?.flow ?? []).length;
-          if (pos > params.hookWindow) {
-            bad.hookOpen.push(`${label}的钩子落在全集第 ${pos} 拍，超出前 ${params.hookWindow} 拍——冷开场先给钩子的具象`);
-          }
+          if (!text(b.line)) errors.push(`${bp}: empty line`);
+          if (b.speaker !== 'VO' && (!idOK(b.speaker, 'C') || !arr(sc?.characters).includes(b.speaker))) errors.push(`${bp}: speaker must be in scene or VO`);
+          if (own(b, 'delivery') && !text(b.delivery)) errors.push(`${bp}.delivery: expected nonempty text`);
         }
       }
-    }
-
-    for (const sc of ep?.scenes ?? []) {
-      const cast = new Set(sc?.characters ?? []);
-      let hasAction = false;
-      for (const b of sc?.flow ?? []) {
-        if (typeof b?.action === 'string') {
-          hasAction = true;
-          if (QUOTE_RE.test(b.action)) bad.prose.push(`${label} ${sc?.sceneId ?? '?'}`);
-        }
-        if (typeof b?.line === 'string') {
-          if (lineChars(b.line) > params.maxLineChars) {
-            bad.lineLen.push(`${label}「${b.line.slice(0, 12)}…」${lineChars(b.line)} 字`);
-          }
-          if (b.speaker !== 'VO' && !cast.has(b.speaker)) {
-            bad.speaker.push(`${label} ${sc?.sceneId ?? '?'} 的「${b.speaker}」不在本场人物里`);
-          }
-        }
-      }
-      // 纯对白无动作的场 = 广播剧，生成时没有画面可写
-      if ((sc?.flow ?? []).length > 0 && !hasAction) bad.noAction.push(`${label} ${sc?.sceneId ?? '?'}`);
     }
   }
-
-  // ---- 需要上游对账的门 ----
-  const outline = ctx.outline ?? null;
-  const art = ctx.art ?? null;
-
-  if (outline) {
-    const charIds = new Set((outline.characters ?? []).map((c) => c.id));
+  return errors;
+}
+const LABELS = {
+  fields: ['基础字段与位置', 'Fields and positions'], 'duration-input': ['估时输入合法性', 'Timing input validity'], duration: ['估算时长提醒', 'Estimated duration notice'],
+  'outline-input': ['大纲输入契约', 'Outline input contract'], 'upstream-projection': ['上游计划来源与作品对账', 'Upstream plans and source reconciliation'],
+  'upstream-duration': ['上游目标时长', 'Upstream target duration'], 'beats-claimed': ['节点 ID 与顺序对账', 'Beat IDs and order'],
+  'refs-characters': ['人物引用', 'Character references'], 'art-input': ['美术输入契约', 'Art input contract'], 'cast-input': ['角色输入契约', 'Cast input contract'], 'refs-scenes': ['场景、光照与道具引用', 'Scene, lighting and prop references'],
+  'production-input': ['项目契约与创作要求', 'Project contract and creative brief'], 'content-review': ['内容评审未执行', 'Content review not performed'],
+  'question-plan': ['问题计划由大纲检查', 'Question plan checked by outline'], 'artifact-directory': ['产物目录', 'Artifact directory'],
+  'downstream-creation': ['下游制作接口', 'Downstream creation interface']
+};
+export const isBlocking = g => g.status === 'fail' && g.level === 'error' && g.category !== 'source';
+export function gateReport(doc, ctx = {}) {
+  const gates = [], stage = ctx.stage ?? 'full';
+  const add = (id, errors = [], category = 'base', level = 'error', reason = null) => gates.push({ id, category, level, status: reason ? 'skipped' : errors.length ? 'fail' : 'pass', ...(reason ? { reason } : {}), label: LABELS[id]?.[0] ?? id, messages: errors });
+  add('fields', localErrors(doc, stage));
+  const eps = arr(doc?.episodes), p = paramsOf(doc), stats = computeStats(doc);
+  const duration = [];
+  stats.episodes.forEach(e => {
+    if (!Number.isFinite(e.est) || !positive(e.target) || !Number.isFinite(p.tolerance)) duration.push(`E${e.ep}: invalid timing inputs`);
+    else if (e.est < e.target * (1 - p.tolerance) - Number.EPSILON*Math.max(1,e.target,e.est)*4 || e.est > e.target * (1 + p.tolerance) + Number.EPSILON*Math.max(1,e.target,e.est)*4) duration.push(`E${e.ep}: estimated ${r1(e.est)}s / target ${e.target}s / tolerance ${p.tolerance}`);
+  });
+  add('duration-input', stats.episodes.filter(e => !Number.isFinite(e.est)).map(e => `E${e.ep}: unavailable/overflowed timing; repair beats or parameters`), 'base', 'error', stage === 'skeleton' ? 'stage-incomplete' : null);
+  add('duration', duration, 'base', 'warn', stage === 'skeleton' ? 'stage-incomplete' : null);
+  const hasOutline = own(ctx, 'outline') && ctx.outline !== undefined;
+  const oe = hasOutline ? outlineInputErrors(ctx.outline) : [];
+  add('outline-input', oe, 'base', 'error', hasOutline ? null : 'missing-upstream');
+  const projection = [], targets = [], claimErrors = [], characters = [];
+  if (hasOutline && !oe.length) {
+    const outline = ctx.outline, charIds = new Set(outline.characters.map(c => c.id));
+    if (doc.source !== outline.source) projection.push('source: must match outline; matching titles alone do not establish content synchronization');
     for (const ep of eps) {
-      for (const sc of ep?.scenes ?? []) {
-        for (const id of sc?.characters ?? []) {
-          if (!charIds.has(id)) bad.chars.push(`第 ${ep.ep} 集 ${sc.sceneId ?? '?'} 的 ${id}`);
-        }
+      const upstream = outline.episodes.find(e => e.ep === ep?.ep);
+      if (!upstream) { projection.push(`E${ep?.ep}: episode absent from outline`); targets.push(`E${ep?.ep}: unknown upstream episode`); }
+      else {
+        for (const key of ['opening', 'ending']) if (own(ep, key)) projection.push(`E${ep?.ep}.${key}: duplicate upstream plan; run migrate-v3`);
+        if (ep?.targetSeconds !== outline.params.minutesPerEpisode * 60) targets.push(`E${ep?.ep}.targetSeconds: must equal ${outline.params.minutesPerEpisode * 60}, independently of timing tolerance`);
       }
-      // 爽点认领：大纲说这一集有的爆点，剧本必须认领
-      const due = [...new Set((outline.beats ?? []).filter((b) => b.episode === ep.ep).map((b) => b.type))];
-      const claimed = new Set(ep?.beatsClaimed ?? []);
-      for (const t of due) if (!claimed.has(t)) bad.beats.push(`第 ${ep.ep} 集缺「${t}」`);
-    }
-  }
-
-  if (art) {
-    const sceneMap = new Map((art.scenes ?? []).map((s) => [s.id, s]));
-    const propIds = new Set((art.props ?? []).map((p) => p.id));
-    for (const ep of eps) {
-      for (const sc of ep?.scenes ?? []) {
-        const ref = sceneMap.get(sc?.sceneId);
-        if (!ref) {
-          bad.scenes.push(`第 ${ep.ep} 集引用了不存在的场景 ${sc?.sceneId}`);
-        } else if (thText(sc?.lighting) && !(ref.lighting ?? []).some((l) => l.state === sc.lighting)) {
-          bad.scenes.push(`第 ${ep.ep} 集 ${sc.sceneId} 的光照「${sc.lighting}」没在美术设定里登记`);
-        }
-        for (const pid of sc?.props ?? []) {
-          if (!propIds.has(pid)) bad.scenes.push(`第 ${ep.ep} 集引用了不存在的道具 ${pid}`);
-        }
+      const expected = outline.beats.filter(b => b.episode === ep?.ep).map(b => b.id), actual = arr(ep?.beatClaims).map(c => c?.beatId);
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) claimErrors.push(`E${ep?.ep}: expected ordered IDs ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}`);
+      for (const sc of arr(ep?.scenes)) {
+        for (const id of arr(sc?.characters)) if (!charIds.has(id)) characters.push(`E${ep?.ep}: unknown character ${id}`);
+        if (!arr(outline.scenes).some(s => s.id === sc?.sceneId)) projection.push(`E${ep?.ep}: scene ${sc?.sceneId} absent from outline`);
+        for (const id of arr(sc?.props)) if (!arr(outline.props).some(p => p.id === id)) projection.push(`E${ep?.ep}: prop ${id} absent from outline`);
       }
     }
   }
-
-  const SKIP_OUTLINE = '未提供 outline.json，本门跳过（视为通过）';
-  const SKIP_ART = '未提供 art.json，本门跳过（视为通过）';
-
-  add('duration', `每集时长在目标 ±${Math.round(params.tolerance * 100)}% 内`, eps.length > 0 && bad.duration.length === 0, bad.duration.join('；'));
-  add('line-length', `单句台词 ≤ ${params.maxLineChars} 字`, bad.lineLen.length === 0, bad.lineLen.join('；'));
-  add('speaker', '说话人在本场人物里，或明确标画外音 VO', bad.speaker.length === 0, bad.speaker.join('；'));
-  add('hook-cliff', '每集开场钩子与结尾悬念都落在纸面', eps.length > 0 && bad.hook.length === 0, bad.hook.join('；'));
-  add('hook-open', `钩子的具象在全集前 ${params.hookWindow} 拍内兑现（hookBeat 认领）`, eps.length > 0 && bad.hookOpen.length === 0, bad.hookOpen.join('；'));
-  add('has-action', '每场至少一个动作节拍——纯对白的场是广播剧', eps.length > 0 && bad.noAction.length === 0, bad.noAction.join('；'));
-  add('action-prose', '动作描述叙述体，台词只进 dialogue 字段', bad.prose.length === 0, bad.prose.join('；'));
-  add('beats-claimed', '大纲爽点逐集认领', bad.beats.length === 0, outline ? bad.beats.join('；') : SKIP_OUTLINE);
-  add('refs-characters', '角色引用对账大纲', bad.chars.length === 0, outline ? bad.chars.join('；') : SKIP_OUTLINE);
-  add('refs-scenes', '场景／光照／道具对账美术设定', bad.scenes.length === 0, art ? bad.scenes.join('；') : SKIP_ART);
-
+  for (const [id, errors] of [['upstream-projection', projection], ['upstream-duration', targets], ['beats-claimed', claimErrors], ['refs-characters', characters]]) {
+    add(id, hasOutline && oe.length ? ['Invalid supplied outline; reconciliation cannot run'] : errors, 'base', 'error', hasOutline ? null : 'missing-upstream');
+  }
+  const hasArt = own(ctx, 'art') && ctx.art !== undefined, ae = hasArt ? artInputErrors(ctx.art) : [], refs = [];
+  add('art-input', ae, 'base', 'error', hasArt ? null : 'missing-upstream');
+  if (hasArt && !ae.length) for (const ep of eps) for (const sc of arr(ep?.scenes)) {
+    const scene = ctx.art.scenes.find(s => s.id === sc?.sceneId);
+    if (!scene) refs.push(`E${ep?.ep}: unknown scene ${sc?.sceneId}`);
+    else if (own(sc, 'lighting') && !arr(scene.lighting).some(l => l.state === sc.lighting)) refs.push(`E${ep?.ep} ${sc.sceneId}: unregistered lighting ${sc.lighting}`);
+    for (const id of arr(sc?.props)) if (!ctx.art.props.some(prop => prop.id === id)) refs.push(`E${ep?.ep}: unknown prop ${id}`);
+  }
+  add('refs-scenes', ae.length ? ['Invalid supplied art; reconciliation cannot run'] : refs, 'base', 'error', hasArt ? null : 'missing-upstream');
+  const hasCast = own(ctx, 'cast') && ctx.cast !== undefined;
+  add('cast-input', hasCast ? castInputErrors(ctx.cast) : [], 'base', 'error', hasCast ? null : 'missing-upstream');
+  add('production-input', own(ctx, 'production') ? productionErrors(ctx.production, [['script', doc], ['outline', ctx.outline]]) : [], 'base', 'error', own(ctx, 'production') ? null : 'missing-upstream');
+  if (ctx.docPath && ctx.productionPath) add('artifact-directory', stageDirNote(ctx.docPath, ctx.productionPath) ? [stageDirNote(ctx.docPath, ctx.productionPath)] : []);
+  else add('artifact-directory', [], 'base', 'error', 'missing-upstream');
+  add('question-plan', [], 'content', 'warn', hasOutline ? 'not-applicable' : 'missing-upstream');
+  add('content-review', [], 'content', 'warn', 'not-applicable');
   return gates;
 }
-
-/* ------------------------------------------------------------------ */
-/* validate                                                            */
-/* ------------------------------------------------------------------ */
-
+export function checkup(doc, ctx = {}) {
+  const gates = gateReport(doc, ctx);
+  if (ctx.root && (ctx.stage ?? 'full') === 'full') gates.push(...checkKnownCreation(doc, { root: ctx.root, production: ctx.production, outline: ctx.outline }));
+  return { schemaVersion: 3, stage: ctx.stage ?? 'full', gates, stats: computeStats(doc), blockingFailures: gates.filter(isBlocking).length, warnings: gates.filter(g => g.status === 'fail' && g.level === 'warn').length, contentReview: 'not-performed', scope: { outlineProvided: own(ctx, 'outline'), artProvided: own(ctx, 'art'), productionProvided: own(ctx, 'production') } };
+}
 export function validateScript(doc, ctx = {}) {
-  const problems = [];
-  const p = (msg) => problems.push(msg);
-  if (!doc || typeof doc !== 'object') return ['script.json 不是对象'];
-
-  if (!thText(doc.source)) p('缺少 source（剧名/书名）');
-  const eps = doc.episodes;
-  if (!Array.isArray(eps) || eps.length === 0) {
-    p('episodes 为空');
-    return problems;
-  }
-
-  const seen = new Set();
-  for (const ep of eps) {
-    const label = `第 ${ep?.ep ?? '?'} 集`;
-    if (!Number.isInteger(ep?.ep) || ep.ep < 1) p(`${label}的 ep 必须是正整数`);
-    if (seen.has(ep?.ep)) p(`集号 ${ep.ep} 重复`);
-    seen.add(ep?.ep);
-    if (!(ep?.targetSeconds > 0)) p(`${label}缺 targetSeconds（目标秒数，来自大纲的单集时长）`);
-    if (!Array.isArray(ep?.beatsClaimed)) p(`${label}缺 beatsClaimed（认领的爽点，可为空数组）`);
-    if (!Array.isArray(ep?.scenes) || ep.scenes.length === 0) {
-      p(`${label}没有场次`);
-      continue;
-    }
-    ep.scenes.forEach((sc, i) => {
-      const sLabel = `${label}第 ${i + 1} 场`;
-      if (!/^S\d{2,}$/.test(sc?.sceneId ?? '')) p(`${sLabel} sceneId 必须是 S01 这种格式`);
-      if (!Array.isArray(sc?.characters)) p(`${sLabel}缺 characters（本场人物，空镜给空数组）`);
-      if (!Array.isArray(sc?.flow) || sc.flow.length === 0) p(`${sLabel}的节拍流为空`);
-      for (const b of sc?.flow ?? []) {
-        const isAction = typeof b?.action === 'string';
-        const isLine = typeof b?.line === 'string';
-        if (isAction === isLine) {
-          p(`${sLabel}有节拍既不是动作也不是台词（action 与 line 二选一）`);
-          continue;
-        }
-        if (isAction && !b.action.trim()) p(`${sLabel}有空动作节拍`);
-        if (isLine) {
-          if (!b.line.trim()) p(`${sLabel}有空台词`);
-          if (!thText(b.speaker)) p(`${sLabel}有台词缺 speaker`);
-        }
-      }
-    });
-  }
-
-  for (const g of gateReport(doc, ctx)) {
-    if (!g.ok) p(`质量门未过：${g.label}${g.detail ? `（${g.detail}）` : ''}`);
-  }
-  return problems;
+  return checkup(doc, ctx).gates.filter(isBlocking).flatMap(g => g.messages.length ? g.messages.map(m => `${g.id}: ${m}`) : [`${g.id}: failed`]);
 }
-
-/* ------------------------------------------------------------------ */
-/* seed — 从 outline.json 确定性预填骨架                                 */
-/* ------------------------------------------------------------------ */
-/*
- * 目标秒数、钩子、悬念、该集爽点在大纲里都是现成的——这些事实不让
- * 模型重新想。scenes 留空给模型写戏。
- */
-
 export function seedFromOutline(outline, epRange = null) {
-  const perEp = (outline?.params?.minutesPerEpisode ?? 3) * 60;
-  const inRange = (n) => !epRange || (n >= epRange[0] && n <= epRange[1]);
-  const episodes = (outline?.episodes ?? [])
-    .filter((e) => inRange(e.ep))
-    .map((e) => ({
-      ep: e.ep,
-      targetSeconds: perEp,
-      hook: e.hook ?? '',
-      cliff: e.suspense ?? '',
-      beatsClaimed: [...new Set((outline.beats ?? []).filter((b) => b.episode === e.ep).map((b) => b.type))],
-      scenes: [],
-      // 从大纲搬来的参考，写完删掉也行
-      seedNote: `大纲梗概：${e.synopsis ?? ''}　候选场景：${(e.sceneIds ?? []).join('、')}　人物：${(e.characterIds ?? []).join('、')}`,
-    }));
-  return { source: outline?.source ?? '', episodes };
+  const errors = outlineInputErrors(outline);
+  if (errors.length) throw new Error(errors.join('\n'));
+  if (epRange && (!Array.isArray(epRange) || epRange.length !== 2 || !epRange.every(integer) || epRange[0] > epRange[1])) throw new Error('Invalid episode range');
+  const episodes = outline.episodes.filter(e => !epRange || e.ep >= epRange[0] && e.ep <= epRange[1]).map(e => ({
+    ep: e.ep, targetSeconds: outline.params.minutesPerEpisode * 60,
+    beatClaims: outline.beats.filter(b => b.episode === e.ep).map(b => ({ beatId: b.id, start: null, end: null })),
+    scenes: []
+  }));
+  if (!episodes.length) throw new Error('No outline episodes in requested range');
+  return { schemaVersion: 3, source: outline.source, episodes };
 }
-
-/* ------------------------------------------------------------------ */
-/* slug                                                                */
-/* ------------------------------------------------------------------ */
-
-export function slug(name) {
-  const cleaned = String(name)
-    .trim()
-    .replace(/[\s/\\:*?"<>|·]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return cleaned || 'script';
-}
-
-/* ------------------------------------------------------------------ */
-/* render — 界面文案                                                    */
-/* ------------------------------------------------------------------ */
-/*
- * 内置 zh / en 两套，全部界面文案收在这张表里。
- * 质量门的 label/detail 是 validate/checkup 的诊断文案，保持中文，不在此列。
- */
-
-/* 门标签与「跳过」提示的英文映射：质量门面板是报告的一部分，出英文报告时
- * 这里做展示层翻译——gateReport 的逻辑与中文诊断文案一行不动（CLI 仍是中文）。
- * 动态阈值由门自己算，映射里只写固定语义；未命中的 id 回落到原标签。 */
-const GATE_LABELS_EN = {
-  'duration': 'Episode duration within ±{0}% of target',
-  'line-length': 'Every line ≤ {0} characters',
-  'speaker': 'Speaker is in the scene cast, or explicitly marked V.O.',
-  'hook-cliff': 'Hook and cliffhanger on paper for every episode',
-  'hook-open': 'The hook\'s concrete image lands within the first {0} beats (claimed by hookBeat)',
-  'has-action': 'At least one action beat per scene — a dialogue-only scene is radio drama',
-  'action-prose': 'Action in narrative prose; dialogue only in dialogue entries',
-  'beats-claimed': 'Outline beats claimed per episode',
-  'refs-characters': 'Character references audited against the outline',
-  'refs-scenes': 'Scenes / lighting / props audited against the art bible',
-};
-const GATE_SKIPS_EN = {
-    '未提供 outline.json，本门跳过（视为通过）': 'outline.json not provided — gate skipped (treated as passing)',
-    '未提供 art.json，本门跳过（视为通过）': 'art.json not provided — gate skipped (treated as passing)',
-    '未提供 script.json，本门跳过（视为通过）': 'script.json not provided — gate skipped (treated as passing)',
-    '未提供 outline/cast，本门跳过（视为通过）': 'outline/cast not provided — gate skipped (treated as passing)',
-    '未提供 cast.json，本门跳过（视为通过）': 'cast.json not provided — gate skipped (treated as passing)',
-};
-/** 报告里的门文案：英文界面取映射，未命中或中文界面回落原文。 */
-const gateText = (g, lang) => {
-  if (lang !== 'en') return { label: g.label, detail: g.detail };
-  const en = GATE_LABELS_EN[g.id];
-  // 阈值仍由门自己算：把中文标签里出现的数字按序填进 {0} {1}
-  const nums = String(g.label).match(/\d+(?:\.\d+)?/g) ?? [];
-  const label = en ? en.replace(/\{(\d)\}/g, (m, i) => nums[Number(i)] ?? m) : g.label;
-  return { label, detail: GATE_SKIPS_EN[g.detail] ?? g.detail };
-};
 
 const I18N = {
-  zh: {
-    langCode: 'zh',
-    kicker: '剧本',
-    docTitle: (s, a, b) => `${s} · 剧本${a === b ? `（第 ${a} 集）` : `（第 ${a}–${b} 集）`}`,
-    epHead: (n) => `第 ${n} 集`,
-    epRange: (a, b) => (a === b ? `第 ${a} 集` : `第 ${a}–${b} 集`),
-    exportJson: '导出 JSON',
-    gates: '质量门',
-    gatesPass: '全部通过',
-    gatesFail: (n) => `${n} 项未过`,
-    gatePill: (okN, total) => `质量门 ${okN} / ${total}`,
-    kpi: {
-      eps: '集数', epsSub: (sc) => `${sc} 场戏`,
-      time: '预估总时长', timeSub: (t) => `目标 ${t}`,
-      lines: '台词', linesSub: (sec) => `约 ${sec} 秒对白`,
-      dlgRatio: '台词占比', dlgRatioSub: '其余是画面与动作',
-      avgScene: '平均每场', avgSceneSub: '换景是统计不是门——AI 换景不要钱',
-    },
-    secTiming: '时长仪表',
-    secScript: '分集剧本',
-    secSceneTable: '场次总表',
-    secCastLines: '台词本',
-    secGates: '质量门',
-    timingNote: (tol) => `绿带 = 目标 ±${tol}%；台词按语速折算，动作按节拍估时`,
-    scriptNote: '一排两集 · 场次信息超高自动截断，点开看全部',
-    sceneTableNote: '自动汇总 · 模型不写',
-    castLinesNote: '按角色聚合 · 列表最多显示 6 行可滚动 · 直接对接 TTS 批量生成',
-    hookLabel: '开场钩子',
-    hookAt: (sc, b) => `第 ${sc} 场第 ${b} 拍兑现`,
-    voiceBtn: '音色提示词',
-    cliffLabel: '结尾悬念',
-    beatsLabel: '认领爽点',
-    estLabel: (est, target) => `预估 ${est} 秒 / 目标 ${target} 秒`,
-    sceneHead: (i) => `第 ${i} 场`,
-    voLabel: '画外音',
-    lightingLabel: '光照',
-    showScenes: '▾ 展开全部场次',
-    hideScenes: '▴ 收起场次',
-    sceneCols: ['集', '场', '场景', '光照', '人物', '台词句数', '估秒'],
-    castCols: ['角色', '台词句数', '字数', '约合秒数'],
-    copyAllLines: '复制全部台词',
-    copy: '复制', copied: '已复制', copyFailed: '复制失败',
-    lineRef: (ep, i) => `E${String(ep).padStart(2, '0')} 第 ${i} 场`,
-    dlgSec: (s) => `${s} 秒`,
-    fmtMin: (m, s) => `${m} 分 ${s} 秒`,
-    overBy: (s) => `超 ${s} 秒`,
-    underBy: (s) => `欠 ${s} 秒`,
-    legendDlg: '台词', legendAct: '动作', legendBand: '目标区间',
-    unitLines: '句', unitSec: '秒',
-    castMeta: (count, chars, sec) => `${count} 句 · ${chars} 字 · 约 ${sec} 秒`,
-    castProps: (c, p) => (p ? `人物：${c}　道具：${p}` : `人物：${c}`),
-    sep: '、',
-    colon: '：',
-    paren: (s) => `（${s}）`,
-    colophon: '剧本由模型依据大纲与美术设定生成，时长与引用由脚本确定性检查。分镜与视频提示词与参考图挂载是下一层的事，不在本报告里。',
-  },
-  en: {
-    langCode: 'en',
-    kicker: 'Script',
-    docTitle: (s, a, b) => `${s} · Script${a === b ? ` (Episode ${a})` : ` (Episodes ${a}–${b})`}`,
-    epHead: (n) => `Episode ${n}`,
-    epRange: (a, b) => (a === b ? `Episode ${a}` : `Episodes ${a}–${b}`),
-    exportJson: 'Export JSON',
-    gates: 'Quality gates',
-    gatesPass: 'All passed',
-    gatesFail: (n) => `${n} failed`,
-    gatePill: (okN, total) => `Quality gates ${okN} / ${total}`,
-    kpi: {
-      eps: 'Episodes', epsSub: (sc) => `${sc} scenes`,
-      time: 'Estimated runtime', timeSub: (t) => `target ${t}`,
-      lines: 'Lines', linesSub: (sec) => `~${sec}s of dialogue`,
-      dlgRatio: 'Dialogue ratio', dlgRatioSub: 'the rest is picture and action',
-      avgScene: 'Avg per scene', avgSceneSub: 'scene changes are a statistic, not a gate — AI scene changes are free',
-    },
-    secTiming: 'Duration gauge',
-    secScript: 'Episode scripts',
-    secSceneTable: 'Scene table',
-    secCastLines: 'Line book',
-    secGates: 'Quality gates',
-    timingNote: (tol) => `green band = target ±${tol}%; dialogue at reading speed, action per beat`,
-    scriptNote: 'two episodes per row · tall scene areas clip, expand to see all',
-    sceneTableNote: 'computed, never hand-written',
-    castLinesNote: 'grouped by character · lists show 6 rows and scroll · feeds straight into batch TTS',
-    hookLabel: 'Cold open hook',
-    hookAt: (sc, b) => `lands at scene ${sc}, beat ${b}`,
-    voiceBtn: 'Voice prompt',
-    cliffLabel: 'Cliffhanger',
-    beatsLabel: 'Beats claimed',
-    estLabel: (est, target) => `est. ${est}s / target ${target}s`,
-    sceneHead: (i) => `Scene ${i}`,
-    voLabel: 'V.O.',
-    lightingLabel: 'Lighting',
-    showScenes: '▾ Show all scenes',
-    hideScenes: '▴ Collapse scenes',
-    sceneCols: ['Ep', 'Scene', 'Setting', 'Lighting', 'Cast', 'Lines', 'Est. sec'],
-    castCols: ['Character', 'Lines', 'Chars', 'Est. seconds'],
-    copyAllLines: 'Copy all lines',
-    copy: 'Copy', copied: 'Copied', copyFailed: 'Copy failed',
-    lineRef: (ep, i) => `E${String(ep).padStart(2, '0')} scene ${i}`,
-    dlgSec: (s) => `${s}s`,
-    fmtMin: (m, s) => `${m}m ${s}s`,
-    overBy: (s) => `${s}s over`,
-    underBy: (s) => `${s}s under`,
-    legendDlg: 'Dialogue', legendAct: 'Action', legendBand: 'Target band',
-    unitLines: 'lines', unitSec: 's',
-    castMeta: (count, chars, sec) => `${count} lines · ${chars} chars · ~${sec}s`,
-    castProps: (c, p) => (p ? `Cast: ${c} · Props: ${p}` : `Cast: ${c}`),
-    sep: ', ',
-    colon: ': ',
-    paren: (s) => ` (${s})`,
-    colophon: 'Script written by the model against the outline and art bible; durations and references checked deterministically by script. Shot planning, video prompts and reference mounts belong to the video-creation stage, not this report.',
-  },
+  zh: { title: '剧本', effective: '估时有效参数', brief: '创作要求', script: '分集剧本', episode: '分集', scene: '场次', opening: '开场计划', ending: '集尾', unmarked: '未标注开场落点；未核验开场表达', final: '正文计算的结束位置', claims: '节点计划与内容落点', plan: '上游计划', actual: '实际核心段', setup: '承接', outcome: '结果', questions: '上游问题与回答落点', missing: '缺少上游，未核验', invalid: '无效范围／估时不可用', duration: '估算时长', target: '目标时长', timeline: '分集正文与估算时间轴', timingNote: '估算不是实际表演时间。所有位置共用未舍入累计轴，仅显示值四舍五入。超出估时范围属于提醒，不要求删除有效表演。', scenes: '场次总表', lines: '台词本', voice: '音色提示词', copy: '复制', export: '导出 JSON', checks: '结构检查与内容评审状态', content: '内容评审未执行。位置合法不证明意图已表达；创作要求变化后须重新阅读正文评审。', scope: '独立或批次校验不代表完整联合交付。问题计划完整性由大纲校验负责。', pass: '通过', fail: '失败', warn: '提醒', skipped: '跳过', base: '基础契约', contentCategory: '内容评审', copied: '已复制', copyFailed: '复制失败', blocking: '阻断失败', warnings: '提醒数量', chars: '字数', count: '台词句数', lighting: '光照', characters: '人物', props: '道具', reason: { 'missing-upstream': '缺少上游', 'stage-incomplete': '阶段未完成', 'not-applicable': '不适用' } },
+  en: { title: 'Script', effective: 'Effective estimation parameters', brief: 'Creative brief', script: 'Episode scripts', episode: 'Episode', scene: 'Scene', opening: 'Opening plan', ending: 'Ending', unmarked: 'Opening landing not marked; expression not verified', final: 'End position computed from text', claims: 'Beat plans and content locations', plan: 'Upstream plan', actual: 'Actual core range', setup: 'Setup', outcome: 'Outcome', questions: 'Upstream questions and answer locations', missing: 'Missing upstream; not verified', invalid: 'Invalid range / timing unavailable', duration: 'Estimated duration', target: 'Target duration', timeline: 'Episode text and estimated timeline', timingNote: 'Estimates are not performance timings. All positions share one unrounded clock. Duration differences are notices, not instructions to delete valid performances.', scenes: 'Scene table', lines: 'Line book', voice: 'Voice prompt', copy: 'Copy', export: 'Export JSON', checks: 'Structural checks and content review', content: 'Content review not performed. Valid coordinates do not prove intent. Review the actual text again when the creative brief changes.', scope: 'Standalone or batch validation is not full joint delivery. The outline validator owns question-plan completeness.', pass: 'Pass', fail: 'Fail', warn: 'Warning', skipped: 'Skipped', base: 'Base contract', contentCategory: 'Content review', copied: 'Copied', copyFailed: 'Copy failed', blocking: 'Blocking failures', warnings: 'Warnings', chars: 'Characters', count: 'Line count', lighting: 'Lighting', characters: 'Cast', props: 'Props', reason: { 'missing-upstream': 'Missing upstream', 'stage-incomplete': 'Stage incomplete', 'not-applicable': 'Not applicable' } }
 };
-
-export const tOf = (lang) => {
-  if (lang && !I18N[lang]) throw new Error('报告界面语言目前内置 zh / en');
-  return I18N[lang ?? 'zh'];
-};
-
-/* ------------------------------------------------------------------ */
-/* render — markdown                                                   */
-/* ------------------------------------------------------------------ */
-
-const esc = (s) =>
-  String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-
-const mdRow = (cells) => `| ${cells.map((c) => String(c ?? '').replace(/\|/g, '\\|')).join(' | ')} |`;
-const mdHead = (cols) => [mdRow(cols), mdRow(cols.map(() => '---'))].join('\n');
-
-/** 显示名：给了上游映射就用名字，否则裸 ID。 */
-function namer(ctx = {}, t = tOf()) {
-  const charName = new Map((ctx.outline?.characters ?? []).map((c) => [c.id, c.name]));
-  const sceneName = new Map((ctx.art?.scenes ?? []).map((s) => [s.id, s.name]));
-  const propName = new Map((ctx.art?.props ?? []).map((p) => [p.id, p.name]));
-  const voiceByName = new Map((ctx.cast?.characters ?? []).map((c) => [c.name, c?.voice?.prompt ?? '']));
-  return {
-    char: (id) => (id === 'VO' ? t.voLabel : charName.get(id) ?? id),
-    scene: (id) => sceneName.get(id) ?? id,
-    prop: (id) => propName.get(id) ?? id,
-    // 台词本对接 TTS：给了 --cast 才有音色提示词（按 outline 名字对上 cast）
-    voice: (id) => voiceByName.get(charName.get(id) ?? '') ?? '',
-  };
+export function tOf(lang = 'zh') { if (!Object.hasOwn(I18N, lang)) throw new Error('Report language must be zh/en'); return I18N[lang]; }
+const langOf = (doc, ctx) => ctx.lang ?? doc?.lang ?? ctx.production?.lang ?? 'zh';
+const esc = x => String(x ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const embed = x => JSON.stringify(x).replace(/</g, '\\u003c');
+const format = x => Number.isFinite(x) ? String(r1(x)) : '—';
+const pretty = x => JSON.stringify(x ?? null, null, 2);
+function names(ctx) {
+  const name = (list, id) => arr(list).find(x => x?.id === id)?.name ?? id;
+  return { char: id => name(ctx.outline?.characters, id), scene: id => name(ctx.art?.scenes, id), prop: id => name(ctx.art?.props, id), voice: id => arr(ctx.cast?.characters).find(c => c?.id === id || c?.name === name(ctx.outline?.characters, id))?.voice?.prompt };
 }
-
-/** 界面语言：--lang > script.json 顶层 lang 字段 > zh。 */
-const langOf = (doc, ctx) => ctx?.lang ?? doc?.lang ?? 'zh';
-
+const beatText = (b, n) => own(b, 'action') ? b.action : `${n.char(b?.speaker)}${b?.delivery ? ` (${b.delivery})` : ''}: ${b?.line ?? ''}`;
+function landing(ep, coord, p, t, n) {
+  const index = coordinateIndex(ep, coord), row = index === null ? null : episodeTimeline(ep, p)[index];
+  return row && row.startSeconds !== null && row.endSeconds !== null ? `[${coord}] ${format(row.startSeconds)}–${format(row.endSeconds)}s · ${beatText(row.beat, n)}` : t.invalid;
+}
+function questionsFor(ep, ctx) {
+  return arr(ctx.outline?.episodes).filter(e => e?.ep === ep?.ep && e?.ending?.question).map(e => e.ending.question);
+}
+function resolutionLocations(q, doc, ctx, t, n) {
+  return arr(ctx.outline?.beats).filter(b => arr(b?.resolves).includes(q.id)).map(b => {
+    const ep = arr(doc?.episodes).find(e => e?.ep === b.episode), claim = arr(ep?.beatClaims).find(c => c?.beatId === b.id);
+    const range = ep && claim ? claimRange(ep, claim, paramsOf(doc)) : null;
+    return `${b.id} E${b.episode}: ${range ? `[${claim.start}]–[${claim.end}] ${format(range.startSeconds)}–${format(range.endSeconds)}s\n${range.rows.map(r => beatText(r.beat, n)).join('\n')}` : t.invalid}`;
+  });
+}
+function statusText(g, t) { return g.status === 'fail' && (g.level === 'warn' || g.category === 'source') ? t.warn : t[g.status] ?? g.status; }
+function gateLabel(g, lang) { return LABELS[g.id]?.[lang === 'en' ? 1 : 0] ?? g.id; }
 export function renderMarkdown(doc, ctx = {}) {
-  const t = tOf(langOf(doc, ctx));
-  const n = namer(ctx, t);
-  const stats = computeStats(doc);
-  const eps = doc.episodes;
-  const first = eps[0]?.ep;
-  const last = eps[eps.length - 1]?.ep;
-  const out = [`# ${t.docTitle(doc.source, first, last)}`, ''];
-
-  for (const [i, ep] of eps.entries()) {
-    const st = stats.episodes[i];
-    out.push(`## ${t.epHead(ep.ep)}`, '');
-    out.push(`> ${t.estLabel(st.est, ep.targetSeconds)} · ${t.hookLabel}${t.colon}${ep.hook}${Array.isArray(ep.hookBeat) ? t.paren(t.hookAt(ep.hookBeat[0], ep.hookBeat[1])) : ''} · ${t.cliffLabel}${t.colon}${ep.cliff}`);
-    if (ep.beatsClaimed.length) out.push(`> ${t.beatsLabel}${t.colon}${ep.beatsClaimed.join(t.sep)}`);
-    out.push('');
-    ep.scenes.forEach((sc, idx) => {
-      out.push(`### ${t.sceneHead(idx + 1)} · ${n.scene(sc.sceneId)}${sc.lighting ? t.paren(sc.lighting) : ''}`, '');
-      if (sc.characters.length) out.push(t.castProps(sc.characters.map(n.char).join(t.sep), sc.props?.length ? sc.props.map(n.prop).join(t.sep) : ''), '');
-      for (const b of sc.flow) {
-        if (typeof b.action === 'string') out.push(b.action, '');
-        else out.push(`**${n.char(b.speaker)}**${b.delivery ? t.paren(b.delivery) : ''}${t.colon}${b.line}`, '');
-      }
-    });
+  if (doc?.schemaVersion !== 3) throw new Error('schemaVersion must be 3; run migrate-v3');
+  const lang = langOf(doc, ctx), t = tOf(lang), n = names(ctx), report = checkup(doc, ctx), p = paramsOf(doc);
+  const out = [`# ${esc(doc?.source)} · ${t.title}`, '', `## ${t.script}`];
+  for (const [i, ep] of arr(doc?.episodes).entries()) {
+    const plan = plansFor(ep, ctx);
+    out.push('', `### ${t.episode} ${esc(ep?.ep)}`);
+    for (const [si, sc] of arr(ep?.scenes).entries()) {
+      out.push('', `#### ${t.scene} ${si + 1} · ${esc(n.scene(sc?.sceneId))}`, [sc?.lighting ? `${t.lighting}: ${esc(sc.lighting)}` : '', `${t.characters}: ${esc(arr(sc?.characters).map(n.char).join(', '))}`, arr(sc?.props).length ? `${t.props}: ${esc(sc.props.map(n.prop).join(', '))}` : ''].filter(Boolean).join(' · '));
+      for (const row of episodeTimeline(ep, p).filter(r => r.coord[0] === si + 1)) out.push(`- [${row.coord}] ${format(row.startSeconds)}–${format(row.endSeconds)}s · ${esc(beatText(row.beat, n))}`);
+    }
+    if (plan.opening) out.push(`${t.opening}: ${esc(plan.opening)}`);
+    out.push(own(ep, 'openingBeat') ? esc(landing(ep, ep.openingBeat, p, t, n)) : t.unmarked);
+    if (plan.ending) out.push(`${t.ending}: ${esc(plan.ending.mode)} · ${esc(plan.ending.event)}`);
+    out.push(`${t.final}: ${esc(landing(ep, endBeatOf(ep), p, t, n))}`);
+    if (arr(ep?.beatClaims).length) out.push('', `#### ${t.claims}`);
+    for (const c of arr(ep?.beatClaims)) {
+      const b = arr(ctx.outline?.beats).find(b => b?.id === c?.beatId), range = claimRange(ep, c, p);
+      out.push(`- ${esc(c?.beatId)}${b?.kind ? ` (${esc(b.kind)})` : ''}: ${t.plan}: ${esc(b ? `${b.setup} → ${b.outcome}` : t.missing)}`, `  ${t.actual}: ${range ? `[${c.start}]–[${c.end}] ${format(range.startSeconds)}–${format(range.endSeconds)}s · ${esc(range.rows.map(r => beatText(r.beat, n)).join(' / '))}` : t.invalid}`);
+    }
+    const questions = questionsFor(ep, ctx);
+    if (questions.length) out.push(`#### ${t.questions}`);
+    for (const q of questions) out.push(esc(pretty(q)), ...resolutionLocations(q, doc, ctx, t, n).map(esc));
+    out.push(`${t.duration}: ${format(report.stats.episodes[i].est)}s / ${t.target}: ${esc(ep?.targetSeconds)}s`);
   }
-
-  out.push('---', '', `## ${t.secSceneTable}`, '', mdHead(t.sceneCols));
-  for (const row of stats.sceneTable) {
-    out.push(mdRow([row.ep, row.index, n.scene(row.sceneId), row.lighting, row.characters.map(n.char).join(t.sep), row.lineCount, row.estSeconds]));
-  }
-  out.push('', `## ${t.secCastLines}`, '', mdHead(t.castCols));
-  for (const c of stats.castLines) {
-    out.push(mdRow([n.char(c.id), c.count, c.chars, r1(c.chars / stats.params.charsPerSecond)]));
-  }
-  out.push('');
-  return out.join('\n');
+  out.push('', `## ${t.scenes}`);
+  for (const s of report.stats.sceneTable) out.push(`- E${esc(s.ep)} ${t.scene} ${s.index}: ${esc(n.scene(s.sceneId))} · ${format(s.estSeconds)}s · ${s.lineCount} ${t.count}`);
+  out.push('', `## ${t.lines}`);
+  for (const c of report.stats.castLines) out.push(`### ${esc(n.char(c.id))}`, ...c.lines.map(l => `- E${esc(l.ep)} [${l.sceneIndex}] ${esc(`${l.delivery ? `(${l.delivery}) ` : ''}${l.line}`)}`));
+  out.push('', `## ${t.duration}`, t.timingNote, `${t.effective}: ${esc(pretty(p))}`, ...[ctx.production?.creativeBrief, doc?.creativeBrief].filter(text).map(b => `${t.brief}: ${esc(b)}`), t.scope, t.content);
+  out.push('', `## ${t.checks}`, `${t.blocking}: ${report.blockingFailures} · ${t.warnings}: ${report.warnings}`);
+  for (const g of report.gates) out.push(`- ${statusText(g, t)} · ${gateLabel(g, lang)} (${g.category}/${g.level})${g.reason ? ` · ${t.reason[g.reason] ?? g.reason}` : ''}${g.messages.length ? `: ${g.messages.map(esc).join('; ')}` : ''}`);
+  return out.join('\n') + '\n';
 }
-
-/* ------------------------------------------------------------------ */
-/* render — html                                                       */
-/* ------------------------------------------------------------------ */
-/*
- * 与另外三份报告同一套视觉语言：冷灰印张 + 铁锈红印记，1600 宽，
- * 零外部依赖。设计约定见 references/report-style.md。
- */
-
-function embedDoc(doc) {
-  return JSON.stringify(doc).replace(/</g, '\\u003c');
-}
-
 export function renderHtml(doc, ctx = {}) {
-  const lang = langOf(doc, ctx);
-  const t = tOf(lang);
-  const n = namer(ctx, t);
-  const stats = computeStats(doc);
-  const gates = gateReport(doc, ctx);
-  const failed = gates.filter((g) => !g.ok);
-  const eps = doc.episodes;
-  const first = eps[0]?.ep;
-  const last = eps[eps.length - 1]?.ep;
-  const tolPct = Math.round(stats.params.tolerance * 100);
-
-  const fmtMin = (sec) => t.fmtMin(Math.floor(sec / 60), Math.round(sec % 60));
-  const dlgRatio = stats.totals.estSeconds ? Math.round((stats.totals.dialogueSeconds / stats.totals.estSeconds) * 100) : 0;
-  const avgScene = stats.totals.scenes ? r1(stats.totals.estSeconds / stats.totals.scenes) : 0;
-
-  // ---- 时长仪表：每集一行，目标区间画成绿带，台词/动作堆叠 ----
-  const scaleMax = Math.max(...stats.episodes.map((e) => Math.max(e.est, (e.target ?? 0) * (1 + stats.params.tolerance)))) * 1.08;
-  const timingRows = stats.episodes
-    .map((e) => {
-      const lo = e.target * (1 - stats.params.tolerance);
-      const hi = e.target * (1 + stats.params.tolerance);
-      const inBand = e.est >= lo && e.est <= hi;
-      const pct = (v) => `${r1((v / scaleMax) * 100)}%`;
-      const status = inBand ? '' : ` <b class="over">${esc(e.est > hi ? t.overBy(r1(e.est - hi)) : t.underBy(r1(lo - e.est)))}</b>`;
-      return `<div class="trow">
-  <span class="tep">E${String(e.ep).padStart(2, '0')}</span>
-  <div class="track">
-    <span class="band" style="left:${pct(lo)};width:${pct(hi - lo)}"></span>
-    <span class="fill dlg" style="width:${pct(e.dialogueSeconds)}"></span>
-    <span class="fill act" style="left:${pct(e.dialogueSeconds)};width:${pct(e.actionSeconds)}"></span>
-  </div>
-  <span class="tval${inBand ? ' okc' : ''}">${e.est}s / ${e.target}s${status}</span>
-</div>`;
-    })
-    .join('\n');
-
-  // ---- 分集剧本 ----
-  const epBlocks = eps
-    .map((ep, i) => {
-      const st = stats.episodes[i];
-      const scenesHtml = ep.scenes
-        .map((sc, idx) => {
-          const flow = sc.flow
-            .map((b, bi) => {
-              const hooked = Array.isArray(ep.hookBeat) && ep.hookBeat[0] === idx + 1 && ep.hookBeat[1] === bi + 1;
-              const hk = hooked ? ' hooked' : '';
-              return typeof b.action === 'string'
-                ? `<p class="act-line${hk}"${hooked ? ` title="${esc(t.hookLabel)}"` : ''}>${esc(b.action)}</p>`
-                : `<div class="dlg-line${hk}"><span class="who">${esc(n.char(b.speaker))}${b.delivery ? `<i>${esc(b.delivery)}</i>` : ''}</span><span class="said">${esc(b.line)}</span><button class="copy mini" data-copy="${esc(b.line)}">${esc(t.copy)}</button></div>`;
-            })
-            .join('\n');
-          return `<section class="scene-blk">
-  <header class="scene-h">
-    <b>${esc(t.sceneHead(idx + 1))}</b>
-    <span class="chip">${esc(sc.sceneId)} ${esc(n.scene(sc.sceneId))}</span>
-    ${sc.lighting ? `<span class="chip lite">${esc(t.lightingLabel)} · ${esc(sc.lighting)}</span>` : ''}
-    ${sc.characters.map((id) => `<span class="chip">${esc(n.char(id))}</span>`).join('')}
-    ${(sc.props ?? []).map((id) => `<span class="chip prop">${esc(n.prop(id))}</span>`).join('')}
-  </header>
-  ${flow}
-</section>`;
-        })
-        .join('\n');
-      return `<article class="ep" id="ep-${ep.ep}">
-  <header class="ep-h">
-    <span class="ep-n">E${String(ep.ep).padStart(2, '0')}</span>
-    <span class="ep-est">${esc(t.estLabel(st.est, ep.targetSeconds))}</span>
-    ${ep.beatsClaimed.map((b) => `<i class="bt">${esc(b)}</i>`).join('')}
-  </header>
-  <div class="hk"><b>${esc(t.hookLabel)}</b><span>${esc(ep.hook)}${Array.isArray(ep.hookBeat) ? ` <i class="hookat">${esc(t.hookAt(ep.hookBeat[0], ep.hookBeat[1]))}</i>` : ''}</span></div>
-  <div class="scenes clip">
-  ${scenesHtml}
-  </div>
-  <button class="scmore">${esc(t.showScenes)}</button>
-  <div class="hk cliff"><b>${esc(t.cliffLabel)}</b><span>${esc(ep.cliff)}</span></div>
-</article>`;
-    })
-    .join('\n');
-
-  // ---- 场次总表 / 台词本 ----
-  const table = (cols, rows) =>
-    `<table><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>
-<tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('\n')}</tbody></table>`;
-
-  const sceneRows = stats.sceneTable.map((row) => [
-    String(row.ep), String(row.index), esc(`${row.sceneId} ${n.scene(row.sceneId)}`), esc(row.lighting),
-    esc(row.characters.map(n.char).join(t.sep)), String(row.lineCount), String(row.estSeconds),
-  ]);
-
-  const castBlocks = stats.castLines
-    .map((c) => {
-      const allText = c.lines.map((l) => l.line).join('\n');
-      return `<section class="cast-blk">
-  <header class="cast-h">
-    <b>${esc(n.char(c.id))}</b>
-    <span class="cast-meta">${esc(t.castMeta(c.count, c.chars, r1(c.chars / stats.params.charsPerSecond)))}</span>
-    ${n.voice(c.id) ? `<button class="copy" data-copy="${esc(n.voice(c.id))}">${esc(t.voiceBtn)}</button>` : ''}
-    <button class="copy" data-copy="${esc(allText)}">${esc(t.copyAllLines)}</button>
-  </header>
-  <ol class="cast-lines">${c.lines.map((l) => `<li><i>${esc(t.lineRef(l.ep, l.sceneIndex))}</i><span>${esc(l.line)}</span>${l.delivery ? `<em>${esc(l.delivery)}</em>` : ''}</li>`).join('')}</ol>
-</section>`;
-    })
-    .join('\n');
-
-  const gateList = `<ul class="gate">
-  ${gates
-    .map(
-      (g) => `<li class="${g.ok ? 'ok' : 'bad'}"><span class="m">${g.ok ? '✓' : '✗'}</span><span>${esc(gateText(g, t.langCode).label)}${
-        (!g.ok && g.detail) || (g.ok && g.detail.includes('跳过')) ? `<small>${esc(gateText(g, t.langCode).detail)}</small>` : ''
-      }</span></li>`,
-    )
-    .join('\n  ')}
-</ul>`;
-
+  if (doc?.schemaVersion !== 3) throw new Error('schemaVersion must be 3; run migrate-v3');
+  const lang = langOf(doc, ctx), t = tOf(lang), n = names(ctx), report = checkup(doc, ctx), p = paramsOf(doc);
+  const pre = value => `<pre>${esc(pretty(value))}</pre>`;
+  const copy = value => `<button data-copy="${esc(value)}">${t.copy}</button>`;
+  const eps = arr(doc?.episodes).map((ep, i) => {
+    const timeline = episodeTimeline(ep, p), est = report.stats.episodes[i].est, plan = plansFor(ep, ctx);
+    const scenes = arr(ep?.scenes).map((s, si) => `<section><h4>${t.scene} ${si + 1} · ${esc(n.scene(s?.sceneId))}</h4><p>${s?.lighting ? `${t.lighting}: ${esc(s.lighting)} · ` : ''}${t.characters}: ${esc(arr(s?.characters).map(n.char).join(', '))}${arr(s?.props).length ? ` · ${t.props}: ${esc(s.props.map(n.prop).join(', '))}` : ''}</p><ol>${timeline.filter(r => r.coord[0] === si + 1).map(r => `<li id="ep-${esc(ep?.ep)}-${r.coord.join('-')}"><small>[${r.coord}] ${format(r.startSeconds)}–${format(r.endSeconds)}s</small><p>${esc(beatText(r.beat, n))}</p>${own(r.beat, 'line') ? copy(r.beat.line) : ''}</li>`).join('')}</ol></section>`).join('');
+    const claims = arr(ep?.beatClaims).map(c => {
+      const b = arr(ctx.outline?.beats).find(b => b?.id === c?.beatId), range = claimRange(ep, c, p);
+      return `<article class="claim"><div><h5>${esc(c?.beatId)}${b?.kind ? ` · ${esc(b.kind)}` : ''}</h5><strong>${t.plan}</strong><p>${b ? `${t.setup}: ${esc(b.setup)}<br>${t.outcome}: ${esc(b.outcome)}` : t.missing}</p>${arr(b?.resolves).length ? `<p>resolves: ${esc(arr(b.resolves).join(', '))}</p>` : ''}</div><div><strong>${t.actual}</strong>${range ? `<p>[${c.start}]–[${c.end}] · ${format(range.startSeconds)}–${format(range.endSeconds)}s</p>${range.rows.map(r => `<p><a href="#ep-${esc(ep.ep)}-${r.coord.join('-')}">[${r.coord}]</a> ${esc(beatText(r.beat, n))}</p>`).join('')}` : `<p>${t.invalid}</p>`}</div></article>`;
+    }).join('');
+    const q = questionsFor(ep, ctx).map(q => `${pre(q)}<pre>${esc(resolutionLocations(q, doc, ctx, t, n).join('\n') || '—')}</pre>`).join('');
+    return `<article class="episode"><h3>${t.episode} ${esc(ep?.ep)}</h3><details open><summary>${t.timeline}</summary>${scenes}</details>${plan.opening ? `<h4>${t.opening}</h4><p>${esc(plan.opening)}</p>` : ''}<p>${own(ep, 'openingBeat') ? esc(landing(ep, ep.openingBeat, p, t, n)) : t.unmarked}</p>${plan.ending ? `<h4>${t.ending} · ${esc(plan.ending.mode)}</h4><p>${esc(plan.ending.event)}</p>` : ''}<p>${t.final}: ${esc(landing(ep, endBeatOf(ep), p, t, n))}</p>${claims ? `<h4>${t.claims}</h4>${claims}` : ''}${q ? `<h4>${t.questions}</h4>${q}` : ''}<p>${t.duration}: ${format(est)}s / ${t.target}: ${esc(ep?.targetSeconds)}s</p></article>`;
+  }).join('');
+  const checks = report.gates.map(g => `<li class="${g.status === 'fail' ? isBlocking(g) ? 'fail' : 'warn' : g.status}"><strong>${esc(statusText(g, t))} · ${esc(gateLabel(g, lang))}</strong> <small>${esc(t[g.category === 'content' ? 'contentCategory' : g.category] ?? g.category)} / ${esc(g.level)}</small>${g.reason ? `<p>${esc(t.reason[g.reason] ?? g.reason)}</p>` : ''}${g.messages.map(m => `<p>${esc(m)}</p>`).join('')}</li>`).join('');
   return `<!doctype html>
-<html lang="${lang}"><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(t.docTitle(doc.source, first, last))}</title>
-<style>
-:root{
-  --paper:#eceded; --panel:#f5f6f5; --side:#e4e6e3; --ink:#191d21; --ink-2:#5b636a; --ink-3:#8c9298;
-  --rule:#d2d5d0; --rule-2:#c2c6bf; --seal:#8a3324; --seal-2:#c56a4e; --seal-soft:#8a332412; --ok:#3d6b4f;
-  --band:#3d6b4f22;
-  --serif:"Songti SC","STSong","Source Han Serif SC","Noto Serif CJK SC",Georgia,serif;
-  --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,sans-serif;
-  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+<html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(doc?.source)} · ${t.title}</title><style>
+:root{--paper:#eceded;--panel:#f5f6f5;--seal:#8a3324;--ok:#3d6b4f}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:#252827;font:16px/1.65 system-ui,sans-serif}main{max-width:1500px;margin:auto;padding:28px}h1,h2,h3{font-family:Georgia,serif}h1{font-size:2.5rem}h2{border-top:2px solid var(--seal);padding-top:20px;margin-top:36px}h4,h5{margin:12px 0}a{color:var(--seal)}p,li,pre{overflow-wrap:anywhere}pre{white-space:pre-wrap;font-size:.85rem;max-width:100%;padding:12px;background:#e4e7e4}button,summary{cursor:pointer}button{padding:7px 12px;border:1px solid #999;background:var(--panel);border-radius:4px}small{color:#555}li{margin:10px 0}li p{margin:4px 0}.eps,.casts,.config{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.episode,.cast,.config>div{min-width:0;padding:20px;background:var(--panel);border:1px solid #ccc}.claim{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;border-top:1px solid #ccc;padding:12px 0}.claim>div{min-width:0}.claim h5{font-size:1rem}meter{width:100%;height:18px}.cast ul{max-height:260px;overflow:auto}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse}td,th{text-align:left;border-bottom:1px solid #ccc;padding:8px}.fail{border-left:4px solid var(--seal);padding-left:12px}.warn{border-left:4px solid #a66b18;padding-left:12px}.pass{color:var(--ok)}.notice{padding:16px;background:#fff4dc}.skipped{color:#666}#checks{list-style:none;padding:0}@media(max-width:750px){main{padding:14px}.eps,.casts,.config,.claim{grid-template-columns:minmax(0,1fr)}.episode{padding:14px}h1{font-size:1.8rem}}@media print{button{display:none}.eps,.casts,.config{display:block}.episode,.cast{break-inside:avoid}.cast ul{max-height:none;overflow:visible}body{background:white}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style></head><body><main><header><h1>${esc(doc?.source)} · ${t.title}</h1><button id="export">${t.export}</button><p>${t.blocking}: ${report.blockingFailures} · ${t.warnings}: ${report.warnings}</p></header>
+<h2>${t.script}</h2><div class="eps">${eps}</div>
+<h2>${t.scenes}</h2><div class="table-wrap"><table><thead><tr>${[t.episode, t.scene, t.lighting, t.characters, t.props, t.count, t.duration].map(x => `<th>${x}</th>`).join('')}</tr></thead><tbody>${report.stats.sceneTable.map(s => `<tr>${[s.ep, `${s.index} · ${n.scene(s.sceneId)}`, s.lighting ?? '—', s.characters.map(n.char).join(', '), s.props.map(n.prop).join(', '), s.lineCount, `${format(s.estSeconds)}s`].map(x => `<td>${esc(x)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+<h2>${t.lines}</h2><div class="casts">${report.stats.castLines.map(c => `<article class="cast"><h3>${esc(n.char(c.id))}</h3><p>${t.count}: ${c.count} · ${t.chars}: ${c.chars}</p>${copy(c.lines.map(l => l.line).join('\n'))}${text(n.voice(c.id)) ? `<details><summary>${t.voice}</summary><pre>${esc(n.voice(c.id))}</pre>${copy(n.voice(c.id))}</details>` : ''}<ul>${c.lines.map(l => `<li>E${esc(l.ep)} [${l.sceneIndex}]: ${esc(`${l.delivery ? `(${l.delivery}) ` : ''}${l.line}`)}</li>`).join('')}</ul></article>`).join('')}</div>
+<h2>${t.duration}</h2><p>${t.timingNote}</p><h3>${t.effective}</h3>${pre(p)}${[ctx.production?.creativeBrief, doc?.creativeBrief].filter(text).map(b => `<h3>${t.brief}</h3><p>${esc(b)}</p>`).join('')}<p>${t.scope}</p>
+<h2>${t.checks}</h2><ul id="checks">${checks}</ul><p>${t.content}</p></main>
+<script id="script-data" type="application/json">${embed(doc)}</script><script>
+const labels=${embed({ copied: t.copied, failed: t.copyFailed })};
+async function copyText(value){
+  if(location.protocol!=='file:'&&navigator.clipboard?.writeText){try{await Promise.race([navigator.clipboard.writeText(value),new Promise((_,reject)=>setTimeout(()=>reject(new Error('clipboard timeout')),1000))]);return}catch{}}
+  const previous=document.activeElement;const area=document.createElement('textarea');area.value=value;area.style.cssText='position:fixed;left:-10000px;top:0';document.body.append(area);area.select();
+  try{if(!document.execCommand('copy'))throw new Error('copy failed')}finally{area.remove();previous?.focus({preventScroll:true})}
 }
-*{box-sizing:border-box}
-body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.7 var(--sans);-webkit-font-smoothing:antialiased}
-.page{max-width:1600px;margin:0 auto;padding:24px 32px 90px}
-h1,h2,h3{margin:0;font-weight:400}
-
-.hd{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;border-bottom:2px solid var(--ink);padding-bottom:12px}
-.hd h1{font:400 28px/1.1 var(--serif);letter-spacing:.06em}
-.hd .sub{font-size:13px;color:var(--ink-2)}
-.hd .right{margin-left:auto;display:flex;align-items:center;gap:10px}
-.gatepill{display:inline-flex;align-items:center;gap:6px;font:500 12px/1 var(--sans);border-radius:99px;padding:6px 12px}
-.gatepill.pass{color:var(--ok);border:1px solid var(--ok)}
-.gatepill.fail{color:var(--seal);border:1px solid var(--seal);background:var(--seal-soft)}
-.expo{font:500 11px/1 var(--sans);color:var(--ink-2);background:var(--panel);
-  border:1px solid var(--rule-2);border-radius:2px;padding:7px 11px;cursor:pointer;transition:.15s}
-.expo:hover{border-color:var(--seal);color:var(--seal)}
-.expo:focus-visible{outline:2px solid var(--seal);outline-offset:2px}
-
-.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:18px 0 6px}
-@media(max-width:980px){.kpis{grid-template-columns:repeat(2,1fr)}}
-.kpi{background:var(--panel);border:1px solid var(--rule);border-radius:2px;padding:11px 14px 9px}
-.kpi .l{font:500 10px/1 var(--sans);letter-spacing:.18em;color:var(--ink-3)}
-.kpi .v{font:400 28px/1.15 var(--serif);margin-top:5px}
-.kpi .v small{font:400 14px var(--serif);color:var(--ink-2)}
-.kpi .d{font-size:11px;color:var(--ink-2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.kpi.accent{border-top:2px solid var(--seal)}
-.galert{margin:14px 0 0;border:1px solid var(--seal);background:var(--seal-soft);border-radius:2px;
-  padding:10px 14px;font-size:13px}
-.galert b{color:var(--seal)}
-.galert span{display:block;font-size:12px;color:var(--ink-2)}
-
-section.top-sec{margin-top:34px}
-.sec-h{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid var(--rule-2);padding-bottom:8px;margin-bottom:16px}
-.sec-h .no{font:500 12px/1 var(--mono);color:var(--seal)}
-.sec-h h2{font:400 20px/1.2 var(--serif);letter-spacing:.05em}
-.sec-h .note{margin-left:auto;font-size:12px;color:var(--ink-3)}
-
-/* duration gauge */
-.timing{background:var(--panel);border:1px solid var(--rule);border-radius:2px;padding:16px 20px 10px}
-.trow{display:grid;grid-template-columns:44px minmax(0,1fr) 220px;gap:12px;align-items:center;padding:5px 0}
-.tep{font:500 12px/1 var(--mono);color:var(--ink-2)}
-.track{position:relative;height:18px;background:var(--paper);border:1px solid var(--rule);border-radius:2px;overflow:hidden}
-.band{position:absolute;top:0;bottom:0;background:var(--band)}
-.fill{position:absolute;top:2px;bottom:2px;border-radius:1px}
-.fill.dlg{left:0;background:var(--seal)}
-.fill.act{background:var(--seal-2)}
-.tval{font:500 12px/1.5 var(--sans);color:var(--ink-2)}
-.tval.okc{color:var(--ok)}
-.tval .over{color:var(--seal);font-weight:600}
-.legend{display:flex;gap:18px;font-size:12px;color:var(--ink-2);margin:8px 0 2px}
-.legend i{font-style:normal;display:inline-flex;align-items:center;gap:6px}
-.sw{display:inline-block;width:10px;height:10px;border-radius:2px}
-
-/* episode scripts: two per row; scene area clips at 300px with a fade, expandable */
-.eps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
-.eps.solo{grid-template-columns:minmax(0,1fr)}
-@media(max-width:1100px){.eps{grid-template-columns:minmax(0,1fr)}}
-.ep{background:var(--panel);border:1px solid var(--rule);border-radius:2px;padding:18px 22px}
-.scenes{position:relative}
-.scenes.clip{max-height:300px;overflow:hidden}
-.scenes.clip::after{content:'';position:absolute;left:0;right:0;bottom:0;height:70px;
-  background:linear-gradient(180deg,transparent,var(--panel));pointer-events:none}
-.scmore{display:block;width:100%;margin-top:8px;font:500 11.5px/1 var(--sans);letter-spacing:.06em;
-  color:var(--ink-2);background:var(--paper);border:1px solid var(--rule-2);border-radius:2px;
-  padding:7px 0;cursor:pointer;transition:.15s}
-.scmore:hover{border-color:var(--seal);color:var(--seal)}
-.scmore:focus-visible{outline:2px solid var(--seal);outline-offset:2px}
-.ep-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--rule-2);padding-bottom:10px}
-.ep-n{font:400 22px/1 var(--serif);letter-spacing:.04em;color:var(--seal)}
-.ep-est{font-size:12.5px;color:var(--ink-2)}
-.bt{font-style:normal;font-size:11px;padding:2px 8px;border:1px solid var(--seal);border-radius:99px;color:var(--seal)}
-.hk{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px;font-size:13px;padding:10px 0;border-bottom:1px solid var(--rule)}
-.hk.cliff{border-bottom:0;border-top:1px solid var(--rule)}
-.hk b{font:500 11px/1.9 var(--sans);letter-spacing:.14em;color:var(--seal);white-space:nowrap}
-.scene-blk{margin-top:14px}
-.scene-h{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;margin-bottom:8px}
-.scene-h b{font:500 13px var(--serif);letter-spacing:.06em}
-.chip{font:400 10.5px/1.6 var(--mono);border:1px solid var(--rule-2);border-radius:2px;
-  padding:0 6px;background:var(--paper);color:var(--ink-2)}
-.chip.lite{border-color:var(--seal-2);color:var(--seal-2)}
-.chip.prop{border-color:var(--seal);color:var(--seal)}
-.act-line{margin:8px 0;font:400 13.5px/1.9 var(--sans);color:var(--ink-2)}
-.act-line.hooked,.dlg-line.hooked{border-left:2px solid var(--seal);padding-left:10px;background:var(--seal-soft)}
-.hookat{font-style:normal;font-size:11px;padding:1px 8px;border:1px solid var(--seal);border-radius:99px;color:var(--seal);margin-left:8px;white-space:nowrap}
-.dlg-line{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:12px;align-items:baseline;
-  padding:5px 0 5px 10px;border-left:2px solid var(--rule-2)}
-.dlg-line:hover{border-left-color:var(--seal)}
-.who{font:500 13px/1.6 var(--serif)}
-.who i{display:block;font:400 11px var(--sans);color:var(--ink-3);font-style:normal}
-.said{font:400 14.5px/1.8 var(--serif)}
-.dlg-line .copy{opacity:0;transition:.15s}
-.dlg-line:hover .copy{opacity:1}
-
-/* tables */
-table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--rule);font-size:13px}
-th,td{padding:8px 12px;border-bottom:1px solid var(--rule);text-align:left;vertical-align:top}
-th{font:500 11px/1 var(--sans);letter-spacing:.1em;color:var(--ink-3);background:var(--side)}
-tr:last-child td{border-bottom:0}
-td:first-child{font-family:var(--mono);font-size:12px;color:var(--ink-2);white-space:nowrap}
-
-/* line book: two per row; lists capped at 6 rows, scroll vertically */
-.casts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
-@media(max-width:1100px){.casts{grid-template-columns:minmax(0,1fr)}}
-.cast-blk{background:var(--panel);border:1px solid var(--rule);border-radius:2px;padding:14px 18px}
-.cast-h{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid var(--rule-2);padding-bottom:8px}
-.cast-h b{font:400 17px/1.2 var(--serif);letter-spacing:.04em}
-.cast-meta{font-size:12px;color:var(--ink-2)}
-.cast-h .copy{margin-left:auto}
-.cast-lines{margin:8px 0 0;padding:0 6px 0 0;list-style:none;max-height:186px;overflow-y:auto;
-  scrollbar-width:thin;scrollbar-color:var(--rule-2) transparent}
-.cast-lines::-webkit-scrollbar{width:6px}
-.cast-lines::-webkit-scrollbar-thumb{background:var(--rule-2);border-radius:3px}
-.cast-lines li{display:grid;grid-template-columns:110px minmax(0,1fr) auto;gap:12px;align-items:baseline;
-  padding:4.5px 0;border-top:1px solid var(--rule);font-size:13px}
-.cast-lines li:first-child{border-top:0}
-.cast-lines i{font:400 11px/1.8 var(--mono);color:var(--ink-3);font-style:normal}
-.cast-lines span{font-family:var(--serif)}
-.cast-lines em{font-style:normal;font-size:11.5px;color:var(--ink-3)}
-
-.copy{flex:none;font:500 11px/1 var(--sans);color:var(--ink-2);background:var(--paper);
-  border:1px solid var(--rule-2);border-radius:2px;padding:4px 10px;cursor:pointer;transition:.15s}
-.copy:hover{border-color:var(--seal);color:var(--seal)}
-.copy:focus-visible{outline:2px solid var(--seal);outline-offset:2px}
-.copy[data-done]{border-color:var(--seal);color:var(--seal)}
-.copy.mini{padding:2px 7px;font-size:10.5px}
-
-.gate{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:2px 28px}
-@media(max-width:900px){.gate{grid-template-columns:1fr}}
-.gate li{display:flex;gap:8px;padding:5px 0;font-size:12.5px;line-height:1.55}
-.gate .m{flex:none;font-weight:700}
-.gate li.ok .m{color:var(--ok)}
-.gate li.bad .m{color:var(--seal)}
-.gate li.bad{background:var(--seal-soft);border-radius:2px;padding-left:6px}
-.gate small{display:block;color:var(--ink-3)}
-.gsum{margin:10px 0 0;font-size:12px;color:var(--ink-2)}
-.gsum b{color:var(--seal)}
-
-.foot{margin-top:40px;font-size:11px;color:var(--ink-3);border-top:1px solid var(--rule);padding-top:14px}
-@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-@media print{
-  .expo,.copy,.scmore{display:none!important}
-  .scenes.clip{max-height:none}
-  .scenes.clip::after{display:none}
-  .cast-lines{max-height:none;overflow:visible}
-  .eps,.casts{grid-template-columns:minmax(0,1fr)}
-  .page{max-width:none;padding:0}
-  section.top-sec,.ep,.cast-blk{page-break-inside:avoid}
-  body{background:#fff}
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-copy]');if(!b)return;const old=b.textContent;try{await copyText(b.dataset.copy);b.textContent=labels.copied}catch{b.textContent=labels.failed}setTimeout(()=>b.textContent=old,1600)});
+document.getElementById('export').onclick=()=>{const raw=document.getElementById('script-data').textContent;const url=URL.createObjectURL(new Blob([JSON.stringify(JSON.parse(raw),null,2)+'\\n'],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=${embed(slug(doc?.source) + '-script.json')};a.click();setTimeout(()=>URL.revokeObjectURL(url),10000)};
+window.addEventListener('beforeprint',()=>document.querySelectorAll('details').forEach(d=>{d.dataset.wasOpen=d.open;d.open=true}));window.addEventListener('afterprint',()=>document.querySelectorAll('details').forEach(d=>{d.open=d.dataset.wasOpen==='true'}));
+</script></body></html>`;
 }
-</style></head><body>
-<div class="page">
 
-<header class="hd">
-  <h1>${esc(doc.source)}</h1>
-  <span class="sub">${esc(t.kicker)} · ${esc(t.epRange(first, last))}</span>
-  <span class="right">
-    <span class="gatepill ${failed.length ? 'fail' : 'pass'}">${failed.length ? '✗' : '✓'} ${esc(t.gatePill(gates.length - failed.length, gates.length))}</span>
-    <button class="expo" data-name="${esc(slug(doc.source))}-script.json">${esc(t.exportJson)}</button>
-  </span>
-</header>
-
-<div class="kpis">
-  <div class="kpi accent"><div class="l">${esc(t.kpi.eps)}</div><div class="v">${stats.totals.episodes}</div><div class="d">${esc(t.kpi.epsSub(stats.totals.scenes))}</div></div>
-  <div class="kpi"><div class="l">${esc(t.kpi.time)}</div><div class="v">${esc(fmtMin(stats.totals.estSeconds))}</div><div class="d">${esc(t.kpi.timeSub(fmtMin(stats.totals.targetSeconds)))}</div></div>
-  <div class="kpi"><div class="l">${esc(t.kpi.lines)}</div><div class="v">${stats.totals.lines} <small>${esc(t.unitLines)}</small></div><div class="d">${esc(t.kpi.linesSub(stats.totals.dialogueSeconds))}</div></div>
-  <div class="kpi"><div class="l">${esc(t.kpi.dlgRatio)}</div><div class="v">${dlgRatio}<small>%</small></div><div class="d">${esc(t.kpi.dlgRatioSub)}</div></div>
-  <div class="kpi"><div class="l">${esc(t.kpi.avgScene)}</div><div class="v">${avgScene} <small>${esc(t.unitSec)}</small></div><div class="d">${esc(t.kpi.avgSceneSub)}</div></div>
-</div>
-${failed.length ? `<div class="galert"><b>✗ ${esc(t.gatesFail(failed.length))}</b>${failed.map((g) => `<span>${esc(gateText(g, t.langCode).label)}${g.detail ? ` — ${esc(gateText(g, t.langCode).detail)}` : ''}</span>`).join('')}</div>` : ''}
-
-<section class="top-sec" id="sec-timing">
-  <div class="sec-h"><span class="no">01</span><h2>${esc(t.secTiming)}</h2><span class="note">${esc(t.timingNote(tolPct))}</span></div>
-  <div class="timing">
-    <div class="legend">
-      <i><span class="sw" style="background:var(--seal)"></span>${esc(t.legendDlg)}</i>
-      <i><span class="sw" style="background:var(--seal-2)"></span>${esc(t.legendAct)}</i>
-      <i><span class="sw" style="background:var(--band)"></span>${esc(t.legendBand)}</i>
-    </div>
-${timingRows}
-  </div>
-</section>
-
-<section class="top-sec" id="sec-script">
-  <div class="sec-h"><span class="no">02</span><h2>${esc(t.secScript)}</h2><span class="note">${eps.length > 1 ? esc(t.scriptNote) : ''}</span></div>
-  <div class="eps${eps.length > 1 ? '' : ' solo'}">
-${epBlocks}
-  </div>
-</section>
-
-<section class="top-sec" id="sec-scenes">
-  <div class="sec-h"><span class="no">03</span><h2>${esc(t.secSceneTable)}</h2><span class="note">${esc(t.sceneTableNote)}</span></div>
-  ${table(t.sceneCols, sceneRows)}
-</section>
-
-<section class="top-sec" id="sec-cast">
-  <div class="sec-h"><span class="no">04</span><h2>${esc(t.secCastLines)}</h2><span class="note">${esc(t.castLinesNote)}</span></div>
-  <div class="casts">
-${castBlocks}
-  </div>
-</section>
-
-<section class="top-sec" id="sec-gates">
-  <div class="sec-h"><span class="no">05</span><h2>${esc(t.secGates)}</h2></div>
-  ${gateList}
-  <p class="gsum">${failed.length ? `<b>${esc(t.gatesFail(failed.length))}</b>` : esc(t.gatesPass)}</p>
-</section>
-
-<p class="foot">${esc(t.colophon)}</p>
-</div>
-
-<script type="application/json" id="script-data">${embedDoc(doc)}</script>
-<script>
-const L = ${JSON.stringify({ copied: t.copied, failed: t.copyFailed, show: t.showScenes, hide: t.hideScenes })};
-
-// episode scripts: scene areas clip at 300px; short ones unclip, tall ones toggle
-document.querySelectorAll('.scmore').forEach((btn) => {
-  const zone = btn.previousElementSibling;
-  if (zone.scrollHeight <= 320) {
-    zone.classList.remove('clip');
-    btn.remove();
+const USAGE = `novel-script v3 (Node 18+, no dependencies)
+  seed OUTLINE [--eps 1-3]
+  validate SCRIPT [--outline FILE] [--art FILE] [--production FILE | --no-production] [--stage skeleton|full]
+  checkup SCRIPT [same options] [--json]
+  render SCRIPT [--html|--md] [--lang zh|en] [same options] [--cast FILE]
+  migrate-v3 INPUT [--out OUTPUT] [--confirm] [--outline FILE] [--production FILE | --no-production]
+  slug NAME
+Full delivery requires upstream reconciliation and separate content review. See references/migration.md for explicit v2 migration.`;
+const readJson = path => readJsonStrict(resolve(path));
+function flag(args, key, fallback = undefined) {
+  const i = args.indexOf(key);
+  if (i < 0) return fallback;
+  if (!args[i + 1] || args[i + 1].startsWith('--')) throw new Error(`${key}: missing argument`);
+  return args[i + 1];
+}
+function loadCtx(args, path) {
+  const ctx = { docPath: resolve(path), stage: flag(args, '--stage', 'full') };
+  for (const key of ['outline', 'art', 'cast']) {
+    const file = flag(args, `--${key}`);
+    if (file !== undefined) ctx[key] = readJson(file); // supplied damaged/unreadable inputs fail; never skipped
+  }
+  if (args.includes('--production') && args.includes('--no-production')) throw new Error('--production and --no-production are mutually exclusive');
+  const productionPath = args.includes('--no-production') ? undefined : flag(args, '--production') ?? findProduction(dirname(resolve(path)));
+  if (productionPath) { ctx.production = readJson(productionPath); ctx.productionPath = productionPath; }
+  ctx.root = projectRoot(path, productionPath);
+  Object.assign(ctx, loadKnownUpstreams(ctx.root, ctx));
+  const lang = flag(args, '--lang'); if (lang) ctx.lang = lang;
+  return ctx;
+}
+export async function main(argv) {
+  const [command, path, ...args] = argv;
+  if (!command || ['--help', '-h'].includes(command)) { console.log(USAGE); return; }
+  if (!path) throw new Error(USAGE);
+  if (command === 'slug') { console.log(slug(path)); return; }
+  if (command === 'seed') {
+    const raw = flag(args, '--eps'), match = raw?.match(/^(\d+)(?:-(\d+))?$/);
+    if (raw && !match) throw new Error('--eps: expected N or N-M');
+    console.log(pretty(seedFromOutline(readJson(path), match ? [+match[1], +(match[2] ?? match[1])] : null))); return;
+  }
+  if (command === 'migrate-v3') {
+    const ctx = loadCtx(args, path);
+    const result = migrateFile(path, { out: flag(args, '--out'), confirm: args.includes('--confirm'), ctx, validate: validateScript });
+    console.log(pretty(result));
+    if (result.errors.length || (result.pending.length && !args.includes('--confirm'))) process.exitCode = 1;
     return;
   }
-  btn.addEventListener('click', () => {
-    const clipped = zone.classList.toggle('clip');
-    btn.textContent = clipped ? L.show : L.hide;
-    if (clipped) zone.closest('.ep').scrollIntoView({ block: 'nearest' });
-  });
-});
-
-// copy buttons (a single line / a character's whole line book)
-document.addEventListener('click', async (e) => {
-  const btn = e.target.closest('.copy');
-  if (!btn) return;
-  e.preventDefault();
-  const label = btn.textContent;
-  try {
-    await navigator.clipboard.writeText(btn.dataset.copy);
-    btn.textContent = L.copied;
-    btn.dataset.done = '1';
-  } catch {
-    btn.textContent = L.failed;
-  }
-  setTimeout(() => { btn.textContent = label; delete btn.dataset.done; }, 1600);
-});
-
-// export: the report carries the full script.json; the download is it verbatim
-document.querySelector('.expo').addEventListener('click', (e) => {
-  const btn = e.currentTarget;
-  const url = URL.createObjectURL(
-    new Blob([document.getElementById('script-data').textContent], { type: 'application/json' }),
-  );
-  const a = Object.assign(document.createElement('a'), { href: url, download: btn.dataset.name });
-  a.click();
-  // don't revoke right away — Safari kills the blob before the download finishes reading it
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
-});
-</script>
-</body></html>`;
-}
-
-/* ------------------------------------------------------------------ */
-/* CLI                                                                 */
-/* ------------------------------------------------------------------ */
-
-const USAGE = `novel-script.mjs — novel-script skill 的确定性工具（剧本）
-
-  seed <outline.json> [--eps 1-6]           从大纲预填每集骨架（打印到 stdout）
-  validate <script.json> [--outline o.json] 校验；有违规逐条打印并 exit 1
-           [--art a.json]                   给了上游才做对账（角色 / 场景光照道具 / 爽点认领）
-  checkup <script.json> [--outline] [--art] 只打印质量门 ✓/✗，有未过项 exit 1
-  render <script.json> [--html|--md]        渲染报告到 stdout（默认 --md）
-         [--lang zh|en]                     报告界面语言（默认中文，或跟 script.json 的 lang 字段）
-         [--outline o.json] [--art a.json]  给了上游就把 ID 显示成名字
-         [--cast cast.json]                 台词本带每个角色的音色提示词（对接 TTS）
-  slug <name>                               剧名转安全文件名`;
-
-function readJson(path) {
-  return JSON.parse(readFileSync(resolve(path), 'utf8'));
-}
-
-function flag(rest, name, fallback = null) {
-  const i = rest.indexOf(name);
-  return i >= 0 && rest[i + 1] ? rest[i + 1] : fallback;
-}
-
-/*
- * 落点提示：产物该住在工作目录的段目录里。本 skill 只把 production.json
- * 当锚点用——找不到那份文件就无从判断工作目录根在哪，那就不吭声。
- */
-function announceStageDir(docPath) {
-  const hit = findProduction(resolve(docPath, '..'));
-  if (!hit) {
-    console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，产物落点提示与自动驾驶口径跳过——跑 /novel-setup 生成一份可以打开它`);
+  const doc = readJson(path), ctx = loadCtx(args, path);
+  if (autopilotOf(ctx.production)) console.error(AUTOPILOT_NOTE);
+  if (command === 'render') {
+    if (doc?.schemaVersion !== 3) throw new Error('schemaVersion must be 3; see references/migration.md');
+    process.stdout.write((args.includes('--html') ? renderHtml(doc, ctx) : renderMarkdown(doc, ctx)) + '\n');
+    if (checkup(doc, ctx).blockingFailures) process.exitCode = 1;
     return;
   }
-  // 生产参数坏了不该把校验带崩：这里只取一个跑法口径，读不出来就当没开
-  let production = null;
-  try { production = readJson(hit); } catch { production = null; }
-  if (autopilotOf(production)) console.error(`↳ ${AUTOPILOT_NOTE}`);
-  const note = stageDirNote(docPath, hit);
-  if (note) console.error(`⚠️ ${note}`);
-}
-
-function loadCtx(rest) {
-  const get = (name) => {
-    const path = flag(rest, name);
-    return path ? readJson(path) : null;
-  };
-  return { outline: get('--outline'), art: get('--art'), cast: get('--cast') };
-}
-
-function main(argv) {
-  const [cmd, ...rest] = argv;
-
-  if (!cmd || cmd === '-h' || cmd === '--help') {
-    console.log(USAGE);
-    process.exit(cmd ? 0 : 1);
-  }
-
-  if (cmd === 'seed') {
-    const [path] = rest;
-    if (!path) throw new Error('用法：seed <outline.json> [--eps 1-6]');
-    const range = flag(rest, '--eps');
-    let epRange = null;
-    if (range) {
-      const m = String(range).match(/^(\d+)-(\d+)$/) ?? String(range).match(/^(\d+)$/);
-      if (!m) throw new Error('--eps 形如 3 或 1-6');
-      epRange = m[2] ? [Number(m[1]), Number(m[2])] : [Number(m[1]), Number(m[1])];
+  if (['checkup', 'validate'].includes(command)) {
+    const result = checkup(doc, ctx);
+    if (args.includes('--json')) console.log(pretty(result));
+    else {
+      for (const g of result.gates) console.log(`${g.status}/${g.category}/${g.level} ${g.id}${g.reason ? ` (${g.reason})` : ''}${g.messages.length ? ': ' + g.messages.join('; ') : ''}`);
+      console.log(`${result.blockingFailures} blocking failures; ${result.warnings} warnings. Content review not performed. Stage: ${result.stage}.`);
     }
-    console.log(JSON.stringify(seedFromOutline(readJson(path), epRange), null, 2));
+    if (result.blockingFailures) process.exitCode = 1;
     return;
   }
-
-  if (cmd === 'validate' || cmd === 'checkup') {
-    const [path] = rest;
-    if (!path) throw new Error(`用法：${cmd} <script.json> [--outline o.json] [--art a.json]`);
-    const doc = readJson(path);
-    const ctx = loadCtx(rest);
-    if (!ctx.outline) console.error('⚠️ 没给 --outline，跳过角色引用与爽点认领检查');
-    if (!ctx.art) console.error('⚠️ 没给 --art，跳过场景／光照／道具对账');
-    announceStageDir(path);
-
-    if (cmd === 'checkup') {
-      const gates = gateReport(doc, ctx);
-      for (const g of gates) console.log(`${g.ok ? '✓' : '✗'} ${g.label}${!g.ok && g.detail ? ` — ${g.detail}` : ''}`);
-      const failedN = gates.filter((g) => !g.ok).length;
-      console.log(failedN ? `\n✗ ${failedN} 项未过` : '\n✓ 全部通过');
-      if (failedN) process.exit(1);
-      return;
-    }
-
-    const problems = validateScript(doc, ctx);
-    if (problems.length) {
-      console.error(`✗ ${problems.length} 处违规：\n`);
-      for (const x of problems) console.error('  ' + x);
-      process.exit(1);
-    }
-    const st = computeStats(doc);
-    console.log(`✓ ${st.totals.episodes} 集 / ${st.totals.scenes} 场 / ${st.totals.lines} 句台词全部通过校验（预估 ${st.totals.estSeconds}s / 目标 ${st.totals.targetSeconds}s）`);
-    return;
-  }
-
-  if (cmd === 'render') {
-    const [path] = rest;
-    if (!path) throw new Error('用法：render <script.json> [--html|--md] [--lang zh|en] [--outline o.json] [--art a.json]');
-    const doc = readJson(path);
-    const ctx = loadCtx(rest);
-    // 语言优先级：--lang > script.json 顶层 lang 字段 > 生产参数 > zh
-    const lang = flag(rest, '--lang');
-    if (lang) ctx.lang = lang;
-    else if (!doc?.lang) {
-      const hit = findProduction(resolve(path, '..'));
-      const inherited = hit ? readJson(hit)?.lang : null;
-      if (inherited) {
-        ctx.lang = inherited;
-        console.error(`↳ 报告界面语言 ${inherited} 继承自 ${hit}`);
-      }
-    }
-    process.stdout.write((rest.includes('--html') ? renderHtml(doc, ctx) : renderMarkdown(doc, ctx)) + '\n');
-    return;
-  }
-
-  if (cmd === 'slug') {
-    if (!rest[0]) throw new Error('用法：slug <name>');
-    console.log(slug(rest[0]));
-    return;
-  }
-
-  throw new Error(`未知命令 ${cmd}\n\n${USAGE}`);
+  throw new Error(`Unknown command: ${command}\n${USAGE}`);
 }
-
-// 软链安装时 argv[1] 是链接路径，两边都取 realpath 才能比得上
-function isMainModule() {
-  if (!process.argv[1]) return false;
-  try {
-    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
-  } catch {
-    return false;
-  }
-}
-
-if (isMainModule()) {
-  // `render ... | head` 这类管道提前关闭时安静退出，别甩 EPIPE 堆栈
-  process.stdout.on('error', (e) => {
-    if (e.code === 'EPIPE') process.exit(0);
-    throw e;
-  });
-  try {
-    main(process.argv.slice(2));
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : error);
-    process.exit(1);
-  }
+function isMain() { try { return process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } }
+if (isMain()) {
+  process.stdout.on('error', e => { if (e.code === 'EPIPE') process.exit(0); throw e; });
+  try { await main(process.argv.slice(2)); } catch (e) { console.error(e.message); process.exitCode = 1; }
 }

@@ -1,475 +1,325 @@
 #!/usr/bin/env node
-// novel-script 自测：不调模型、不花额度，只验确定性逻辑。
-// 原则与仓库里其他 skill 一致：每道质量门都要有击穿用例——
-// 证明它真的会拦，不是一个永远为真的假测试。
-
+// All fixtures belong to this skill. No sibling code, examples or network access.
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync, cpSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  DEFAULT_PARAMS,
-  computeStats,
-  gateReport,
-  lineChars,
-  paramsOf,
-  renderHtml,
-  renderMarkdown,
-  sceneSeconds,
-  seedFromOutline,
-  slug,
-  validateScript,
-  PRODUCTION_DEPTH,
-  PRODUCTION_FILE,
-  findProduction,
-  STAGE_DIR,
-  stageDirNote,
-  AUTOPILOT_NOTE,
-  autopilotOf,
-} from './novel-script.mjs';
-
-const here = dirname(fileURLToPath(import.meta.url));
-const FIXTURE = JSON.parse(readFileSync(join(here, '../examples/渡口-script.json'), 'utf8'));
-const OUTLINE = JSON.parse(readFileSync(join(here, '../../novel-outline/examples/渡口-outline.json'), 'utf8'));
-const ART = JSON.parse(readFileSync(join(here, '../../novel-art/examples/渡口-art.json'), 'utf8'));
-const CAST = JSON.parse(readFileSync(join(here, '../../novel-characters/examples/渡口-cast.json'), 'utf8'));
-const CTX = { outline: OUTLINE, art: ART };
-
+import { spawnSync } from 'node:child_process';
+import { DEFAULT_PARAMS, paramsOf, endBeatOf, plansFor, SKILL_ROOT, lineChars, beatSeconds, sceneSeconds, episodeTimeline, coordinateIndex, claimRange, computeStats, gateReport, checkup, validateScript, seedFromOutline, renderHtml, renderMarkdown, findProduction, stageDirNote, autopilotOf, slug } from './novel-script.mjs';
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const read = file => JSON.parse(readFileSync(join(root, 'examples', file), 'utf8'));
+const DOC = read('修伞簿-script.json'), OUTLINE = read('修伞簿-outline.fixture.json'), ART = read('修伞簿-art.fixture.json'), CAST = read('修伞簿-cast.fixture.json'), PRODUCTION = read('修伞簿-production.fixture.json');
+DOC.params = {};
+const CTX = { outline: OUTLINE, art: ART, production: PRODUCTION, cast: CAST };
+const clone = x => structuredClone(x);
 let passed = 0;
-function ok(cond, label) {
-  assert.ok(cond, label);
-  passed += 1;
+function test(name, fn) { try { fn(); passed++; } catch (e) { throw new Error(`${name}: ${e.message}`, { cause: e }); } }
+function gate(doc, id, ctx = {}) { return gateReport(doc, ctx).find(g => g.id === id); }
+function mutate(name, edit, id = 'fields', ctx = {}) {
+  test(name, () => { const doc = clone(DOC); edit(doc); assert.equal(gate(doc, id, ctx).status, 'fail'); assert(validateScript(doc, ctx).length); });
 }
-function eq(actual, expected, label) {
-  assert.equal(actual, expected, `${label} — 期望 ${expected}，实际 ${actual}`);
-  passed += 1;
-}
-const clone = (x) => structuredClone(x);
-const gate = (doc, id, ctx = {}) => gateReport(doc, ctx).find((g) => g.id === id);
+function near(a, b) { assert(Math.abs(a - b) < 1e-9, `${a} != ${b}`); }
 
-/* ---------------- 时长引擎 ---------------- */
+// Baseline and strict deterministic seed projection.
+test('bundled independent story', () => { assert.equal(DOC.source, '修伞簿'); assert.equal(DOC.episodes.length, 3); assert.equal(computeStats(DOC).totals.lines, 30); });
+test('local validation', () => assert.deepEqual(validateScript(DOC), []));
+test('upstream validation', () => assert.deepEqual(validateScript(DOC, CTX), []));
+test('seed minimal references, not duplicated plans or defaults', () => {
+  const seed = seedFromOutline(OUTLINE);
+  assert.equal(seed.schemaVersion, 3); assert(!Object.hasOwn(seed, 'params'));
+  seed.episodes.forEach(e => {
+    assert.equal(e.targetSeconds, OUTLINE.params.minutesPerEpisode * 60);
+    assert.deepEqual(e.beatClaims, OUTLINE.beats.filter(b => b.episode === e.ep).map(b => ({ beatId: b.id, start: null, end: null })));
+    assert.deepEqual(e.scenes, []);
+    for (const key of ['opening', 'ending', 'openingBeat', 'endBeat', 'seedNote']) assert(!Object.hasOwn(e, key));
+  });
+});
+test('seed range', () => assert.deepEqual(seedFromOutline(OUTLINE, [2, 2]).episodes.map(e => e.ep), [2]));
+for (const range of [[0, 1], [2, 1], [1.5, 2], [9, 9], ['1', 2]]) test(`seed invalid range ${range}`, () => assert.throws(() => seedFromOutline(OUTLINE, range)));
+for (const input of [null, {}, { schemaVersion: 1 }, { ...OUTLINE, schemaVersion: undefined }, { ...OUTLINE, params: { minutesPerEpisode: '1' } }, { ...OUTLINE, beats: null }]) test('seed rejects damaged upstream', () => assert.throws(() => seedFromOutline(input)));
+test('skeleton has explicit skipped timing', () => {
+  const s = seedFromOutline(OUTLINE);
+  assert.deepEqual(validateScript(s, { outline: OUTLINE, stage: 'skeleton' }), []);
+  assert.equal(gate(s, 'duration', { stage: 'skeleton' }).reason, 'stage-incomplete');
+  assert(validateScript(s, { outline: OUTLINE }).length);
+});
+test('skeleton still checks projection and claims', () => { const s = seedFromOutline(OUTLINE); s.episodes[0].beatClaims.pop(); assert.equal(gate(s, 'beats-claimed', { outline: OUTLINE, stage: 'skeleton' }).status, 'fail'); });
 
-eq(lineChars('你好，世界。'), 6, '标点算时间——停顿也是时间');
-eq(lineChars('  你 好  '), 2, '空白不算字符');
-eq(lineChars(''), 0, '空串为零');
-eq(lineChars(null), 0, 'null 不崩');
+// Timing is a single unrounded axis, including cross-scene ranges and boundaries.
+test('line character algorithm unchanged', () => { assert.equal(lineChars('  你 好，  '), 3); assert.equal(lineChars('😀'), 2); assert.equal(lineChars(null), 0); });
+test('beat duration', () => { assert.equal(beatSeconds({ action: '观察' }), 2.5); assert.equal(beatSeconds({ speaker: 'VO', line: '一二三四五六七八九' }), 2); });
+test('invalid beat not zero seconds', () => { assert.equal(beatSeconds({ action: '', line: '台词' }), null); assert.equal(beatSeconds({ action: '观察' }, { actionSeconds: Infinity }), null); });
+test('numeric overflow is unavailable, never zero', () => {
+  assert.equal(beatSeconds({ line: '文本' }, { charsPerSecond: Number.MIN_VALUE }), null);
+  const ep = { scenes: [{ flow: [{ action: '等待' }, { action: '观察' }] }] };
+  assert.equal(episodeTimeline(ep, { actionSeconds: Number.MAX_VALUE }).at(-1).endSeconds, null);
+  assert.equal(sceneSeconds(ep.scenes[0], { actionSeconds: Number.MAX_VALUE }).total, null);
+});
+test('scene duration', () => assert.deepEqual(sceneSeconds({ flow: [{ action: '停留' }, { line: '一二三四五六七八九' }] }), { dialogue: 2, action: 2.5, total: 4.5 }));
+test('same axis for stats, claims and final beat', () => {
+  const stats = computeStats(DOC);
+  DOC.episodes.forEach((ep, i) => {
+    const rows = episodeTimeline(ep, DOC.params);
+    assert.equal(stats.episodes[i].est, rows.at(-1).endSeconds);
+    assert.equal(coordinateIndex(ep, endBeatOf(ep)), rows.length - 1);
+    near(stats.sceneTable.filter(s => s.ep === ep.ep).reduce((n, s) => n + s.estSeconds, 0), rows.at(-1).endSeconds);
+    for (const c of ep.beatClaims) {
+      const r = claimRange(ep, c, DOC.params);
+      assert.equal(r.startSeconds, rows[coordinateIndex(ep, c.start)].startSeconds);
+      assert.equal(r.endSeconds, rows[coordinateIndex(ep, c.end)].endSeconds);
+      near(r.endSeconds - r.startSeconds, r.rows.reduce((n, r) => n + r.seconds, 0));
+    }
+  });
+});
+test('no scene-by-scene rounding', () => {
+  const ep = { scenes: Array.from({ length: 10 }, () => ({ flow: [{ speaker: 'VO', line: '字' }] })) };
+  near(episodeTimeline(ep, { charsPerSecond: 3 }).at(-1).endSeconds, 10 / 3);
+});
+test('invalid range unavailable', () => { const ep = DOC.episodes[0]; assert.equal(claimRange(ep, { start: [9, 1], end: [9, 2] }, DOC.params), null); });
+test('invalid timing propagates instead of zero', () => {
+  const d = clone(DOC); d.episodes[0].scenes[0].flow[2] = {};
+  assert.equal(computeStats(d).episodes[0].est, null); assert.equal(computeStats(d).totals.estSeconds, null);
+  assert.equal(claimRange(d.episodes[0], d.episodes[0].beatClaims[0], d.params), null);
+  assert(renderHtml(d).includes('无效范围／估时不可用'));
+});
 
-const sc = {
-  flow: [
-    { action: '雾漫上来。' },
-    { speaker: 'C01', line: '一二三四五六七八九' }, // 9 字 → 2 秒
-    { action: '船离岸。' },
-  ],
-};
-const sec = sceneSeconds(sc);
-eq(sec.action, 5, '两个动作节拍 × 2.5 秒');
-eq(sec.dialogue, 2, '9 字 ÷ 4.5 字每秒 = 2 秒');
-eq(sec.total, 7, '总时长 = 台词 + 动作');
-eq(sceneSeconds({ flow: [] }).total, 0, '空节拍流为零秒');
+// Core contracts cannot be disabled by policies.
+for (const value of [undefined, null, 1, '2']) mutate(`schema version ${value}`, d => { d.schemaVersion = value; });
+for (const value of [null, '', 2]) mutate(`source ${value}`, d => { d.source = value; });
+for (const value of [null, 'params', []]) mutate('params malformed', d => { d.params = value; });
+for (const key of ['charsPerSecond', 'actionSeconds']) for (const value of [0, -1, '4', Infinity, NaN, undefined]) mutate(`${key} invalid ${value}`, d => { d.params[key] = value; });
+for (const value of [-1, 1, '0.15', Infinity, undefined]) mutate(`tolerance invalid ${value}`, d => { d.params.tolerance = value; });
+for (const value of [null, [], {}]) mutate('episodes malformed', d => { d.episodes = value; });
+for (const value of [0, '1', 1.5]) mutate(`ep invalid ${value}`, d => { d.episodes[0].ep = value; });
+mutate('duplicate ep', d => { d.episodes[1].ep = 1; });
+mutate('out-of-order ep', d => { d.episodes.reverse(); });
+for (const value of [0, -1, '60', Infinity]) mutate(`target invalid ${value}`, d => { d.episodes[0].targetSeconds = value; });
+mutate('opening nonempty', d => { d.episodes[0].opening = ' '; });
+for (const value of [null, {}, { mode: 'wrong', event: '事件' }, { mode: 'open', event: ' ' }]) mutate('ending type/mode/event', d => { d.episodes[0].ending = value; });
+for (const key of ['question', 'questionId', 'dueByEp', 'resolves', 'unknown']) mutate(`ending rejects ${key}`, d => { d.episodes[0].ending = { mode: 'open', event: '结束', [key]: 'Q01' }; });
+for (const key of ['hook', 'hookBeat', 'cliff', 'closure', 'beatsClaimed']) mutate(`v1 episode ${key}`, d => { d.episodes[0][key] = 'legacy'; });
+for (const key of ['openingBeat']) for (const value of [undefined, null, [0, 1], [1, 0], ['1', 1], [1, 1.5], [99, 1], [1, 99], [1, 1, 1]]) mutate(`${key} invalid ${JSON.stringify(value)}`, d => { d.episodes[0][key] = value; });
+mutate('endBeat must be last', d => { d.episodes[0].endBeat = [2, 7]; });
+mutate('upstream claims required', d => { delete d.episodes[0].beatClaims; }, 'beats-claimed', CTX);
+mutate('claim ID format', d => { d.episodes[0].beatClaims[0].beatId = 'B1'; });
+mutate('claim duplicate ID local', d => { d.episodes[0].beatClaims[1].beatId = 'B01'; });
+mutate('claim duplicate ID global', d => { d.episodes[1].beatClaims[0].beatId = 'B01'; });
+mutate('claim missing coordinate', d => { delete d.episodes[0].beatClaims[0].start; });
+mutate('claim null coordinate full', d => { d.episodes[0].beatClaims[0].start = null; });
+mutate('claim out of bounds', d => { d.episodes[0].beatClaims[0].start = [2, 99]; });
+mutate('claim reversed', d => { d.episodes[0].beatClaims[0].start = [2, 3]; });
+mutate('claim overlapping inclusive endpoint', d => { d.episodes[0].beatClaims[1].start = [2, 2]; });
+mutate('claim ranges out of order', d => { const cs = d.episodes[0].beatClaims; [cs[0].start, cs[1].start] = [cs[1].start, cs[0].start]; [cs[0].end, cs[1].end] = [cs[1].end, cs[0].end]; });
+mutate('claim extra field', d => { d.episodes[0].beatClaims[0].decisive = [1, 3]; });
+mutate('no scenes full', d => { d.episodes[0].scenes = []; });
+mutate('scene ID', d => { d.episodes[0].scenes[0].sceneId = 'S1'; });
+mutate('characters required', d => { delete d.episodes[0].scenes[0].characters; });
+mutate('characters duplicate', d => { d.episodes[0].scenes[0].characters.push('C01'); });
+mutate('props malformed', d => { d.episodes[0].scenes[0].props = ['P1']; });
+mutate('lighting type', d => { d.episodes[0].scenes[0].lighting = 1; });
+mutate('flow nonempty', d => { d.episodes[0].scenes[0].flow = []; });
+mutate('action and line exclusive', d => { d.episodes[0].scenes[0].flow[0].line = '台词'; });
+mutate('neither action nor line', d => { d.episodes[0].scenes[0].flow[0] = {}; });
+mutate('action empty', d => { d.episodes[0].scenes[0].flow[0].action = ' '; });
+mutate('line empty', d => { d.episodes[0].scenes[0].flow[1].line = ' '; });
+mutate('speaker must be present', d => { d.episodes[0].scenes[0].flow[1].speaker = 'C99'; });
+mutate('delivery string', d => { d.episodes[0].scenes[0].flow[1].delivery = null; });
+mutate('action cannot carry speaker', d => { d.episodes[0].scenes[0].flow[0].speaker = 'C01'; });
+test('duration too long warns', () => { const d = clone(DOC); d.params.actionSeconds = 20; assert.equal(gate(d, 'duration').level, 'warn'); assert.equal(gate(d, 'duration').status, 'fail'); assert.deepEqual(validateScript(d), []); });
+test('duration too short warns', () => { const d = clone(DOC); d.params.charsPerSecond = 100; assert(checkup(d).warnings); assert.deepEqual(validateScript(d), []); });
+test('VO legal', () => { const d = clone(DOC); d.episodes[0].scenes[0].flow[1].speaker = 'VO'; assert.deepEqual(validateScript(d), []); });
+test('no required action quota', () => {
+  const d = clone(DOC);
+  d.episodes[0].scenes.forEach(sc => { sc.flow = sc.flow.map(b => b.action ? { speaker: 'C01', line: '先在这里等一会儿。' } : b); });
+  d.episodes[0].targetSeconds = computeStats(d).episodes[0].est;
+  assert.deepEqual(validateScript(d), []);
+});
+test('standalone suspense requires no Q', () => { const d = clone(DOC); d.episodes[0].ending = { mode: 'suspense', event: '仍未回答' }; assert.deepEqual(validateScript(d), []); });
+test('core segment may span scenes and share outside setup', () => { assert.deepEqual(validateScript(DOC, CTX), []); assert(DOC.episodes[0].beatClaims[0].start[0] < DOC.episodes[0].beatClaims[0].end[0]); });
+test('same scene multiple core segments', () => { const d = clone(DOC); d.episodes[0].beatClaims = [{ beatId: 'B01', start: [1, 2], end: [1, 3] }, { beatId: 'B02', start: [1, 4], end: [1, 5] }]; assert.deepEqual(validateScript(d, CTX), []); });
 
-eq(paramsOf({}).charsPerSecond, DEFAULT_PARAMS.charsPerSecond, '默认参数生效');
-eq(paramsOf({ params: { charsPerSecond: 6 } }).charsPerSecond, 6, 'params 可覆盖语速');
-eq(paramsOf({ params: { charsPerSecond: 6 } }).tolerance, DEFAULT_PARAMS.tolerance, '只覆盖给出的键');
-eq(sceneSeconds(sc, { ...DEFAULT_PARAMS, charsPerSecond: 9 }).dialogue, 1, '语速参数参与计算');
+// Exact projection and upstream identity/target checks independent of tolerance.
+mutate('opening must match byte for byte', d => { d.episodes[0].opening = OUTLINE.episodes[0].opening; }, 'upstream-projection', CTX);
+mutate('ending mode cannot drift', d => { d.episodes[0].ending = { mode: 'open', event: '结束' }; }, 'upstream-projection', CTX);
+mutate('ending event cannot paraphrase', d => { d.episodes[0].ending = { mode: 'closure', event: '交还伞，约定再见。' }; }, 'upstream-projection', CTX);
+mutate('target strict despite high tolerance', d => { d.params.tolerance = 0.9; d.episodes[0].targetSeconds = 60.000001; }, 'upstream-duration', CTX);
+mutate('unknown ep', d => { d.episodes[2].ep = 4; }, 'upstream-projection', CTX);
+mutate('missing claim', d => { d.episodes[0].beatClaims.pop(); }, 'beats-claimed', CTX);
+mutate('additional claim', d => { d.episodes[0].beatClaims.unshift({ beatId: 'B99', start: [1, 1], end: [1, 1] }); }, 'beats-claimed', CTX);
+mutate('wrong episode claim', d => { d.episodes[0].beatClaims[0].beatId = 'B03'; }, 'beats-claimed', CTX);
+mutate('upstream claim ID order', d => { const c = d.episodes[0].beatClaims; [c[0].beatId, c[1].beatId] = [c[1].beatId, c[0].beatId]; }, 'beats-claimed', CTX);
+test('same type different IDs still required separately', () => {
+  const o = clone(OUTLINE); delete o.beats[0].kind; delete o.beats[1].kind;
+  assert.deepEqual(validateScript(DOC, { ...CTX, outline: o }), []);
+  const d = clone(DOC); d.episodes[0].beatClaims.pop(); assert.equal(gate(d, 'beats-claimed', { outline: o }).status, 'fail');
+});
+test('upstream minutes changed after seed', () => { const o = clone(OUTLINE); o.params.minutesPerEpisode = 2; assert.equal(gate(DOC, 'upstream-duration', { outline: o }).status, 'fail'); });
+test('batch final does not become series final', () => { const d = clone(DOC); d.episodes = [d.episodes[0]]; assert.deepEqual(validateScript(d, CTX), []); });
+mutate('character refs', d => { d.episodes[0].scenes[0].characters.push('C99'); }, 'refs-characters', CTX);
+mutate('scene refs', d => { d.episodes[0].scenes[0].sceneId = 'S99'; }, 'refs-scenes', CTX);
+mutate('lighting refs', d => { d.episodes[0].scenes[0].lighting = '未登记'; }, 'refs-scenes', CTX);
+mutate('prop refs', d => { d.episodes[0].scenes[0].props.push('P99'); }, 'refs-scenes', CTX);
+for (const [key, id] of [['outline', 'outline-input'], ['art', 'art-input'], ['cast', 'cast-input']]) {
+  test(`missing ${key} is skipped, not pass`, () => { assert.equal(gate(DOC, id).status, 'skipped'); assert.equal(gate(DOC, id).reason, 'missing-upstream'); });
+  for (const value of [null, {}, [], 'broken']) test(`supplied invalid ${key} fails`, () => { assert.equal(gate(DOC, id, { [key]: value }).status, 'fail'); assert(validateScript(DOC, { [key]: value }).length); });
+}
+test('invalid upstream versions fail', () => assert.equal(gate(DOC, 'outline-input', { outline: { ...OUTLINE, schemaVersion: 1 } }).status, 'fail'));
+test('unsupported art and cast versions fail', () => {
+  assert.equal(gate(DOC, 'art-input', { art: { ...ART, schemaVersion: 999 } }).status, 'fail');
+  assert.equal(gate(DOC, 'cast-input', { cast: { ...CAST, schemaVersion: 999 } }).status, 'fail');
+});
+test('duplicate upstream beat fails', () => { const o = clone(OUTLINE); o.beats[1].id = o.beats[0].id; assert.equal(gate(DOC, 'outline-input', { outline: o }).status, 'fail'); });
+test('malformed upstream beat fails', () => { const o = clone(OUTLINE); o.beats[0].kind = 'unknown'; assert.equal(gate(DOC, 'outline-input', { outline: o }).status, 'fail'); });
 
-/* ---------------- computeStats ---------------- */
+// Retired configuration never silently changes v3 behavior.
+for (const key of ['rules', 'defaults', 'preferences', 'hookWindow', 'maxLineChars']) mutate(`retired params ${key}`, d => { d.params[key] = {}; });
+for (const key of ['creativeContext', 'creative', 'seedNote', 'selection', 'decisions', 'overrides']) mutate(`retired root ${key}`, d => { d[key] = {}; });
+test('no implicit params persisted by rendering', () => { const d = clone(DOC); delete d.params; const before = JSON.stringify(d); renderHtml(d); renderMarkdown(d); assert.equal(JSON.stringify(d), before); assert.deepEqual(validateScript(d), []); });
+test('default and explicit timing axes equal', () => { const d = clone(DOC); d.params = {...DEFAULT_PARAMS}; assert.deepEqual(computeStats(d), computeStats(DOC)); });
+test('partial overrides applied everywhere', () => {
+  const d = clone(DOC); d.params = {actionSeconds: 7, charsPerSecond: 3};
+  const ep=d.episodes[0], rows=episodeTimeline(ep,d.params), stats=computeStats(d);
+  assert.equal(stats.episodes[0].est,rows.at(-1).endSeconds);
+  assert.equal(claimRange(ep,ep.beatClaims[0],d.params).startSeconds,rows[coordinateIndex(ep,ep.beatClaims[0].start)].startSeconds);
+  assert(renderHtml(d).includes(String(Math.round(rows.at(-1).endSeconds*10)/10)));
+});
+test('computed end follows appended flow, not stale persisted position', () => {
+  const d=clone(DOC),ep=d.episodes[0],before=endBeatOf(ep);
+  ep.scenes.at(-1).flow.push({action:'林禾收好工具。'});
+  assert.deepEqual(endBeatOf(ep),[before[0],before[1]+1]); assert.deepEqual(validateScript(d,CTX),[]);
+});
+test('standalone may omit plans, claims and opening landing', () => {
+  const d=clone(DOC); for(const e of d.episodes){delete e.openingBeat;delete e.beatClaims;}
+  assert.deepEqual(validateScript(d),[]); assert(renderHtml(d).includes('未标注开场落点'));
+  assert(!renderHtml(d).includes('节点计划与内容落点')); assert(!renderMarkdown(d).includes('上游问题与回答落点'));
+});
+test('current upstream plan read rather than inferred synchronized from title', () => {
+  const outline=clone(OUTLINE);outline.episodes[0].opening='新的开场计划';
+  assert(renderHtml(DOC,{outline}).includes('新的开场计划'));
+  assert(!renderHtml(DOC,{outline}).includes(OUTLINE.episodes[0].opening));
+  assert.equal(plansFor(DOC.episodes[0],{outline}).opening,'新的开场计划');
+  outline.source='别的作品';assert(validateScript(DOC,{outline}).length);
+});
+test('source beat deletion breaks actual claim IDs', () => { const o=clone(OUTLINE);o.beats.shift();assert(validateScript(DOC,{outline:o}).length); });
+test('brief conflict requires human merge', () => {
+  const d=clone(DOC);d.creativeBrief='保留停顿';
+  assert.deepEqual(validateScript(d),[]);assert(validateScript(d,{production:{schemaVersion:3,creativeBrief:'表达克制'}}).length);
+  assert(validateScript(DOC,{production:{schemaVersion:3,creativeBrief:' '}}).length);
+});
+test('v2 project and old creative fields rejected', () => {
+  assert(validateScript(DOC,{production:{schemaVersion:2}}).length);
+  assert(validateScript(DOC,{production:{schemaVersion:3,creative:{}}}).length);
+});
+test('delivery optional and special delivery preserved in both line books', () => {
+  const d=clone(DOC);d.episodes[0].scenes[0].flow[1].delivery='掩饰惊讶';
+  assert.deepEqual(validateScript(d),[]);
+  for(const render of [renderHtml,renderMarkdown]) {const output=render(d);assert(output.slice(output.indexOf('台词本')).includes('掩饰惊讶'));}
+});
 
-const stats = computeStats(FIXTURE);
-eq(stats.totals.episodes, 6, '样例全六集');
-eq(stats.totals.scenes, 9, '样例九场');
-eq(stats.totals.lines, 123, '样例台词句数');
-ok(stats.totals.estSeconds > 600 && stats.totals.estSeconds < 750, '预估总时长在目标带附近');
-eq(stats.totals.targetSeconds, 720, '目标秒数汇总');
-ok(stats.episodes.every((e) => e.est >= 102 && e.est <= 138), '每一集都落在 ±15% 容差带内');
-ok(stats.episodes[0].dialogueSeconds > 0 && stats.episodes[0].actionSeconds > 0, '台词与动作分开计秒');
-eq(stats.sceneTable.length, 9, '场次总表九行');
-eq(stats.sceneTable[0].sceneId, 'S02', '场次总表按出场顺序');
-ok(stats.sceneTable[0].lineCount > 0, '场次表带台词句数');
-eq(stats.castLines.length, 6, '台词本六个说话人（含画外音，含第 6 集才开口的更夫）');
-ok(stats.castLines[0].count >= stats.castLines[stats.castLines.length - 1].count, '台词本按句数降序');
-const voEntry = stats.castLines.find((c) => c.id === 'VO');
-ok(voEntry, '画外音单独成组');
-eq(voEntry.lines[0].ep, 1, '台词条目带集号');
-ok(voEntry.lines[0].sceneId === 'S01', '台词条目带场景');
+test('upstream optional categories and positions do not gate claims', () => {
+  const o=clone(OUTLINE);
+  for(const b of o.beats){delete b.kind;delete b.weight;delete b.position;}
+  assert.deepEqual(validateScript(DOC,{outline:o}),[]);
+  o.beats[0].position='ending';o.beats[1].position='opening';
+  assert.deepEqual(validateScript(DOC,{outline:o}),[]);
+  o.beats[0].position='unknown';assert(validateScript(DOC,{outline:o}).length);
+});
+test('upstream supplied weight is conditional, not required', () => {
+  const o=clone(OUTLINE);delete o.beats.at(-1).weight;
+  assert.deepEqual(validateScript(DOC,{outline:o}),[]);
+  o.beats[0].weight='minor';assert(validateScript(DOC,{outline:o}).length);
+});
+test('outline alone checks scene and prop references', () => {
+  for(const key of ['sceneId','props']) {const d=clone(DOC);d.episodes[0].scenes[0][key]=key==='sceneId'?'S99':['P99'];assert(validateScript(d,{outline:OUTLINE}).length);}
+});
+test('overflowed clock is structural failure rather than duration notice', () => {
+  const d=clone(DOC);d.params.actionSeconds=Number.MAX_VALUE;assert(validateScript(d).length);
+});
+test('brief types and obsolete outline fields rejected', () => {
+  for(const brief of [null,'',[],2]){const d=clone(DOC);d.creativeBrief=brief;assert(validateScript(d).length);}
+  const o=clone(OUTLINE);o.episodes[0].stateChange={before:'之前',after:'之后'};assert(validateScript(DOC,{outline:o}).length);
+});
 
-/* ---------------- 质量门：全绿基线 ---------------- */
+// Reporting includes actual text, Q locations, status separation and original export.
+for (const lang of ['zh', 'en']) test(`${lang} HTML and Markdown rendering`, () => {
+  const h = renderHtml(DOC, { ...CTX, lang }), m = renderMarkdown(DOC, { ...CTX, lang });
+  assert(h.includes(`lang="${lang}"`)); assert(h.includes('B01')); assert(h.includes(OUTLINE.beats[0].setup)); assert(h.includes(OUTLINE.beats[0].outcome));
+  assert(h.includes(DOC.episodes[0].scenes[0].flow[3].line)); assert(h.includes('Q01'));
+  assert(h.includes('[1,3]–[2,2]')); assert(!h.includes('creativeContext'));
+  assert(h.includes(lang === 'en' ? 'Content review not performed' : '内容评审未执行'));
+  assert(!h.includes(lang === 'en' ? 'Policy disabled' : '策略关闭'));
+  assert(m.includes(lang === 'en' ? 'Episode 1' : '分集 1'));
+  assert(h.includes('data-copy=')); assert(h.includes(CAST.characters[0].voice.prompt));
+  assert(!/src="https?:|href="https?:|@import|url\(https?:/.test(h));
+  assert(h.includes('@media(max-width:750px)')); assert(h.includes('@media print')); assert(h.includes('beforeprint'));
+  const raw = h.match(/<script id="script-data" type="application\/json">([\s\S]*?)<\/script>/)[1];
+  assert.deepEqual(JSON.parse(raw), DOC);
+});
+test('UI language precedence', () => { const d = clone(DOC); d.lang = 'en'; assert(renderHtml(d).includes('lang="en"')); assert(renderHtml(d, { lang: 'zh' }).includes('lang="zh"')); assert(renderHtml(DOC, { production: { lang: 'en' } }).includes('lang="en"')); });
+test('unknown UI language fails', () => assert.throws(() => renderHtml(DOC, { lang: 'fr' })));
+test('warning display', () => { const d = clone(DOC); d.params.actionSeconds = 100; const h = renderHtml(d, { lang: 'en' }); assert(h.includes('Warning · Estimated duration notice')); assert(h.includes('Blocking failures: 0')); });
+test('missing upstream is not pass', () => { const h = renderHtml(DOC, { lang: 'en' }); assert(h.includes('Missing upstream')); assert(!h.includes('treated as passing')); });
+test('no payoff classification without outline', () => assert(!renderHtml(DOC, { lang: 'en' }).includes(' · payoff /')));
+test('renderer API rejects v2 rather than dual-reading it', () => { for(const render of [renderHtml,renderMarkdown]) assert.throws(()=>render({...DOC,schemaVersion:2}),/migrate-v3/); });
+test('malformed parameters are escaped in Markdown diagnostics', () => { const d=clone(DOC);d.params.actionSeconds='<img src=x onerror=alert(1)>';assert(!renderMarkdown(d).includes('<img')); });
+test('source / line / attribute / JSON escaping', () => {
+  const d = clone(DOC); d.source = '</script><img src=x onerror=alert(1)>'; d.episodes[0].scenes[0].flow[1].line = '<img src=x onerror="alert(1)">';
+  const h = renderHtml(d);
+  assert(!h.includes('<img src=x')); assert(!h.includes('</script><img')); assert(h.includes('\\u003c')); assert(h.includes('&lt;img'));
+  const raw = h.match(/<script id="script-data" type="application\/json">([\s\S]*?)<\/script>/)[1]; assert.deepEqual(JSON.parse(raw), d);
+});
+test('invalid numeric identity is escaped in HTML attributes and Markdown', () => {
+  const d = clone(DOC); d.episodes[0].ep = '\"><img src=x onerror=alert(1)>';
+  d.episodes[0].ending = {mode: '<script>alert(1)</script>', event:'结束'};
+  const h = renderHtml(d), m = renderMarkdown(d);
+  assert(!h.includes('<img src=x')); assert(!h.includes('<script>alert(1)'));
+  assert(!m.includes('<img src=x')); assert(!m.includes('<script>alert(1)'));
+});
+test('Q answer maps by resolves ID into actual core text', () => {
+  const o = clone(OUTLINE); o.episodes[0].ending = { mode: 'suspense', event: '询问旧伞是谁修过的。', question: { id: 'Q02', text: '谁修过旧伞？', resolution: 'required', dueByEp: 2 } }; o.beats[2].resolves = ['Q02'];
+  const d = clone(DOC);
+  const h = renderHtml(d, { outline: o });
+  assert(h.includes('Q02')); assert(h.includes('B03 E2:')); assert(h.includes('教大家的人叫许秋。我的伞，是她修的。'));
+  assert(!Object.hasOwn(d.episodes[0], 'ending'));
+});
+test('nonfinal closure and final open survive render', () => { const h = renderHtml(DOC, CTX); assert(h.includes('集尾 · closure')); assert(h.includes('集尾 · open')); });
+test('stats API retained', () => { const s = computeStats(DOC); assert.equal(s.sceneTable.length, 6); assert.equal(s.castLines.length, 3); assert.equal(s.totals.targetSeconds, 180); });
+test('slug and autopilot', () => { assert.equal(slug('a b/c'), 'a-b-c'); assert.equal(slug(' '), 'script'); assert(autopilotOf({ autopilot: true })); assert(!autopilotOf({ autopilot: 'true' })); });
 
-ok(gateReport(FIXTURE, CTX).every((g) => g.ok), '样例带上游全部门通过');
-ok(gateReport(FIXTURE).every((g) => g.ok), '不带上游也全部通过（对账门跳过）');
-eq(gateReport(FIXTURE).length, 10, '十道门');
-
-/* ---------------- 质量门：逐门击穿 ---------------- */
-
-// duration — 写超
-{
-  const doc = clone(FIXTURE);
-  for (let i = 0; i < 30; i++) doc.episodes[0].scenes[0].flow.push({ action: `加戏第 ${i} 拍。` });
-  const g = gate(doc, 'duration');
-  ok(!g.ok, '写超时长被拦');
-  ok(g.detail.includes('超'), '超时报得出秒数');
-}
-// duration — 写欠
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes = [doc.episodes[0].scenes[0]];
-  const g = gate(doc, 'duration');
-  ok(!g.ok, '写欠时长被拦');
-  ok(g.detail.includes('欠'), '欠时报得出秒数');
-}
-// duration — 容差可配
-{
-  const doc = clone(FIXTURE);
-  doc.params = { tolerance: 0.01 };
-  ok(!gate(doc, 'duration').ok, '容差收紧到 1% 后原样例不再达标');
-}
-// line-length
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].flow.push({ speaker: 'C03', line: '这句台词故意写得非常非常长，长到一口气根本读不完，纯粹为了击穿单句上限这道门而存在。' });
-  const g = gate(doc, 'line-length');
-  ok(!g.ok, '超长台词被拦');
-  ok(g.detail.includes('字'), '报出字数');
-}
-// speaker
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].flow.push({ speaker: 'C99', line: '我不在这场里。' });
-  ok(!gate(doc, 'speaker').ok, '不在本场的说话人被拦');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].flow.push({ speaker: 'VO', line: '画外音不受本场人物限制。' });
-  ok(gate(doc, 'speaker').ok, 'VO 合法');
-}
-// hook-cliff
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].hook = ' ';
-  ok(!gate(doc, 'hook-cliff').ok, '空钩子被拦');
-}
-{
-  const doc = clone(FIXTURE);
-  delete doc.episodes[0].cliff;
-  ok(!gate(doc, 'hook-cliff').ok, '缺结尾悬念被拦');
-}
-// hook-open — 钩子必须在全集前 3 拍内兑现（认领机制）
-{
-  const doc = clone(FIXTURE);
-  delete doc.episodes[0].hookBeat;
-  const g = gate(doc, 'hook-open');
-  ok(!g.ok, '缺 hookBeat 被拦');
-  ok(g.detail.includes('hookBeat'), '报出缺的字段');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].hookBeat = [2, 1]; // 第 2 场第 1 拍 = 全集第 14 拍
-  const g = gate(doc, 'hook-open');
-  ok(!g.ok, '钩子落在第 14 拍被拦——冷开场是门不是建议');
-  ok(g.detail.includes('第 14 拍'), '报出实际位置');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].hookBeat = [9, 9];
-  ok(gate(doc, 'hook-open').detail.includes('不存在'), '指向不存在的节拍被拦');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].hookBeat = [2, 1];
-  doc.params = { hookWindow: 20 };
-  ok(gate(doc, 'hook-open').ok, '钩子窗口可按需放宽');
-}
-// has-action
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].flow = doc.episodes[0].scenes[0].flow.filter((b) => typeof b.line === 'string');
-  const g = gate(doc, 'has-action');
-  ok(!g.ok, '纯对白的场（广播剧）被拦');
-  ok(g.detail.includes('S02'), '点名到场');
-}
-// action-prose
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].flow.push({ action: '老周说「坐稳了」，随即撑篙。' });
-  ok(!gate(doc, 'action-prose').ok, '动作里混台词引号被拦');
-}
-// beats-claimed
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].beatsClaimed = [];
-  ok(!gate(doc, 'beats-claimed', CTX).ok, '大纲爽点没认领被拦');
-  ok(gate(doc, 'beats-claimed').ok, '没给大纲时本门跳过');
-  ok(gate(doc, 'beats-claimed').detail.includes('跳过'), '跳过要明说，不静默');
-}
-// refs-characters
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].characters.push('C99');
-  ok(!gate(doc, 'refs-characters', CTX).ok, '大纲里没有的角色被拦');
-  ok(gate(doc, 'refs-characters').ok, '没给大纲时本门跳过');
-}
-// refs-scenes：场景 / 光照 / 道具三个方向都要拦
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].sceneId = 'S99';
-  ok(!gate(doc, 'refs-scenes', CTX).ok, '不存在的场景被拦');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].lighting = '正午烈日';
-  const g = gate(doc, 'refs-scenes', CTX);
-  ok(!g.ok, '没登记过的光照状态被拦');
-  ok(g.detail.includes('正午烈日'), '光照违规点得出名');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].props.push('P99');
-  ok(!gate(doc, 'refs-scenes', CTX).ok, '不存在的道具被拦');
-  ok(gate(doc, 'refs-scenes').ok, '没给美术设定时本门跳过');
-}
-
-/* ---------------- validateScript 结构检查 ---------------- */
-
-eq(validateScript(FIXTURE, CTX).length, 0, '样例零违规');
-ok(validateScript(null).length > 0, 'null 不崩');
-ok(validateScript({}).some((p) => p.includes('source')), '缺 source 报出来');
-ok(validateScript({ source: 'x', episodes: [] }).some((p) => p.includes('episodes')), '空 episodes 报出来');
-{
-  const doc = clone(FIXTURE);
-  doc.episodes.push(clone(doc.episodes[0]));
-  ok(validateScript(doc).some((p) => p.includes('重复')), '重复集号报出来');
-}
-{
-  const doc = clone(FIXTURE);
-  delete doc.episodes[0].targetSeconds;
-  ok(validateScript(doc).some((p) => p.includes('targetSeconds')), '缺目标秒数报出来');
-}
-{
-  const doc = clone(FIXTURE);
-  delete doc.episodes[0].beatsClaimed;
-  ok(validateScript(doc).some((p) => p.includes('beatsClaimed')), '缺爽点认领字段报出来');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].sceneId = '船舱';
-  ok(validateScript(doc).some((p) => p.includes('S01 这种格式')), 'sceneId 格式报出来');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].flow = [];
-  ok(validateScript(doc).some((p) => p.includes('节拍流为空')), '空节拍流报出来');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].flow.push({ action: '动作', line: '台词', speaker: 'C01' });
-  ok(validateScript(doc).some((p) => p.includes('二选一')), '节拍不许既是动作又是台词');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].flow.push({ delivery: '只有语气' });
-  ok(validateScript(doc).some((p) => p.includes('二选一')), '两头都不是也拦');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].flow.push({ speaker: 'C03', line: '   ' });
-  ok(validateScript(doc).some((p) => p.includes('空台词')), '空台词报出来');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].flow.push({ line: '没有说话人。' });
-  ok(validateScript(doc).some((p) => p.includes('speaker')), '台词缺说话人报出来');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[0].scenes[0].flow.push({ action: '  ' });
-  ok(validateScript(doc).some((p) => p.includes('空动作')), '空动作节拍报出来');
-}
-ok(validateScript(clone(FIXTURE)).length === 0, '不带上游校验也通过');
-
-/* ---------------- seed ---------------- */
-
-const seeded = seedFromOutline(OUTLINE);
-eq(seeded.source, '渡口', 'seed 带书名');
-eq(seeded.episodes.length, 6, 'seed 全六集');
-eq(seeded.episodes[0].targetSeconds, 120, '目标秒数 = 每集分钟 × 60');
-eq(seeded.episodes[0].hook, OUTLINE.episodes[0].hook, '钩子从大纲搬');
-eq(seeded.episodes[0].cliff, OUTLINE.episodes[0].suspense, '悬念从大纲搬');
-eq(seeded.episodes[0].beatsClaimed.join(','), '悬念钩', '第 1 集预填悬念钩');
-eq(seeded.episodes[2].beatsClaimed.join(','), '身份揭破', '第 3 集预填身份揭破');
-eq(seeded.episodes[1].beatsClaimed.length, 0, '没有爽点的集为空数组');
-eq(seeded.episodes[0].scenes.length, 0, 'scenes 留空给模型写戏');
-ok(seeded.episodes[0].seedNote.includes('S01'), 'seedNote 带候选场景');
-ok(seeded.episodes[0].seedNote.includes(OUTLINE.episodes[0].synopsis.slice(0, 10)), 'seedNote 带梗概');
-eq(seedFromOutline(OUTLINE, [3, 5]).episodes.map((e) => e.ep).join(','), '3,4,5', '--eps 区间过滤');
-eq(seedFromOutline(OUTLINE, [2, 2]).episodes.length, 1, '单集区间');
-eq(seedFromOutline({}).episodes.length, 0, '空大纲不崩');
-eq(seedFromOutline({ params: {} }).episodes.length, 0, '缺分钟数用默认值不崩');
-
-/* ---------------- slug ---------------- */
-
-eq(slug('渡口'), '渡口', '中文原样');
-eq(slug('a b/c'), 'a-b-c', '空格斜杠转短横');
-eq(slug('  '), 'script', '空名兜底');
-
-/* ---------------- render markdown ---------------- */
-
-const md = renderMarkdown(FIXTURE, CTX);
-ok(md.includes('# 渡口 · 剧本（第 1–6 集）'), 'md 标题带集数区间');
-ok(md.includes('第 1 场 · 渡口栈桥（浓雾清晨）'), 'md 场头显示场景名与光照');
-ok(md.includes('**老周**'), 'md 说话人显示名字不是 ID');
-ok(md.includes('**画外音**'), 'md 里 VO 显示成画外音');
-ok(md.includes('场次总表'), 'md 带场次总表');
-ok(md.includes('台词本'), 'md 带台词本');
-ok(md.includes('第 1 场第 1 拍兑现'), 'md 钩子行带认领位置');
-const mdBare = renderMarkdown(FIXTURE);
-ok(mdBare.includes('**C03**'), '不给上游时退回裸 ID');
-ok(mdBare.includes('S02'), '场景同样退回 ID');
-
-/* ---------------- render html ---------------- */
-
-const html = renderHtml(FIXTURE, CTX);
-ok(html.includes('<!doctype html>'), 'html 完整文档');
-ok(!/src="http|href="http|@import|url\(http/.test(html), '零外部资源');
-ok(html.includes('时长仪表'), '01 时长仪表');
-ok(html.includes('分集剧本'), '02 分集剧本');
-ok(html.includes('场次总表'), '03 场次总表');
-ok(html.includes('台词本'), '04 台词本');
-ok(html.includes('质量门'), '05 质量门');
-ok(html.includes('✓ 质量门 10 / 10'), '页眉徽章全绿');
-ok(html.includes('class="band"'), '时长条带目标区间');
-ok(html.includes('导出 JSON'), '导出按钮在');
-ok(html.includes('id="script-data"'), '数据内嵌');
-ok(html.includes('渡口-script.json'), '导出文件名');
-ok(html.includes('data-copy'), '复制按钮在');
-ok(html.includes('复制全部台词'), '台词本整组复制');
-ok(html.includes('@media print'), '打印样式在');
-ok(html.includes('prefers-reduced-motion'), '动效可关');
-ok(html.includes('class="eps"'), '分集剧本一排两集网格');
-ok(html.includes('class="scenes clip"'), '场次区默认最多 300px 截断');
-ok(html.includes('展开全部场次'), '每集自带展开与收起按钮');
-ok(html.includes('class="casts"'), '台词本一排两个网格');
-ok(html.includes('max-height:186px'), '台词列表六行高，纵向滚动');
-{
-  const solo = renderHtml({ source: '渡口', episodes: [clone(FIXTURE.episodes[0])] }, CTX);
-  ok(solo.includes('eps solo'), '单集单列，不留空半栏');
-  ok(solo.includes('剧本（第 1 集）'), '单集标题不带区间');
-}
-ok(html.includes('老周'), 'html 里 ID 换成名字');
-ok(html.includes('晨雾'), '光照 chips 在');
-ok(html.includes('第 1 场第 1 拍兑现'), '钩子行带认领徽章');
-ok(html.includes('act-line hooked'), '认领的节拍在正文里高亮');
-ok(!html.includes('音色提示词'), '不给 --cast 就没有音色按钮——不猜');
-{
-  const withCast = renderHtml(FIXTURE, { ...CTX, cast: CAST });
-  ok(withCast.includes('音色提示词'), '给了 --cast 台词本带音色提示词按钮');
-  // 从 cast 里取，别硬编样例内容——样例的音色提示词改过形态，
-  // 写死字符串的断言会跟着挂，而且它验的本来就不是「内容长什么样」
-  const anyPrompt = CAST.characters.find((c) => c?.voice?.prompt)?.voice?.prompt ?? '';
-  ok(anyPrompt.length > 0, '样例 cast 里有音色提示词');
-  // html 里字符是转义过的，取一段不含特殊字符的片段来比对
-  const frag = anyPrompt.split(',')[0].trim();
-  ok(frag.length > 5 && withCast.includes(frag), '音色提示词是 cast 的 voice.prompt 原文');
-}
-ok(html.includes('lang="zh"'), '默认报告 html lang 是 zh');
-
-/* ---------------- render — 英文界面 ---------------- */
-
-{
-  const en = renderHtml(FIXTURE, { ...CTX, lang: 'en' });
-  ok(en.includes('lang="en"'), 'en 报告的 html lang 属性正确');
-  ok(en.includes('Export JSON'), 'en 导出按钮标签');
-  ok(en.includes('Quality gates 10 / 10'), 'en 页眉徽章全绿');
-  ok(en.includes('Line book'), 'en 台词本标题');
-  ok(en.includes('Duration gauge'), 'en 时长仪表标题');
-  ok(!en.includes('导出 JSON'), 'en 报告不含中文导出标签');
-  ok(!en.includes('质量门'), 'en 报告不含中文质量门标签');
-  ok(!en.includes('台词本'), 'en 报告不含中文台词本标签');
-}
-{
-  const mdEn = renderMarkdown(FIXTURE, { ...CTX, lang: 'en' });
-  ok(mdEn.includes('## Episode 1'), 'en md 分集标题是英文');
-  ok(mdEn.includes('## Line book'), 'en md 台词本标题是英文');
-}
-{
-  const doc = clone(FIXTURE);
-  doc.lang = 'en';
-  ok(renderMarkdown(doc, CTX).includes('## Episode 1'), 'script.json 顶层 lang 字段生效');
-  ok(renderMarkdown(doc, { ...CTX, lang: 'zh' }).includes('## 第 1 集'), '--lang 优先于 JSON 的 lang 字段');
-}
-{
-  let threw = false;
-  try { renderHtml(FIXTURE, { ...CTX, lang: 'fr' }); } catch { threw = true; }
-  ok(threw, '非内置语言直接抛错，不静默回退');
-}
-
-// 病灶横幅
-{
-  const doc = clone(FIXTURE);
-  doc.episodes[1].hook = ''; // 击穿 hook-cliff 门
-  const h = renderHtml(doc, CTX);
-  ok(h.includes('class="galert"'), '有门未过时页顶挂病灶横幅');
-  ok(h.includes('gatepill fail'), '徽章翻红');
-}
-
-// XSS：模型数据全部过 esc
-{
-  const doc = clone(FIXTURE);
-  doc.source = '<script>alert(1)</script>';
-  doc.episodes[0].scenes[0].flow.push({ speaker: 'C03', line: '<img src=x onerror=alert(1)>' });
-  const h = renderHtml(doc);
-  ok(!h.includes('<script>alert(1)</script>'), '标题被转义');
-  ok(!h.includes('<img src=x'), '台词被转义');
-  ok(h.includes('\\u003c'), '内嵌 JSON 的 < 转成 \\u003c，防 </script 截断');
-}
-
-// 质量门面板是报告的一部分：英文界面下门标签也要翻译（阈值由门自己算，原样保留）
-{
-  const gateEn = renderHtml(FIXTURE, { ...CTX, lang: 'en' });
-  ok(gateEn.includes('Episode duration within'), 'EN 报告的质量门标签翻译且阈值原样保留');
-  ok(!gateEn.includes('每集时长在目标'), 'EN 报告不再出现中文门标签');
-}
-/* ---------------- 生产参数（只取界面语言） ---------------- */
-
-eq(PRODUCTION_FILE, 'production.json', '文件名与 novel-setup 一致');
-ok(PRODUCTION_DEPTH >= 3, '向上找的层数够穿过 <工作目录>/<段>/<子目录>');
-eq(findProduction(here, 0), null, '本目录没有就找不到（层数 0）');
-{
-  const root = mkdtempSync(join(tmpdir(), 'novel-prod-'));
-  const deep = join(root, 'work', 'stage');
-  mkdirSync(deep, { recursive: true });
-  writeFileSync(join(root, 'work', PRODUCTION_FILE), '{"lang":"en"}');
-  eq(findProduction(deep), join(root, 'work', PRODUCTION_FILE), '从段目录向上找得到工作目录根的参数');
-  eq(findProduction(root), null, '工作目录之上找不到——不越界往用户主目录爬');
-  rmSync(root, { recursive: true, force: true });
-}
-
-/* ---------------- 产物落点 ---------------- */
-
-eq(STAGE_DIR, 'script', '段目录名与端到端工作目录约定一致');
-{
-  const prod = '/w/production.json';
-  eq(stageDirNote('/w/script/渡口-script.json', prod), null, '落在自己的段目录里就不吭声');
-  ok(stageDirNote('/w/渡口-script.json', prod)?.includes('/w/script'), '平铺在工作目录根要提示该去哪');
-  ok(stageDirNote('/w/other/渡口-script.json', prod), '串进别人的段目录也要提示');
-  ok(stageDirNote('/w/script/sub/渡口-script.json', prod), '段目录下再套一层同样提示——报告按相对路径找图，多一层图就全丢');
-  eq(stageDirNote('/w/渡口-script.json', null), null, '没有 production.json 就无从判断，不猜');
-  eq(stageDirNote(null, prod), null, '没有产物路径也不猜');
-}
-
-/* ---------------- 自动驾驶（autopilot） ---------------- */
-/*
- * 只读的跑法口径：开着本 skill 就把自己那一段一口气跑完——没有 outline.json
- * 也不问「要不要先跑 novel-outline」，批次之间不等确认。它不参与任何一道门。
- */
-
-ok(autopilotOf({ autopilot: true }), '开着就是开着');
-eq(autopilotOf({ autopilot: false }), false, '关着就是关着');
-eq(autopilotOf({ lang: 'zh' }), false, '老项目的生产参数里没有这个字段，按关处理');
-eq(autopilotOf(null), false, '没有生产参数就是关——该问还是要问');
-eq(autopilotOf({ autopilot: 'false' }), false, '字符串 "false" 不算开——JS 里它是真值，只认布尔真值');
-eq(autopilotOf({ autopilot: 'true' }), false, '字符串 "true" 也不算开，写法错了按关处理');
-eq(autopilotOf({ autopilot: 1 }), false, '数字不算开');
-ok(AUTOPILOT_NOTE.includes('不要停下来问用户'), '开着时打印的那句话说清了约束');
-ok(gateReport(FIXTURE, CTX).every((g) => g.ok), '打开自动驾驶与门无关——门查的是剧本本身，样例照样全绿');
-
-console.log(`✓ ${passed} 项自测全部通过`);
+// Real CLI failures, atomic application through the frozen API, and isolated copy.
+const temp = mkdtempSync(join(tmpdir(), 'novel-script-v3-'));
+try {
+  const scriptDir = join(temp, 'script'); mkdirSync(scriptDir);
+  const file = join(scriptDir, '修伞簿-script.json'), productionFile = join(temp, 'production.json');
+  writeFileSync(file, JSON.stringify(DOC)); writeFileSync(productionFile, JSON.stringify(PRODUCTION));
+  const cli = (args, cwd = temp, entry = join(root, 'scripts/novel-script.mjs')) => spawnSync(process.execPath, [entry, ...args], { cwd, encoding: 'utf8' });
+  test('find production and artifact location', () => { assert.equal(findProduction(scriptDir), productionFile); assert.equal(stageDirNote(file, productionFile), null); assert(stageDirNote(join(temp, 'wrong.json'), productionFile)); });
+  test('CLI full validation', () => assert.equal(cli(['validate', file]).status, 0));
+  test('CLI checkup JSON status', () => { const r = cli(['checkup', file, '--json']); assert.equal(r.status, 0); const data = JSON.parse(r.stdout); assert.equal(data.blockingFailures, 0); assert(!data.gates.some(g => Object.hasOwn(g, 'ok'))); });
+  test('CLI duration warning does not block', () => {
+    const d=clone(DOC);d.params.actionSeconds=100;writeFileSync(file,JSON.stringify(d));
+    const r=cli(['checkup',file,'--json']);assert.equal(r.status,0);assert(JSON.parse(r.stdout).warnings);
+  });
+  writeFileSync(file, JSON.stringify(DOC));
+  test('CLI unreadable supplied upstream', () => assert.equal(cli(['validate', file, '--outline', join(temp, 'absent.json')]).status, 1));
+  test('CLI corrupt supplied upstream', () => { const bad = join(temp, 'broken.json'); writeFileSync(bad, '{'); assert.equal(cli(['checkup', file, '--art', bad]).status, 1); });
+  test('CLI render reports supplied malformed upstream and returns failure', () => {
+    const bad = join(temp, 'malformed-art.json'); writeFileSync(bad, '{}');
+    const r = cli(['render', file, '--html', '--art', bad]);
+    assert.equal(r.status, 1); assert(r.stdout.includes('<!doctype html>'));
+  });
+  test('CLI null supplied upstream not skipped', () => { const bad = join(temp, 'null.json'); writeFileSync(bad, 'null'); assert.equal(cli(['checkup', file, '--outline', bad]).status, 1); });
+  test('CLI corrupt discovered production not skipped', () => { writeFileSync(productionFile, '{'); assert.equal(cli(['validate', file]).status, 1); writeFileSync(productionFile, JSON.stringify(PRODUCTION)); });
+  test('CLI render and lang inheritance', () => { const p = clone(PRODUCTION); p.lang = 'en'; writeFileSync(productionFile, JSON.stringify(p)); const r = cli(['render', file, '--html']); assert.equal(r.status, 0); assert(r.stdout.includes('lang="en"')); writeFileSync(productionFile, JSON.stringify(PRODUCTION)); });
+  test('isolated skill copy imports only itself', () => {
+    const copied = join(temp, 'isolated'); cpSync(root, copied, { recursive: true });
+    const local = join(copied, 'examples/修伞簿-script.json');
+    const r = cli(['validate', local, '--outline', join(copied, 'examples/修伞簿-outline.fixture.json'), '--art', join(copied, 'examples/修伞簿-art.fixture.json')], copied, join(copied, 'scripts/novel-script.mjs'));
+    // The temporary parent production is a project anchor; delete it before standalone validation.
+    rmSync(productionFile); const independent = cli(['validate', local, '--outline', join(copied, 'examples/修伞簿-outline.fixture.json'), '--art', join(copied, 'examples/修伞簿-art.fixture.json')], copied, join(copied, 'scripts/novel-script.mjs'));
+    assert.equal(independent.status, 0, independent.stderr + independent.stdout); assert(r.status !== null);
+    const ownSource = readFileSync(join(copied, 'scripts/novel-script.mjs'), 'utf8'); assert(!/from ['"]\.\.\/\.\.\/novel-/.test(ownSource));
+  });
+} finally { rmSync(temp, { recursive: true, force: true }); }
+console.log(`✓ ${passed} script v3 tests passed (local fixtures; no paid calls).`);

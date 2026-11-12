@@ -1,72 +1,95 @@
-# script.json 结构
+# script.json v3 数据契约
 
-一份剧本文件覆盖一个集数区间（通常一批 ≤ 3 集），顶层：
+正式入口只接受 schemaVersion: 3。v2 只由显式迁移读取，不双读旧字段。Node 18+，标准库，无兄弟代码依赖。
+
+## 最小独立剧本
 
 ```json
 {
-  "source": "渡口",
-  "params": { "charsPerSecond": 4.5, "actionSeconds": 2.5, "tolerance": 0.15, "maxLineChars": 35 },
-  "episodes": [ ... ]
+  "schemaVersion": 3,
+  "source": "修伞簿",
+  "episodes": [{
+    "ep": 1,
+    "targetSeconds": 60,
+    "scenes": [{
+      "sceneId": "S01",
+      "characters": ["C01"],
+      "flow": [{"action": "林禾合上修伞簿。"}]
+    }]
+  }]
 }
 ```
 
-`params` 可省略，省略就用默认值。四个键都只在需要偏离默认时写。
+这个例子结构有效，但估时短于目标，会显示提醒。结构通过不代表内容完成。
 
-## episode
+顶层可选 lang（zh/en）、creativeBrief（非空字符串）、params。项目与本地同时有非空 creativeBrief 时阻断并要求人工合并进 production。production 必须声明 schemaVersion:3；本地只检查所消费的项目接口，不替代制作配置完整检查。
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `ep` | int | 集号，正整数，同一文件内不许重复 |
-| `targetSeconds` | number | 目标秒数。seed 会从大纲的 `minutesPerEpisode × 60` 算好 |
-| `hook` | string | 开场钩子的说明——这一集头几拍靠什么把人摁住。**必填** |
-| `cliff` | string | 结尾悬念的说明——最后一拍留什么让人点下一集。**必填** |
-| `beatsClaimed` | string[] | 认领的大纲爽点 `type`（如 `"身份揭破"`）。没有就空数组，**字段本身必须在** |
-| `hookBeat` | [int, int] | **钩子具象的认领位置** `[场, 拍]`：钩子说皮箱，哪一拍真给了皮箱。必须落在全集前 `hookWindow`（默认 3）拍内——冷开场规则，门查位置 |
-| `scenes` | scene[] | 场次，按剧情顺序 |
+拒绝 creative、creativeContext、selection、decisions、overrides、seedNote；params 拒绝 rules、defaults、preferences、hookWindow、maxLineChars 及其他未知参数。旧内容按迁移说明处理。
 
-`hook` / `cliff` 是**说明不是台词**——它们描述开场和结尾要达成的效果，具体的戏写在场次里。说明配合 `hookBeat` 认领：**说明给人读，认领给机器查**——钩子和第一场开头衔接不上，就是缺了认领这一环。
+## 参数与估时
 
-## scene（场次）
+params 可省略。提供时只能含用户明确覆盖：
+- charsPerSecond：有限正数，工具默认 4.5。
+- actionSeconds：有限正数，工具默认 2.5。
+- tolerance：[0,1) 有限数，工具默认 0.15。
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `sceneId` | string | `S01` 格式，对账 art.json 的场景 |
-| `lighting` | string | 该场用的光照状态名，必须是 art.json 里该场景登记过的状态。可省略 |
-| `characters` | string[] | 本场出场角色（`C01` 格式，对账 outline.json）。空镜给空数组 |
-| `props` | string[] | 本场用到的叙事道具（`P01` 格式，对账 art.json）。可省略 |
-| `flow` | beat[] | 节拍流，**动作与台词交替**，按发生顺序 |
+paramsOf / effectiveParams 统一解析，validate/render/seed 不回写默认值。台词按去除空白后的 JavaScript 字符串长度除以语速估算，标点计入；动作使用固定秒数。所有场次、分集、开场、节点范围与报告使用同一未舍入累计轴，只有显示值舍入一位小数。
 
-## beat（节拍）——二选一
+无效数值、不可用或溢出的时间轴阻断。粗略估时偏离目标只显示提醒；不冒充实际表演或成片时长。
 
-**动作节拍**：
+## 分集与计划来源
 
-```json
-{ "action": "沈知微一把按住箱盖。动作快得不像闺秀，倒像护崽的兽。" }
-```
-
-**台词节拍**：
-
-```json
-{ "speaker": "C01", "line": "不劳烦。它跟我。", "delivery": "声音很轻，却没商量" }
-```
-
-| 字段 | 说明 |
+| 字段 | 契约 |
 | --- | --- |
-| `action` | 叙述体画面描述，一拍一件事。**不许出现引号台词**（「」『』“”都不行）——台词混进动作就没法计秒、没法喂 TTS |
-| `speaker` | 本场 `characters` 里的角色 id，或 `"VO"`（画外音/心声——谁的心声写进 delivery） |
-| `line` | 台词本体，口语，单句 ≤ 35 字（非空白字符计） |
-| `delivery` | 表演提示：语气、动作伴随、潜台词。可省略，建议都写 |
+| ep | 唯一递增正整数；批次不必从 1 开始 |
+| targetSeconds | 有限正数；有大纲时严格等于 minutesPerEpisode × 60 |
+| opening / ending | 独立模式可选；有 outline 时禁止保存重复计划 |
+| openingBeat | 可选 1 起始 [场次序号, 场内节拍序号]；提供就必须存在，null 不合法 |
+| beatClaims | 独立无节点时可省略；有 outline 时逐个认领所有当集节点 |
+| scenes | 完整阶段为非空有序数组 |
 
-一个节拍不能既有 `action` 又有 `line`；两者都没有也不行。
+独立 opening 提供时非空。独立 ending 只允许 mode/event，mode 为 suspense/closure/open，event 非空。Q 计划仍归大纲；独立 suspense 不要求 Q。
 
-## 时长折算（确定性）
+endBeat 删除，endBeatOf(ep) 从最后一个实际 flow 项计算，没有正文时返回 null。openingBeat 缺省不是确认第一拍；报告明确未标注和未核验。seedNote 删除，其创作信息保存在迁移工作记录。
 
-- 台词秒数 = 非空白字符数 ÷ `charsPerSecond`（标点算时间——停顿也是时间）
-- 动作秒数 = 动作节拍数 × `actionSeconds`
-- 每集预估 = 全部场次之和，必须落在 `targetSeconds × (1 ± tolerance)` 内
+有大纲时计划来自当前显式加载或唯一发现的大纲，不能从旧剧本副本读取。source 与集号核对仅是基本身份检查，不代表内容已同步；每次都要按实际节点 ID 对账，并单独评审正文。导出 Markdown/HTML 可附计划，但 JSON 导出保持原输入。
 
-三分钟（180 秒）一集的参考体量：约 45–55 个节拍，其中台词 30 句上下。两分钟（120 秒）约 35 拍、台词 20 句上下。
+## 节点认领
 
-## ID 纪律
+```json
+{"beatId":"B01","start":[1,3],"end":[2,2]}
+```
 
-角色用 outline.json 的 `C` 编号（不是 cast.json 的名字），场景道具用 art.json 的 `S` / `P` 编号。报告渲染时给了 `--outline` / `--art` 会自动把编号显示成名字——**数据里存编号，界面上看名字**。
+每项仅允许 beatId/start/end。B 加至少两位数字，全文件唯一。端点存在，范围包含两端，start 不晚于 end。后一个核心段严格晚于前一个结束，不能重叠。允许跨场次和范围之外的共同铺垫。
+
+有 outline 时 actual ID 数组必须等于本集上游 beats 的 ID 数组，未分类节点同样认领。漏领、多领、错集、重复、倒序、重叠或无效坐标阻断。独立模式仍检查已提供认领的格式、范围与顺序，只跳过依赖上游的对账。改正文后必须重新计算受影响坐标。
+
+## 场次与正文
+
+sceneId 为 S 加至少两位数字。characters 是无重复 C ID 数组，可为空，但不可缺省；无台词人物不能自动删除。props 可选无重复 P ID 数组。lighting 可选非空文本，只保存有意义的状态。
+
+flow 非空，每项 action 或 line 二选一。action 非空，不允许 speaker/delivery。line 非空，speaker 必须是场内人物或 VO。delivery 可选非空文本，特殊表演说明在台词本保留。动作台词不必交替。
+
+大纲提供人物、场景与道具 ID 时检查实际引用；art 提供时额外核对资产与光照登记。cast 提供时检查人物名称、可选 ID 和音色提示词类型。art/cast 接受既有无版本契约或 schemaVersion:1，不强行升级媒体输出版本。
+
+## 上游边界与骨架
+
+outline 边界接受 v3、非空 source、合法目标时长、分集计划、人物和资产 ID、按集号不递减的节点。position/kind 可选，填写则检查枚举；同集以数组顺序为准。weight 仅在 kind=payoff 时可选 minor/major。setup/outcome 必须非空。拒绝废弃字段。
+
+这里只检查剧本消费接口，不重复大纲完整 story/Q 验证。已登记 required 问题、唯一解决、期限与原文证据须由大纲校验完成；报告不据此宣称通过。
+
+seed 仅创建 source、目标、按序认领 ID 与空 scenes，不复制计划、Q、默认参数或创作要求。认领 start/end 为 null。skeleton 允许这些空场次和空认领端点，估时标为 stage-incomplete；full 不允许。openingBeat 无论哪个阶段，提供时都必须是真实坐标。
+
+CLI 从产物目录向上最多五层查找 production.json，项目产物应位于项目根 script/。发现损坏文件、悬空链接、非法 UTF-8、显式 null、错误版本均失败。--no-production 禁止自动读取项目配置，与 --production 互斥，不等于禁止读取已经明确提供或唯一发现的大纲。
+
+CLI 从项目根 outline/、art/、characters/ 发现唯一 JSON，忽略 manifest、备份、临时及评审文件。显式 --outline/--art/--cast 优先；未显式指定且有多候选时报错，不能自行挑选。真正缺少上游为 skipped/missing-upstream。
+
+## 检查与下游接口
+
+gateReport 返回本阶段结构检查；checkup 返回 gates/stats/blockingFailures/warnings/contentReview/scope。validateScript 返回阻断错误数组。ctx 接受 outline/art/cast/production、stage、lang、docPath/productionPath；提供 root 时 checkup/validateScript 还检查已知 creation JSON。
+
+status 为 pass/fail/skipped。error 失败阻断；warn 失败显示提醒，不计通过。内容评审始终为 not-performed。render 可输出损坏结构的诊断报告并返回非零；不支持的数据版本先拒绝。
+
+CLI validate/checkup/render 自动检查已知 creation v3 的作品、集号、可选开场落点、实际 flow 顺序覆盖、正数镜头秒数与目标。creation 不保存 opening/ending/endBeat 副本；其内容从当前计划和正文读取。缺省 openingBeat 不得伪造映射。局部下游检查不代替 creation 的模型硬限制、参考图身份顺序、资产及内容评审。
+
+全部正式命令及示例只维护在 [README](../README.md)。迁移详见 [migration.md](migration.md)。

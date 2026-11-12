@@ -1,244 +1,157 @@
 ---
 name: novel-creation
-version: 1.3.0
+version: 3.1.0
 description: |
-  给 AI 短剧参考图直出视频：段（一次视频生成，≤15 秒）→ 分镜（段内 2–5 秒的剪切，认领剧本节拍）——
-  **不出分镜图这一层中间产物**：段直接挂载 novel-characters / novel-art 已经生成
-  落盘的角色/场景/道具设定图当参考图，写一条通用视频提示词（不是任何一个模型的私有结构，
-  一套骨架跨模型通用，骨架规范内化为 references/creation-prompt.md；填法按 production.json 的
-  video.model 动态载入对应那一族的指南——H3 读 references/h3-prompt.md，seedance 系列读
-  references/seedance2-prompt.md，没收录的模型照通用骨架写）。从 seed 到下单，不产生任何新的图像生成调用。
-  产出 creation.json + Markdown + 单页评审报告（分镜节奏带 / 分集分镜表 / 参考图挂载单 /
-  配音对齐单，含导出 JSON）。
-  17 道质量门全部由脚本确定性检查（其中 2 道读工作目录根的 production.json：段秒数落进对应
-  视频模型的时长区间、提示词与挂的模型口径相符，没有就明说跳过；shot-recipe 可选：挂上 shot-recipes 卡库才查，
-  不挂就明说跳过）；export 一键导出投产包（每段提示词 + 挂载的参考图清单），再走 lingying 下单
-  生视频（可选）。零依赖、零 npm。
-  production.json 顶层 autopilot 为 true 时全程不打断——下单花费照样报出来但不等回应；
-  质量门、花费预估、失败止损照旧。
-  要快、直接吃现成设定图配一条提示词就下单时用这个；每切一张关键帧精确控镜不是本 skill 的做法。
-  Use when asked to 直出视频、参考图生视频、不出分镜图、跳过分镜图 for AI short drama。
-# 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
-allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
+  将 v3 剧本转换为参考图直出视频方案。主会话只负责调度：准备材料、运行结构检查、
+  派发「视频提示词编写」与「视频提示词审核」两个 subagent 并循环到全部批准，再回写、导出、交接生成。
+  不生成分镜图。不保存上游计划副本或结束坐标。产出 creation.json、每段工作单、报告与投产包。
+  视频生成是需要授权的可选步骤。
+  Use when asked to 直出视频、参考图生视频、不出分镜图、跳过分镜图 for AI drama。
+allowed-tools: read write edit bash grep find ls subagent Read Write Edit Bash Glob Grep Task
 triggers:
   - novel-creation
   - 直出视频
   - 参考图生视频
-  - 不出分镜图
-  - 跳过分镜图
-  - 参考图直出
 metadata:
   license: Apache-2.0
   requires:
-    bins:
-      - node          # >= 18，只用标准库，无 npm 依赖
-    optional:
-      - lingying      # 有才能下单生视频；没有就只交提示词与投产包，其余照常
-  runtimes:
-    - pi            # 没有子代理：并发步骤在当前会话串行做，产出一致
-    - claude-code
-    - codex
+    bins: [node]
+  runtimes: [pi, claude-code, codex]
 ---
 
-## novel-creation
+# novel-creation
 
-给 AI 短剧**参考图直出视频**。
+`{baseDir}` 是本文件目录。Node 18+，只有标准库依赖。整个目录可以单独拷走：不读取兄弟 skill 的实现，不依赖第三方 skill。**提示词的编写与审核交给两个角色**——编写方与审核方，各自在独立上下文的 subagent 里工作，只通过工作单 `<段号>/prompt.md` 这一份文件协作。两个角色的指南与命令有两处来源，内容相同：
 
-**前提写清楚，不符合就别用这个 skill：**
+- 已经安装兄弟 skill `novel-video-prompt`（编写方）与 `novel-video-prompt-review`（审核方）时，subagent 加载它们。
+- 没有安装时，subagent 读取本目录 `references/` 里的指南副本，使用本脚本的 `prompts new|submit|verdict`。副本与兄弟 skill 逐字一致，由仓库级自测核对。
 
-| 前提 | 说明 |
-| --- | --- |
-| 设定图已经出好 | 角色/场景/道具设定图由 `novel-characters` / `novel-art` 生成落盘，本 skill 只读不写 |
-| 不出分镜图 | 段不出关键帧，构图交给提示词描述 + 参考图身份锚定。**零新增出图调用**，从 seed 到下单不生成任何新图像 |
-| 提示词跨模型通用 | 一套骨架（本 skill 自己的方法论，见 `references/creation-prompt.md`），只有填法按 `production.json` 的 `video.model` 加严 |
-| 适合场合 | 要快、要省，直接拿现成设定图配一条提示词下单；要每切一张关键帧精确控镜就不是这条路 |
-| 产物落点 | `<工作目录>/creation/`，一格装满 |
+两种来源的状态规则出自同一份工作单解析库。主会话在任何情况下都不代替它们编写或审核。
 
-本 skill **自包含、可以整个拷走**：只读工作目录里的 `production.json` 与 `cast.json`/`art.json`，不 import 任何兄弟 skill 的代码、不读它们的文档，也不改动它们的产出。
+**主会话是调度方**：不写分镜，不写提示词，不做内容评审。它负责准备材料、运行确定性命令、派发 subagent、判断循环是否结束，以及向用户汇报。
 
-**核心机制：镜头认领节拍。** 每个分镜声明它覆盖剧本某场的哪几个连续节拍（`sceneIndex` + `beats: [起, 止]`），分镜不许跨场次。这让分镜和剧本的关系保持可机械对账：
+```
+seed ─→ 编写 subagent ─→ prompts check ─→ 审核 subagent ─→ 全部 approved？
+            ↑   结构问题退回 ┘                    │ 否：带着意见退回编写
+            └─────────────────────────────────────┘
+                                                  是 ↓
+                         prompts apply ─→ validate ─→ export ─→ 授权 ─→ videos
+```
 
-| 交付 | 解决什么 |
-| --- | --- |
-| 节拍认领 | 每个节拍被恰好一个分镜认领、顺序不乱——剧本改了重跑 validate，失效的分镜当场点名 |
-| 单段 ≤ 15 秒（挂了生产参数还要落进模型时长区间） | AI 视频单段生成上限，长对话在这里被强制拆段 |
-| 台词装得下 | 认领节拍的台词秒数 ≤ 分镜秒数——逐镜检查，不是拍脑袋 |
-| **段级参考图挂载** | 直接引用 `cast.json`/`art.json` 已落盘的设定图，缺文件时 `refimage-coverage` 门点名缺哪张 |
-| 通用视频提示词（每段一条） | 逐张交代参考图身份、按 [Shot k] 分行、景别运镜短语落进对应行、认领台词打引号原文引用——不绑定任何一个视频模型 |
-| 配音对齐单 | 每句台词对到镜号——TTS 音频贴到哪一段视频，脚本自动汇总 |
+## 1. 确认输入
 
-`{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/novel-creation.mjs`，零依赖，`node` 直接跑。
+读取 `references/schema.md` 和 `references/dispatch.md`。script、outline、creation 和 production 都要求 `schemaVersion:3`。旧数据通过 `migrate-v3` 显式迁移，方法见 `references/migration.md`。正式 validate/render 不读取旧格式。
 
-**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。Step 6 下单生视频要本机安装了 `lingying` CLI——见 `references/video-order.md`。
+项目的自然语言 `creativeBrief` 是唯一要求，不解释成枚举或生成规则。独立 creation 可以保存 creativeBrief；项目与阶段同时存在要求时停止，请人工合并到 production。
 
-**边界（不做的事）**：不写戏不改台词（`novel-script` 的活）、不出场景/角色/道具设定图（`novel-art` / `novel-characters` 的活）、**不出任何新图像**（这是本 skill 存在的理由：直接用现成的）、**不做剪辑合成**（拼接、转场、配乐、贴 TTS 音频都不在这里）。视频生成本身是可选的最后一步——走 lingying 下单，产出到每段一个 mp4 为止。**不落 `.gates.jsonl`、不加 `stats` 子命令**（本 skill 不累积门失败统计，校验结果只在当次输出里）。
+命令自动从产物目录向上最多五层寻找 production.json，再从项目的 script、outline、art、characters 目录发现唯一 JSON。显式路径优先。缺少上游显示跳过；损坏、不可读或多候选输入失败，不能当作缺少上游。独立剧本没有大纲时，不要求伪造计划。
 
----
-
-### Step 0 — 定输入与范围
-
-**script.json 是硬前提**——段离开剧本没有意义，validate/render/export 都必须给 `--script`。其余上游按有则用：
-
-- `--outline` / `--art`：解析参考图路径的名字来源（角色走 outline 的 id→name，场景/道具走 art 的 id→name），开 `refimage-coverage` 门；`--cast`：提示词禁人名检查再加一份别名
-- `--shots <卡片目录>`：**可选**挂载 shot-recipes 的镜头配方卡库（指向 `shot-recipes/references/cards`，只接受目录不接受导出的 JSON），开可选的 `shot-recipe` 门。没装 shot-recipes 就别给——本 skill 自包含，不依赖它
-
-**产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/creation/`——`<剧名>-creation.json`、`<剧名>-creation.md`、`creation-report.html`、`manifest.json`、每段一个的 `E01-0x/` 投产包都在这一格里。工作目录根只住 `production.json`，`characters/`、`art/` 各占自己的一格——**它们的设定图会被本 skill 直接引用，不会被复制进 `creation/`**。用户没指定工作目录就用剧本同级目录，**但段目录这一层不省**。下文的 `<段目录>` 就指 `<工作目录>/creation/`。
-
-**从 Step 3（校验）开始，全部命令都要先 `cd` 进 `<段目录>` 再跑**——参考图的相对路径（`../characters/images/…`、`../art/images/…`）与生成参数都按当前目录解析，`export --out .` 也把投产包落在这里。
-
-跑过 `novel-setup` 的项目落点这条是查的：`validate` 与 `export` 找到 `production.json` 就顺带核对，放错了会点名该去哪；没找到那份文件就无从判断工作目录根在哪，明说跳过。
-
-**生产参数不用挂载，脚本自己找。** `production.json`（`novel-setup` 的产出）住在工作目录根，`validate`/`checkup`/`export` 都会从 creation.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「时长区间比对跳过」——不静默。找到了就必须遵循：**段秒数落进 `production.json` 的 `video.model` 对应的时长区间**（`segment-cap` 门自动加严，没有开关）。老项目没有这份文件照跑，那部分明说跳过；临时绕过用 `--no-production`，用了会明说。
-
-**一次切几集**：跟剧本的批次走（剧本写到哪就分到哪），默认一批 ≤ 3 集。
-
-### Step 0.5 — 自动驾驶（autopilot）
-
-Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` / `checkup` 与 `export` 找到生产参数也会打印一句 `↳ 自动驾驶：开`（`render` 只做语言继承，不打印）——但 Step 0 跑在第一条命令之前，所以开工前要自己看一眼。
-
-没有 `production.json`、字段写着 `false` 或者整个没写，就是各步原来的样子。
-
-| 原本 | 自动驾驶下 |
-| --- | --- |
-| Step 2 提示词按哪份指南填 | 按 `production.json` 的 `video.model` 自己载入对应那一族的填法指南，不问 |
-| Step 2 参考图挂哪几张 | 自己定（这一段实际入镜的人物/场景/道具），`refimage-coverage` 门会核对缺不缺 |
-| Step 6 按秒计费，提交前把总秒数与预估花费报给用户 | 照样算清楚、照样报出来（打印给用户看），**不等回应**直接提交 |
-| Step 6 同一段连着失败两次就停下来问 | 不问用户，但**照样停这一段**：跳过并记进汇报。不打断不等于无限重试烧钱 |
-
-**转移的是审批权，不是取消检查点**：17 道门照样要过、花费照样先算清楚、失败的止损照样止损——只是不再等人点头。可选步骤（下单）在自动驾驶下**照跑**，只有依赖缺失（没装 `lingying`）才跳过并明说。**替用户做的每一个决定都要写进 Step 4 的汇报**，一条不漏。
-
-### Step 1 — seed 工作底稿
+确认两个角色的来源：兄弟 skill 是否已经安装并且当前运行环境能够加载。在仓库里可以这样安装：
 
 ```bash
-mkdir -p <段目录>
-node {baseDir}/scripts/novel-creation.mjs seed <script.json> --eps 1-3 > <段目录>/<剧名>-creation.json
+./scripts/install.sh novel-video-prompt novel-video-prompt-review   # 在本仓库根目录
 ```
 
-确定性展开：每场的节拍清单（编号、动作/台词、每拍秒数、说话人）进 `seedScenes`，这就是切镜时的工作底稿。**每拍几秒是算出来的，不要让模型重新估。** segments 留空，切镜才是模型的活。
+安装到 pi 时会同时把两个角色定义 `novel-video-prompt-writer` 与 `novel-video-prompt-reviewer` 链接到 `~/.pi/agent/agents/`，供子代理扩展的 `subagent` 工具按名字派发；没有子代理扩展时通过 bash 启动独立的 `pi -p` 进程。安装到 Claude Code 时链接同名的 subagent 定义，它们预载对应的 skill。没有安装兄弟 skill 时不停止，按 `references/dispatch.md` 的「本地来源」派发。
 
-### Step 2 — 逐集分段切镜（含参考图挂载与提示词）
+## 2. 准备骨架
 
-每集一份任务，有子代理就并发、没有（例如 pi）就在当前会话串行做，产出一致。每份任务拿到：
-
-- `{baseDir}/references/shot-pass.md` 和 `{baseDir}/references/schema.md`（读它们，照着做）
-- 该集的 seedScenes 底稿 + 场景/道具卡（art.json 的锚点提示）+ 角色卡（cast.json 的形象要点）——**只用来判断这一格该挂哪张参考图，不需要读设定图提示词本身**
-
-流程：**先按剧情单元分段**（每段总时长不超过上限、不跨场），**段内切 2–5 秒的分镜**（对话正反打、关键动作插入特写、进场三件套——切镜语法都在 `shot-pass.md`），**段级挂载参考图**（这一段实际入镜的人物/场景/道具设定图，顺序就是提示词的 Picture 序）。
-
-**每段写一条 `prompt`**，骨架照 `{baseDir}/references/creation-prompt.md` 写（本 skill 自己的方法论，**不是任何一个模型的内化版，不依赖任何外部 skill**）。要点：开头逐张交代参考图身份（英文 `Picture k is …` / 中文 `图 k 是…`，k 对应 `images` 数组序号）；`[Shot k]` 行首固定给景别短语 + 运镜短语（通用摄影语汇）；认领台词打引号原文引用，一个字不许漂；结尾 1–2 句交代环境声/配乐。**没有对齐指令、没有切点时刻、没有 `<d>` 标签**——这些是给「有精确关键帧钉时间点」的场合用的，本 skill 没有这个前提。
-
-**动笔前先看 `production.json` 的 `video.model`，按它载入填法指南 ⛔ 不能跳。** 骨架跨模型通用（骨架归 `creation-prompt.md` 管，17 道门查的也是它），但**怎么填是按模型动态载入的，不要预设某一个模型**：
-
-| `video.model` | 再读哪份填法指南 | 那份加严了什么 |
-| --- | --- | --- |
-| `MiniMax H3`（两边都没写模型时的默认模型） | `{baseDir}/references/h3-prompt.md` | 默认英文并禁人名、说话人第一次出现给足辨识信息（没有 `(S1)` 编号体系）、画外音补官方那半句唇形闭合、官方两个声音字段收进一个 `ambience:` |
-| `seedance2.5` / `seedance2.0` / `seedance2.0 fast` / `seedance2.0 mini` | `{baseDir}/references/seedance2-prompt.md` | 整条切中文（`promptLang` 默认就是 `zh`）、身份说明句带上全程复用的主体标签、台词用 `{}` 包、收尾段补画质与约束词、**全程不许出现精确时刻**（`prompt-model-fit` 门查这一条） |
-| 其它模型 | **没有对应的填法指南**，照通用骨架写 | 不要拿另一族的指南顶上——两族的填法互不相容。汇报里说明这部剧没有该模型的填法指南 |
-
-两份都是官方方法论的内化版，**不依赖任何外部 skill**；**骨架一个字不改**，它们只改怎么填。`validate` / `checkup` / `export` 找到生产参数会打印一行 `↳ 视频模型 … → 填法指南 …`，照它读；**改了 `video.model` 就重读新那一族的指南、重写这一批的填法**——语言默认、时刻能不能写、台词用什么符号，两族全不一样。
-
-seedance 那份还写清了一件必须提前知道的事：**`novel-characters` 落盘的角色设定图是三视图版面，而官方点名多视图素材会加剧人物 ID 漂移与「双胞胎」**——对策与下单时怎么绕开都在里面。
-
-模型也可以写在 `creation.json` 顶层的 `video.model` 里覆盖生产参数。
-
-切完把 `seedScenes` 删掉。
-
-### Step 3 — 校验 ⛔ 不能跳
+产物位于 `<工作目录>/creation/`，参考图相对该目录。先进入此目录：
 
 ```bash
-cd <段目录>
-node {baseDir}/scripts/novel-creation.mjs validate <creation.json> \
-  --script <script.json> --outline <outline.json> --cast <cast.json> --art <art.json> \
-  [--shots </path/to/cards>]
+node {baseDir}/scripts/novel-creation.mjs seed ../script/作品-script.json --eps 1-3 > 作品-creation.json
 ```
 
-17 道质量门全是代码：节拍全覆盖（分镜级，恰好一次、按顺序、连续）、段 0 < 总秒 ≤ 上限（挂了生产参数还要落进对应视频模型的时长区间）、**每切 2–5 秒**、台词装得进分镜、每集总时长在剧本目标 ±15% 内、同框 ≤ 3 人（超了必须带拆解说明）、段号 E01-01 格式连号、景别短语在这一切自己的 [Shot k] 行里、运镜用通用词表且在自己的 [Shot k] 行里、**认领台词逐字出现在 prompt 里**（纯文本匹配，不要求标签）、**提示词语言与设定一致**、提示词正文不含角色名（台词引号内放行）、场次/人物/道具对账剧本、**段内出现的每个人物/场景/道具都能解出一张存在的设定图文件**（缺了点名缺哪张 + 期望路径）、**提示词的身份说明句数量与 `images` 数组长度一致**、**提示词与挂的视频模型口径相符**（挂 seedance 时全程不许出现精确时刻——官方明说限制精确时间会让生成异常；其余模型没有确定性硬约束可查，门明说这一点并把该读哪份填法指南报出来）、镜头配方对账（可选门，见下）。
+seed 只预填节拍工作底稿 seedScenes，segments 留空。默认每批最多三集。creation 不保存 opening、ending、endBeat：计划读取当前 outline，或没有 outline 时读取独立 script；可选 openingBeat 只复制 script 的显式标注并严格对账，结束坐标从实际 flow 计算。
 
-**有违规逐条修，改完重跑，直到通过。**
-
-**`shot-recipe`（可选挂载）**：给了 `--shots` 才查，不给就明说跳过。分镜上可以写一个可选的 `recipe`（配方卡 id，**cut 级不是 segment 级**，**多格配方靠连续同 id 的分镜表达**，不是数组），门查三条——id 在卡库里、卡片的每条 `must_phrases` 出现在**这一切自己的 `[Shot k]` 行**里（两边小写化后 `includes`）、卡片 `cuts` 下限 ≥ 2 时连续同 id 的分镜数不得低于该下限。卡片的**建议景别与运镜不设门**，只在报告的「配方」列与 `checkup` 末尾提示偏离：配方是语汇不是法条，可选挂载的东西一旦变严就没人挂。
-
-### Step 4 — 输出与汇报
+为本批每一集生成派发材料（节拍底稿、资产表、项目要求、有效模型、开场与集尾计划）：
 
 ```bash
-cd <段目录>
-node {baseDir}/scripts/novel-creation.mjs render <剧名>-creation.json --md \
-  --script <script.json> --outline <outline.json> --art <art.json> > <剧名>-creation.md
-node {baseDir}/scripts/novel-creation.mjs render <剧名>-creation.json --html \
-  --script <script.json> --outline <outline.json> --art <art.json> > creation-report.html
+mkdir -p .work
+node {baseDir}/scripts/novel-creation.mjs prompts brief 作品-creation.json --ep 1 > .work/E01-输入材料.json
 ```
 
-报告界面语言用 `--lang zh|en` 指定（优先级 `--lang` > JSON 顶层 `lang` 字段 > `production.json` 的 `lang` > 默认中文）——只切界面标签，与 `promptLang`（提示词语言）互相独立。`render` 自动去 `../characters/images/`、`../art/images/` 找参考图，路径相对当前目录——所以要先 `cd <段目录>`。报告含：KPI 带、分镜节奏带、分集分镜表（每段的参考图条 + 分镜行 + 提示词面板）、参考图挂载单（按段列出挂了哪些设定图、路径存不存在）、配音对齐单、质量门、导出 JSON。
+工作单目录就是 `creation/`：每段一份 `creation/<段号>/prompt.md`。已经有段的旧 creation.json 需要补走审核时，运行 `prompts init` 生成草稿工作单。
 
-汇报一句话说清：几集几段几分镜、总时长 vs 目标、报告路径；没过的门明说。
+## 3. 编写与审核循环
 
-### Step 5 — 导出投产包
+按 `references/dispatch.md` 的任务简报派发。一集一个编写 subagent、一个审核 subagent；多集可以并发，所有调用放在同一条消息里。
+
+每一轮：
+
+1. **派发编写 subagent**：有 `novel-video-prompt-writer` 定义时按名字派发（pi 为 `subagent` 工具）；pi 没有子代理扩展时按 `references/dispatch.md` 通过 bash 启动独立的 `pi -p` 进程；其他环境派发通用 subagent，并在简报里给出编写方指南的绝对路径（兄弟 skill 的 SKILL.md，或本地来源的指南副本）。首轮传入输入材料路径、有效视频模型与工作单目录；修改轮指明哪些段被退回，以及结构检查的输出。
+2. **运行结构检查**：
+
+   ```bash
+   node {baseDir}/scripts/novel-creation.mjs prompts check 作品-creation.json
+   ```
+
+   它把工作单拼入内存中的 creation 并执行全部确定性检查（节拍覆盖、台词逐字、时长、模型限制、骨架短语、参考图），不要求已经批准，也不改写任何文件。失败时把输出原样交还编写 subagent，**不启动审核**——不让审核方把轮次花在工具能够判断的问题上。
+3. **派发审核 subagent**：有 `novel-video-prompt-reviewer` 定义时按名字派发；没有时派发通用 subagent，并在简报里给出审核方指南的绝对路径。传入与编写方相同的材料和工作单路径，**不转述编写方的回报或自我评价**。批准时审核方要带上这份输入材料，批准才会绑定它。
+4. **查看状态**：
+
+   ```bash
+   node {baseDir}/scripts/novel-creation.mjs prompts status 作品-creation.json
+   ```
+
+   全部批准并且批准仍然有效（退出码为零）则结束循环。有 `changes_requested` 的段回到第 1 步，只派发被退回的那几集。有 `blocked` 的段先停下来：审核方发现了编写方无法单独解决的问题（缺少设定图、剧本台词有误、目标时长无法容纳），协调上游或请用户决定之后，重新生成输入材料，再派发编写方回应并提交。
+
+止损：同一段**提交三轮仍未批准**时，`prompts status` 会标出；停止这一段的循环，把审核意见与编写回应的分歧原样交给用户决定。`production.autopilot` 为 true 时同样止损，不无限重试。结构检查连续两次以同一原因失败，也停下来汇报。
+
+**批准绑定两样东西**：这一段的分镜结构与正文，以及这一段依据的输入——认领节拍的原文、挂载参考图的内容、视频模型与参数、提示词语言、单段上限和项目要求。任何一样变化，这一段的批准失效；别的段不受影响。`prompts status` 会指出哪些段因为哪一种变化失效：重新生成输入材料，只对这些段重新派发。
+
+主会话不修改工作单的任何区域。状态头只由编写方与审核方的命令改写；发现状态与内容对不上时，按 `prompts status` 的提示重新派发，不手工修正。
+
+**没有子代理能力的运行环境**：pi 不属于这种情况，没有子代理扩展时仍可通过 bash 启动独立进程。既不能派发、也不能启动独立进程的环境，在当前会话依次承担两个角色，串行完成编写与审核，流程与命令不变。汇报中必须注明「审核与编写在同一会话完成，审核不独立」。
+
+## 4. 回写、检查与报告
 
 ```bash
-cd <段目录>
-node {baseDir}/scripts/novel-creation.mjs export <剧名>-creation.json \
-  --script <script.json> --outline <outline.json> --art <art.json> --out .
+node {baseDir}/scripts/novel-creation.mjs prompts apply 作品-creation.json
+node {baseDir}/scripts/novel-creation.mjs validate 作品-creation.json
+node {baseDir}/scripts/novel-creation.mjs checkup 作品-creation.json
+node {baseDir}/scripts/novel-creation.mjs render 作品-creation.json --md > 作品-creation.md
+node {baseDir}/scripts/novel-creation.mjs render 作品-creation.json --html --lang zh > creation-report.html
+# 需要明确选择上游时：
+node {baseDir}/scripts/novel-creation.mjs validate 作品-creation.json --script ../script/作品-script.json --outline ../outline/作品-outline.json --art ../art/作品-art.json --cast ../characters/作品-cast.json
 ```
 
-`export` 会把生产参数里的视频模型、`aspect_ratio`、`resolution` 写进 `manifest.json` 的顶层 `video` 字段；每段 `prompt.md` 头部列出挂载的参考图（身份 + 相对路径），分隔线以下是 `prompt` 原文。**不复制参考图文件**——它们被跨段共用，复制会在磁盘上重复几十份，`manifest.json` 只记相对路径，下单时直接读源文件上传。缺参考图会在 `missingTotal` 与每段的 `missing` 里标注。
+apply 只在全部工作单已批准、批准的两重绑定仍然有效并且结构检查通过时，把分镜与提示词回写 creation.json，同时移除 seedScenes。creation.json 仍是机器侧唯一数据源；工作单是协作文件，也是下单时读取提示词的文件。
 
-最终落地：
+基础检查保留唯一身份、节拍顺序覆盖、节点认领、资产引用、参考图身份、提示词、时长与模型技术限制。可选本地配方卡通过 `--shots <目录>` 挂载。参考图存在不表示生成质量通过。
 
-```
-<工作目录>/
-├── production.json                ← novel-setup 的产出，住在根目录
-├── characters/images/…             ← novel-characters 的设定图，本 skill 只读不写
-├── art/images/…                    ← novel-art 的设定图，本 skill 只读不写
-└── creation/                       ← 本 skill 的全部产出，一格装满
-    ├── <剧名>-creation.json
-    ├── <剧名>-creation.md
-    ├── creation-report.html       ← 双击就能开
-    ├── manifest.json              ← export 生成（顶层带视频参数）
-    └── E01-01/                    ← 一段一个文件夹
-        ├── prompt.md              ← export 生成（视频提示词，无分镜图）
-        └── video.mp4              ← 下单产出（跑了 Step 6 才有）
-```
+状态为 pass/fail/skipped，失败的 error 阻断。缺少上游为 missing-upstream。分别汇报「结构检查通过」「提醒」「缺少上游未检查」，以及内容审核的结论：每段的审核状态与轮次、审核方留下的建议、需要实际视频验证的事项。修改正文、项目要求、视觉要求或模型后，受影响的段要重新编写并审核。
 
-### Step 6 — 下单生视频（可选）
+报告正文优先，随后展示当前上游交接、资产、估时和检查状态。zh/en 是报告语言，与 promptLang 分开。HTML 可重建，不进入版本控制。
 
-投产包就是下单的全部材料。走 **lingying** 的 `video create`，读 `{baseDir}/references/video-order.md` 照契约做，实际执行交给一条命令：
+## 5. 投产包
 
 ```bash
-cd <段目录>
-node {baseDir}/scripts/novel-creation.mjs videos manifest.json [--only E01-01,E01-02] [--dry-run]
+node {baseDir}/scripts/novel-creation.mjs export 作品-creation.json --out .
 ```
 
-要点：
+export 要求实际剧本并执行检查，还要求**每一段都有已批准、绑定仍然有效、并且与 creation.json 一致的工作单**；有任何一段不满足就失败。它只写出根部 manifest.json，引用各段现有的工作单与 creation.json，不改写工作单，不复制图像。`--out` 指向其他目录时，manifest 里的路径相对 manifest 自己，工作单仍留在 creation 目录（`--dir` 可以另指）。投产包不表示已生成视频。
 
-- **没有 lingying 就整步跳过**，投产包照常交付——用户拿它去别处下单也一样能用
-- **提交、轮询、落盘、断点续传全在代码里**——`scripts/lib/lingying.mjs`（`novel-art`/`novel-characters` 出图那份的移植版：`execFile` 收数组参数、只读 `data.status`、超时退避、断点续传，改成一次性并发提交 + 参考图整批去重上传，因为视频任务之间没有互相依赖）
-- **按秒计费**：提交前把这一批的总秒数和预估花费报给用户，不要闷头提交一整批——命令本身不做交互式确认，责任放在这里
-- 单段失败跳过不阻断，最后汇总说明；同一段连着失败两次就停下来问，不要烧钱重试
-- 落盘到 `<段目录>/<段号>/video.mp4`，和这一段的 `prompt.md` 住在一起
+## 6. 授权后的可选生成
 
----
+读取 `references/video-order.md` 和 `references/media-handoff.md`。`videos manifest.json --dry-run` 只输出离线计划，`--out video-plan.json` 另存且拒绝覆盖。它按当前的 creation.json 与上游再次核对每段工作单的批准：内容没有改动、输入没有变化、视频参数与导出时一致，然后只取最后一条分隔线之下的提示词正文。计划带有 `approval.input`；外部执行工具提交之前重新运行 `videos` 并比对这个值，不一致就回到编写与审核，不提交。没有媒体执行工具或授权时交付计划并明确未生成。
 
-## 六个 skill 的接力
+用户授权后，外部执行工具发现实时模型与 schema，预览请求、告知最终秒数和费用，然后在授权范围内提交。可以选择已安装的 ly-video，但本 skill 不依赖它完成方案交付。超模型上限失败，不截短故事。恢复原任务，不因等待到期重复提交。下载核验后才报告完成。
 
-```
-novel-setup      → production.json （拿什么拍：模型、画幅、分辨率、画风）
-novel-outline    → outline.json    （什么：结构与分集）
-novel-characters → cast.json       （谁：角色设定图）
-novel-art        → art.json        （哪里：场景/道具设定图）
-novel-script     → script.json     （戏：场次、节拍、台词）
-novel-creation   → creation.json   （直出：段、参考图挂载、视频提示词，零新增出图）
-```
+production.autopilot 只有布尔 true 生效。它转移审批权，不取消费用告知、授权范围、技术检查、审核循环或止损。不得新增永久评分或门失败累积记录；工作单里的审核意见只保留本轮。
 
-`novel-creation` 是消费端：seed 吃 script.json，段直接挂载 characters/art 的设定图，通用视频提示词直接下单给视频模型，配音对齐单接 script 台词本的 TTS 产物。
+## 样例与自测
 
-## 自测
+`examples/` 是本 skill 自有《收书人》：一集、四段、九个镜头、十个节拍，目标三十秒、镜头计划三十二秒。样例的 creation.json 早于审核流程，没有附带工作单，因此不能直接导出；自测在临时目录里生成并批准工作单来覆盖完整流程。详情见 `examples/MIGRATION.md`。
 
 ```bash
 node {baseDir}/scripts/selftest.mjs
+node {baseDir}/scripts/strategy-selftest.mjs
+node {baseDir}/scripts/fixes-selftest.mjs
+node {baseDir}/scripts/discovery-selftest.mjs
+node {baseDir}/scripts/media-plan-selftest.mjs
+node {baseDir}/scripts/migration-selftest.mjs
+node {baseDir}/scripts/worksheet-selftest.mjs
 ```
 
-不调模型、不花额度。17 道质量门每一道都有击穿用例，`lib/lingying.mjs` 的下单编排用注入的假 CLI 与假时钟跑完全部路径。改完脚本先跑这个。
-
-## 自带样例
-
-`{baseDir}/examples/`：《收书人》第 1 集完整分镜——4 段 9 切认领剧本全部 9 拍，共 30 秒 / 目标 30 秒，每段带完整的通用视频提示词与参考图挂载。当质量基准，也是自测夹具（`node scripts/selftest.mjs` 直接读这套样例）。
+全部为本地确定性检查，不调用模型，不访问网关。

@@ -3,21 +3,12 @@
 // Zero dependencies on purpose: the skill must work in any directory
 // without an npm install. Node 18+ (stdlib only).
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  CLI_NAME,
-  DEFAULT_ASPECT,
-  DEFAULT_CONCURRENCY,
-  DEFAULT_IMAGE_MODEL,
-  DEFAULT_RESOLUTION,
-  DEFAULT_TIMEOUT_MS,
-  cutout,
-  findLingying,
-  preflight,
-  runBatch,
-} from './lib/lingying.mjs';
+import { assertOutlineV3, assetProductionProblems, creativeBackground, check, blocking, mark } from './lib/contracts.mjs';
+export { creativeBackground } from './lib/contracts.mjs';
+import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
 
 /* ------------------------------------------------------------------ */
 /* chunk                                                               */
@@ -268,7 +259,7 @@ export const negativeTerms = (text) =>
  * 这十几行查找逻辑与 novel-setup 那边是**有意重复**的：本 skill 必须能整个
  * 拷走单独跑，不 import 任何兄弟 skill 的代码。两边读的是同一份 JSON。
  *
- * 找不到不是错误——照旧用内置默认值，但校验输出里必须明说哪几道检查跳过了。
+ * 找不到时仅跳过上游对账；生成任务必须提供明确的视觉正文与制作参数。
  * 装作查过比没查更坏。
  */
 
@@ -279,7 +270,7 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
   let dir = resolve(fromDir);
   for (let i = 0; i <= depth; i++) {
     const hit = resolve(dir, PRODUCTION_FILE);
-    if (existsSync(hit)) return hit;
+    try { lstatSync(hit); return hit; } catch (error) { if (error.code !== 'ENOENT') throw error; }
     const up = dirname(dir);
     if (up === dir) break; // 到根了
     dir = up;
@@ -305,7 +296,7 @@ export const autopilotOf = (production) => production?.autopilot === true;
 
 /** 开着才打印——关着就是原来的样子，没有新信息。 */
 export const AUTOPILOT_NOTE =
-  '自动驾驶：开——本段流程一口气跑完，不要停下来问用户；替用户做的决定全部写进最后的汇报';
+  '自动驾驶：开启——本段流程一口气跑完，不要停下来问用户；替用户做的决定全部写进最后的汇报';
 
 /* ------------------------------------------------------------------ */
 /* 产物落点                                                            */
@@ -350,8 +341,8 @@ export const brief = (list, n = 6) =>
  * 上一档画风——那才是画风漂的真实样子。
  */
 export function productionProblems(characters, production) {
-  if (!production) return [];
-  const problems = [];
+  if (production == null) return [];
+  const problems = assetProductionProblems(production, 'character');
 
   const block = styleBlockOf(production);
   if (block) {
@@ -628,6 +619,7 @@ export const TIER_TO_IMPORTANCE = { lead: 'protagonist', support: 'supporting', 
  * 字段缺失，那是预期的。
  */
 export function seedFromOutline(outline) {
+  assertOutlineV3(outline);
   const characters = (outline?.characters ?? []).map((c) => {
     const note = [
       c?.id ? `角色码 ${c.id}` : null,
@@ -677,7 +669,7 @@ const KANA = /[぀-ヿ]/;
 const PERSONA_STRINGS = ['gender', 'ageRange', 'identity', 'appearance', 'temperament', 'motivation', 'arc'];
 /** 机器输入，永远英文——图像和 TTS 引擎都吃英文最稳，跟报告语言无关。 */
 const MACHINE_FIELDS = { image: ['prompt', 'negativePrompt', 'sheet'], voice: ['prompt'] };
-/** 给人读的，跟随报告语言。 */
+/** 给人读的，跟随输入产物的内容语言，不随界面语言切换。 */
 const HUMAN_VOICE_FIELDS = ['timbre', 'pitch', 'pace', 'accent', 'emotion', 'referenceHint'];
 
 const normalise = (s) => String(s).replace(/\s+/g, '');
@@ -685,7 +677,7 @@ const normalise = (s) => String(s).replace(/\s+/g, '');
 /**
  * @param characters 角色卡数组
  * @param sourceText 原文；null 则跳过逐字引文校验
- * @param lang       报告语言，决定人类可读字段该是什么语言
+ * @param lang       内容语言，决定人类可读字段该是什么语言
  */
 export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
   const problems = [];
@@ -694,6 +686,17 @@ export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
 
   if (!Array.isArray(characters) || characters.length === 0) {
     return ['cast 为空或不是数组'];
+  }
+
+  // 兼容旧独立角色卡省略 ID；已填写的 ID 必须合法且全表唯一。
+  const ids = new Set();
+  for (const c of characters) {
+    if (!c || !Object.hasOwn(c, 'id')) continue;
+    if (typeof c.id !== 'string' || !/^C\d{2,}$/.test(c.id)) {
+      at(c.name ?? '(无名)', 'id 必须是 C 加至少两位数字');
+    } else if (ids.has(c.id)) {
+      at(c.name ?? '(无名)', `id 重复：${c.id}`);
+    } else ids.add(c.id);
   }
 
   // --- 同剧角色画风必须一致 ---
@@ -853,7 +856,7 @@ export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
     }
 
     // --- 语言分工 ---
-    // 机器字段永远英文；人类字段跟随报告语言。
+    // 机器字段永远英文；人类字段跟随输入产物的内容语言。
     // 只有 zh / en 能可靠自动判别，其他语言不猜、跳过。
     for (const [group, fields] of Object.entries(MACHINE_FIELDS)) {
       const obj = c?.[group];
@@ -902,6 +905,19 @@ export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
  * 顺序）。不给 order 就保持传入顺序——CLI 按文件名读卡，那是 slug
  * 字典序不是戏份序，所以报告要「按戏份排序」就必须给 order。
  */
+
+/** Structured check facts; missing upstream never counts as a pass. */
+export function gateReport(characters, source = null, lang = DEFAULT_LANG, production = null) {
+  const local = validateCast(characters, null, lang);
+  const evidence = source === null ? [] : validateCast(characters, source, lang).filter(p => !local.includes(p));
+  const visual = productionProblems(characters, production);
+  return [
+    check('cast-contract', '角色字段、提示词与语言', local.length ? 'fail' : 'pass', local.join('；')),
+    check('source-evidence', '原文逐字引文', source === null ? 'skipped' : evidence.length ? 'fail' : 'pass', evidence.join('；'), source === null ? 'missing-upstream' : undefined),
+    check('production-contract', '视觉正文、画幅与制作参数', production === null ? 'skipped' : visual.length ? 'fail' : 'pass', visual.join('；'), production === null ? 'missing-upstream' : undefined),
+  ];
+}
+
 export function assembleCast(cards, { source, lang = DEFAULT_LANG, summary = '', ui = null, order = null } = {}) {
   const rank = (c) => {
     const i = IMPORTANCE.indexOf(c?.importance);
@@ -925,10 +941,12 @@ export function assembleCast(cards, { source, lang = DEFAULT_LANG, summary = '',
 /* render — markdown                                                   */
 /* ------------------------------------------------------------------ */
 
-export function renderMarkdown(characters, source, summary = '', lang = DEFAULT_LANG, ui = null) {
+export function renderMarkdown(characters, source, summary = '', lang = DEFAULT_LANG, ui = null, production = null, contentLang = DEFAULT_LANG) {
   const t = strings(lang, ui);
   const out = [t.mdTitle(source), '', t.mdCast(characters.length, characters.map((c) => c.name).join('、')), ''];
   if (summary) out.push(t.mdSynopsis, '', summary, '');
+  const background = creativeBackground(production);
+  if (background) out.push(`> ${lang === 'en' ? 'Creative brief' : '创作要求'}: ${JSON.stringify(background)}`, '');
 
   for (const c of characters) {
     const { persona, image, voice } = c;
@@ -973,6 +991,9 @@ export function renderMarkdown(characters, source, summary = '', lang = DEFAULT_
     out.push(`**${t.voice.prompt}**`, '', '```text', voice.prompt, '```', '');
   }
 
+  out.push(lang === 'en' ? '## Structural checks' : '## 结构检查', '');
+  for (const g of gateReport(characters, null, contentLang, production)) out.push(`- ${mark(g)} ${g.id}: ${g.status}${g.reason ? ` (${g.reason})` : ''}${g.detail ? ` — ${g.detail}` : ''}`);
+  out.push(lang === 'en' ? 'Content review: not performed.' : '内容评审：未执行。', '');
   return out.join('\n');
 }
 
@@ -1292,8 +1313,9 @@ function renderGraph(ordered, t) {
  * `<` 转成 <：JSON 里 `<` 只可能出现在字符串值中，整体替换是安全的，
  * 而不转的话正文里一个 `</script` 就能把这个数据块提前截断。
  */
-function embedCast(characters, source, summary, lang, ui) {
-  const data = { source, lang, summary, ...(ui ? { ui } : {}), characters };
+function embedCast(characters, source, summary, lang, ui, originalInput) {
+  // CLI 传入未挂图、未覆盖显示语言的原始值；导出不能成为第二份编辑源。
+  const data = originalInput ?? { source, lang, summary, ...(ui ? { ui } : {}), characters };
   return JSON.stringify(data).replace(/</g, '\\u003c');
 }
 
@@ -1303,8 +1325,13 @@ export function renderHtml(
   summary = '',
   lang = DEFAULT_LANG,
   ui = null,
+  production = null,
+  originalInput = undefined,
+  contentLang = originalInput?.lang ?? DEFAULT_LANG,
 ) {
   const t = strings(lang, ui);
+  const background = creativeBackground(production);
+  const checks = gateReport(characters, null, contentLang, production);
   const shots = characters.filter((c) => c.sheetImage).length;
   const ordered = [...characters].sort(
     (a, b) => IMPORTANCE_ORDER.indexOf(a.importance) - IMPORTANCE_ORDER.indexOf(b.importance),
@@ -1561,6 +1588,9 @@ button{font-family:inherit}
 /* 签名：推断标记 */
 .inf{color:var(--ink-3);font-size:.88em;background:var(--seal-soft);padding:0 3px;border-radius:2px}
 
+.checks{padding:14px 24px;border-bottom:1px solid var(--rule);font:12px/1.6 var(--sans);overflow-wrap:anywhere}
+.checks [data-status="fail"]{color:var(--seal)}
+.checks [data-status="skipped"]{color:var(--ink-2)}
 .nomatch{display:none;padding:20px;font-size:13px;color:var(--ink-3)}
 .nomatch.on{display:block}
 
@@ -1578,6 +1608,7 @@ button{font-family:inherit}
   body{background:#fff}
 }
 </style></head><body>
+
 
 <header class="top">
   <div class="brand"><h1>${esc(source)}</h1></div>
@@ -1610,6 +1641,7 @@ button{font-family:inherit}
   <main class="main">
     ${renderGraph(ordered, t)}
     ${ordered.map((c, i) => renderCharacter(c, i, t)).join('\n')}
+    <section class="checks" aria-label="Checks"><p>${esc(lang === 'en' ? 'Content review: not performed.' : '内容评审：未执行。')}</p>${background ? `<p>${esc(JSON.stringify(background))}</p>` : ''}${checks.map(g => `<p data-status="${g.status}">${mark(g)} ${esc(g.id)}: ${g.status}${g.reason ? ` (${g.reason})` : ''}${g.detail ? ` — ${esc(g.detail)}` : ''}</p>`).join('')}</section>
   </main>
 </div>
 
@@ -1618,7 +1650,7 @@ button{font-family:inherit}
   <img alt="">
 </div>
 
-<script type="application/json" id="cast-data">${embedCast(characters, source, summary, lang, ui)}</script>
+<script type="application/json" id="cast-data">${embedCast(characters, source, summary, lang, ui, originalInput)}</script>
 
 <script>
 const L = ${JSON.stringify({ copied: t.copied, failed: t.copyFailed })};
@@ -1851,12 +1883,12 @@ export const sheetFile = (name, dir = 'images') => `${dir}/${slug(name)}-sheet.p
 export const cutoutFile = (name, dir = 'images') => `${dir}/${slug(name)}-sheet-cutout.png`;
 
 export function imageJobsFrom(characters, production = null, { imagesDir = 'images', styleRef = null } = {}) {
-  const model = production?.image?.model ?? DEFAULT_IMAGE_MODEL;
+  const model = production?.image?.model ?? null;
   const inputBase = {
-    aspect_ratio: production?.image?.asset?.aspectRatio ?? DEFAULT_ASPECT,
-    resolution: production?.image?.asset?.resolution ?? DEFAULT_RESOLUTION,
+    aspect_ratio: production?.image?.asset?.aspectRatio ?? null,
+    resolution: production?.image?.asset?.resolution ?? null,
   };
-  const problems = [];
+  const problems = production == null ? ['出图需要显式 production 视觉正文与制作参数，不使用隐式默认值'] : productionProblems(characters, production);
   const jobs = [];
   const list = Array.isArray(characters) ? characters : [];
 
@@ -1910,15 +1942,13 @@ const USAGE = `novel-characters.mjs — novel-characters skill 的确定性工�
   assemble <workdir> --source <书名>
         [--lang] [--out]           把 card-*.json + summary.txt（+ ui.json）合成 cast.json
         [--order merged.json]      同档角色的戏份顺序（默认自动找 <workdir>/merged.json）
+  checkup <cast.json> [book.txt]    检查状态 pass/fail/skipped；缺少上游不计为通过
   validate <cast.json> <book.txt>  校验；有违规逐条打印并 exit 1
-  images <cast.json>               出设定图：提交 / 轮询 / 落盘全在代码里
-        [--only 名字1,名字2]        只出这几个（默认全出）
-        [--dry-run]                只打印将要提交的参数，不提交
-        [--force]                  已有产物也重出（默认跳过）
-        [--cutout]                 白底图再走一次抠图，另存 -cutout.png
-        [--style-ref auto|<角色名>] 拿这个角色的成图当风格参考喂给其余角色
-        [--timeout <秒>]           单张总超时，默认 ${DEFAULT_TIMEOUT_MS / 1000} 秒
-        [--concurrency <n>]        同时在跑的任务数
+  images <cast.json>          导出离线交接计划，交给 ly-image 生成
+         [--only <ID列表>]                仅选择指定任务（图片自动补齐参考依赖）
+         [--dry-run]                      只预览计划；本命令始终不上传、不提交
+         [--out <plan.json>]              另存计划（不覆盖已有文件）
+         [--style-ref auto|<角色名>]      基准角色先生成，其余角色引用其成图
   render <cast.json> [--html|--md] 渲染报告到 stdout（默认 --md）
   slug <name>                      角色名转安全文件名
   ui-template [lang]               打印界面文案骨架，供翻译成内置表没有的语言
@@ -1934,8 +1964,7 @@ render 选项：
   --images <dir>    图片目录名，默认 images（images 命令也认这个）
                     会去找 <dir>/<slug>-sheet.png
 
-images 走 ${CLI_NAME} CLI，没装就整步跳过只交提示词；出图参数取自 production.json，
-提示词取自 cast.json 的 image.sheet 与 image.negativePrompt。**先 images 再 render。**`;
+images 只导出计划，不执行生成。使用 ly-image 完成并核验图片后，放到计划 output 路径再 render。`;
 
 function readJson(path) {
   return JSON.parse(readFileSync(resolve(path), 'utf8'));
@@ -1954,9 +1983,16 @@ function flag(rest, name, fallback = null) {
  * --no-production 是给老项目临时绕过用的，用了会明说。
  */
 function loadProduction(rest, fromDir) {
+  if (rest.includes('--no-production') && rest.includes('--production')) throw new Error('--production 与 --no-production 不能同时提供');
   if (rest.includes('--no-production')) return { doc: null, path: null, off: true };
   const path = flag(rest, '--production') ?? findProduction(fromDir);
-  return { doc: path ? readJson(path) : null, path, off: false };
+  const doc = path ? readJson(path) : null;
+  if (path) {
+    if (doc === null) throw new Error('production 不能是 null');
+    const bad = assetProductionProblems(doc, 'character');
+    if (bad.length) throw new Error(bad.join('；'));
+  }
+  return { doc, path, off: false };
 }
 
 /** 找到就报一声，找不到也报一声——静默是最坏的那种。 */
@@ -1965,6 +2001,8 @@ function announceProduction(p, docPath = null) {
   if (p.off) console.error(`⚠️ --no-production：生产参数的 ${which}跳过`);
   else if (p.path) {
     console.error(`↳ 生产参数：${p.path}`);
+    const background = creativeBackground(p.doc);
+    if (background) console.error(`↳ 创作要求：${JSON.stringify(background)}；内容评审未执行`);
     if (autopilotOf(p.doc)) console.error(`↳ ${AUTOPILOT_NOTE}`);
     const note = stageDirNote(docPath, p.path);
     if (note) console.error(`⚠️ ${note}`);
@@ -1976,6 +2014,7 @@ function loadCast(path) {
   const characters = Array.isArray(raw) ? raw : raw.characters;
   if (!Array.isArray(characters)) throw new Error(`${path} 里没有 characters 数组`);
   return {
+    originalInput: structuredClone(raw),
     characters,
     source: Array.isArray(raw) ? null : raw.source,
     summary: Array.isArray(raw) ? '' : (raw.summary ?? ''),
@@ -2118,8 +2157,9 @@ async function main(argv) {
     return;
   }
 
-  if (cmd === 'validate') {
-    const [castPath, bookPath] = rest;
+  if (cmd === 'validate' || cmd === 'checkup') {
+    const castPath = rest[0];
+    const bookPath = rest[1] && !rest[1].startsWith('--') ? rest[1] : null;
     if (!castPath) throw new Error('用法：validate <cast.json> <book.txt>');
     const { characters, summary, lang: castLang, ui } = loadCast(castPath);
     const prod = loadProduction(rest, resolve(castPath, '..'));
@@ -2129,9 +2169,7 @@ async function main(argv) {
     if (!bookPath) console.error('⚠️ 没给原文，跳过逐字引文校验');
     const problems = validateCast(characters, source, lang);
     problems.unshift(...productionProblems(characters, prod.doc));
-    if (prod.doc && !styleBlockOf(prod.doc)) {
-      console.error('⚠️ 生产参数里的 style.character 没填，画风那两条检查跳过——回 /novel-setup 填满再跑');
-    }
+
     // 顶层的故事摘要——报告要用，缺了就没法在顶部交代背景
     if (typeof summary !== 'string' || !summary.trim()) {
       problems.unshift('顶层缺少 summary（故事摘要），报告顶部会空着');
@@ -2144,18 +2182,21 @@ async function main(argv) {
           '用 `ui-template` 生成骨架后翻译填进去。',
       );
     }
+    const checks = gateReport(characters, source, lang, prod.doc);
+    for (const g of checks) console.log(`${mark(g)} ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
     if (problems.length) {
       console.error(`✗ ${problems.length} 处违规：\n`);
       for (const p of problems) console.error('  ' + p);
       process.exit(1);
     }
-    console.log(`✓ ${characters.length} 个角色全部通过校验（lang=${lang}，画风 ${prod.doc ? styleLabelOf(prod.doc) : '未挂载'}）`);
+    console.log(`✓ ${characters.length} 个角色无阻断失败（跳过 ${checks.filter(g => g.status === 'skipped').length} 项，内容未评审；lang=${lang}，画风 ${prod.doc ? styleLabelOf(prod.doc) : '未挂载'}）`);
     return;
   }
 
   if (cmd === 'images') {
+    checkPlanFlags(rest);
     const [castPath] = rest;
-    if (!castPath) throw new Error('用法：images <cast.json> [--only 名字] [--dry-run] [--force] [--cutout] [--style-ref auto]');
+    if (!castPath) throw new Error('用法：images <cast.json> [--only 名字] [--dry-run] [--out plan.json] [--style-ref auto]');
     const { characters } = loadCast(castPath);
     const outDir = resolve(castPath, '..');
     const imagesDir = flag(rest, '--images', 'images');
@@ -2174,67 +2215,10 @@ async function main(argv) {
     if (!prod.doc) console.error(`⚠️ 没有生产参数，按 ${model} + ${inputBase.resolution} + ${inputBase.aspect_ratio} 出——汇报里要说清`);
 
     const only = flag(rest, '--only');
-    const picked = only
-      ? (() => {
-          const want = new Set(only.split(',').map((x) => x.trim()).filter(Boolean));
-          const miss = [...want].filter((k) => !jobs.some((j) => j.key === k));
-          if (miss.length) throw new Error(`--only 里这些角色不在 cast.json 里：${miss.join('、')}`);
-          const need = new Set(want);
-          // 风格参考的基准角色没被选中也得跟着出，否则参考图挂不上
-          for (const j of jobs) if (need.has(j.key) && j.refFrom) need.add(j.refFrom);
-          return jobs.filter((j) => need.has(j.key));
-        })()
-      : jobs;
 
-    const dryRun = rest.includes('--dry-run');
-    const wantCutout = rest.includes('--cutout');
-    const needUpload = wantCutout || picked.some((j) => j.refFrom);
-    const timeoutMs = Number(flag(rest, '--timeout', DEFAULT_TIMEOUT_MS / 1000)) * 1000;
-    const concurrency = Number(flag(rest, '--concurrency', DEFAULT_CONCURRENCY));
-
-    let bin = null;
-    if (!dryRun) {
-      bin = findLingying();
-      const pre = preflight({ bin, needUpload });
-      if (!pre.ok) {
-        // 没装 CLI 是「整步跳过」不是失败——提示词照常交付，其余产出不受影响
-        console.error(`⚠️ 出图跳过：\n${pre.problems.map((x) => '  ' + x).join('\n')}`);
-        console.log(JSON.stringify({ skipped: true, reason: pre.problems }, null, 2));
-        return;
-      }
-      console.error(`↳ ${CLI_NAME}：${bin}`);
-      console.error(`↳ 要出 ${picked.length} 张——这是整条管线最慢的一步`);
-    }
-
-    const { results, summary } = await runBatch(picked, {
-      bin, model, inputBase, outDir, ledgerDir: resolve(outDir, imagesDir),
-      timeoutMs, concurrency,
-      force: rest.includes('--force'),
-      dryRun,
-      log: (m) => console.error(m),
-    });
-
-    let cutouts = [];
-    if (wantCutout && !dryRun) {
-      cutouts = await cutout(
-        picked.map((j) => ({ key: j.key, name: j.name, file: j.file, cutoutFile: j.cutoutFile })),
-        { bin, outDir, timeoutMs, concurrency, force: rest.includes('--force'), log: (m) => console.error(m) },
-      );
-    }
-
-    for (const r of results) {
-      if (r.status === 'ok' || r.status === 'skipped' || r.status === 'dry-run') continue;
-      console.error(`✗ ${r.name} ${r.status} — ${r.detail ?? ''}`);
-    }
-    // stdout 只有这一行 JSON：agent 直接拿去汇报，不用自己数
-    console.log(JSON.stringify({ model, inputBase, summary, results, ...(cutouts.length ? { cutouts } : {}) }, null, 2));
-
-    const bad = summary.failed + summary.timeout;
-    if (bad) {
-      console.error(`\n✗ ${bad} 张没出成（成功 ${summary.ok}，跳过 ${summary.skipped}）——重跑本命令会跳过已有产物、接着轮询超时的任务`);
-      process.exit(1);
-    }
-    if (!dryRun) console.error(`\n✓ 出图完成：新出 ${summary.ok} 张，跳过 ${summary.skipped} 张`);
+    const plan = mediaPlan(jobs, { kind: 'image', model: model, inputBase, outDir, only });
+    printPlan(plan, flag(rest, '--out'));
+    console.error('✓ 交接计划已准备；未提交、未生成。请继续使用 ' + plan.skill + '。');
     return;
   }
 
@@ -2245,7 +2229,7 @@ async function main(argv) {
     const imagesDir = flag(rest, '--images', 'images');
     const sourceFlag = flag(rest, '--source');
 
-    const { characters, source, summary, lang: castLang, ui } = loadCast(castPath);
+    const { characters, source, summary, lang: castLang, ui, originalInput } = loadCast(castPath);
     // 界面语言走继承不设门：--lang > cast.json 顶层 lang > 生产参数 > 内置默认
     const prod = loadProduction(rest, resolve(castPath, '..'));
     const lang = flag(rest, '--lang', castLang === DEFAULT_LANG ? (prod.doc?.lang ?? castLang) : castLang);
@@ -2260,8 +2244,8 @@ async function main(argv) {
 
     process.stdout.write(
       (html
-        ? renderHtml(characters, title, summary, lang, ui)
-        : renderMarkdown(characters, title, summary, lang, ui)) + '\n',
+        ? renderHtml(characters, title, summary, lang, ui, prod.doc, originalInput, castLang)
+        : renderMarkdown(characters, title, summary, lang, ui, prod.doc, castLang)) + '\n',
     );
     return;
   }

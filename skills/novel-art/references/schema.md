@@ -1,27 +1,32 @@
 # art.json 结构
 
-美术设定集（场景 + 叙事道具）的载体。**模型只填设计字段**，场景与道具的出现集、承载爽点都由 `seed` 从 outline.json 搬运；大纲没有 `props` 时道具表留空，由模型按 `prop-pass.md` 从原文提取。Markdown 和报告由 `render` 渲染。
+## v3 上游契约与迁移
+
+seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schemaVersion: 3`。读取可选非空 `production.creativeBrief`，不解释策略配置。人物来源、弧光、节点分类与位置可以省略。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
+
+检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](creative-background.md) 和 [迁移说明](migration.md)。
+
+美术设定集（场景 + 叙事道具）的载体。**模型只填设计字段**，场景与道具的出现集、关联剧情节点都由 `seed` 从 outline.json 搬运；大纲没有 `props` 时道具表留空，由模型按 `prop-pass.md` 从原文提取。Markdown 和报告由 `render` 渲染。
 
 ```json
 {
-  "source": "渡口",
+  "source": "雨棚留言",
   "scenes": [{
-    "id": "S01", "name": "渡船船舱", "primary": true,
+    "id": "S01", "name": "菜摊雨棚", "primary": true,
     "summary": "设计意图：这个空间讲什么故事……",
-    "anchors": [{ "name": "补丁船篷", "desc": "……" }],
+    "anchors": [{ "name": "棚沿水痕", "desc": "……" }],
     "lighting": [{ "state": "晨雾", "prompt": "dense white morning fog ..." }],
     "image": { "prompt": "…", "negativePrompt": "…", "sheet": "…", "tags": [] },
-    "variantOf": "S02", "changes": "换背板 + 芦苇前景",
-    "usage": { "episodes": [1, 6], "beats": ["悬念钩"] }
+    "usage": { "episodes": [1, 3], "beats": ["清理"] }
   }],
   "props": [{
-    "id": "P01", "name": "旧皮箱", "scale": "手持级",
-    "summary": "戏剧功能：全剧悬念核心……",
-    "anchors": [{ "name": "绿锈铜扣", "desc": "……" }],
-    "states": [{ "state": "合上", "prompt": "the suitcase closed ..." }],
-    "relatedScenes": ["S01"], "carriedBy": ["沈知微"],
+    "id": "P01", "name": "旧留言板", "scale": "手持级",
+    "summary": "戏剧功能：代存的私人物件归还……",
+    "anchors": [{ "name": "绿色边框", "desc": "……" }],
+    "states": [{ "state": "合上", "prompt": "the message board with paper slips ..." }],
+    "relatedScenes": ["S01"], "carriedBy": ["许桂兰"],
     "image": { "prompt": "…", "negativePrompt": "…", "sheet": "…", "tags": [] },
-    "usage": { "episodes": [1, 6], "beats": ["悬念钩"] }
+    "usage": { "episodes": [1, 3], "beats": ["清理"] }
   }]
 }
 ```
@@ -52,7 +57,7 @@
 | `image.tags` | 是 | 英文 | 风格标签数组 |
 | `variantOf` | 否 | — | 变体的母场景 id。AI 生成一个新景很便宜，但**变体复用母场景资产更一致**——outline 里带 reusePlan 的场景优先做成变体 |
 | `changes` | variantOf 时必填 | 中文 | 相对母场景改了什么（换时段/换天气/换前景/删道具） |
-| `usage` | 否 | — | `{episodes, beats}`，seed 自动填，手写也行 |
+| `usage` | 否 | — | `{episodes, beats, beatIds?}`（beatIds 保留稳定节点引用；beats 仅展示类型），seed 自动填，手写也行 |
 
 ## 单件道具（以校验器为准）
 
@@ -69,9 +74,9 @@
 | `image.prompt` | 是 | **英文** | 白底主视角，**必须带尺度短语、无人无手** |
 | `image.negativePrompt` | 是 | **英文** | **必须禁人且禁手**（hands/fingers） |
 | `image.sheet` | 是 | **英文** | 设定图版面指令，**必须写明 pure white background** + 当前风格渲染句 |
-| `usage` | 否 | — | `{episodes, beats}` |
+| `usage` | 否 | — | `{episodes, beats, beatIds?}`（beatIds 保留稳定节点引用；beats 仅展示类型） |
 
-## 硬规则（11 道质量门，全是代码）
+## 硬规则（确定性检查，全是代码）
 
 1. 锚点 3–5 个——少了认不出，多了核对不过来
 2. 光照状态 ≥1 且都有英文提示词
@@ -92,5 +97,7 @@
 
 ```bash
 node scripts/novel-art.mjs validate art.json --cast cast.json
-node scripts/novel-art.mjs checkup art.json               # 只打印 11 道门 ✓/✗
+node scripts/novel-art.mjs checkup art.json               # 只打印 检查状态 pass/fail/skipped
 ```
+
+正式样例先阅读 `examples/雨棚留言-故事提案.md`（schema 阅读者从 skill 根目录定位）。独立水池场景不要求 reusePlan；节点关联包含 event 和 turn，不伪造 payoff。当前资产不含真实生成图片。

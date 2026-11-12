@@ -2,6 +2,12 @@
 
 # novel-setup
 
+## v3 production contract
+
+Production requires schemaVersion 3. Collect an optional non-empty natural-language creativeBrief with --creative-brief. No strategy selection or default rules. show displays the brief; resolve returns it unchanged. Use migrate-v3 INPUT for a read-only preview, then --out OUTPUT and --confirm when semantic review is required. Existing targets are never overwritten.
+
+Check objects use `status: pass|fail|skipped`, `category`, and `level`, never an ok boolean. Skips are not passes. Content review is not performed by these checks. See [contract](references/creative-brief.md) and [migration](references/migration.md).
+
 Locks asset-image and video models, resolution tiers, independent aspect ratios, art style, languages and autopilot in one `production.json` at the work-directory root.
 
 **Asset sheets and video frames have different purposes.** Character, scene and prop sheets use landscape or square layouts. The finished video can be vertical. Video creation mounts those sheets directly without generating intermediate keyframes.
@@ -26,10 +32,11 @@ node scripts/novel-setup.mjs show <work-dir>/production.json
 - Set report language with `--lang`, prompt language with `--prompt-lang`. Video creation applies its model-specific prompt rules.
 - Node 18+, standard library only. This skill makes no model calls and produces no HTML report.
 
-## Eight quality gates
+## Nine checks, including the v3 document contract
 
 | Gate | Checks |
 | --- | --- |
+| document-contract | schemaVersion 3, optional non-empty creativeBrief, no retired configuration |
 | fields | Required fields, language enums, boolean autopilot |
 | aspect-format | Fixed `W:H` asset and video ratios; no `adaptive` |
 | asset-landscape | Landscape or square asset layout |
@@ -39,7 +46,7 @@ node scripts/novel-setup.mjs show <work-dir>/production.json
 | style-blocks | Style label and both style blocks are complete |
 | style-coherent | Positive and negative requirements agree |
 
-Every model-table entry records its `lingying model get` command and UUID. Unknown models explicitly skip capability checking. Resolution and aspect are gateway enum values, not pixel dimensions.
+Model tables retain historical source metadata and UUIDs for offline checks. Unknown models explicitly skip capability checks. Before generation, use the independently installed ly-image / ly-video skills to discover live schemas. Resolution and aspect are service tiers, not pixel dimensions.
 
 A video ratio does not constrain the asset-image model. For example, `nanobanana2` sheets can remain at `16:9` while a compatible video model produces `4:3`. The `image-2` model at `4K` accepts only `16:9` or `9:16` images.
 
@@ -78,6 +85,8 @@ These are examples, not a style menu. They also serve as independent test fixtur
 
 ```bash
 node scripts/selftest.mjs
+node scripts/migration-selftest.mjs
+node scripts/upstream-selftest.mjs
 ```
 
 No model calls, network access or quota. Legacy `image.frame` is ignored and omitted from new configurations. `style.phrase` remains available to model-specific video prompt guides.

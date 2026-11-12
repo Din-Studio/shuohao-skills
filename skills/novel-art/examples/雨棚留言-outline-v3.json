@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 3,
+  "source": "雨棚留言",
+  "params": {
+    "episodes": 3
+  },
+  "characters": [
+    {
+      "id": "C01",
+      "name": "许桂兰",
+      "tier": "lead",
+      "role": "代存留言板的摊主",
+      "arc": "从替邻居保存记忆到尊重归属",
+      "from": []
+    },
+    {
+      "id": "C02",
+      "name": "陶敏",
+      "tier": "support",
+      "role": "留言板主人",
+      "arc": "取回私人生活的记录",
+      "from": []
+    }
+  ],
+  "scenes": [
+    {
+      "id": "S01",
+      "name": "菜摊雨棚",
+      "primary": true
+    },
+    {
+      "id": "S02",
+      "name": "公共水池",
+      "primary": true
+    },
+    {
+      "id": "S03",
+      "name": "雨棚清空状态",
+      "primary": false,
+      "reusePlan": "复用 S01 的空间，仅清走物件"
+    }
+  ],
+  "props": [
+    {
+      "id": "P01",
+      "name": "旧留言板",
+      "function": "陶敏托许桂兰代存的私人留言板。归还的是物件及其归属，不把邻居的生活公开陈列。",
+      "beatIds": [
+        "B01",
+        "B02",
+        "B03"
+      ]
+    },
+    {
+      "id": "P02",
+      "name": "夹纸铁盒",
+      "function": "许桂兰核对后暂放待归还纸条的小铁盒，避免把不属于自己的便条贴成公共展览。",
+      "beatIds": [
+        "B02"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "id": "B01",
+      "episode": 1,
+      "position": "middle",
+      "kind": "event",
+      "setup": "清理：雨棚即将拆换",
+      "outcome": "许桂兰找出代存的留言板"
+    },
+    {
+      "id": "B02",
+      "episode": 2,
+      "position": "middle",
+      "kind": "turn",
+      "setup": "核对：准备保留板上的旧便条",
+      "outcome": "陶敏说明不愿公开陈列，许桂兰接受"
+    },
+    {
+      "id": "B03",
+      "episode": 3,
+      "position": "ending",
+      "kind": "event",
+      "setup": "归还：便条已经分清归属",
+      "outcome": "留言板归还，挂钩留给新的公共告示板"
+    }
+  ],
+  "episodes": [
+    {
+      "ep": 1,
+      "characterIds": [
+        "C01",
+        "C02"
+      ],
+      "sceneIds": [
+        "S01"
+      ],
+      "propIds": [
+        "P01"
+      ]
+    },
+    {
+      "ep": 2,
+      "characterIds": [
+        "C01",
+        "C02"
+      ],
+      "sceneIds": [
+        "S01",
+        "S02"
+      ],
+      "propIds": [
+        "P01",
+        "P02"
+      ]
+    },
+    {
+      "ep": 3,
+      "characterIds": [
+        "C01",
+        "C02"
+      ],
+      "sceneIds": [
+        "S01",
+        "S03"
+      ],
+      "propIds": [
+        "P01",
+        "P02"
+      ]
+    }
+  ]
+}

@@ -27,3 +27,7 @@
 ```
 
 字段都是必填。`aliases` 和 `quotes` 没有就给空数组。
+
+## 创作背景与视觉边界
+
+参见 [creative-background.md](creative-background.md)。读取 production.creativeBrief 的自然语言要求，不推导策略。保留逐字证据、角色区分度、设定表比例、视觉正文和参考图挂载检查。seed 接受 outline v3，允许省略人物 from/arc；角色卡输出仍遵循原协议。正式样例与本地投影夹具均为《渡口》。

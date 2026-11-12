@@ -1,14 +1,14 @@
 ---
 name: novel-characters
-version: 1.19.0
+version: 2.0.0
 description: |
   从小说或短故事里拆出角色表、人物画像、形象提示词、音色提示词，
   并给每个角色出角色设定图（左半身像 + 右全身三视图 + 细节条），产出 JSON + Markdown + 可交互的 report.html。
   报告语言可指定（--lang），默认中文，任意语言都支持；
   画风**不内置任何类型**——它由用户在 novel-setup 那一段填进 production.json 顶层的 style.character，
   本 skill 整块抄过来用（真人实拍、吉卜力、水墨、黏土定格都行，不用改代码）。
-  零依赖、零 npm；出图是一条命令（可选，走 lingying 灵影网关，要它的 api_key）——
-  提交、轮询、落盘、断点续传全在脚本里，不靠模型现拼 bash。
+  零依赖、零 npm；本地不执行生成，实际生图可交给独立安装的 ly-image。
+  上传、提交、任务恢复和下载归外部生成工具，本 skill 可独立交付创作与计划。
   跑过 novel-setup 的项目会自动读工作目录根的 production.json：画风与设定图画幅两条硬检查，出图模型与尺寸也从那里取；
   顶层 autopilot 为 true 时全程不打断——报告语言、选角人数、归并复核全自己定，做过的决定写进汇报。
   Use when asked to 拆小说角色、分析人物、生成角色卡、character sheets from a novel。
@@ -28,13 +28,18 @@ metadata:
   requires:
     bins:
       - node          # >= 18，只用标准库，无 npm 依赖
-    optional:
-      - lingying      # 有才出三视图；没有就只交提示词，其余照常
+    # 可选外部执行工具：ly-image；不影响本 skill 独立产出
   runtimes:
     - pi            # 没有子代理：并发步骤在当前会话串行做，产出一致
     - claude-code
     - codex
 ---
+
+## v3 上游契约与迁移
+
+seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schemaVersion: 3`。读取可选非空 `production.creativeBrief`，不解释策略配置。人物来源、弧光、节点分类与位置可以省略。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
+
+检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-background.md) 和 [迁移说明](references/migration.md)。
 
 ## novel-characters
 
@@ -42,7 +47,7 @@ metadata:
 
 `{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/novel-characters.mjs`，零依赖，`node` 直接跑。
 
-**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。第 8 步出图要本机安装了 `lingying` CLI——见 `references/sheet.md`。
+**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。实际生成交给独立安装的 ly-image——见 `references/media-handoff.md`。
 
 ---
 
@@ -56,9 +61,9 @@ metadata:
 | --- | --- |
 | `style.character` | **画风正文本身**。角色卡没把它整块用上直接报错——画风漂了，角色和场景合成时不像同一部片 |
 | `image.asset.aspectRatio` | 设定图版面画幅，必须出现在每个角色的 `image.sheet` 里 |
-| `image.model` + `image.asset.resolution` | 第 8 步出图用的模型与分辨率档位（档位就是 lingying 收的 `resolution` 枚举值，原样填） |
+| `image.model` + `image.asset.resolution` | 第 8 步出图用的模型与分辨率档位（档位对应模型的 `resolution` 枚举值，原样填） |
 
-`lang` 也可以从它继承（优先级 `--lang` > cast.json 顶层 > production.json > 中文）。老项目没有这份文件照跑；临时绕过用 `--no-production`，用了会明说。
+`lang` 也可以从它继承（优先级 `--lang` > cast.json 顶层 > production.json > 中文）。历史报告没有这份文件时可以独立读取；`--no-production` 只跳过上游对账，不提供出图默认值。出图前必须补齐视觉正文与制作参数。
 
 ### Step 0.1 — 确定报告语言
 
@@ -95,11 +100,11 @@ node {baseDir}/scripts/novel-characters.mjs style
 
 **换风格是整套换**：五块整块取用，不要混搭。详见 `{baseDir}/references/style.md`。
 
-版面规则（三区、比例、细节让位）**不随画风变**，变的只有渲染质感。画幅由生产参数定，默认 16:9——**成片拍竖屏也不改**，三区版面靠横向铺开，竖过来三视图会被压扁。
+版面规则（三区、比例、细节让位）**不随画风变**，变的只有渲染质感。画幅读取 `production.image.asset.aspectRatio`，允许合法横向或方形比例——**成片拍竖屏也不改**，三区版面靠横向铺开，竖过来三视图会被压扁。
 
 ### Step 0.8 — 自动驾驶（autopilot）
 
-Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` 与 `images` 找到生产参数也会打印一句 `↳ 自动驾驶：开`（`render` 只做语言继承，不打印）——但 Step 0.1 跑在第一条命令之前，所以开工前要自己看一眼。
+Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` 与 `images` 找到生产参数也会打印一句 `↳ 自动驾驶：开启`（`render` 只做语言继承，不打印）——但 Step 0.1 跑在第一条命令之前，所以开工前要自己看一眼。
 
 没有 `production.json`、字段写着 `false` 或者整个没写，就是各步原来的样子。
 
@@ -108,7 +113,7 @@ Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时�
 | Step 0.1 问报告语言 | 按继承取（`--lang` > cast.json 顶层 > `production.json` > 中文），不问；非内置语言的 `ui` 骨架自己翻 |
 | Step 4 `mergeCandidates` 逐条复核 | **自己判**：证据够才合，拿不准就**不合并**——合错了两个人并成一个，比没合更难修。逐条判定结果写进汇报 |
 | Step 5 选角取前 N 位 | 用户没说就取默认 30，不问 |
-| Step 8 出图 | 选中的角色一次出全；拿到图自己扫两眼（左右两栏是不是同一个人、三个全身像是不是等高），不对就 `--force` 重出一次，还不对记进汇报接着往下 |
+| Step 8 出图 | 完成离线计划；已授权时通过 ly-image 生成并检查，不自动重投。没有生成工具则明确未生成 |
 
 **转移的是审批权，不是取消检查点**：Step 7 的校验照样要过、出图前照样打印要出多少张、拿到图照样要核对——只是不再等人点头。**替用户做的每一个决定都要写进 Step 10 的汇报**，归并判定与选角人数一条不漏。
 
@@ -237,14 +242,14 @@ node {baseDir}/scripts/novel-characters.mjs validate <cast.json> <book.txt>
 
 ### Step 8 — 出图（可选，每个角色都出）
 
-**每个角色一张**，用 `image.sheet`，落到 `./images/<slug>-sheet.png`。出图模型与档位由命令自己从 `production.json` 取（`image.model` / `image.asset.resolution` / `image.asset.aspectRatio` 原样进 `--input_data`，**提示词里一个像素都不写**）。一张横构图内部左右分栏（画幅按 `image.asset.aspectRatio`，默认 16:9）：
+**每个角色一张**，用 `image.sheet`，落到 `./images/<slug>-sheet.png`。出图模型与档位由命令自己从 `production.json` 取（`image.model` / `image.asset.resolution` / `image.asset.aspectRatio` 进入离线计划 params；生成前核对实时 schema，**提示词里一个像素都不写**）。一张横向或方形画布内部左右分栏（画幅按 `production.image.asset.aspectRatio`）：
 
 ```
 ┌──────────┬────────────────────────────┐
 │  半身像   │   正视    侧视    背视       │
 │ （证件照） ├────────────────────────────┤
 │  面部基准  │  细节 · 细节 · 细节 · 细节   │
-│   ~34%   │            16:9            │
+│   ~34%   │        生产参数画幅        │
 └──────────┴────────────────────────────┘
 ```
 
@@ -255,17 +260,13 @@ cd <段目录>
 node {baseDir}/scripts/novel-characters.mjs images <cast.json>
 ```
 
-**调用不用你写。** 提交、轮询、落盘、断点续传全在脚本里：参数不经过 shell（提示词里的引号换行中文原样抵达）、只读 `data.status`（响应里的 `"message": "success"` 恒为 success）、单张超时 300 秒到点就跳过继续下一张、一批先提交再统一轮询。出图参数自己从 `production.json` 取，**没有 lingying 就整步跳过**，只交提示词，后面照常走。
+本命令只输出离线计划，不会生成图片。可增加 `--out image-plan.json` 保存计划，`--only` 筛选任务，`--style-ref auto` 添加风格参考依赖。
 
-- 参数存疑先 `--dry-run`；`--only 老周,沈知微` 只出几个；`--force` 重出已有的
-- **画风漂就加 `--style-ref auto`**：先出第一个角色，其余拿它的成图当风格参考。代价是第一张定全片基调
-- 要透明底加 `--cutout`，抠完另存 `-cutout.png`（`render` 找的仍然是白底那张）
-- **失败不阻断批次，但有失败就 exit 1**——重跑跳过已有产物、接着轮询超时的任务
-- 拿到图先扫两眼：左右两栏是不是同一个人、三个全身像是不是等高。不是就 `--force` 重出
+读取 [生成交接流程](references/media-handoff.md)，再读取已安装的 **ly-image**。由它发现实时模型/schema、构造请求、预览、在授权范围内提交，并使用原回执恢复查询与下载。计划按参考依赖排序；基准图核验完成后才能生成依赖图。外部下载名不同于本地报告路径，核验格式和内容后放到计划 output，再 render。
 
-**不按 `importance` 筛，选中的角色全都出。** 一个角色一次调用，30 个就是 30 次——这是整条管线里最慢的一步，命令开跑前会打印要出多少张。用户想省就用 `--only`。
+没有 ly-image 或没有生成授权时，只交付提示词与计划，明确“未生成”。原 `--force`、`--cutout`、超时与并发选项已退役；质量重做和透明底由 ly-image 另行处理，不能自动重复付费。
 
-版面与提示词怎么写在 `{baseDir}/references/sheet.md`——**那才是这一步属于你的部分**。
+核对左右两栏是否同一人物、三个全身像是否等高。版面要求见 [sheet](references/sheet.md)。
 
 ### Step 9 — 输出
 
@@ -291,14 +292,14 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
     ├── <书名>-cast.md
     ├── report.html                ← 双击就能开
     ├── images/
-    │   ├── <slug>-sheet.png       ← 有 lingying 才有
-    │   └── .tasks.json            ← 提交了还没落盘的任务；图到齐就空了，可以删
+    │   ├── <slug>-sheet.png       ← 通过外部生成并核验后才有
+    │   └── jobs/                  ← 外部 skill 回执，保留用于恢复
     └── .work/                     ← 分块、roster、角色卡，跑完可删
 ```
 
 ### Step 10 — 汇报
 
-一句话说清：角色数、出图数、报告路径。校验一次没过的话，说明修了什么。有角色出图失败、被截断、或因为没有 lingying 而没出图，明确说清楚。
+一句话说清：角色数、出图数、报告路径。校验一次没过的话，说明修了什么。有角色出图失败、被截断、或因为没有生成工具或授权 而没出图，明确说清楚。
 
 ---
 
@@ -307,16 +308,18 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
 - 单次上限 24 块（净覆盖约 93 万字符），超了会明确报 `truncated`，不静默截断
 - 人类可读字段跟随 `--lang`（默认中文）；出图和 TTS 提示词**永远英文**，那些引擎吃英文最稳
 - 设定图最容易出的两个问题：**一张图里两个长相**、**为了塞细节把人物压扁**。拿到图先扫一眼，见 `references/sheet.md`
-- 出图只走 `images` 子命令——提交、轮询、落盘不再有第二份手写实现。以前那段 bash 拼错的方式比拼对的多：提示词里的引号把 `--input_data` 拆两半、轮询在整段 JSON 里搜 `success` 撞上恒为 success 的 `message`、`while` 循环没有出口
+- `images` 只输出离线计划；实际生成只交给 ly-image，不内置第二套网关调用。
 - 想要能实时编辑、边跑边看的交互界面，那是另一个东西，不在这个 skill 里
 
 ## 自测
 
 ```bash
 node {baseDir}/scripts/selftest.mjs
+node {baseDir}/scripts/v3-selftest.mjs
+node {baseDir}/scripts/upstream-selftest.mjs
 ```
 
-439 项断言，不调模型、不花额度，覆盖分块 / 归并 / 合成 / 多语言 / 校验 / 生产参数 / 渲染的全部确定性逻辑；出图编排用注入的假 CLI 与假时钟跑完全部路径（提交、轮询、超时、续传、风格参考波次、抠图、凭证前置检查），**不 spawn 进程、不发一个请求**。改完脚本先跑这个。
+离线自测覆盖创作、契约、渲染与交接计划；检查依赖顺序、提示词原文、素材路径、退役参数与防覆盖。不调用模型、不读取凭据、不发网络请求。
 
 ## 自带样例
 

@@ -1,9 +1,17 @@
 # production.json 结构
 
+## v3 创作契约与迁移
+
+production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` 收集可选的自然语言创作要求。提供时必须非空，不解析为枚举、规则或模型参数。show 展示要求，resolve 原样返回 creativeBrief；不要求选择策略。
+
+检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](creative-brief.md) 和 [迁移说明](migration.md)。
+
 一部剧一份，住在**工作目录根**——五个 skill 各自的段目录都在它下面，下游从自己的段目录**向上**找它（最多 5 层）。
 
 ```json
 {
+  "schemaVersion": 3,
+  "creativeBrief": "生活题材，表达克制，不强求每集反转。",
   "source": "回南天",
   "autopilot": false,
   "style": {
@@ -26,21 +34,23 @@
 }
 ```
 
-出图与生视频都走 **lingying**（灵影网关）CLI。`resolution` 与 `aspectRatio` **就是它 `input_schema` 里的枚举值**——`1K` / `2K` / `4K`、`768p`、`16:9` / `9:16` ……原样填进 `--input_data` 即可，**不折算像素，提示词里也不写像素**。
+实际生成使用独立安装的 **ly-image / ly-video**，本 skill 只管理 production.json。`resolution` 与 `aspectRatio` 保留为制作参数，生成前按实时 `input_schema` 核对。不折算像素，提示词里不写像素。
 
 ## 字段
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
+| `schemaVersion` | number，必需 | 固定为 3；旧版须显式迁移 |
+| `creativeBrief` | string，可选 | 提供时必须非空；自然语言项目要求，不选择规则 |
 | `source` | string | 剧名，可选。只用来在参数表里显示 |
 | `autopilot` | bool | **自动驾驶**，默认 `false`。为 `true` 时下游五个 skill 各自把自己那一段一口气跑完：不提问、不等拍板、该做的决定自己做。详见下面一节 |
 | `style` | object | **画风本身**，由用户在这一段填。没有内置类型，没有默认值。下面单开一节 |
 | `lang` | enum | 报告界面语言 `zh` / `en`。五个 skill 的 `render --lang` 缺省时跟它 |
 | `promptLang` | enum | 视频提示词语言 `zh` / `en`。默认 `en`——官方规范口径 |
-| `image.model` | string | 生图模型，取 `lingying model list --model_type image` 的 ID 列。内置能力表里有的查枚举，没有的明说跳过 |
+| `image.model` | string | 生图模型，取 ly-image 的 `models` 返回的 id。内置能力表里有的查枚举，没有的明说跳过 |
 | `image.asset.resolution` | string | **资产图分辨率档位**：`1K` / `2K` / `4K`。角色设定图、场景设定图、道具设定图共用 |
 | `image.asset.aspectRatio` | string | **资产图比例**：`W:H`。**必须是横构图或方形** |
-| `video.model` | string | 生视频模型，取 `lingying model list --model_type video` 的 ID 列 |
+| `video.model` | string | 生视频模型，取 ly-video 的 `models` 返回的 id |
 | `video.aspectRatio` | string | **视频 aspect_ratio**：`W:H`。这就是成片画幅 |
 | `video.resolution` | string | **视频 resolution 档位**。枚举**逐个模型不同**：`MiniMax H3` 是 `768p` / `2K`，seedance 全系是 `480p` / `720p`（`seedance2.0` 多一档 `1080p`） |
 
@@ -131,10 +141,11 @@ node scripts/novel-setup.mjs style <production.json> --for character
 
 `asset-landscape` 检查资产图版面；`video-model` 独立检查视频画幅。
 
-## 八道质量门
+## 九道检查（含 v3 契约）
 
-| 门 | 查什么 | 为什么是门 |
+| 检查项 | 查什么 | 为什么是门 |
 | --- | --- | --- |
+| `document-contract` | schemaVersion=3、可选非空 creativeBrief、拒绝废弃配置 | 防止新旧契约混用；内容要求由 Agent 另行评审 |
 | `fields` | 字段齐全、`style` 是对象、`lang` / `promptLang` 在枚举里、`autopilot` 写了就得是布尔值 | 少一个字段，下游读到 `undefined` 会静默用回默认值；`autopilot` 写成字符串 `"false"` 反而是开着 |
 | `aspect-format` | 资产图与视频比例都是 `W:H` 写法 | 写成 `9-16` 下游解析不出来；`adaptive` 也在这里拦掉 |
 | `asset-landscape` | 资产图是横构图或方形 | 竖构图会把设定图的三视图压扁 |
@@ -146,12 +157,15 @@ node scripts/novel-setup.mjs style <production.json> --for character
 
 ## 能力表从哪来
 
-以前这两张表一张只有 `gpt-image-2`、另一张**有意留空**，理由是「凭记忆编一张比不查更坏」。改走 lingying 之后依据有了——`model get` 会把 `input_schema` 原样打出来，本机可查：
+这两张表保留历史采集的模型 UUID 与能力快照，不代表当前服务。生成前读取已安装 ly-image / ly-video 的 SKILL.md，查询实时模型详情：
 
 ```bash
-lingying model list --model_type video          # 看网关上有什么
-lingying model get 7809cb1a-4f09-40de-a9e9-dd3841016138   # 看某个模型收什么参数
+node <ly-image-dir>/scripts/image.mjs models
+node <ly-video-dir>/scripts/video.mjs models
+node <ly-video-dir>/scripts/video.mjs models --model "MiniMax H3"
 ```
+
+`<ly-image-dir>` / `<ly-video-dir>` 是真实安装目录，不是本仓库目录。实际模型 ID 以 models 返回值为准。
 
 所以表可以填，但**出处不许省**：`IMAGE_MODELS` / `VIDEO_MODELS` 里每一条都带 `source`（取数命令）和 `modelId`（UUID），过期了重新跑一次就能对账。自测里有断言盯着这两个字段。
 

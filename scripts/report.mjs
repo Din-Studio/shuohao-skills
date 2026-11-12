@@ -52,8 +52,8 @@ export const PANES = [
     dir: 'outline',
     label: '大纲',
     labelEn: 'Outline',
-    hint: '改编结构与分集',
-    hintEn: 'Adaptation & episodes',
+    hint: '故事结构与分集',
+    hintEn: 'Story & episodes',
     needs: [],
   },
   {
@@ -148,7 +148,7 @@ export function splitDoc(html) {
  *   - `@media` / `@supports` → 递归处理内部，`@` 行本身不动
  *   - 逗号分隔的选择器组 → 每一支各自加前缀
  */
-export function scopeCss(css, scope) {
+export function scopeCss(css, scope, idPrefix = '') {
   // 先剥注释。规则之间的注释会被当成下一条选择器的一部分，而注释里的逗号会把
   // 选择器切断——实测 `/* episode overview: first three cards, … */` 就是这么
   // 变成一条选择器的。剥掉是最省事的解，合并产物里也不需要这些注释。
@@ -180,14 +180,14 @@ export function scopeCss(css, scope) {
       // 动画关键帧与字体声明整块原样搬，内部不是选择器
       out.push(`${head}{${inner}}`);
     } else if (/^@(media|supports|layer|container)/i.test(head)) {
-      out.push(`${head}{${scopeCss(inner, scope)}}`);
+      out.push(`${head}{${scopeCss(inner, scope, idPrefix)}}`);
     } else if (head.startsWith('@')) {
       out.push(`${head}{${inner}}`);
     } else {
       const scoped = head
         .split(',')
         .map((sel) => {
-          const s = sel.trim();
+          const s = sel.trim().replace(/#([\w-]+)/g, (_, id) => `#${idPrefix}${id}`);
           if (!s) return '';
           // 页面级选择器换成作用域本身：自定义属性与基础排版落在 pane 上
           if (/^(:root|html|body)$/.test(s)) return scope;
@@ -215,7 +215,7 @@ export function scopeCss(css, scope) {
  * `#sec-scenes`、`#sec-rhythm`）。不改的话页内锚点会跳到别的面板去。
  *
  * 一并改的引用点：`href="#…"`、`data-pane="…"`（大纲的图表/表格切换靠它跟
- * `p.id` 比对）、`aria-controls`、`for`。**脚本里的 id 字符串不用改**——
+ * `p.id` 比对）、`data-target`（角色索引和关系跳转）、`aria-controls`、`for`。**脚本里的 id 字符串不用改**——
  * 作用域代理会在 `getElementById` 里自动补前缀。
  */
 export function scopeHtml(body, prefix) {
@@ -223,6 +223,7 @@ export function scopeHtml(body, prefix) {
     .replace(/\bid="([^"]+)"/g, (_, id) => `id="${prefix}${id}"`)
     .replace(/\bhref="#([^"]+)"/g, (_, id) => `href="#${prefix}${id}"`)
     .replace(/\bdata-pane="([^"]+)"/g, (_, id) => `data-pane="${prefix}${id}"`)
+    .replace(/\bdata-target="([^"]+)"/g, (_, id) => `data-target="${prefix}${id}"`)
     .replace(/\baria-controls="([^"]+)"/g, (_, id) => `aria-controls="${prefix}${id}"`)
     .replace(/\bfor="([^"]+)"/g, (_, id) => `for="${prefix}${id}"`);
 }
@@ -234,18 +235,18 @@ export function scopeHtml(body, prefix) {
  * 合成一页之后，浏览器按合并文件的位置解析，不重算就全是断图。
  * `data:` 与绝对地址原样不动。
  */
-export function rebaseAssets(text, fromDir, outDir) {
+export function rebaseAssets(text, fromDir, outDir, { css = false } = {}) {
   const fix = (p) => {
     if (!p || /^(data:|https?:|file:|\/|#)/i.test(p)) return p;
     const rel = relative(outDir, resolve(fromDir, p)).split('\\').join('/');
     return rel || p;
   };
+  const rebaseCss = value => value.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (m, q, val) => `url(${q}${fix(val)}${q})`);
+  if (css) return rebaseCss(text);
+  // 只改真正的资源属性与内联样式，不把正文中的 url(...) 当作 CSS。
   return text
     .replace(/\b(src|data-img|data-src|poster)="([^"]*)"/g, (m, attr, val) => `${attr}="${fix(val)}"`)
-    // 内联样式与样式表里的 `url(...)`。角色报告的缩略图就走这条
-    // （`style="background-image:url('images/…')"`），只查属性会漏掉它，
-    // 表现是缩略图 404 但大图正常——很不好排查，所以两条路都覆盖。
-    .replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (m, q, val) => `url(${q}${fix(val)}${q})`);
+    .replace(/\bstyle=(['"])([\s\S]*?)\1/g, (m, quote, value) => `style=${quote}${rebaseCss(value)}${quote}`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -275,10 +276,13 @@ var document=new Proxy(__doc,{get:function(t,k){
     var target=type==='keydown'?t:__root;
     return target[k](type,listener,options);
   };
-  if(k==='querySelector')return function(s){return __root.querySelector(s);};
-  if(k==='querySelectorAll')return function(s){return __root.querySelectorAll(s);};
+  if(k==='querySelector'||k==='querySelectorAll')return function(s){
+    var scoped=s.replace(/#([\\w-]+)/g,function(_,id){return '#'+(id.startsWith(${JSON.stringify(prefix)})?id:${JSON.stringify(prefix)}+id);});
+    return __root[k](scoped);
+  };
   if(k==='getElementById')return function(id){
-    return __root.querySelector('#'+(window.CSS&&CSS.escape?CSS.escape(${JSON.stringify(prefix)}+id):${JSON.stringify(prefix)}+id));
+    var scoped=id.startsWith(${JSON.stringify(prefix)})?id:${JSON.stringify(prefix)}+id;
+    return __root.querySelector('#'+(window.CSS&&CSS.escape?CSS.escape(scoped):scoped));
   };
   var v=t[k];
   return typeof v==='function'?v.bind(t):v;
@@ -301,12 +305,19 @@ export function makePane(html, { id, fromDir = '.', outDir = '.' } = {}) {
   const { style, body, scripts, title } = splitDoc(html);
   const paneId = `pane-${id}`;
   const prefix = `${id}--`;
-  const scoped = rebaseAssets(scopeHtml(body, prefix), fromDir, outDir);
+  const transform = part => rebaseAssets(scopeHtml(part, prefix), fromDir, outDir);
+  // 原始 JSON 是编辑源，不参与 DOM ID/CSS/路径重定位；只重命名容器 id。
+  let scoped = '', cursor = 0;
+  for (const match of body.matchAll(/(<script\b[^>]*\btype="application\/json"[^>]*>)([\s\S]*?)(<\/script>)/gi)) {
+    scoped += transform(body.slice(cursor, match.index)) + transform(match[1]) + match[2] + match[3];
+    cursor = match.index + match[0].length;
+  }
+  scoped += transform(body.slice(cursor));
   return {
     id,
     paneId,
     title,
-    css: rebaseAssets(scopeCss(style, `#${paneId}`), fromDir, outDir),
+    css: rebaseAssets(scopeCss(style, `#${paneId}`, prefix), fromDir, outDir, { css: true }),
     html: scoped,
     js: scripts.filter((s) => s.trim()).map((s) => scopeJs(s, paneId, prefix)).join('\n'),
   };
@@ -346,7 +357,7 @@ const SHELL_I18N = {
  * 可 Cmd+F」的设计主张是冲突的。所以留了「平铺全部」开关：按下之后所有面板同时
  * 显示，搜索恢复全局。默认分栏，因为五份加起来将近六十万字符，一次全渲染很沉。
  */
-export function renderShell(panes, { title = '', lang = 'zh', subtitle = '' } = {}) {
+export function renderShell(panes, { title = '', lang = 'zh', subtitle = '', notices = [] } = {}) {
   const t = SHELL_I18N[lang] ?? SHELL_I18N.zh;
   const nav = panes
     .map(
@@ -421,6 +432,8 @@ body{
 
 /* ---- 内容区 ---- */
 .rp-main{flex:1 1 auto;min-width:0}
+.rp-notices{padding:12px 24px;border-bottom:1px solid var(--rule);overflow-wrap:anywhere}
+.rp-brand{overflow-wrap:anywhere}
 .rp-pane{display:none}
 .rp-pane.rp-on{display:block}
 .rp-app.rp-all .rp-pane{display:block;border-bottom:1px solid var(--rule)}
@@ -459,6 +472,7 @@ ${panes.map((p) => `/* ===== ${p.id} ===== */\n${p.css}`).join('\n')}
     </div>
   </nav>
   <main class="rp-main">
+${notices.length ? `<aside class="rp-notices" role="status">${notices.map(n => `<p>${esc(n)}</p>`).join('')}</aside>` : ''}
 ${body}
   </main>
 </div>
@@ -468,6 +482,8 @@ ${body}
   var navs=[].slice.call(document.querySelectorAll('.rp-rail .rp-nv'));
   var panes=[].slice.call(document.querySelectorAll('.rp-main .rp-pane'));
   function show(id){
+    if(!panes.some(function(p){return p.id===id;}))return;
+    document.getElementById('rp-allbtn').textContent=${JSON.stringify(t.expandAll)};
     navs.forEach(function(n){n.classList.toggle('rp-on',n.dataset.pane===id);});
     panes.forEach(function(p){p.classList.toggle('rp-on',p.id===id);});
     if(history.replaceState)history.replaceState(null,'','#'+id);
@@ -515,6 +531,8 @@ const USAGE = `report.mjs —— 把 novel 系列各 skill 的报告合成一张
   --art <f>
   --script <f>
   --creation <f>
+  --production <f>   显式提供 v3 制作配置，传给全部面板
+  --no-production    不自动读取制作配置（独立模式）
   --out <f>          输出路径，默认 report.html
   --lang zh|en       外壳与各报告的界面语言，默认 zh
   --title <s>        左上角标题，默认取第一份 json 的 source
@@ -528,13 +546,15 @@ function flag(argv, name, fallback = null) {
 }
 
 /** 在一个目录里找唯一一份看着像该段产出的 json（排掉报告与清单类文件）。 */
-function findJson(dir, skill) {
+export function findJson(dir, skill) {
   if (!existsSync(dir)) return null;
   const kind = skill.replace('novel-', '');
   const stem = kind === 'characters' ? 'cast' : kind;
-  const files = readdirSync(dir)
-    .filter((f) => f.endsWith('.json') && !/manifest|\.gates/i.test(f))
+  const files = readdirSync(dir, { withFileTypes: true })
+    .filter(entry => entry.isFile()).map(entry => entry.name)
+    .filter((f) => f.endsWith('.json') && !/manifest|\.gates|\.backup[.-]|\.bak[.-]/i.test(f))
     .filter((f) => f.toLowerCase().includes(stem));
+  if (files.length > 1) throw new Error(`${dir} 有多份 ${stem} JSON，请显式指定对应阶段文件：${files.join('、')}`);
   return files.length ? join(dir, files[0]) : null;
 }
 
@@ -543,7 +563,7 @@ function main(argv) {
     console.log(USAGE);
     return;
   }
-  const allowed = new Set(['--from', '--out', '--lang', '--title', ...PANES.map((p) => p.flag)]);
+  const allowed = new Set(['--from', '--out', '--lang', '--title', '--production', '--no-production', ...PANES.map((p) => p.flag)]);
   for (const arg of argv) {
     if (arg.startsWith('--') && !allowed.has(arg)) throw new Error(`未知选项 ${arg}`);
   }
@@ -551,6 +571,13 @@ function main(argv) {
   const outPath = resolve(flag(argv, '--out', 'report.html'));
   const outDir = dirname(outPath);
   const lang = flag(argv, '--lang', 'zh');
+  const noProduction = argv.includes('--no-production');
+  const productionFlag = flag(argv, '--production');
+  if (argv.includes('--production') && !productionFlag) throw new Error('--production 需要文件路径');
+  if (noProduction && productionFlag) throw new Error('--production 与 --no-production 不能同时提供');
+  const discoveredProduction = from ? resolve(from, 'production.json') : null;
+  const production = productionFlag ? resolve(productionFlag)
+    : !noProduction && discoveredProduction && existsSync(discoveredProduction) ? discoveredProduction : null;
 
   // 路径来源：显式参数优先，其次从 --from 目录自动发现
   const paths = {};
@@ -563,10 +590,13 @@ function main(argv) {
   if (!chosen.length) throw new Error(`没有找到任何一段的产出。\n\n${USAGE}`);
 
   const panes = [];
+  const failures = [];
   for (const p of chosen) {
     const jsonPath = paths[p.flag];
     const cli = join(skillsDir, p.skill, 'scripts', `${p.skill}.mjs`);
     const args = ['render', jsonPath, '--html', '--lang', lang];
+    if (production) args.push('--production', production);
+    if (noProduction) args.push('--no-production');
     for (const need of p.needs) {
       // 上游有就带上；没有就不带，各 skill 自己会说明跳过了什么
       if (paths[need]) args.push(need, paths[need]);
@@ -582,7 +612,9 @@ function main(argv) {
       });
     } catch (e) {
       const why = (e.stderr || e.message || '').trim().split('\n')[0];
-      console.error(`⚠️ ${p.skill} 这一段没渲染出来，跳过：${why}`);
+      const message = `${p.skill}: ${why}`;
+      failures.push(message);
+      console.error(`⚠️ ${message}`);
       continue;
     }
     const pane = makePane(html, { id: p.id, fromDir: dirname(jsonPath), outDir });
@@ -603,7 +635,12 @@ function main(argv) {
   }
 
   const sub = panes.map((p) => (lang === 'en' ? p.meta.labelEn : p.meta.label)).join(lang === 'en' ? ' · ' : ' · ');
-  writeFileSync(outPath, renderShell(panes, { title, lang, subtitle: sub }));
+  const notices = [lang === 'en'
+    ? 'Rendering is not verification. Structural checks, warnings, missing-upstream checks and content review are reported separately in each pane. Content review has not been performed by this report assembler. A standalone result is not joint delivery.'
+    : '报告生成不等于校验通过。各面板分别展示结构检查、提醒、缺少上游而未检查的范围和内容评审状态。合并工具没有执行内容评审。独立通过不代表联合交付。',
+    ...failures.map(message => lang === 'en' ? `Unavailable pane: ${message}` : `面板未生成：${message}`)];
+  writeFileSync(outPath, renderShell(panes, { title, lang, subtitle: sub, notices }));
+  if (failures.length) process.exitCode = 1;
   console.log(`✓ ${panes.length} 个面板 → ${relative(process.cwd(), outPath) || outPath}`);
   for (const p of panes) console.log(`    ${lang === 'en' ? p.meta.labelEn : p.meta.label}  ${p.title || ''}`);
 }

@@ -2,6 +2,12 @@
 
 # novel-art
 
+## v3 upstream contract
+
+Seed accepts outline schemaVersion 3 only; production also requires schemaVersion 3. Read the optional non-empty creativeBrief as natural language, never as policy or model parameters. Character provenance/arc and beat classification/position are optional. Missing production skips upstream checks; damaged or legacy production fails. Asset outputs and media plans remain unchanged.
+
+Check objects use `status: pass|fail|skipped`, `category`, and `level`, never an ok boolean. Skips are not passes. Content review is not performed by these checks. See [contract](references/creative-background.md) and [migration](references/migration.md).
+
 Art bibles for **AI short-drama production**: scenes + narrative props. The premise is baked in: **generated, not filmed** — no location scouting, no set building, no prop sourcing. Environments and props are assets that must be regenerated dozens of times and still look like the same thing, so the deliverable is a consistency plan.
 
 **Scenes**: design intent, consistency anchors (3–5 per scene — viewers recognize the place by them, QC checks shots against them), lighting states (a time-of-day change is a **regeneration, not a relight**), and a variant mechanism (`variantOf` + `changes`, generating against the parent's sheet).
@@ -10,11 +16,11 @@ Art bibles for **AI short-drama production**: scenes + narrative props. The prem
 
 Outputs `art.json`, a Markdown report, and a self-contained `art-report.html`. Reports render with a Chinese UI by default; pass `--lang en` for a fully English report (or set a top-level `"lang": "en"` in art.json — `--lang` wins). Image prompts are always English either way: In English mode the quality-gate labels are translated too (thresholds kept as computed); failing-gate details and all data stay as authored.
 
-![art-report.html](assets/report.webp)
+The old screenshot is retired. Render the bundled Rain Canopy Messages example for the current report.
 
 ## The quality gates are code
 
-Same stance as the other five skills: **a checklist the model grades itself on is worthless.** Twelve deterministic gates — anchors 3–5 (scenes and props alike), lighting states ≥1 per scene, people banned in negatives everywhere, all prompts English, no character names (checked with `--cast`, explicitly reported as skipped without it), variant references complete, plus four prop-specific gates: **states ≥1**, **scale phrase present in prompts**, **hands banned in negatives**, **pure white background in the sheet**, plus two that read the `production.json` at the work-directory root (`novel-setup`'s output): **the art style is used as one whole block** (its render sentence in both prompts, every negative term carried over) and **sheet layout aspect matches the production parameters** — both explicitly reported as skipped when that file is absent. The selftest defeats every gate on purpose.
+Same stance as the other five skills: **a checklist the model grades itself on is worthless.** Deterministic checks — anchors 3–5 (scenes and props alike), lighting states ≥1 per scene, people banned in negatives everywhere, all prompts English, no character names (checked with `--cast`, explicitly reported as skipped without it), variant references complete, plus four prop-specific gates: **states ≥1**, **scale phrase present in prompts**, **hands banned in negatives**, **pure white background in the sheet**, plus two that read the `production.json` at the work-directory root (`novel-setup`'s output): **the art style is used as one whole block** (its render sentence in both prompts, every negative term carried over) and **sheet layout aspect matches the production parameters** — both explicitly reported as skipped when that file is absent. The selftest defeats every gate on purpose.
 
 ## The relay
 
@@ -38,30 +44,46 @@ node scripts/novel-art.mjs render art.json --html --lang en   # English report U
 node scripts/novel-art.mjs style
 ```
 
+`render` accepts the same `--cast cast.json` as `validate/checkup`. Missing cast skips the name check; a supplied damaged or unreadable file fails. Discovered images affect display only; exported JSON preserves the input.
+
 ## Image generation (optional)
 
 ```bash
-node scripts/novel-art.mjs images art.json              # submit / poll / save, all in the script
+node scripts/novel-art.mjs images art.json              # export offline plan only
 node scripts/novel-art.mjs images art.json --dry-run    # print what would be submitted
-node scripts/novel-art.mjs images art.json --cutout     # transparent cut-out for props
+node scripts/novel-art.mjs images art.json --out image-plan.json # save plan; does not generate
 ```
 
-Via the **lingying** gateway. One sheet per scene and per prop, both using the **master-view + L-shaped detail border** layout (bottom and right edges). Scene details = anchor close-ups; prop details = anchor close-ups + other states + a side profile. Scenes are empty of people; props additionally ban hands and sit on pure white for clean cut-out. No lingying → prompts only.
+Via the **ly-image** gateway. One sheet per scene and per prop, both using the **master-view + L-shaped detail border** layout (bottom and right edges). Scene details = anchor close-ups; prop details = anchor close-ups + other states + a side profile. Scenes are empty of people; props additionally ban hands and sit on pure white for clean cut-out. No ly-image → prompts only.
 
-**The call is code, not documentation.** Arguments never go through a shell (`execFile` takes an array, so quotes and newlines inside prompts arrive intact), only `data.status` is read (the envelope's `message: success` is always success), each sheet times out after 300s instead of looping forever, existing files are skipped, submitted task ids land in `images/.tasks.json` for resume, and variants automatically attach the parent sheet once it is on disk. Layout and prompt rules live in `references/sheet.md`.
+The local command exports a plan only. Read [handoff instructions](references/media-handoff.md), then use the independently installed ly-image skill for discovery, preview, generation and task recovery. Verify downloaded files and place them at each planned output path before rendering. No external skill is required for standalone writing, validation or plan export.
 
 ## Autopilot
 
 When the `production.json` at the work-directory root (produced by `novel-setup`) carries `"autopilot": true`, this skill runs its stage **end to end**: it does not ask which input to use, it decides the prop list itself, and it generates every scene and prop sheet in one go. Every decision it made goes into the final report.
 
-**It transfers approval, it does not remove checkpoints**: all 12 gates still have to pass and every sheet is still checked against its anchors (no people, no hands, pure white background) — it just does not wait for a nod. Written as `false`, left out, or with no `production.json` at all, nothing changes. When `validate` finds the file with the flag on, it prints `↳ 自动驾驶：开`.
+**It transfers approval, it does not remove checkpoints**: all applicable checks still have to pass and every sheet is still checked against its anchors (no people, no hands, pure white background) — it just does not wait for a nod. Written as `false`, left out, or with no `production.json` at all, nothing changes. When `validate` finds the file with the flag on, it prints `↳ 自动驾驶：开启`.
 
 ## Selftest
 
 ```bash
 node scripts/selftest.mjs
+node scripts/v3-selftest.mjs
+node scripts/upstream-selftest.mjs
 ```
 
-279 assertions — seeding, style lookup, gate-defeating cases for all 12 gates, production-parameter lookup and inheritance, rendering (zh/en report UI), export, and the full image-generation flow (submit, poll, timeout, resume, variant ordering, cut-out) against an injected fake CLI and clock. No model calls, no requests, runs in about a second.
+Offline tests cover creative contracts, rendering and handoff plans, including reference dependencies, preserved prompts, file checks and retired options. No gateway calls or model usage.
 
 **Only tested on macOS + Node 24.**
+
+The formal sample is Rain Canopy Messages (雨棚留言), a neighbourhood-market story about returning a board of private messages before canopy replacement. Read its story proposal first. All fixtures belong to this skill; no real images were generated.
+
+## Standalone sample
+
+All inputs below belong to Rain Canopy Messages. The outline file is a consumed-field v3 fixture, not a full outline deliverable.
+
+```bash
+node scripts/novel-art.mjs validate examples/雨棚留言-art.json --production examples/雨棚留言-production.json --cast examples/雨棚留言-cast-names.json
+node scripts/novel-art.mjs render examples/雨棚留言-art.json --production examples/雨棚留言-production.json --cast examples/雨棚留言-cast-names.json --html --lang en
+```
+No other skill or real generated images are required. Keep regenerated HTML out of version control.

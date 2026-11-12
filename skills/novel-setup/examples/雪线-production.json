@@ -1,4 +1,5 @@
 {
+  "schemaVersion": 3,
   "source": "雪线",
   "autopilot": true,
   "style": {
@@ -46,5 +47,6 @@
     "model": "seedance2.0",
     "aspectRatio": "16:9",
     "resolution": "1080p"
-  }
+  },
+  "creativeBrief": "悬疑故事，线索与人物选择持续推进。表达克制，让事实逐步显露，不强求每集反转。"
 }

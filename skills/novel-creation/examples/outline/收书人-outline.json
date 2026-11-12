@@ -15,8 +15,90 @@
       "name": "周亦",
       "role": "深夜顾客",
       "arc": "卖掉一本自己不知道分量的书，转身离开",
-      "tier": "supporting"
+      "tier": "support"
     }
   ],
-  "note": "最小合规夹具，只手写 novel-creation 的 namer（id→name）与提示词禁人名两处会用到的字段，不追求满足 novel-outline 自己的 14 道质量门。"
+  "note": "本 skill 自有《收书人》本地 v3 上游夹具。保留既有故事、事件与资产；未将寻人未完成伪装成兑现或 required 问题。",
+  "schemaVersion": 3,
+  "params": {
+    "episodes": 1,
+    "minutesPerEpisode": 0.5,
+    "genre": "亲情寻踪",
+    "adaptMode": "原创"
+  },
+  "story": {
+    "focusCharacterIds": [
+      "C01"
+    ],
+    "premise": "寻找失散妹妹的书店老板，收到一本带有熟悉笔迹的旧诗集。",
+    "throughline": "从收书时停顿，到买下诗集，再确认妹妹曾拥有它。",
+    "audiencePromise": "观察一个人在普通收书交易里认出私人往事。",
+    "ending": "只确认书的旧归属，不声称找到妹妹；寻人仍在画面之外继续。",
+    "endingBeatId": "B03"
+  },
+  "scenes": [
+    {
+      "id": "S01",
+      "name": "深夜书铺",
+      "primary": true,
+      "summary": "陈叙独自经营的深夜旧书店。"
+    }
+  ],
+  "props": [
+    {
+      "id": "P01",
+      "name": "旧诗集",
+      "summary": "带有熟悉笔迹，夹着「致晚晚」字条的旧诗集。",
+      "beatIds": [
+        "B01",
+        "B02",
+        "B03"
+      ],
+      "function": "承载熟悉笔迹与字条，使陈叙确认与妹妹有关的旧物线索。"
+    }
+  ],
+  "beats": [
+    {
+      "id": "B01",
+      "episode": 1,
+      "position": "opening",
+      "setup": "陈叙在深夜旧书店继续收书。",
+      "outcome": "周亦抱着诗集进门卖书，陈叙示意他放上柜台。"
+    },
+    {
+      "id": "B02",
+      "episode": 1,
+      "position": "middle",
+      "setup": "陈叙翻开顾客卖来的旧诗集。",
+      "outcome": "熟悉的笔迹让她停顿；她不解释缘由，以双倍价钱买下书。"
+    },
+    {
+      "id": "B03",
+      "episode": 1,
+      "position": "ending",
+      "setup": "周亦已经离开，陈叙独自再次翻书。",
+      "outcome": "字条滑落，她认出自己写下的「致晚晚」；书曾属于妹妹，妹妹的去向仍未知。"
+    }
+  ],
+  "episodes": [
+    {
+      "ep": 1,
+      "opening": "深夜旧书店快打烊时，周亦抱着一本卷边诗集进门，询问能否卖书。",
+      "synopsis": "周亦深夜卖书，陈叙认出扉页笔迹后以双倍价钱收下。独处时她发现自己写给妹妹的字条，确认这本书曾经属于妹妹。 她此前只有长期寻找的习惯；本夜获得旧物线索，仍不知道妹妹现在的去向。",
+      "ending": {
+        "mode": "open",
+        "event": "陈叙在周亦离开后拾起书中滑落的字条，认出自己写给妹妹的「致晚晚」，独自留在书店灯下。"
+      },
+      "characterIds": [
+        "C01",
+        "C02"
+      ],
+      "sceneIds": [
+        "S01"
+      ],
+      "propIds": [
+        "P01"
+      ]
+    }
+  ]
 }

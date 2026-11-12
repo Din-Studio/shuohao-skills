@@ -1,0 +1,499 @@
+{
+  "schemaVersion": 2,
+  "source": "旧站时刻",
+  "lang": "zh",
+  "params": {
+    "episodes": 6,
+    "minutesPerEpisode": 3,
+    "genre": "生活悬疑，记录与责任",
+    "adaptMode": "原创",
+    "preferences": [
+      "不设置幕后反派",
+      "不把更正记录等同于得到原谅"
+    ],
+    "thresholds": {
+      "maxLeads": 3,
+      "maxSupport": 4,
+      "maxFunctional": 4,
+      "maxPrimaryScenes": 5,
+      "maxProps": 5
+    },
+    "rules": {
+      "payoffCoverage": {
+        "level": "off"
+      },
+      "firstMajor": {
+        "level": "off"
+      },
+      "majorGap": {
+        "level": "off"
+      },
+      "endingPayoff": {
+        "level": "off"
+      },
+      "endingModes": {
+        "level": "error",
+        "nonFinal": [
+          "suspense",
+          "closure",
+          "open"
+        ],
+        "final": [
+          "closure",
+          "open"
+        ]
+      },
+      "optionalQuestions": {
+        "level": "error",
+        "allow": true
+      },
+      "stateProgress": {
+        "level": "error"
+      },
+      "arcCoverage": {
+        "level": "off"
+      },
+      "arcPayoff": {
+        "level": "off"
+      }
+    },
+    "defaults": {
+      "questionResolveWithin": null
+    }
+  },
+  "story": {
+    "focusCharacterIds": [
+      "C01",
+      "C02"
+    ],
+    "premise": "旧站撤并前最后一班接驳车未进入到站表，退休调度员许钟与年轻站务员林蔚需要核对它的去向。",
+    "throughline": "从当前漏报追查纸质交接制度，最终决定是否同时公开许钟二十年前的错误归责。",
+    "audiencePromise": "通过有出处的细节逐步理解事实，见证承认责任而非寻获替罪者。",
+    "ending": "更正说明与原始交接簿一起移交；事实得到澄清，受损关系是否修复仍留给当事人。",
+    "endingBeatId": "B08"
+  },
+  "adaptation": {
+    "core": "撤站之际，一次新漏报迫使退休调度员纠正自己留下的旧记录。",
+    "sourceNote": "原创，故事先见本目录故事提案.md；没有借用原作证据。",
+    "keep": [
+      {
+        "what": "新旧交接制度的断裂",
+        "why": "让当前事故与旧责任形成因果，而不是巧合破案"
+      }
+    ],
+    "cut": [],
+    "merge": [],
+    "risks": [
+      {
+        "what": "纸面核对可能缺乏人物选择",
+        "plan": "每次证据改变下一步行动；公开旧错会损害许钟的退休荣誉"
+      },
+      {
+        "what": "容易把承认错误写成即时和解",
+        "plan": "司机只确认记录更正，不替其他受影响者宣布原谅"
+      }
+    ],
+    "cutNote": "没有改编原作，不虚构砍掉情节。",
+    "mergeNote": "许钟承担记忆与责任，林蔚坚持可核对的证据；两人职能不能合并。"
+  },
+  "characters": [
+    {
+      "id": "C01",
+      "name": "许钟",
+      "tier": "lead",
+      "role": "退休调度员，旧记录签署人",
+      "arc": "从维护个人清白转为承认曾经的错误归责",
+      "from": [
+        "原创"
+      ]
+    },
+    {
+      "id": "C02",
+      "name": "林蔚",
+      "tier": "lead",
+      "role": "年轻站务员，移交资料负责人",
+      "arc": "从相信系统表格转为坚持证据与来源一起保存",
+      "from": [
+        "原创"
+      ]
+    },
+    {
+      "id": "C03",
+      "name": "程安",
+      "tier": "support",
+      "role": "接驳车司机，曾因旧漏报受处分",
+      "arc": "从拒绝再作口头解释转为提交自己的留底，但不承诺原谅",
+      "from": [
+        "原创"
+      ]
+    },
+    {
+      "id": "C04",
+      "name": "档案接收员",
+      "tier": "functional",
+      "role": "确认原件与更正说明同时入档",
+      "from": [
+        "原创"
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "id": "S01",
+      "name": "旧站值班室",
+      "primary": true
+    },
+    {
+      "id": "S02",
+      "name": "接驳停车场",
+      "primary": true
+    },
+    {
+      "id": "S03",
+      "name": "档案接收窗口",
+      "primary": false
+    }
+  ],
+  "props": [
+    {
+      "id": "P01",
+      "name": "纸质交接簿",
+      "function": "保存旧制度的补记时间与签署责任",
+      "beatIds": [
+        "B02",
+        "B05",
+        "B08"
+      ]
+    },
+    {
+      "id": "P02",
+      "name": "司机回执留底",
+      "function": "独立核验车辆已到站，不能仅凭回忆定案",
+      "beatIds": [
+        "B03",
+        "B06"
+      ]
+    },
+    {
+      "id": "P03",
+      "name": "更正说明",
+      "function": "将事实澄清与责任归属一起记录",
+      "beatIds": [
+        "B07",
+        "B08"
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "id": "B01",
+      "episode": 1,
+      "position": "opening",
+      "kind": "event",
+      "type": "记录缺口",
+      "setup": "林蔚准备封存撤站资料",
+      "outcome": "电子到站表缺少末班接驳车，封存被暂停"
+    },
+    {
+      "id": "B02",
+      "episode": 1,
+      "position": "ending",
+      "kind": "pressure",
+      "type": "记忆抵触",
+      "setup": "许钟认出纸簿上熟悉的补记标记",
+      "outcome": "他要求先查车辆而不要追查签名，林蔚保留了原页"
+    },
+    {
+      "id": "B03",
+      "episode": 2,
+      "position": "middle",
+      "kind": "turn",
+      "type": "独立物证",
+      "setup": "程安不愿再作无凭据的口头证明",
+      "outcome": "他出示留底，车已到站，问题从失踪转为漏报",
+      "resolves": [
+        "Q01"
+      ]
+    },
+    {
+      "id": "B04",
+      "episode": 3,
+      "position": "late",
+      "kind": "event",
+      "type": "制度断点",
+      "setup": "回执与电子表时间不同",
+      "outcome": "林蔚查到临时接驳沿用纸簿补记，新系统没有导入该栏"
+    },
+    {
+      "id": "B05",
+      "episode": 4,
+      "position": "ending",
+      "kind": "turn",
+      "type": "责任署名",
+      "setup": "许钟试图只更正当下漏报",
+      "outcome": "他找出自己签名的旧归责页，承认曾把同类漏报归给程安"
+    },
+    {
+      "id": "B06",
+      "episode": 5,
+      "position": "middle",
+      "kind": "payoff",
+      "weight": "major",
+      "type": "迟到的澄清",
+      "setup": "只有许钟自述不足以改档",
+      "outcome": "程安旧回执与原始签名互证，旧归责所据的迟报时间被推翻，林蔚将核验结论写入更正说明",
+      "resolves": [
+        "Q02"
+      ]
+    },
+    {
+      "id": "B07",
+      "episode": 5,
+      "position": "ending",
+      "kind": "event",
+      "type": "共同署名",
+      "setup": "新漏报可按系统故障单独结案",
+      "outcome": "许钟要求把自己的旧错写入同一份更正说明，林蔚核对后共同签署"
+    },
+    {
+      "id": "B08",
+      "episode": 6,
+      "position": "ending",
+      "kind": "event",
+      "type": "完整移交",
+      "setup": "更正说明不能替代原始记录",
+      "outcome": "两人将原簿与更正说明一并交存，程安确认收件后独自离开"
+    }
+  ],
+  "arcs": [
+    {
+      "id": "A01",
+      "startEp": 2,
+      "endEp": 4,
+      "goal": "从车辆去向转向漏报责任",
+      "endBeatId": "B05"
+    }
+  ],
+  "episodes": [
+    {
+      "ep": 1,
+      "opening": "林蔚在封存前发现最后一班接驳车没有到站记录。",
+      "synopsis": "撤站清点被一行空白打断。林蔚请许钟核对纸簿，他认出补记符号却避谈旧签名，建议先联系司机。林蔚保留原页，不把空白直接归为司机失联。",
+      "ending": {
+        "mode": "suspense",
+        "event": "林蔚带着空白记录去停车场核对车辆。",
+        "question": {
+          "id": "Q01",
+          "text": "末班车是否真的没有到站？",
+          "resolution": "required",
+          "dueByEp": 3
+        }
+      },
+      "stateChange": {
+        "before": "资料可以封存",
+        "after": "车辆到站情况尚待核对"
+      },
+      "sceneIds": [
+        "S01"
+      ],
+      "characterIds": [
+        "C01",
+        "C02"
+      ],
+      "propIds": [
+        "P01"
+      ],
+      "warnings": []
+    },
+    {
+      "ep": 2,
+      "opening": "程安拒绝只凭记忆再作一遍到站说明。",
+      "synopsis": "停车场里，程安取出自己留下的回执。林蔚核对车号和时间，确认车辆已到站。许钟看到留底方式与二十年前相同，提出只修复当下系统记录。程安要求任何更正都附原始材料。",
+      "ending": {
+        "mode": "closure",
+        "event": "林蔚将车辆去向标为已确认，转查记录为何缺失。"
+      },
+      "stateChange": {
+        "before": "怀疑车辆未到站",
+        "after": "确认车辆到站而记录漏报"
+      },
+      "sceneIds": [
+        "S02"
+      ],
+      "characterIds": [
+        "C01",
+        "C02",
+        "C03"
+      ],
+      "propIds": [
+        "P02"
+      ],
+      "warnings": []
+    },
+    {
+      "ep": 3,
+      "opening": "林蔚将电子导入记录与纸簿补记栏逐项比较。",
+      "synopsis": "临时接驳的补记栏没有进入新系统，当前漏报因此有了可复核的解释。林蔚发现旧档里也有相同空白，却被记为司机迟报。许钟认可系统断点，不愿交出旧归责页。",
+      "ending": {
+        "mode": "suspense",
+        "event": "林蔚请求查看旧归责页原件，许钟同意次日带来。",
+        "question": {
+          "id": "Q02",
+          "text": "旧归责是否有独立证据支持？",
+          "resolution": "required"
+        }
+      },
+      "stateChange": {
+        "before": "只能确认当下漏报",
+        "after": "发现旧归责也可能建立在缺失记录上"
+      },
+      "sceneIds": [
+        "S01"
+      ],
+      "characterIds": [
+        "C01",
+        "C02"
+      ],
+      "propIds": [
+        "P01",
+        "P02"
+      ],
+      "warnings": []
+    },
+    {
+      "ep": 4,
+      "opening": "许钟带来由自己签名的旧归责页。",
+      "synopsis": "许钟解释当年为了按时结案，把未核对的漏报写成司机责任。他愿意承认，却希望不再通知程安。林蔚说明自述只能作为线索，必须让受影响的人提交留底。许钟同意联系程安。",
+      "ending": {
+        "mode": "open",
+        "event": "许钟留下原页，不再要求林蔚只处理新系统。"
+      },
+      "stateChange": {
+        "before": "许钟只愿修复当前记录",
+        "after": "许钟接受核查自己的旧签名"
+      },
+      "sceneIds": [
+        "S01"
+      ],
+      "characterIds": [
+        "C01",
+        "C02"
+      ],
+      "propIds": [
+        "P01"
+      ],
+      "warnings": []
+    },
+    {
+      "ep": 5,
+      "opening": "程安带来旧回执，要求与原页当面核对。",
+      "synopsis": "旧回执与原始签名互证，司机归责并无事实支持。林蔚写出更正，许钟要求把自己未经核对便签字的责任一并记明。程安确认事实，不接受以道歉代替正式更正。两人将说明共同签署。",
+      "ending": {
+        "mode": "closure",
+        "event": "更正说明签署完成，原件与说明分别编号待交。"
+      },
+      "stateChange": {
+        "before": "旧责任只有许钟的自述",
+        "after": "独立材料支持更正并明确签署责任"
+      },
+      "sceneIds": [
+        "S01"
+      ],
+      "characterIds": [
+        "C01",
+        "C02",
+        "C03"
+      ],
+      "propIds": [
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "warnings": []
+    },
+    {
+      "ep": 6,
+      "opening": "档案接收员要求保留原始归责页而非只收更正版。",
+      "synopsis": "许钟与林蔚把原簿、更正说明和核验材料同时交存。程安确认自己收到更正副本，不答应恢复旧交情。林蔚在交接清单上注明两份材料的关系，许钟接受旧错误不能从档案中抹去。",
+      "ending": {
+        "mode": "open",
+        "event": "程安独自离开，许钟与林蔚完成撤站资料移交。",
+        "question": {
+          "id": "Q03",
+          "text": "程安以后是否愿意恢复与许钟的来往？",
+          "resolution": "optional",
+          "reason": "本故事交付事实更正，不替受影响者承诺原谅。"
+        }
+      },
+      "stateChange": {
+        "before": "希望更正版能代替旧错误",
+        "after": "接受更正与旧错误共同成为可追溯记录"
+      },
+      "sceneIds": [
+        "S03"
+      ],
+      "characterIds": [
+        "C01",
+        "C02",
+        "C03",
+        "C04"
+      ],
+      "propIds": [
+        "P01",
+        "P03"
+      ],
+      "warnings": []
+    }
+  ],
+  "creativeContext": {
+    "selection": {
+      "genre": {
+        "id": "mystery",
+        "version": "1.0.0"
+      },
+      "narrativeStyle": {
+        "id": "restrained",
+        "version": "1.0.0"
+      },
+      "structure": {
+        "id": "serial",
+        "version": "1.0.0"
+      },
+      "pacing": {
+        "id": "gradual",
+        "version": "1.0.0"
+      }
+    },
+    "references": [
+      {
+        "dimension": "genre",
+        "id": "mystery",
+        "version": "1.0.0",
+        "stage": "outline",
+        "sha256": "29eeb227ec0753acc4e5d4c1a88587cf2cc3400f6c3f437dabdc0234f000c8d0"
+      },
+      {
+        "dimension": "narrativeStyle",
+        "id": "restrained",
+        "version": "1.0.0",
+        "stage": "outline",
+        "sha256": "5e9ed2aabc43a84658963eaab784064b12c1291d3150aa4d0d306be48a12e859"
+      },
+      {
+        "dimension": "structure",
+        "id": "serial",
+        "version": "1.0.0",
+        "stage": "outline",
+        "sha256": "9b0e50ce6bf061b772ab85f591fb6a5a544aec566a308a0d9a334fc1fe94151c"
+      },
+      {
+        "dimension": "pacing",
+        "id": "gradual",
+        "version": "1.0.0",
+        "stage": "outline",
+        "sha256": "d3bcac2f195ad841fe3ac76cba8ff3dc918d360139e456e54451fc91b55dec37"
+      }
+    ],
+    "overridePaths": []
+  }
+}

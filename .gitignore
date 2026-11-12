@@ -26,5 +26,12 @@ bin/
 
 .playwright-mcp/
 
+# 可重建报告与当前工作记录，不提交渲染产物
+**/gallery.html
+**/*-report.html
+.work/
+**/*.json.backup-*
+**/*.json.tmp-*
+
 # 历史门失败日志（保留忽略，避免误提交本地产物）
 .gates.jsonl

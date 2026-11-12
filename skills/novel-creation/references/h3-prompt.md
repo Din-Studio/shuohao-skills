@@ -1,5 +1,7 @@
 # H3 提示词指南 · 内化版（挂 MiniMax H3 才读这份）
 
+> 文中提到的门名称（如 `dialogue-verbatim`、`size-phrase`）是调度方完整结构检查里的检查项名称。本文件在编写方 `novel-video-prompt` 与调度方 `novel-creation` 各有一份相同副本，修改时两份一起修改；编写方的本地自查是它自己的 `lint` 命令，调度方的完整检查是 `prompts check`。
+
 **学习来源**：MiniMax-H3 官方提示词指南（I2VA / 多图对齐模式）。方法论**内化成本 skill
 自带文档，不依赖任何外部 skill**——搬过来的是判断，不是链接。
 
@@ -7,7 +9,7 @@
 `MiniMax H3`，或者两边都没写模型（按默认模型算）。挂 seedance 系列就整份跳过、改读
 `seedance2-prompt.md`；挂的是别的模型，两份都不读，照 `creation-prompt.md` 的通用骨架写。
 
-**跟 `creation-prompt.md` 的分工**：那份定骨架（17 道门查的结构），这份讲**骨架里怎么填**
+**跟 `creation-prompt.md` 的分工**：那份定骨架（基础检查查的结构），这份讲**骨架里怎么填**
 才对得上 H3 的口味。骨架一个字不改——身份说明句、`[Shot k]` 逐镜分行、认领台词逐字，
 一样都不许少。
 
@@ -79,11 +81,11 @@ creaking on the gangplank; no music.
 
 ## 五、运镜与动作
 
-- 运镜词表 20 个（`references/schema.md` 的 `camera` 枚举），可加幅度（小幅／大幅）与
+- 运镜词表 20 个（`references/worksheet.md`），可加幅度（小幅／大幅）与
   速度（缓／快），**写成自然英文动作句**：`a slow push in toward the whitened knuckles`。
   词表里那个短语必须原样出现在这一切自己的 `[Shot k]` 行里，`camera-phrase` 门大小写
   不敏感地查
-- 动作遵守 `novel-script` 的**常见动作原则**：模型见过千万次的日常动作放心写（推门、
+- 动作遵守**常见动作原则**：模型见过千万次的日常动作放心写（推门、
   翻书、弯腰拾物），精确物理交互与微表情不要写
 - 人物**此刻的位置状态**要交代清楚（已经在门口 / 站在柜台后 / 已上船）。参考图锁长相
   与材质，文字锁此刻在哪、在做什么——两边冲突时模型听图的
@@ -94,7 +96,7 @@ creaking on the gangplank; no music.
   夹进区间）
 - `resolution` 是 **`768p` / `2K`**，不是 `720p` / `1080p`——填错整批提交失败
 
-两条都在 `references/video-order.md` 里，下单那一步会用到，写提示词时不用管。
+两条都属于下单阶段，由调度方处理，写提示词时不用管。
 
 ## 七、常见病
 

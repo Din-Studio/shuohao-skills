@@ -3,21 +3,12 @@
 // Zero dependencies on purpose: the skill must work in any directory
 // without an npm install. Node 18+ (stdlib only).
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  CLI_NAME,
-  DEFAULT_ASPECT,
-  DEFAULT_CONCURRENCY,
-  DEFAULT_IMAGE_MODEL,
-  DEFAULT_RESOLUTION,
-  DEFAULT_TIMEOUT_MS,
-  cutout,
-  findLingying,
-  preflight,
-  runBatch,
-} from './lib/lingying.mjs';
+import { assertOutlineV3, assetProductionProblems, creativeBackground, check, blocking, mark } from './lib/contracts.mjs';
+export { creativeBackground } from './lib/contracts.mjs';
+import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
 
 /* ------------------------------------------------------------------ */
 /* 画风                                                                 */
@@ -86,7 +77,7 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
   let dir = resolve(fromDir);
   for (let i = 0; i <= depth; i++) {
     const hit = resolve(dir, PRODUCTION_FILE);
-    if (existsSync(hit)) return hit;
+    try { lstatSync(hit); return hit; } catch (error) { if (error.code !== 'ENOENT') throw error; }
     const up = dirname(dir);
     if (up === dir) break; // 到根了
     dir = up;
@@ -112,7 +103,7 @@ export const autopilotOf = (production) => production?.autopilot === true;
 
 /** 开着才打印——关着就是原来的样子，没有新信息。 */
 export const AUTOPILOT_NOTE =
-  '自动驾驶：开——本段流程一口气跑完，不要停下来问用户；替用户做的决定全部写进最后的汇报';
+  '自动驾驶：开启——本段流程一口气跑完，不要停下来问用户；替用户做的决定全部写进最后的汇报';
 
 /* ------------------------------------------------------------------ */
 /* 产物落点                                                            */
@@ -171,19 +162,21 @@ export function slug(name) {
 /* seed — 从 outline.json 确定性预填骨架                                 */
 /* ------------------------------------------------------------------ */
 /*
- * 场景清单、主场景标记、出现集、承载爽点、复用方案在 outline.json 里
+ * 场景清单、主场景标记、出现集、关联剧情节点、复用方案在 outline.json 里
  * 都是现成的——这些不该让模型重新想一遍。seed 把它们搬进骨架，
  * 模型只填设计字段（设计意图 / 锚点 / 光照 / 提示词）。
  */
 
 export function seedFromOutline(outline) {
+  assertOutlineV3(outline);
   const eps = Array.isArray(outline?.episodes) ? outline.episodes : [];
   const beats = Array.isArray(outline?.beats) ? outline.beats : [];
 
   const scenes = (outline?.scenes ?? []).map((s) => {
     const episodes = eps.filter((e) => (e?.sceneIds ?? []).includes(s.id)).map((e) => e.ep);
     const epSet = new Set(episodes);
-    const carried = [...new Set(beats.filter((b) => epSet.has(b.episode)).map((b) => b.type))];
+    // Episode co-occurrence is not proof that a beat takes place in this scene.
+    const carried = [...new Set(beats.filter((b) => epSet.has(b.episode)).map((b) => b.outcome))];
     return {
       id: s.id,
       name: s.name,
@@ -201,9 +194,9 @@ export function seedFromOutline(outline) {
 
   // 道具：大纲从 1.1.0 起带 props（id / name / function / beatIds），有就预填。
   // 搬过来的是改编阶段拍板的事实——哪几件物件承载剧情、各自承载什么、托起哪几个
-  // 爽点、在哪几集出现。留空的是美术层的活：尺度、锚点、状态变体、白底提示词。
+  // 剧情节点、在哪几集出现。留空的是美术层的活：尺度、锚点、状态变体、白底提示词。
   // 大纲没有 props 字段就返回空数组，模型照 prop-pass.md 从原文提取，跟以前一样。
-  const beatType = new Map((outline?.beats ?? []).map((b) => [b?.id, b?.type]));
+  const beatType = new Map((outline?.beats ?? []).map((b) => [b?.id, b?.outcome]));
   const props = (outline?.props ?? []).map((pr) => {
     const episodes = eps.filter((e) => (e?.propIds ?? []).includes(pr.id)).map((e) => e.ep);
     return {
@@ -219,7 +212,7 @@ export function seedFromOutline(outline) {
       carriedBy: [],
       image: { prompt: '', negativePrompt: '', sheet: '', tags: [] },
       // 从 outline 搬来的事实，不用再想
-      usage: { episodes, beats: (pr.beatIds ?? []).map((id) => beatType.get(id)).filter(Boolean) },
+      usage: { episodes, beats: (pr.beatIds ?? []).map((id) => beatType.get(id)), beatIds: [...(pr.beatIds ?? [])] },
     };
   });
 
@@ -257,10 +250,12 @@ export const PROP_SCALES = {
 const HANDS_BAN = /hand|finger/i;
 
 export function gateReport(doc, castNames = null, production = null) {
-  const gates = [];
-  const add = (id, label, ok, detail = '') => gates.push({ id, label, ok, detail });
+  const structural = validateArt(doc, castNames, production, false);
+  const gates = [check('asset-contract', '资产字段、ID 与引用', structural.length ? 'fail' : 'pass', structural.join('；'))];
+  const add = (id, label, passed, detail = '') => gates.push(check(id, label, passed ? 'pass' : 'fail', detail));
   const scenes = Array.isArray(doc?.scenes) ? doc.scenes : [];
   const props = Array.isArray(doc?.props) ? doc.props : [];
+  if ([...scenes, ...props].some(item => !item || ['lighting','states'].some(k => item[k] !== undefined && !Array.isArray(item[k])) || (item.image?.tags !== undefined && !Array.isArray(item.image.tags)))) return gates;
   const bad = {
     anchors: [], lighting: [], people: [], english: [], names: [], variant: [], style: [],
     states: [], scale: [], hands: [], whitebg: [], aspect: [],
@@ -382,7 +377,7 @@ export function gateReport(doc, castNames = null, production = null) {
     'no-names',
     '提示词不含角色名',
     bad.names.length === 0,
-    castNames?.length ? bad.names.join('；') : '未提供 cast.json，本门跳过（视为通过）',
+    castNames !== null ? bad.names.join('；') : '未提供 cast.json，本门跳过',
   );
   add('variants', '变体引用完整（variantOf 存在且带 changes）', bad.variant.length === 0, bad.variant.join('；'));
   add(
@@ -404,6 +399,16 @@ export function gateReport(doc, castNames = null, production = null) {
     assetAspect ? brief(bad.aspect) : SKIP_PROD,
   );
 
+  const upstreamBad = assetProductionProblems(production, 'scene');
+  if (production !== null) {
+    gates.push(check('production-contract', '视觉正文与制作参数完整', upstreamBad.length ? 'fail' : 'pass', upstreamBad.join('；')));
+  }
+  for (const g of gates) {
+    if (g.id === 'no-names' && !castNames) { g.status = 'skipped'; g.reason = 'missing-upstream'; }
+    if (['style-match','sheet-aspect'].includes(g.id) && production === null) { g.status = 'skipped'; g.reason = 'missing-upstream'; }
+    if (g.id === 'style-match' && production !== null && !preset) { g.status = 'fail'; g.detail = '提供的 production 缺少 style.scene 正文，回 novel-setup 填写'; }
+    if (g.id.startsWith('prop-') && !props.length) { g.status = 'skipped'; g.reason = 'not-applicable'; g.detail = '没有道具，不适用'; }
+  }
   return gates;
 }
 
@@ -411,7 +416,7 @@ export function gateReport(doc, castNames = null, production = null) {
 /* validate                                                            */
 /* ------------------------------------------------------------------ */
 
-export function validateArt(doc, castNames = null, production = null) {
+export function validateArt(doc, castNames = null, production = null, includeGates = true) {
   const problems = [];
   const p = (msg) => problems.push(msg);
   if (!doc || typeof doc !== 'object') return ['art.json 不是对象'];
@@ -429,10 +434,19 @@ export function validateArt(doc, castNames = null, production = null) {
     return problems;
   }
 
+  if (doc.props !== undefined && !Array.isArray(doc.props)) return [...problems, 'props 必须是数组'];
+  for (const item of [...scenes, ...(doc.props ?? [])]) {
+    if (!item || typeof item !== 'object') return [...problems, '资产必须是对象'];
+    for (const key of ['anchors','lighting','states','relatedScenes','carriedBy']) {
+      if (item[key] !== undefined && !Array.isArray(item[key])) return [...problems, `${item.id}.${key} 必须是数组`];
+    }
+    if (item.image?.tags !== undefined && !Array.isArray(item.image.tags)) return [...problems, `${item.id}.image.tags 必须是数组`];
+    if (item.usage?.beatIds !== undefined && (!Array.isArray(item.usage.beatIds) || item.usage.beatIds.some(id => typeof id !== 'string' || !/^B\d{2,}$/.test(id)) || new Set(item.usage.beatIds).size !== item.usage.beatIds.length)) p(`${item.id}.usage.beatIds 必须是无重复节点 ID 数组`);
+  }
   // 道具（可选块）：给了就逐件查结构
   for (const pr of doc.props ?? []) {
     const label = pr?.name ?? pr?.id ?? '(无名)';
-    if (!/^P\d{2,}$/.test(pr?.id ?? '')) p(`[${label}] 道具 id 必须是 P01 这种格式`);
+    if (typeof pr?.id !== 'string' || !/^P\d{2,}$/.test(pr.id)) p(`[${label}] 道具 id 必须是 P01 这种格式`);
     if (!thText(pr?.name)) p(`[${pr?.id}] 道具缺 name`);
     if (!thText(pr?.summary)) p(`[${label}] 缺 summary（戏剧功能：这件道具承载什么剧情）`);
     for (const a of pr?.anchors ?? []) {
@@ -470,7 +484,7 @@ export function validateArt(doc, castNames = null, production = null) {
   const seen = new Set();
   for (const s of scenes) {
     const label = s?.name ?? s?.id ?? '(无名)';
-    if (!/^S\d{2,}$/.test(s?.id ?? '')) p(`[${label}] 场景 id 必须是 S01 这种格式`);
+    if (typeof s?.id !== 'string' || !/^S\d{2,}$/.test(s.id)) p(`[${label}] 场景 id 必须是 S01 这种格式`);
     if (seen.has(s?.id)) p(`场景 id ${s.id} 重复`);
     seen.add(s?.id);
     if (!thText(s?.name)) p(`[${s?.id}] 缺 name`);
@@ -502,8 +516,8 @@ export function validateArt(doc, castNames = null, production = null) {
   }
 
   // 质量门失败并入违规列表
-  for (const g of gateReport(doc, castNames, production)) {
-    if (!g.ok) p(`质量门未过：${g.label}${g.detail ? `（${g.detail}）` : ''}`);
+  for (const g of includeGates ? gateReport(doc, castNames, production) : []) {
+    if (g.id !== 'asset-contract' && blocking(g)) p(`质量门未过：${g.label}${g.detail ? `（${g.detail}）` : ''}`);
   }
 
   return problems;
@@ -532,6 +546,8 @@ export function castNamesOf(cast) {
  * 这里做展示层翻译——gateReport 的逻辑与中文诊断文案一行不动（CLI 仍是中文）。
  * 动态阈值由门自己算，映射里只写固定语义；未命中的 id 回落到原标签。 */
 const GATE_LABELS_EN = {
+  'asset-contract': 'Asset fields, IDs and references',
+  'production-contract': 'Complete visual text and image production parameters',
   'anchors': 'Consistency anchors, {0}–{1} per asset',
   'lighting': 'At least one lighting state, written out as a prompt',
   'no-people': 'No people in plates: negatives ban people (scenes and props)',
@@ -546,13 +562,14 @@ const GATE_LABELS_EN = {
   'sheet-aspect': 'Sheet layout aspect matches the production parameters',
 };
 const GATE_SKIPS_EN = {
-    '未提供 outline.json，本门跳过（视为通过）': 'outline.json not provided — gate skipped (treated as passing)',
-    '未提供 art.json，本门跳过（视为通过）': 'art.json not provided — gate skipped (treated as passing)',
-    '未提供 script.json，本门跳过（视为通过）': 'script.json not provided — gate skipped (treated as passing)',
-    '未提供 outline/cast，本门跳过（视为通过）': 'outline/cast not provided — gate skipped (treated as passing)',
-    '未提供 cast.json，本门跳过（视为通过）': 'cast.json not provided — gate skipped (treated as passing)',
+    '没有道具，不适用': 'No props — not applicable',
+    '未提供 outline.json，本门跳过': 'outline.json not provided — gate skipped',
+    '未提供 art.json，本门跳过': 'art.json not provided — gate skipped',
+    '未提供 script.json，本门跳过': 'script.json not provided — gate skipped',
+    '未提供 outline/cast，本门跳过': 'outline/cast not provided — gate skipped',
+    '未提供 cast.json，本门跳过': 'cast.json not provided — gate skipped',
     [SKIP_PROD]: `no ${PRODUCTION_FILE} found (up to ${PRODUCTION_DEPTH} levels up) — gate skipped; run /novel-setup to open it`,
-    [SKIP_STYLE]: `style.scene is empty in ${PRODUCTION_FILE} — gate skipped; go back to /novel-setup and fill it in`,
+    [SKIP_STYLE]: `style.scene is empty in ${PRODUCTION_FILE} — invalid upstream; fill it in before continuing`,
 };
 /** 报告里的门文案：英文界面取映射，未命中或中文界面回落原文。 */
 const gateText = (g, lang) => {
@@ -598,7 +615,8 @@ const I18N = {
     anchorsHint: '每次生成都必须出现的特征——认场景靠它，QC 也靠它',
     lightingTitle: '光照与时段',
     usageTitle: '出现集',
-    beatsTitle: '承载爽点',
+    beatsTitle: '关联关键事件',
+    sceneBeatsTitle: '出现集中的关键事件（非场景落点认领）',
     variantTitle: '变体来源',
     variantChanges: '改动',
     promptsTitle: '出图提示词包',
@@ -607,7 +625,7 @@ const I18N = {
     promptSheet: '设定图 EN',
     copy: '复制', copied: '已复制', copyFailed: '复制失败', copyJson: '复制整个场景 JSON',
     noImage: '尚未出图',
-    noImageHint: '用下方提示词生成',
+    noImageHint: '使用下方提示词生成',
     zoomImage: '放大查看',
     closeImage: '关闭',
     sheetCaption: '主视角＋底部与右侧细节条',
@@ -650,7 +668,8 @@ const I18N = {
     anchorsHint: 'Features that must appear in every generation — viewers recognize the place by them, and QC checks against them',
     lightingTitle: 'Lighting states',
     usageTitle: 'Episodes',
-    beatsTitle: 'Beats',
+    beatsTitle: 'Linked key events',
+    sceneBeatsTitle: 'Key events in used episodes (not scene placement claims)',
     variantTitle: 'Variant of',
     variantChanges: 'Changes',
     promptsTitle: 'Prompt pack',
@@ -690,10 +709,12 @@ const esc = (s) =>
 const mdRow = (cells) => `| ${cells.map((c) => String(c ?? '').replace(/\|/g, '\\|')).join(' | ')} |`;
 const mdHead = (cols) => [mdRow(cols), mdRow(cols.map(() => '---'))].join('\n');
 
-export function renderMarkdown(doc, lang = null, production = null) {
+export function renderMarkdown(doc, lang = null, production = null, castNames = null) {
   const t = tOf(langOf(doc, lang, production));
   const props = doc.props ?? [];
   const out = [`# ${t.docTitle(doc.source)}`, '', `> ${t.styleLine(production)}`, ''];
+  const background = creativeBackground(production);
+  if (background) out.push(`> ${t.langCode === 'en' ? 'Creative brief' : '创作要求'}: ${JSON.stringify(background)}`, '');
 
   out.push(`## ${t.secList}`, '', mdHead(t.listCols));
   for (const s of doc.scenes) {
@@ -734,6 +755,7 @@ export function renderMarkdown(doc, lang = null, production = null) {
     out.push('');
     for (const pr of props) {
       out.push('---', '', `## ${pr.id} ${pr.name}`, '', pr.summary, '');
+      if (pr.usage?.beatIds?.length) out.push(`${t.beatsTitle}: ${pr.usage.beatIds.join(' · ')}`, '');
       if (pr.sheetImage) out.push(`![${pr.name} ${t.propSheetCaption}](${pr.sheetImage})`, '');
       out.push(`### ${t.anchorsTitle}`, '');
       pr.anchors.forEach((a, i) => out.push(`${i + 1}. **${a.name}** — ${a.desc}`));
@@ -747,6 +769,12 @@ export function renderMarkdown(doc, lang = null, production = null) {
     }
   }
 
+  out.push('', `## ${t.secGates}`, '');
+  for (const g of gateReport(doc, castNames, production)) {
+    const shown = gateText(g, t.langCode);
+    out.push(`- ${mark(g)} ${shown.label} [${g.status}; ${g.category}; ${g.level}]${g.reason ? ` (${g.reason})` : ''}${shown.detail ? ` — ${shown.detail}` : ''}`);
+  }
+  out.push('', t.langCode === 'en' ? 'Content review: not performed.' : '内容评审：未执行。');
   return out.join('\n');
 }
 
@@ -762,11 +790,12 @@ function embedDoc(doc) {
   return JSON.stringify(doc).replace(/</g, '\\u003c');
 }
 
-export function renderHtml(doc, lang = null, production = null) {
+export function renderHtml(doc, lang = null, production = null, castNames = null, originalInput = doc) {
   const code = langOf(doc, lang, production);
   const t = tOf(code);
-  const gates = gateReport(doc, null, production);
-  const failed = gates.filter((g) => !g.ok);
+  const background = creativeBackground(production);
+  const gates = gateReport(doc, castNames, production);
+  const failed = gates.filter(blocking);
   const scenes = doc.scenes;
   const props = doc.props ?? [];
   const primaryN = scenes.filter((s) => s.primary).length;
@@ -817,7 +846,7 @@ export function renderHtml(doc, lang = null, production = null) {
     <span class="sc-id">${esc(pr.id)}</span>
     <h3>${esc(pr.name)}</h3>
     <span class="badge">${esc(pr.scale)}</span>
-    ${pr.usage?.episodes?.length ? `<span class="sc-use">${esc(t.usageTitle)} ${esc(pr.usage.episodes.join(t.listSep))}${pr.usage.beats?.length ? `${esc(t.pairSep)}${esc(t.beatsTitle)} ${esc(pr.usage.beats.join(' · '))}` : ''}</span>` : ''}
+    ${pr.usage?.episodes?.length ? `<span class="sc-use">${esc(t.usageTitle)} ${esc(pr.usage.episodes.join(t.listSep))}${pr.usage.beats?.length ? `${esc(t.pairSep)}${esc(t.beatsTitle)} ${esc(pr.usage.beats.join(' · '))}${pr.usage.beatIds?.length ? ` (${esc(pr.usage.beatIds.join(' · '))})` : ''}` : ''}</span>` : ''}
   </header>
   <p class="sc-sum">${esc(pr.summary)}</p>
   ${plate}
@@ -855,7 +884,7 @@ export function renderHtml(doc, lang = null, production = null) {
     <span class="sc-id">${esc(s.id)}</span>
     <h3>${esc(s.name)}</h3>
     <span class="badge${s.primary ? '' : ' once'}">${esc(s.variantOf ? t.variantScene : s.primary ? t.primaryScene : t.onceScene)}</span>
-    ${s.usage?.episodes?.length ? `<span class="sc-use">${esc(t.usageTitle)} ${esc(s.usage.episodes.join(t.listSep))}${s.usage.beats?.length ? `${esc(t.pairSep)}${esc(t.beatsTitle)} ${esc(s.usage.beats.join(' · '))}` : ''}</span>` : ''}
+    ${s.usage?.episodes?.length ? `<span class="sc-use">${esc(t.usageTitle)} ${esc(s.usage.episodes.join(t.listSep))}${s.usage.beats?.length ? `${esc(t.pairSep)}${esc(t.sceneBeatsTitle)} ${esc(s.usage.beats.join(' · '))}` : ''}</span>` : ''}
   </header>
   <p class="sc-sum">${esc(s.summary)}</p>
   ${plate}
@@ -881,9 +910,9 @@ export function renderHtml(doc, lang = null, production = null) {
   const gateList = `<ul class="gate">
   ${gates
     .map(
-      (g) => `<li class="${g.ok ? 'ok' : 'bad'}"><span class="m">${g.ok ? '✓' : '✗'}</span><span>${esc(gateText(g, t.langCode).label)}${
+      (g) => `<li class="${g.status}"><span class="m">${mark(g)}</span><span>${esc(gateText(g, t.langCode).label)}${
         // 失败详情要显示；跳过语也要显示——「跳过」不写出来就成了静默通过
-        g.detail && (!g.ok || g.id === 'no-names' || g.detail === SKIP_PROD)
+        g.detail && (g.status !== 'pass' || g.id === 'no-names' || g.detail === SKIP_PROD)
           ? `<small>${esc(gateText(g, t.langCode).detail)}</small>`
           : ''
       }</span></li>`,
@@ -1022,9 +1051,9 @@ td:first-child{font-family:var(--mono);font-size:12px;color:var(--ink-2);white-s
 @media(max-width:900px){.gate{grid-template-columns:1fr}}
 .gate li{display:flex;gap:8px;padding:5px 0;font-size:12.5px;line-height:1.55}
 .gate .m{flex:none;font-weight:700}
-.gate li.ok .m{color:var(--ok)}
-.gate li.bad .m{color:var(--seal)}
-.gate li.bad{background:var(--seal-soft);border-radius:2px;padding-left:6px}
+.gate li.pass .m{color:var(--ok)}
+.gate li.fail .m{color:var(--seal)}
+.gate li.fail{background:var(--seal-soft);border-radius:2px;padding-left:6px}
 .gate small{display:block;color:var(--ink-3)}
 .gsum{margin:10px 0 0;font-size:12px;color:var(--ink-2)}
 .gsum b{color:var(--seal)}
@@ -1044,9 +1073,9 @@ td:first-child{font-family:var(--mono);font-size:12px;color:var(--ink-2);white-s
 
 <header class="hd">
   <h1>${esc(doc.source)}</h1>
-  <span class="sub">${esc(t.kicker)} · ${esc(t.styleLine(production))}</span>
+  <span class="sub">${background ? esc(JSON.stringify(background)) + " · " : ""}${esc(t.kicker)} · ${esc(t.styleLine(production))}</span>
   <span class="right">
-    <span class="gatepill ${failed.length ? 'fail' : 'pass'}">${failed.length ? '✗' : '✓'} ${esc(t.gatePill(gates.length - failed.length, gates.length))}</span>
+    <span class="gatepill ${failed.length ? 'fail' : 'pass'}">${failed.length ? '✗' : '✓'} ${esc(t.gatePill(gates.filter(g => g.status === 'pass').length, gates.length))}</span>
     <button class="expo" data-name="${esc(slug(doc.source))}-art.json">${esc(t.exportJson)}</button>
   </span>
 </header>
@@ -1086,7 +1115,7 @@ ${propCards}
 <section class="top-sec" id="sec-gates">
   <div class="sec-h"><span class="no">${props.length ? '05' : '03'}</span><h2>${esc(t.secGates)}</h2></div>
   ${gateList}
-  <p class="gsum">${failed.length ? `<b>${esc(t.gatesFail(failed.length))}</b>` : esc(t.gatesPass)}</p>
+  <p class="gsum">${failed.length ? `<b>${esc(t.gatesFail(failed.length))}</b>` : esc(code === 'en' ? 'No blocking failures.' : '无阻断失败。')} ${esc(code === 'en' ? `Skipped: ${gates.filter(g => g.status === 'skipped').length}. Content review: not performed.` : `跳过 ${gates.filter(g => g.status === 'skipped').length} 项；内容评审未执行。`)}</p>
 </section>
 
 <p class="foot">${esc(t.colophon)}</p>
@@ -1097,7 +1126,7 @@ ${propCards}
   <img alt="">
 </div>
 
-<script type="application/json" id="art-data">${embedDoc(doc)}</script>
+<script type="application/json" id="art-data">${embedDoc(originalInput)}</script>
 <script>
 const L = ${JSON.stringify({ copied: t.copied, failed: t.copyFailed })};
 
@@ -1161,12 +1190,12 @@ export const sheetFile = (name) => `images/${slug(name)}-sheet.png`;
 export const cutoutFile = (name) => `images/${slug(name)}-sheet-cutout.png`;
 
 export function imageJobsFrom(doc, production = null) {
-  const model = production?.image?.model ?? DEFAULT_IMAGE_MODEL;
+  const model = production?.image?.model ?? null;
   const inputBase = {
-    aspect_ratio: production?.image?.asset?.aspectRatio ?? DEFAULT_ASPECT,
-    resolution: production?.image?.asset?.resolution ?? DEFAULT_RESOLUTION,
+    aspect_ratio: production?.image?.asset?.aspectRatio ?? null,
+    resolution: production?.image?.asset?.resolution ?? null,
   };
-  const problems = [];
+  const problems = production == null ? ['出图需要显式 production 视觉正文与制作参数，不使用隐式默认值'] : validateArt(doc, null, production);
   const jobs = [];
   const scenes = Array.isArray(doc?.scenes) ? doc.scenes : [];
   const props = Array.isArray(doc?.props) ? doc.props : [];
@@ -1192,7 +1221,7 @@ export function imageJobsFrom(doc, production = null) {
   for (const s of scenes) {
     const job = take(s, 'scene');
     if (!job) continue;
-    // 变体拿母场景的成图当参考图——「先母后子」的次序由 runBatch 的波次保证
+    // 变体拿母场景的成图当参考图；交接计划按依赖排序，执行方先完成母场景。
     if (thText(s?.variantOf)) {
       if (sceneIds.has(s.variantOf)) job.refFrom = s.variantOf;
       else problems.push(`场景 ${s.id} 的 variantOf 指向不存在的 ${s.variantOf}`);
@@ -1220,27 +1249,23 @@ export function imageJobsFrom(doc, production = null) {
 
 const USAGE = `novel-art.mjs — novel-art skill 的确定性工具（场景 + 道具）
 
-  seed <outline.json>                    从大纲预填 art.json 骨架（打印到 stdout，道具留空待提取）
+  seed <outline.json>                    从 outline v3 预填 art.json（打印到 stdout，设计字段留空）
   validate <art.json> [--cast c.json]    校验；有违规逐条打印并 exit 1
                                          给了 cast.json 才查「提示词不含角色名」
   checkup <art.json> [--cast c.json]     只打印质量门 ✓/✗，有未过项 exit 1
-  images <art.json>                      出设定图：提交 / 轮询 / 落盘全在代码里
-         [--only S01,P01]                只出这几个（默认全出）
-         [--dry-run]                     只打印将要提交的参数，不提交
-         [--force]                       已有产物也重出（默认跳过）
-         [--cutout]                      道具白底图再走一次抠图，另存 -cutout.png
-         [--timeout <秒>]                单张总超时，默认 ${DEFAULT_TIMEOUT_MS / 1000} 秒
-         [--concurrency <n>]             同时在跑的任务数
-  render <art.json> [--html|--md] [--lang zh|en]
+  images <art.json>          导出离线交接计划，交给 ly-image 生成
+         [--only <ID列表>]                仅选择指定任务（图片自动补齐参考依赖）
+         [--dry-run]                      只预览计划；本命令始终不上传、不提交
+         [--out <plan.json>]              另存计划（不覆盖已有文件）
+  render <art.json> [--html|--md] [--lang zh|en] [--cast cast.json]
                                          渲染报告到 stdout（默认 --md）
                                          界面语言优先级：--lang > art.json 顶层 lang 字段 > 中文
   style [--from <目录>]                   打印这部剧的画风（场景那一块）——写设定卡前先跑它
                                          画风没有内置预设，正文来自工作目录根的 production.json
   slug <name>                            场景名转安全文件名
 
-render 会自动去 images/<slug>-sheet.png 找图，找到就嵌进报告——**先 images 再 render**。
-images 走 ${CLI_NAME} CLI，没装就整步跳过只交提示词；出图参数取自 production.json，
-提示词取自 art.json 的 image.sheet 与 image.negativePrompt。`;
+render 会自动去 images/<slug>-sheet.png 找图，找到就嵌进报告。
+images 只导出计划，不执行生成。使用 ly-image 完成并核验图片后，放到计划 output 路径再 render。`;
 
 function readJson(path) {
   return JSON.parse(readFileSync(resolve(path), 'utf8'));
@@ -1257,9 +1282,16 @@ function flag(rest, name, fallback = null) {
  * --no-production 是给老项目临时绕过用的，用了会明说。
  */
 function loadProduction(rest, fromDir) {
+  if (rest.includes('--no-production') && rest.includes('--production')) throw new Error('--production 与 --no-production 不能同时提供');
   if (rest.includes('--no-production')) return { doc: null, path: null, off: true };
   const path = flag(rest, '--production') ?? findProduction(fromDir);
-  return { doc: path ? readJson(path) : null, path, off: false };
+  const doc = path ? readJson(path) : null;
+  if (path) {
+    if (doc === null) throw new Error('production 不能是 null');
+    const bad = assetProductionProblems(doc, 'scene');
+    if (bad.length) throw new Error(bad.join('；'));
+  }
+  return { doc, path, off: false };
 }
 
 /** 找到就报一声，找不到也报一声——静默是最坏的那种。 */
@@ -1268,10 +1300,28 @@ function announceProduction(p, docPath = null) {
   if (p.off) console.error(`⚠️ --no-production：生产参数的 ${which}跳过`);
   else if (p.path) {
     console.error(`↳ 生产参数：${p.path}`);
+    const background = creativeBackground(p.doc);
+    if (background) console.error(`↳ 创作要求：${JSON.stringify(background)}；内容评审未执行`);
     if (autopilotOf(p.doc)) console.error(`↳ ${AUTOPILOT_NOTE}`);
     const note = stageDirNote(docPath, p.path);
     if (note) console.error(`⚠️ ${note}`);
   } else console.error(`⚠️ 向上 ${PRODUCTION_DEPTH} 层没找到 ${PRODUCTION_FILE}，${which}跳过——跑 /novel-setup 生成一份可以打开它`);
+}
+
+// validate/checkup/render share the same supplied-upstream boundary.
+function loadCastNames(rest) {
+  const castPath = flag(rest, '--cast');
+  if (!castPath) {
+    if (rest.includes('--cast')) throw new Error('--cast 必须提供文件路径');
+    console.error('⚠️ 没给 --cast，跳过「提示词不含角色名」检查');
+    return null;
+  }
+  const cast = readJson(castPath);
+  if (!cast || !Array.isArray(cast.characters) || cast.characters.some(c =>
+    !c || typeof c.name !== 'string' || !c.name.trim() ||
+    (c.aliases !== undefined && (!Array.isArray(c.aliases) || c.aliases.some(a => typeof a !== 'string' || !a.trim())))
+  )) throw new Error('提供的 cast 上游结构损坏');
+  return castNamesOf(cast);
 }
 
 async function main(argv) {
@@ -1293,17 +1343,15 @@ async function main(argv) {
     const [path] = rest;
     if (!path) throw new Error(`用法：${cmd} <art.json> [--cast cast.json]`);
     const doc = readJson(path);
-    const castPath = flag(rest, '--cast');
-    const names = castPath ? castNamesOf(readJson(castPath)) : null;
-    if (!castPath) console.error('⚠️ 没给 --cast，跳过「提示词不含角色名」检查');
+    const names = loadCastNames(rest);
     const prod = loadProduction(rest, resolve(path, '..'));
     announceProduction(prod, path);
 
     if (cmd === 'checkup') {
       const gates = gateReport(doc, names, prod.doc);
-      for (const g of gates) console.log(`${g.ok ? '✓' : '✗'} ${g.label}${!g.ok && g.detail ? ` — ${g.detail}` : ''}`);
-      const failedN = gates.filter((g) => !g.ok).length;
-      console.log(failedN ? `\n✗ ${failedN} 项未过` : '\n✓ 全部通过');
+      for (const g of gates) console.log(`${mark(g)} ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
+      const failedN = gates.filter(blocking).length;
+      console.log(`\n阻断失败 ${failedN}；通过 ${gates.filter(g => g.status === 'pass').length}；跳过 ${gates.filter(g => g.status === 'skipped').length}；内容未评审`);
       if (failedN) process.exit(1);
       return;
     }
@@ -1314,13 +1362,14 @@ async function main(argv) {
       for (const x of problems) console.error('  ' + x);
       process.exit(1);
     }
-    console.log(`✓ ${doc.scenes.length} 个场景${(doc.props ?? []).length ? ` + ${doc.props.length} 件道具` : ''}全部通过校验（画风 ${prod.doc ? styleLabelOf(prod.doc) : '未挂载'}）`);
+    console.log(`✓ ${doc.scenes.length} 个场景${(doc.props ?? []).length ? ` + ${doc.props.length} 件道具` : ''}无阻断失败（跳过 ${gateReport(doc, names, prod.doc).filter(g => g.status === 'skipped').length} 项，内容未评审；画风 ${prod.doc ? styleLabelOf(prod.doc) : '未挂载'}）`);
     return;
   }
 
   if (cmd === 'images') {
+    checkPlanFlags(rest);
     const [path] = rest;
-    if (!path) throw new Error('用法：images <art.json> [--only ids] [--dry-run] [--force] [--cutout] [--timeout 秒] [--concurrency n]');
+    if (!path) throw new Error('用法：images <art.json> [--only ids] [--dry-run] [--out plan.json]');
     const doc = readJson(path);
     const outDir = resolve(path, '..');
     const prod = loadProduction(rest, outDir);
@@ -1337,74 +1386,19 @@ async function main(argv) {
     if (!prod.doc) console.error(`⚠️ 没有生产参数，按 ${model} + ${inputBase.resolution} + ${inputBase.aspect_ratio} 出——汇报里要说清`);
 
     const only = flag(rest, '--only');
-    const picked = only
-      ? (() => {
-          const want = new Set(only.split(',').map((s) => s.trim()).filter(Boolean));
-          const hit = jobs.filter((j) => want.has(j.key));
-          const miss = [...want].filter((k) => !jobs.some((j) => j.key === k));
-          if (miss.length) throw new Error(`--only 里这些 id 不在 art.json 里：${miss.join('、')}`);
-          // 变体的母场景没在选中范围里也得跟着出，否则参考图挂不上
-          const need = new Set(hit.map((j) => j.key));
-          for (const j of hit) if (j.refFrom && !need.has(j.refFrom)) need.add(j.refFrom);
-          return jobs.filter((j) => need.has(j.key));
-        })()
-      : jobs;
 
-    const dryRun = rest.includes('--dry-run');
-    const wantCutout = rest.includes('--cutout');
-    const needUpload = wantCutout || picked.some((j) => j.refFrom);
-    const timeoutMs = Number(flag(rest, '--timeout', DEFAULT_TIMEOUT_MS / 1000)) * 1000;
-    const concurrency = Number(flag(rest, '--concurrency', DEFAULT_CONCURRENCY));
-
-    let bin = null;
-    if (!dryRun) {
-      bin = findLingying();
-      const pre = preflight({ bin, needUpload });
-      if (!pre.ok) {
-        // 没装 CLI 是「整步跳过」不是失败——提示词照常交付，其余产出不受影响
-        console.error(`⚠️ 出图跳过：\n${pre.problems.map((x) => '  ' + x).join('\n')}`);
-        console.log(JSON.stringify({ skipped: true, reason: pre.problems }, null, 2));
-        return;
-      }
-      console.error(`↳ ${CLI_NAME}：${bin}`);
-    }
-
-    const { results, summary } = await runBatch(picked, {
-      bin, model, inputBase, outDir, ledgerDir: resolve(outDir, 'images'),
-      timeoutMs, concurrency,
-      force: rest.includes('--force'),
-      dryRun,
-      log: (m) => console.error(m),
-    });
-
-    let cutouts = [];
-    if (wantCutout && !dryRun) {
-      const files = picked
-        .filter((j) => j.kind === 'prop')
-        .map((j) => ({ key: j.key, name: j.name, file: j.file, cutoutFile: j.cutoutFile }));
-      cutouts = await cutout(files, { bin, outDir, timeoutMs, concurrency, force: rest.includes('--force'), log: (m) => console.error(m) });
-    }
-
-    for (const r of results) {
-      if (r.status === 'ok' || r.status === 'skipped' || r.status === 'dry-run') continue;
-      console.error(`✗ ${r.name}（${r.key}）${r.status} — ${r.detail ?? ''}`);
-    }
-    // stdout 只有这一行 JSON：agent 直接拿去汇报，不用自己数
-    console.log(JSON.stringify({ model, inputBase, summary, results, ...(cutouts.length ? { cutouts } : {}) }, null, 2));
-
-    const bad = summary.failed + summary.timeout;
-    if (bad) {
-      console.error(`\n✗ ${bad} 张没出成（成功 ${summary.ok}，跳过 ${summary.skipped}）——重跑本命令会跳过已有产物、接着轮询超时的任务`);
-      process.exit(1);
-    }
-    if (!dryRun) console.error(`\n✓ 出图完成：新出 ${summary.ok} 张，跳过 ${summary.skipped} 张`);
+    const plan = mediaPlan(jobs, { kind: 'image', model: model, inputBase, outDir, only });
+    printPlan(plan, flag(rest, '--out'));
+    console.error('✓ 交接计划已准备；未提交、未生成。请继续使用 ' + plan.skill + '。');
     return;
   }
 
   if (cmd === 'render') {
     const [path] = rest;
-    if (!path) throw new Error('用法：render <art.json> [--html|--md] [--lang zh|en]');
+    if (!path) throw new Error('用法：render <art.json> [--html|--md] [--lang zh|en] [--cast cast.json]');
     const doc = readJson(path);
+    const originalInput = structuredClone(doc);
+    const names = loadCastNames(rest);
     const lang = flag(rest, '--lang');
     const prod = loadProduction(rest, resolve(path, '..'));
     // 图存在才挂上去；没有就渲染成占位，不影响其余内容
@@ -1413,7 +1407,7 @@ async function main(argv) {
       const rel = `images/${slug(item.name)}-sheet.png`;
       if (existsSync(resolve(outDir, rel))) item.sheetImage = rel;
     }
-    process.stdout.write((rest.includes('--html') ? renderHtml(doc, lang, prod.doc) : renderMarkdown(doc, lang, prod.doc)) + '\n');
+    process.stdout.write((rest.includes('--html') ? renderHtml(doc, lang, prod.doc, names, originalInput) : renderMarkdown(doc, lang, prod.doc, names)) + '\n');
     return;
   }
 

@@ -2,6 +2,12 @@
 
 # novel-setup
 
+## v3 创作契约与迁移
+
+production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` 收集可选的自然语言创作要求。提供时必须非空，不解析为枚举、规则或模型参数。show 展示要求，resolve 原样返回 creativeBrief；不要求选择策略。
+
+检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-brief.md) 和 [迁移说明](references/migration.md)。
+
 给 AI 短剧统一生产参数：资产图模型、分辨率与比例，视频模型、画幅与档位，以及画风、语言和自动驾驶。参数写入工作目录根的 `production.json`，五个创作阶段分别读取。
 
 **资产图与视频画幅独立**。角色、场景和道具设定图是横构图或方形的参考表；成片可以是竖屏。视频创作直接挂载已有设定图，不生成中间关键帧。
@@ -28,10 +34,11 @@ node scripts/novel-setup.mjs show <工作目录>/production.json
 
 ## 参数与质量门
 
-完整结构见 [references/schema.md](references/schema.md)。**8 道门全部由代码检查**：
+完整结构见 [references/schema.md](references/schema.md)。**9 道检查（含 v3 契约）全部由代码执行**：
 
-| 门 | 内容 |
+| 检查项 | 内容 |
 | --- | --- |
+| document-contract | schemaVersion=3、可选非空 creativeBrief、拒绝废弃配置 |
 | fields | 字段齐全、语言枚举合法、自动驾驶是布尔值 |
 | aspect-format | 资产图与视频比例均为固定 `W:H`，不接受 `adaptive` |
 | asset-landscape | 资产图横构图或方形 |
@@ -41,7 +48,7 @@ node scripts/novel-setup.mjs show <工作目录>/production.json
 | style-blocks | 画风名称及角色、环境正文完整 |
 | style-coherent | 正反向要求不矛盾 |
 
-模型能力表每条带 `lingying model get` 取数命令与 UUID。表外模型明确提示跳过能力检查，不冒充已验证。分辨率与比例直接使用网关枚举值，不折算像素。
+模型能力表保留历史采集来源与 UUID，只做离线检查。表外模型明确跳过能力检查。生成前通过已安装 ly-image / ly-video 的 models --model 查询实时 schema，不把快照当成当前能力。
 
 **视频画幅不限制资产图模型**：`nanobanana2` 不收 `4:3` 资产图，但仍可搭配支持 `4:3` 的视频模型。`image-2` 的 `4K` 资产图只收 `16:9` / `9:16`。
 
@@ -80,6 +87,8 @@ node scripts/novel-setup.mjs duration 12.5 --model "MiniMax H3"
 
 ```bash
 node scripts/selftest.mjs
+node scripts/migration-selftest.mjs
+node scripts/upstream-selftest.mjs
 ```
 
 自测不调用模型、不访问网络、不花额度。旧配置中的 `image.frame` 不再读取，新配置不再生成该字段。`style.phrase` 保留供视频提示词指南使用。

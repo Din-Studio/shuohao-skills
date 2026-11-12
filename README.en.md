@@ -17,16 +17,26 @@ Here is the whole pipeline — **the production parameters lock the aspect and t
 
 | Skill | What it does |
 | --- | --- |
-| [**novel-setup**](skills/novel-setup/README.en.md) | Locks asset-image and video models, resolution tiers and independent aspect ratios, plus art style, languages and autopilot. Writes `production.json` at the work-directory root for the five creative skills. All 8 quality gates are script-checked |
-| [**novel-outline**](skills/novel-outline/README.en.md) | Adapts a novel into a five-piece short-drama outline: adaptation notes, cast, beats, per-episode synopses, asset list (including a narrative-prop table). All 14 quality gates are script-checked; includes a checkup mode for existing outlines |
+| [**novel-setup**](skills/novel-setup/README.en.md) | Locks asset-image and video models, resolution tiers and independent aspect ratios, plus art style, languages and autopilot. Writes `production.json` at the work-directory root for the five creative skills. Optional creative requirements are plain language and independent of aspect ratio |
+| [**novel-outline**](skills/novel-outline/README.en.md) | Defines the audience promise, stable story beats, episode endings, optional arcs and assets. A local guide supports different creative goals without universal payoff or ending requirements |
 | [**novel-characters**](skills/novel-characters/README.en.md) | Turns the cast the outline settled on into a character bible: profiles, design prompts, voice prompts, model sheets. Seeds the roster from outline.json; report language is configurable and the art style is copied whole from `production.json` |
-| [**novel-art**](skills/novel-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; all 12 quality gates script-checked |
-| [**novel-script**](skills/novel-script/README.en.md) | Screenwriting for AI short drama: scenes + beat flow (action beats alternating with dialogue lines), per-episode duration deterministically estimated from reading speed, a gated cold-open hook in the first 3 beats, a per-character line book with voice prompts that feeds straight into TTS. All 10 quality gates script-checked |
-| [**novel-creation**](skills/novel-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` submits, polls and downloads video jobs. All 16 quality gates are script-checked |
+| [**novel-art**](skills/novel-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; base contracts and production parameters are checked |
+| [**novel-script**](skills/novel-script/README.en.md) | Writes scenes and beat flow, claims outline beats by stable ID, locates openings and endings, and reconciles upstream target duration. Opening landings are optional, ending coordinates are computed, and estimated time is not measured performance |
+| [**novel-creation**](skills/novel-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` exports an offline plan; the separately installed ly-video skill generates and recovers tasks. Shot expression is reviewed against the guide; model limits remain deterministic checks |
+| [**novel-video-prompt**](skills/novel-video-prompt/README.en.md) | The prompt writer: splits an episode into segments and cuts, writes each segment's prompt into a worksheet (`<segment>/prompt.md`) and submits it for review; revises and resubmits when changes are requested. Invoked as a subagent by novel-creation, or used on its own |
+| [**novel-video-prompt-review**](skills/novel-video-prompt-review/README.en.md) | The prompt reviewer: independently checks worksheets against the script, assets, project brief and model conventions, records comments in the same worksheet and registers `approved`, `changes_requested` or `blocked`. It never rewrites the prompt |
 
-**Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for a fully English report (data content stays as authored). The UI language can also be settled once in `production.json`.
+**Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for English interface labels (story content and raw diagnostics retain their original language). The UI language can also be settled once in `production.json`.
 
 **To run the whole thing without interruptions**, switch on autopilot in `production.json` (`novel-setup init --autopilot`): reading `"autopilot": true`, each of the five creative skills runs its own stage end to end — no questions, no waiting for sign-off, deciding for itself and listing every decision in its final report. **It transfers approval, it does not remove checkpoints**: gates stay gates, money is still costed first, and loss limits still apply. Off by default.
+
+## Creative guides and data versions
+
+Outline, script and creation each carry a self-contained `references/创作指南.md`. Store optional project requirements as natural-language `production.json.creativeBrief`. There are no four-dimensional profile selections, guide versions, source hashes or policy-application commands. Visual prose remains in `production.json.style`; framing does not dictate pacing.
+
+JSON stores story content and necessary handoff relationships. Adaptation notes, question tracking, arcs and beat categories are optional where appropriate. Stable beat claims, asset references, explicit promises and model limits remain checked. Duration estimates are advisory, not measured performance.
+
+**Breaking data change:** production, outline, script and creation require `schemaVersion: 3`. Back up old projects, preview `migrate-v3`, review semantic merges, and write a new file following each skill's migration guide. Changing only the version number is not a migration. Guide edits do not invalidate existing artifacts. Structural checks and content review remain separate; missing upstream data prevents claims of joint verification.
 
 ## One page for the whole pipeline
 
@@ -36,7 +46,7 @@ The five stage reports can be merged into a single page with a left-hand nav —
 node scripts/report.mjs --from <demo-dir> --out report.html
 ```
 
-`--from` discovers the five json files using the [working-directory layout](#working-directory-layout); you can also point at each one directly (`--outline` `--cast` `--art` `--script` `--creation`). Ran only the character pass? You get one pane, no error.
+`--from` discovers the five json files using the [working-directory layout](#working-directory-layout); you can also point at each one directly (`--outline` `--cast` `--art` `--script` `--creation`). Ran only the character pass? You get one pane. Ambiguous automatic discovery requires an explicit file path. Failed renderers are named in the report and cause a nonzero exit code.
 
 It is an **assembler, not a separate skill**: it imports no skill code, it shells out to each skill's own `render --html` and stitches the results. The five creative skills provide their own renderers, still run standalone, and are still copyable on their own — and when a skill changes its rendering, this picks it up for free.
 
@@ -53,7 +63,7 @@ node scripts/report-selftest.mjs   # assembler unit tests
 node scripts/pipeline-selftest.mjs # real rendering, interaction adapters, isolated install tests
 ```
 
-Point it at a novel and you get all five:
+The following screenshots show historical interfaces. Render the local samples for the current report UI:
 
 **novel-outline · short-drama adaptation outline**
 
@@ -75,6 +85,8 @@ Point it at a novel and you get all five:
 
 Includes its own example and offline report renderer. See [novel-creation](skills/novel-creation/README.en.md).
 
+The main session only dispatches in this stage: after `seed` it launches a **writer subagent** (novel-video-prompt), runs the structural checks, then launches a **reviewer subagent** (novel-video-prompt-review), and loops until every segment worksheet is approved before writing back to creation.json, exporting and handing off generation. Approval is bound to a segment's content and to the inputs it relies on, so regenerating a reference image, editing a claimed line or changing model parameters sends only the affected segments back to review. A segment still unapproved after three submissions, or one the reviewer marked as blocked, stops the loop and goes to the user. Without the two sibling skills installed, the subagents read the guide copies bundled with novel-creation; pi without a subagent extension launches separate `pi -p` processes through bash; only an environment that can neither dispatch nor start a separate process runs both roles serially in one session, and the report says the review was not independent.
+
 ## Install
 
 ```bash
@@ -90,6 +102,8 @@ It detects whether you have pi, Claude Code, or codex installed and **symlinks**
 ./scripts/install.sh --codex            # only into codex
 ./scripts/install.sh --pi               # only into pi
 ./scripts/install.sh --uninstall        # remove the symlinks
+# Installing to pi also links the two role definitions in agents/pi/ into ~/.pi/agent/agents (the directory the subagent extension reads by default)
+# Installing to Claude Code also links the two subagent definitions in agents/ into ~/.claude/agents
 ```
 
 Prefer to do it by hand:
@@ -107,7 +121,7 @@ pi install /path/to/shuohao-skills                        # local directory
 pi install git:github.com/eternityspring/shuohao-skills   # straight from GitHub
 ```
 
-The repository's root `skills/` directory is pi's convention directory — **no `package.json` required**. Once installed, `pi config` toggles them individually.
+The repository's root `skills/` directory is pi's convention directory — **no `package.json` required**. Once installed, `pi config` toggles them individually. A pi package does not carry role definitions; run `./scripts/install.sh --pi` once more if you want the writer and reviewer roles.
 
 ## What differs between the three agents
 
@@ -116,11 +130,21 @@ The workflow, the scripts and the artifacts are identical across all three. Only
 | | pi | Claude Code | codex |
 | --- | --- | --- | --- |
 | Skill command | `/skill:novel-outline` | `/novel-outline` | `/novel-outline` |
-| Sub-agent concurrency | **None** — the core ships without sub-agents, built-in todos or background bash | Task | subagent |
+| Sub-agent concurrency | The core ships without sub-agents, built-in todos or background bash; a subagent extension adds the `subagent` tool. Without it, novel-creation launches separate `pi -p` processes through bash for writing and review | Task | subagent |
 
 Asking in plain words ("break this book down into characters", plus the path) works on all three and is equivalent to typing the command.
 
-Every step in a SKILL.md that says "fan out to sub-agents if you have them" simply runs in sequence inside the current session on pi: breaking down an 800k-character novel takes several times longer, but the merge, the quality gates and the report come out word for word the same. **The "submit concurrently" in image and video generation has nothing to do with sub-agents** — that means firing off the requests without waiting and polling a list of task ids, which pi does exactly the same way.
+Creative steps can run serially when sub-agents are unavailable. Actual media generation and task recovery belong to the separately installed ly-image / ly-video skills, not local creative scripts.
+
+## External generation skills
+
+Install these first when you want generated media:
+
+```bash
+npx skills@latest add Din-Studio/skills --agent codex --skill ly-image ly-video -g -y
+```
+
+The user-level copies in `~/.agents/skills/` are also discoverable by pi. Reload skills or start a new session. Each creative skill remains standalone: `images` and `videos` now export plans only, even without `--dry-run`. Use `--out plan.json` to save a new plan. Read the stage's `references/media-handoff.md`, then the installed external skill, for live model discovery, request preparation, authorized submission, task recovery and output placement. Old generation flags are retired; never resubmit uncertain tasks.
 
 ## Requirements
 
@@ -128,7 +152,7 @@ Every step in a SKILL.md that says "fan out to sub-agents if you have them" simp
 | --- | --- | --- |
 | **Node** | Yes | ≥ 18. The skill scripts use only the standard library — **no npm dependencies, nothing to install** |
 | **Model quota** | Yes | The writing stages use your current session's quota. **No API key needed** |
-| **lingying CLI** | Optional | Needed for **image and video generation**. Put it on your PATH (or at `bin/lingying` in the work directory) and write the credentials into `~/.config/lingying/config.json` (`api_key`, plus `assethub_admin_token` for reference images). Without it, generation steps are skipped and everything else still runs |
+| **ly-image / ly-video skills** | Optional | Install separately from [Din-Studio/skills](https://github.com/Din-Studio/skills). Actual generation requires Node 22.20+ and private credentials; existing `~/.config/ly/config.json` is supported. Local writing, validation and plan export remain independent |
 
 > **Note on output language.** These skills are Chinese-first. `novel-characters` produces Chinese character profiles even for an English source novel, and its validator actively rejects English in those fields. See that skill's README for what it would take to change.
 
@@ -158,10 +182,10 @@ Two hard requirements:
 Run every self-test before adding a skill:
 
 ```bash
-for f in skills/*/scripts/selftest.mjs scripts/*-selftest.mjs; do node "$f" || exit; done
+for f in skills/*/scripts/*selftest.mjs scripts/*-selftest.mjs; do node "$f" || exit; done
 ```
 
-There is no CI — the self-tests run in about a second, so running them locally beats waiting on a pipeline. **Only tested on macOS with Node 24**; there is no platform-specific code, so Linux and older Node releases should be fine, but that is unverified.
+There is no CI. Run the local tests, including cross-stage integration, explicit migration and isolated-copy checks. **Only tested on macOS with Node 24**; there is no platform-specific code, so Linux and older Node releases should be fine, but that is unverified.
 
 ## Working-directory layout
 

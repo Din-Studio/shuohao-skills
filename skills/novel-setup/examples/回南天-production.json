@@ -1,4 +1,5 @@
 {
+  "schemaVersion": 3,
   "source": "回南天",
   "autopilot": false,
   "style": {
@@ -46,5 +47,6 @@
     "model": "MiniMax H3",
     "aspectRatio": "9:16",
     "resolution": "768p"
-  }
+  },
+  "creativeBrief": "生活题材，关注日常关系与局部问题的解决。表达温暖，留出人物停顿与反应的空间。"
 }

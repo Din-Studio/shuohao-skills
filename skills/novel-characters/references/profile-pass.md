@@ -55,7 +55,7 @@
 
    **角色自己的部分才是你要写的**：五官特征、体态、服装、神情、道具。画风那几段是所有角色共用的底子，写完记得检查同批角色**不许雷同**——`validate` 按词集合算相似度，超过 75% 会被拦。
 
-6. **`image.sheet` 是角色设定图——一张 16:9 横构图，内部分三个区。** 这是给出图模型的完整版面指令，比例要写死，不能让它自由发挥：
+6. **`image.sheet` 是角色设定图——一张按 `production.image.asset.aspectRatio` 设置的横向或方形画布，内部分三个区。** 这是给出图模型的完整版面指令，比例必须写成生产参数的实际值，不能另定比例或让模型自由发挥：
 
    ```
    ┌──────────┬────────────────────────────┐
@@ -65,14 +65,14 @@
    │          │  细节 · 细节 · 细节 · 细节   │
    │   ~34%   │                            │
    └──────────┴────────────────────────────┘
-              16:9
+           生产参数画幅
    ```
 
-   | 区 | 内容 |
+   | 分区 | 内容 |
    | --- | --- |
-   | **左** 约 34% | **半身像**：头肩，正面，居中，像证件照。脸画全、画细，这是面部设计的基准。**两侧肩膀完整**，底边**齐平直切** |
-   | **右上** | **全身三视图**：正视 / 侧视 / 背视并排，共用一条地平线 |
-   | **右下** | **细节条**：4–5 个关键细节的小特写，等距排一行，明显小于全身像 |
+   | **左侧** 约 34% | **半身像**：头肩，正面，居中，像证件照。脸画全、画细，这是面部设计的基准。**两侧肩膀完整**，底边**齐平直切** |
+   | **右上区域** | **全身三视图**：正视 / 侧视 / 背视并排，共用一条地平线 |
+   | **右下区域** | **细节条**：4–5 个关键细节的小特写，等距排一行，明显小于全身像 |
 
    三个区之间用**细线**分隔。整张纯白背景、四周留白均匀。
 
@@ -88,7 +88,7 @@
 
    **一张图里只能有一个长相。** 三视图的面部与左栏半身像一致——同样的五官、发型、表情。左栏是基准，右栏照着它画。
 
-   提示词里必须逐条写明：`ONE 16:9 landscape canvas`、`LEFT ZONE ... about 34% of the canvas width`、`RIGHT-TOP ZONE`、`RIGHT-BOTTOM ZONE`、`thin hairline rules`、`PROPORTIONS ARE CRITICAL`、`the detail studies give way, not the figures`。
+   提示词里必须逐条写明：`ONE <asset.aspectRatio> canvas`（将占位符替换为 `production.image.asset.aspectRatio` 的实际值；横向标注 landscape，方形标注 square）、`LEFT ZONE ... about 34% of the canvas width`、`RIGHT-TOP ZONE`、`RIGHT-BOTTOM ZONE`、`thin hairline rules`、`PROPORTIONS ARE CRITICAL`、`the detail studies give way, not the figures`。
 
 7. `voice.prompt` 是给 TTS 音色设计引擎的：描述**乐器本身**，不是某一句台词的演绎。性别、听感年龄、音色、音高区间、共鸣、气声、语速、节奏、口音、能量、默认情绪。
 
@@ -156,3 +156,7 @@ Verbatim quotes — the ONLY strings allowed in `persona.evidence`:
 - ...
 - ...
 ```
+
+## 创作背景与视觉边界
+
+参见 [creative-background.md](creative-background.md)。读取 production.creativeBrief 的自然语言要求，不推导策略。保留逐字证据、角色区分度、设定表比例、视觉正文和参考图挂载检查。seed 接受 outline v3，允许省略人物 from/arc；角色卡输出仍遵循原协议。正式样例与本地投影夹具均为《渡口》。
