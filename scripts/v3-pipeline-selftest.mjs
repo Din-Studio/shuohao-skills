@@ -23,10 +23,10 @@ const modules={},ready=new Map();
 const clone=x=>structuredClone(x);
 const json=file=>JSON.parse(readFileSync(file,'utf8'));
 const write=(file,value)=>{mkdirSync(dirname(file),{recursive:true});writeFileSync(file,typeof value==='string'?value:JSON.stringify(value,null,2)+'\n');return file;};
-const skillRoot=(stage,base=root)=>join(base,'skills',`novel-${stage}`);
+const skillRoot=(stage,base=root)=>join(base,'skills',`mint-${stage}`);
 const cli=(stage,argv,{cwd=temp,base=root}={})=>{
   cliCalls++;
-  const r=spawnSync(process.execPath,[join(skillRoot(stage,base),'scripts',`novel-${stage}.mjs`),...argv],{cwd,encoding:'utf8',timeout:30000,maxBuffer:32*1024*1024,env:{...process.env,NODE_OPTIONS:''}});
+  const r=spawnSync(process.execPath,[join(skillRoot(stage,base),'scripts',`mint-${stage}.mjs`),...argv],{cwd,encoding:'utf8',timeout:30000,maxBuffer:32*1024*1024,env:{...process.env,NODE_OPTIONS:''}});
   assert.ifError(r.error);assert.equal(r.signal,null,'CLI 不应崩溃或超时');
   return {...r,output:r.stdout+'\n'+r.stderr};
 };
@@ -83,7 +83,7 @@ try{
     for(const story of stories){assert.equal(story.episodes.length,3);assert.ok(story.episodes.every(e=>e.actions.length&&e.nodes.length));}
   });
   await test('加载当期本地接口（缺失即失败，不降级旧契约）',async()=>{
-    for(const stage of stages){modules[stage]=await import(pathToFileURL(join(skillRoot(stage),'scripts',`novel-${stage}.mjs`)));}
+    for(const stage of stages){modules[stage]=await import(pathToFileURL(join(skillRoot(stage),'scripts',`mint-${stage}.mjs`)));}
   });
   for(const story of stories){
     await test(`${story.title}：真实 v3 init → seed → validate → render`,()=>{

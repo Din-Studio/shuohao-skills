@@ -19,18 +19,18 @@
 
 | Skill | 做什么 |
 | --- | --- |
-| [**novel-setup**](skills/novel-setup) | 确认制作参数、视觉正文和自然语言创作要求，写入工作目录根的 `production.json`。画幅不决定叙事节奏 |
-| [**novel-outline**](skills/novel-outline) | 建立作品承诺、稳定剧情节点、分集与集尾计划、可选阶段里程碑和资产清单。创作方法读取本地指南，不强制兑现频率、悬念或终局胜利 |
-| [**novel-characters**](skills/novel-characters) | 把大纲定下的角色做成角色设定集：人物画像、形象提示词、音色提示词、角色设定图。吃 outline.json 预填角色表，报告语言可选，画风整块取自 `production.json`。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
-| [**novel-art**](skills/novel-art) | 给 AI 短剧出美术设定集（场景 + 叙事道具）：一致性锚点、光照与状态变体、尺度参照、无人无手白底提示词。吃 outline.json 预填清单，基础契约与制作参数由脚本检查。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
-| [**novel-script**](skills/novel-script) | 编写场次与节拍流，按 ID 认领大纲节点，定位开场与集尾，严格对账上游目标时长。开场落点按需标记，结束坐标由正文计算；估算不等于真实表演时长 |
-| [**novel-creation**](skills/novel-creation) | 参考图直出视频：按剧本分段、切镜，直接挂载已有的角色、场景与道具设定图，不生成中间分镜图。视频提示词按模型选择结构，`export` 输出投产包，`videos` 导出离线计划，独立安装的 ly-video 负责生成与恢复。镜头表达按指南评审，模型技术限制由工具检查 |
-| [**novel-video-prompt**](skills/novel-video-prompt) | 视频提示词编写方：按剧本节拍完成一集的分段、分镜与提示词，写入每段一份的工作单 `<段号>/prompt.md` 并提交审核；被退回后逐条修改再提交。由 novel-creation 以 subagent 方式调用，也可以单独使用 |
-| [**novel-video-prompt-review**](skills/novel-video-prompt-review) | 视频提示词审核方：独立对照剧本、资产、项目要求与模型口径审核工作单，把意见写进同一份工作单并登记 approved、changes_requested 或 blocked。只审核，不改写提示词 |
+| [**mint-setup**](skills/mint-setup) | 确认制作参数、视觉正文和自然语言创作要求，写入工作目录根的 `production.json`。画幅不决定叙事节奏 |
+| [**mint-outline**](skills/mint-outline) | 建立作品承诺、稳定剧情节点、分集与集尾计划、可选阶段里程碑和资产清单。创作方法读取本地指南，不强制兑现频率、悬念或终局胜利 |
+| [**mint-characters**](skills/mint-characters) | 把大纲定下的角色做成角色设定集：人物画像、形象提示词、音色提示词、角色设定图。吃 outline.json 预填角色表，报告语言可选，画风整块取自 `production.json`。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
+| [**mint-art**](skills/mint-art) | 给 AI 短剧出美术设定集（场景 + 叙事道具）：一致性锚点、光照与状态变体、尺度参照、无人无手白底提示词。吃 outline.json 预填清单，基础契约与制作参数由脚本检查。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
+| [**mint-script**](skills/mint-script) | 编写场次与节拍流，按 ID 认领大纲节点，定位开场与集尾，严格对账上游目标时长。开场落点按需标记，结束坐标由正文计算；估算不等于真实表演时长 |
+| [**mint-creation**](skills/mint-creation) | 参考图直出视频：按剧本分段、切镜，直接挂载已有的角色、场景与道具设定图，不生成中间分镜图。视频提示词按模型选择结构，`export` 输出投产包，`videos` 导出离线计划，独立安装的 ly-video 负责生成与恢复。镜头表达按指南评审，模型技术限制由工具检查 |
+| [**mint-video-prompt**](skills/mint-video-prompt) | 视频提示词编写方：按剧本节拍完成一集的分段、分镜与提示词，写入每段一份的工作单 `<段号>/prompt.md` 并提交审核；被退回后逐条修改再提交。由 mint-creation 以 subagent 方式调用，也可以单独使用 |
+| [**mint-video-prompt-review**](skills/mint-video-prompt-review) | 视频提示词审核方：独立对照剧本、资产、项目要求与模型口径审核工作单，把意见写进同一份工作单并登记 approved、changes_requested 或 blocked。只审核，不改写提示词 |
 
 **五个创作 skill 的报告都支持中英双语界面**：默认中文，`render --lang en` 切换为英文界面（故事内容与原始诊断保持原文）。界面语言也可以在 `production.json` 里一处定死。
 
-**要一路跑到底不被打断**，就在 `production.json` 里打开自动驾驶（`novel-setup init --autopilot`）：五个创作 skill 读到 `"autopilot": true` 就各自把自己那一段一口气跑完——不提问、不等拍板，该做的决定自己做，做过的决定全部写进汇报。**转移的是审批权，不是取消检查点**：质量门照样是门、花钱前照样先算账、失败的止损照样止损。默认是关的。
+**要一路跑到底不被打断**，就在 `production.json` 里打开自动驾驶（`mint-setup init --autopilot`）：五个创作 skill 读到 `"autopilot": true` 就各自把自己那一段一口气跑完——不提问、不等拍板，该做的决定自己做，做过的决定全部写进汇报。**转移的是审批权，不是取消检查点**：质量门照样是门、花钱前照样先算账、失败的止损照样止损。默认是关的。
 
 ## 创作指南与数据版本
 
@@ -48,7 +48,7 @@ JSON 保存故事内容和必要交接关系。原创不强制填写改编取舍
 node scripts/report.mjs --from <demo目录> --out report.html
 ```
 
-`--from` 按下面的[工作目录约定](#工作目录约定)自动发现五份 json；也可以逐个指定（`--outline` `--cast` `--art` `--script` `--creation`）。只跑了角色那一段就只有一个面板，不报错。`production.json` 不单独生成面板；各阶段报告优先展示正文、交接关系与检查结果，`novel-setup show` 展示项目要求。自动发现遇到同阶段多份 JSON 时要求显式指定，不猜测版本。渲染失败的面板会明确标注，并返回非零退出码。
+`--from` 按下面的[工作目录约定](#工作目录约定)自动发现五份 json；也可以逐个指定（`--outline` `--cast` `--art` `--script` `--creation`）。只跑了角色那一段就只有一个面板，不报错。`production.json` 不单独生成面板；各阶段报告优先展示正文、交接关系与检查结果，`mint-setup show` 展示项目要求。自动发现遇到同阶段多份 JSON 时要求显式指定，不猜测版本。渲染失败的面板会明确标注，并返回非零退出码。
 
 它是**组装器，不是独立 skill**：不 import 任何 skill 的代码，而是调各自的 `render --html` 拿产物再拼装。五个创作 skill 各自提供渲染入口，仍然独立可跑、可以单独拷走；某个 skill 改了渲染，这边自动跟上。
 
@@ -67,27 +67,27 @@ node scripts/pipeline-selftest.mjs # 真实渲染、交互适配与隔离安装�
 
 提供小说后，按阶段生成以下产物。下列截图为历史界面示意；当前界面以本地 `render` 为准：
 
-**novel-outline · 短剧改编大纲**
+**mint-outline · 短剧改编大纲**
 
-![短剧改编大纲报告](skills/novel-outline/assets/report.webp)
+![短剧改编大纲报告](skills/mint-outline/assets/report.webp)
 
-**novel-characters · 角色设定集**
+**mint-characters · 角色设定集**
 
-![角色设定集报告](skills/novel-characters/assets/report.webp)
+![角色设定集报告](skills/mint-characters/assets/report.webp)
 
-**novel-art · 美术设定集（场景 + 道具，设定图为 skill 实际生成）**
+**mint-art · 美术设定集（场景 + 道具，设定图为 skill 实际生成）**
 
-![美术设定集报告](skills/novel-art/assets/report.webp)
+![美术设定集报告](skills/mint-art/assets/report.webp)
 
-**novel-script · 剧本（时长仪表 + 分集剧本 + 台词本）**
+**mint-script · 剧本（时长仪表 + 分集剧本 + 台词本）**
 
-![剧本报告](skills/novel-script/assets/report.webp)
+![剧本报告](skills/mint-script/assets/report.webp)
 
-**novel-creation · 视频创作（分段切镜、参考图挂载、视频提示词与下单）**
+**mint-creation · 视频创作（分段切镜、参考图挂载、视频提示词与下单）**
 
-自带《收书人》样例与离线报告渲染，详见 [novel-creation](skills/novel-creation)。
+自带《收书人》样例与离线报告渲染，详见 [mint-creation](skills/mint-creation)。
 
-这一阶段的主会话只调度：`seed` 之后派发**编写 subagent**（加载 novel-video-prompt）写分镜与提示词，结构检查通过后派发**审核 subagent**（加载 novel-video-prompt-review），循环到每段工作单都是 approved，再回写 creation.json、导出投产包、交接生成。批准绑定这一段的内容与它依据的输入，设定图重新生成、认领的台词被修改或更换模型参数之后，只有受影响的段需要重新审核。同一段提交三轮仍未批准，或审核方登记了阻塞时停止循环，交给用户。没有安装两个兄弟 skill 时，subagent 读取 novel-creation 自带的指南副本；pi 没有子代理扩展时通过 bash 启动独立的 `pi -p` 进程；只有不能派发、也不能启动独立进程的环境才在同一会话串行完成，并注明审核不独立。
+这一阶段的主会话只调度：`seed` 之后派发**编写 subagent**（加载 mint-video-prompt）写分镜与提示词，结构检查通过后派发**审核 subagent**（加载 mint-video-prompt-review），循环到每段工作单都是 approved，再回写 creation.json、导出投产包、交接生成。批准绑定这一段的内容与它依据的输入，设定图重新生成、认领的台词被修改或更换模型参数之后，只有受影响的段需要重新审核。同一段提交三轮仍未批准，或审核方登记了阻塞时停止循环，交给用户。没有安装两个兄弟 skill 时，subagent 读取 mint-creation 自带的指南副本；pi 没有子代理扩展时通过 bash 启动独立的 `pi -p` 进程；只有不能派发、也不能启动独立进程的环境才在同一会话串行完成，并注明审核不独立。
 
 ## 安装
 
@@ -97,10 +97,10 @@ cd shuohao-skills
 ./scripts/install.sh
 ```
 
-自动检测本机安装了 pi、Claude Code 还是 codex，把所有 skill **软链**过去——`git pull` 之后立刻生效，不需要重新安装。更新到本版本后，请执行一次安装脚本，清理指向本仓库的退役 skill 软链；真实目录与其他来源软链不会删除。
+自动检测本机安装了 pi、Claude Code 还是 codex，把所有 skill **软链**过去——`git pull` 之后立刻生效，不需要重新安装。本版本将全部 8 个 `novel-*` skill 改名为 `mint-*`，脚本入口和编写／审核角色名称同步改名。更新后请执行一次安装脚本，清理指向本仓库的旧名称软链并安装新名称，再重新加载技能或启动新会话；真实目录与其他来源软链不会删除。旧命令与旧脚本路径不再提供。
 
 ```bash
-./scripts/install.sh novel-characters   # 只安装某一个
+./scripts/install.sh mint-characters   # 只安装某一个
 ./scripts/install.sh --codex            # 只安装到 codex
 ./scripts/install.sh --pi               # 只安装到 pi
 ./scripts/install.sh --uninstall        # 取消软链
@@ -111,12 +111,12 @@ cd shuohao-skills
 不想用脚本就自己链：
 
 ```bash
-ln -s "$PWD/skills/novel-characters" ~/.claude/skills/novel-characters
-ln -s "$PWD/skills/novel-characters" ~/.codex/skills/novel-characters
-ln -s "$PWD/skills/novel-characters" ~/.pi/agent/skills/novel-characters
+ln -s "$PWD/skills/mint-characters" ~/.claude/skills/mint-characters
+ln -s "$PWD/skills/mint-characters" ~/.codex/skills/mint-characters
+ln -s "$PWD/skills/mint-characters" ~/.pi/agent/skills/mint-characters
 ```
 
-**pi 还有第二条路**：把整个仓库当成 pi 包安装，六个 skill 一次全进来，`git pull` 同样立刻生效：
+**pi 还有第二条路**：把整个仓库当成 pi 包安装，八个 skill 一次全进来，`git pull` 同样立刻生效：
 
 ```bash
 pi install /path/to/shuohao-skills                        # 本地目录
@@ -131,8 +131,8 @@ pi install git:github.com/eternityspring/shuohao-skills   # 直接从 GitHub
 
 | | pi | Claude Code | codex |
 | --- | --- | --- | --- |
-| skill 命令 | `/skill:novel-outline` | `/novel-outline` | `/novel-outline` |
-| 子代理并发 | 内核不带子代理，也没有内置待办与后台 bash；安装子代理扩展后有 `subagent` 工具。novel-creation 没有扩展时通过 bash 启动独立的 `pi -p` 进程完成编写与审核 | Task | subagent |
+| skill 命令 | `/skill:mint-outline` | `/mint-outline` | `/mint-outline` |
+| 子代理并发 | 内核不带子代理，也没有内置待办与后台 bash；安装子代理扩展后有 `subagent` 工具。mint-creation 没有扩展时通过 bash 启动独立的 `pi -p` 进程完成编写与审核 | Task | subagent |
 
 直接用中文说「帮我拆一下这本书的角色」并给出路径，三家都能唤起，与打命令等价。
 
@@ -193,12 +193,12 @@ for f in skills/*/scripts/*selftest.mjs scripts/*-selftest.mjs; do node "$f" || 
 
 ```
 <demo>/
-├── production.json ← novel-setup 产出：生产参数，**住在根目录**，下游向上找它
-├── outline/       ← novel-outline 产出：<剧>-outline.json / .md / -report.html
-├── characters/    ← novel-characters 产出：<剧>-cast.json / .md / -report.html
-├── art/           ← novel-art 产出：<剧>-art.json / .md / -report.html
-├── script/        ← novel-script 产出：<剧>-script.json / .md / -report.html
-├── creation/      ← novel-creation 产出：<剧>-creation.json / .md / -report.html
+├── production.json ← mint-setup 产出：生产参数，**住在根目录**，下游向上找它
+├── outline/       ← mint-outline 产出：<剧>-outline.json / .md / -report.html
+├── characters/    ← mint-characters 产出：<剧>-cast.json / .md / -report.html
+├── art/           ← mint-art 产出：<剧>-art.json / .md / -report.html
+├── script/        ← mint-script 产出：<剧>-script.json / .md / -report.html
+├── creation/      ← mint-creation 产出：<剧>-creation.json / .md / -report.html
 │   ├── manifest.json  ← export 产出（每段的参考图挂载清单，不复制设定图文件）
 │   └── E01-01/…       ← 每段一个文件夹（prompt.md 工作单：审核状态、分镜结构、审核意见与提示词正文；下单后的 video.mp4，没有分镜图）
 ├── docs/          ← 自己写的使用说明、PR 草稿等（与机器产物解耦）
@@ -215,7 +215,7 @@ for f in skills/*/scripts/*selftest.mjs scripts/*-selftest.mjs; do node "$f" || 
 
 **五个 skill 各自会核对落点**：`validate` 找到 `production.json` 就顺带比对产物在不在自己那一格，放错了点名该去哪。落点写错不用重出图，所以是提示不是门；但不说出来更坏——`--from` 自动发现按段目录名找 JSON，平铺在根目录它一份也找不到。没有 `production.json` 的老项目、单跑某一段的场合无从判断工作目录根在哪，那时明说跳过。
 
-**`novel-creation` 是剧本之后的视频创作阶段**，接入五段合并报告，也支持独立 `render --html`。合并报告渲染这一阶段需要 `--script`；同时提供 `--outline`、`--art` 与 `--cast` 可补全参考图身份与展示。
+**`mint-creation` 是剧本之后的视频创作阶段**，接入五段合并报告，也支持独立 `render --html`。合并报告渲染这一阶段需要 `--script`；同时提供 `--outline`、`--art` 与 `--cast` 可补全参考图身份与展示。
 
 > 这套结构来自《渡口》端到端 demo 的实际归档经验，demo 的工作目录在本仓库之外，这里固化成约定，并由五个 skill 各自核对。
 

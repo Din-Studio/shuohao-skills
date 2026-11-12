@@ -3,7 +3,7 @@
 # 软链而不是复制：git pull 之后立刻生效。
 #
 #   ./scripts/install.sh              安装全部，安装到检测到的所有 agent
-#   ./scripts/install.sh novel-characters
+#   ./scripts/install.sh mint-characters
 #   ./scripts/install.sh --pi         只安装到 pi
 #   ./scripts/install.sh --claude     只安装到 Claude Code
 #   ./scripts/install.sh --codex      只安装到 codex
@@ -15,6 +15,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SKILLS_DIR="$REPO/skills"
+retired_skills=(novel-storyboard novel-art novel-characters novel-creation novel-outline novel-script novel-setup novel-video-prompt novel-video-prompt-review)
 
 targets=()
 wanted=()
@@ -52,16 +53,22 @@ fi
 
 for target in "${targets[@]}"; do
   mkdir -p "$target"
-  # 清理本仓库安装的退役 skill 软链；其他仓库软链和真实目录不动。
-  retired="$target/novel-storyboard"
-  if [ -L "$retired" ] && [ "$(readlink "$retired")" = "$SKILLS_DIR/novel-storyboard" ]; then
-    rm "$retired"
-    echo "− ${retired}（已移除的 skill）"
-  fi
+  # 清理本仓库安装的退役或改名 skill 软链；其他仓库软链和真实目录不动。
+  for name in "${retired_skills[@]}"; do
+    # 单独安装／卸载时，只迁移选中的技能；其余旧安装保留到用户更新它们时处理。
+    if [ "$name" != "novel-storyboard" ] && [[ " ${wanted[*]} " != *" $name "* ]] && [[ " ${wanted[*]} " != *" ${name/novel-/mint-} "* ]]; then
+      continue
+    fi
+    retired="$target/$name"
+    if [ -L "$retired" ] && [ "$(readlink "$retired")" = "$SKILLS_DIR/$name" ]; then
+      rm "$retired"
+      echo "− ${retired}（已移除或改名的 skill）"
+    fi
+  done
   for name in "${wanted[@]}"; do
     src="$SKILLS_DIR/$name"
     dst="$target/$name"
-    if [ "$uninstall" -eq 1 ] && [ "$name" = "novel-storyboard" ]; then
+    if [ "$uninstall" -eq 1 ] && [[ " ${retired_skills[*]} " == *" $name "* ]]; then
       continue  # 退役软链已在上面按归属检查；无须源目录仍然存在。
     fi
     if [ ! -f "$src/SKILL.md" ]; then
@@ -88,6 +95,13 @@ for target in "${targets[@]}"; do
     "$HOME/.pi/agent/skills")  agents="$HOME/.pi/agent/agents"; defs="$REPO/agents/pi" ;;
   esac
   if [ -n "$agents" ]; then
+    for name in novel-video-prompt-writer novel-video-prompt-reviewer; do
+      retired="$agents/$name.md"
+      if [ -L "$retired" ] && [ "$(readlink "$retired")" = "$defs/$name.md" ]; then
+        rm "$retired"
+        echo "− ${retired}（已改名的角色定义）"
+      fi
+    done
     for src in "$defs"/*.md; do
       [ -f "$src" ] || continue
       dst="$agents/$(basename "$src")"

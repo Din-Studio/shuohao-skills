@@ -1,5 +1,11 @@
 # Changelog
 
+## 技能名称统一为 mint 前缀 — 2026-11-12
+
+- 全部 8 个 `novel-*` skill 改名为 `mint-*`，例如 `novel-art` → `mint-art`。目录、SKILL.md 名称、脚本入口、编写／审核角色名称及当前文档引用同步更新。
+- 旧命令与旧脚本路径不再提供。重新执行 `scripts/install.sh` 后重新加载技能；安装脚本仅清理指向本仓库的旧名称软链，保留真实目录与其他来源软链。
+- 产物目录、JSON 数据契约及创作行为不变。以下历史记录及固定提交研究证据保留当时名称。
+
 ## 视频提示词编写与审核分离 — 2026-11-11
 
 **novel-creation 3.1.0 · novel-video-prompt 1.0.0（新增）· novel-video-prompt-review 1.0.0（新增）**

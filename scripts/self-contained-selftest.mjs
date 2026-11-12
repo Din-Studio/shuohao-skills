@@ -20,12 +20,12 @@ const walk = dir => readdirSync(dir).flatMap(name => {
   return statSync(path).isDirectory() ? walk(path) : [path];
 });
 try {
-  for (const name of readdirSync(join(root, 'skills')).filter(n => n.startsWith('novel-')).sort()) {
+  for (const name of readdirSync(join(root, 'skills')).filter(n => n.startsWith('mint-')).sort()) {
     const source = join(root, 'skills', name);
     const isolated = join(temp, name, 'standalone');
     cpSync(source, isolated, { recursive: true });
     check(`${name} 自测入口存在`, () => assert.ok(existsSync(join(isolated, 'scripts/selftest.mjs'))));
-    if (['novel-outline', 'novel-script', 'novel-creation'].includes(name)) check(`${name} v3 自包含指南`, () => {
+    if (['mint-outline', 'mint-script', 'mint-creation'].includes(name)) check(`${name} v3 自包含指南`, () => {
       assert.ok(existsSync(join(isolated, 'references/创作指南.md')));
       assert.ok(!existsSync(join(isolated, 'references/profiles')));
       assert.ok(!existsSync(join(isolated, 'references/profile-contract.md')));
@@ -57,22 +57,22 @@ try {
   }
   // 工作单是三个 skill 之间唯一的协作格式：解析库各持一份副本，必须逐字一致
   check('三份工作单解析库一致', () => {
-    const copies = ['novel-creation', 'novel-video-prompt', 'novel-video-prompt-review'].map(name => readFileSync(join(root, 'skills', name, 'scripts/lib/worksheet.mjs'), 'utf8'));
+    const copies = ['mint-creation', 'mint-video-prompt', 'mint-video-prompt-review'].map(name => readFileSync(join(root, 'skills', name, 'scripts/lib/worksheet.mjs'), 'utf8'));
     assert.equal(copies[1], copies[0]); assert.equal(copies[2], copies[0]);
-    assert.equal(readFileSync(join(root, 'skills/novel-video-prompt/references/worksheet.md'), 'utf8'), readFileSync(join(root, 'skills/novel-video-prompt-review/references/worksheet.md'), 'utf8'), '两份工作单格式说明一致');
+    assert.equal(readFileSync(join(root, 'skills/mint-video-prompt/references/worksheet.md'), 'utf8'), readFileSync(join(root, 'skills/mint-video-prompt-review/references/worksheet.md'), 'utf8'), '两份工作单格式说明一致');
   });
   // 调度方可以单独拷走：它保存编写方与审核方指南的副本，必须与两个角色 skill 逐字一致
-  check('novel-creation 的指南副本与编写方、审核方一致', () => {
+  check('mint-creation 的指南副本与编写方、审核方一致', () => {
     const ref = (skill, file) => readFileSync(join(root, 'skills', skill, 'references', file), 'utf8');
-    for (const file of ['creation-prompt.md', 'h3-prompt.md', 'seedance2-prompt.md', '分镜指南.md', 'worksheet.md']) assert.equal(ref('novel-creation', file), ref('novel-video-prompt', file), file);
-    for (const file of ['审核清单.md', 'worksheet.md']) assert.equal(ref('novel-creation', file), ref('novel-video-prompt-review', file), file);
-    const dispatch = ref('novel-creation', 'dispatch.md');
-    assert.ok(!/\{baseDir\}\/\.\./.test(dispatch + readFileSync(join(root, 'skills/novel-creation/SKILL.md'), 'utf8')), '调度方不按相对位置读取兄弟 skill');
+    for (const file of ['creation-prompt.md', 'h3-prompt.md', 'seedance2-prompt.md', '分镜指南.md', 'worksheet.md']) assert.equal(ref('mint-creation', file), ref('mint-video-prompt', file), file);
+    for (const file of ['审核清单.md', 'worksheet.md']) assert.equal(ref('mint-creation', file), ref('mint-video-prompt-review', file), file);
+    const dispatch = ref('mint-creation', 'dispatch.md');
+    assert.ok(!/\{baseDir\}\/\.\./.test(dispatch + readFileSync(join(root, 'skills/mint-creation/SKILL.md'), 'utf8')), '调度方不按相对位置读取兄弟 skill');
   });
   // 编写方与审核方各自的样例工作单，必须通过调度方的完整结构检查
-  check('新 skill 的样例工作单通过 novel-creation 结构检查', () => {
-    const cli = join(root, 'skills/novel-creation/scripts/novel-creation.mjs');
-    for (const [skill, dir, target] of [['novel-video-prompt', '第七盏灯', 20], ['novel-video-prompt-review', '回执/第一轮', 10], ['novel-video-prompt-review', '回执/第二轮', 14]]) {
+  check('新 skill 的样例工作单通过 mint-creation 结构检查', () => {
+    const cli = join(root, 'skills/mint-creation/scripts/mint-creation.mjs');
+    for (const [skill, dir, target] of [['mint-video-prompt', '第七盏灯', 20], ['mint-video-prompt-review', '回执/第一轮', 10], ['mint-video-prompt-review', '回执/第二轮', 14]]) {
       const base = join(root, 'skills', skill, 'examples', dir), work = join(temp, 'bridge', skill, dir.replace('/', '-'), 'creation');
       const input = JSON.parse(readFileSync(join(base.replace(/\/第.轮$/, ''), '输入材料.json'), 'utf8'));
       cpSync(base, work, { recursive: true });

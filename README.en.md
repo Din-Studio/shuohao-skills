@@ -17,18 +17,18 @@ Here is the whole pipeline — **the production parameters lock the aspect and t
 
 | Skill | What it does |
 | --- | --- |
-| [**novel-setup**](skills/novel-setup/README.en.md) | Locks asset-image and video models, resolution tiers and independent aspect ratios, plus art style, languages and autopilot. Writes `production.json` at the work-directory root for the five creative skills. Optional creative requirements are plain language and independent of aspect ratio |
-| [**novel-outline**](skills/novel-outline/README.en.md) | Defines the audience promise, stable story beats, episode endings, optional arcs and assets. A local guide supports different creative goals without universal payoff or ending requirements |
-| [**novel-characters**](skills/novel-characters/README.en.md) | Turns the cast the outline settled on into a character bible: profiles, design prompts, voice prompts, model sheets. Seeds the roster from outline.json; report language is configurable and the art style is copied whole from `production.json` |
-| [**novel-art**](skills/novel-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; base contracts and production parameters are checked |
-| [**novel-script**](skills/novel-script/README.en.md) | Writes scenes and beat flow, claims outline beats by stable ID, locates openings and endings, and reconciles upstream target duration. Opening landings are optional, ending coordinates are computed, and estimated time is not measured performance |
-| [**novel-creation**](skills/novel-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` exports an offline plan; the separately installed ly-video skill generates and recovers tasks. Shot expression is reviewed against the guide; model limits remain deterministic checks |
-| [**novel-video-prompt**](skills/novel-video-prompt/README.en.md) | The prompt writer: splits an episode into segments and cuts, writes each segment's prompt into a worksheet (`<segment>/prompt.md`) and submits it for review; revises and resubmits when changes are requested. Invoked as a subagent by novel-creation, or used on its own |
-| [**novel-video-prompt-review**](skills/novel-video-prompt-review/README.en.md) | The prompt reviewer: independently checks worksheets against the script, assets, project brief and model conventions, records comments in the same worksheet and registers `approved`, `changes_requested` or `blocked`. It never rewrites the prompt |
+| [**mint-setup**](skills/mint-setup/README.en.md) | Locks asset-image and video models, resolution tiers and independent aspect ratios, plus art style, languages and autopilot. Writes `production.json` at the work-directory root for the five creative skills. Optional creative requirements are plain language and independent of aspect ratio |
+| [**mint-outline**](skills/mint-outline/README.en.md) | Defines the audience promise, stable story beats, episode endings, optional arcs and assets. A local guide supports different creative goals without universal payoff or ending requirements |
+| [**mint-characters**](skills/mint-characters/README.en.md) | Turns the cast the outline settled on into a character bible: profiles, design prompts, voice prompts, model sheets. Seeds the roster from outline.json; report language is configurable and the art style is copied whole from `production.json` |
+| [**mint-art**](skills/mint-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; base contracts and production parameters are checked |
+| [**mint-script**](skills/mint-script/README.en.md) | Writes scenes and beat flow, claims outline beats by stable ID, locates openings and endings, and reconciles upstream target duration. Opening landings are optional, ending coordinates are computed, and estimated time is not measured performance |
+| [**mint-creation**](skills/mint-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` exports an offline plan; the separately installed ly-video skill generates and recovers tasks. Shot expression is reviewed against the guide; model limits remain deterministic checks |
+| [**mint-video-prompt**](skills/mint-video-prompt/README.en.md) | The prompt writer: splits an episode into segments and cuts, writes each segment's prompt into a worksheet (`<segment>/prompt.md`) and submits it for review; revises and resubmits when changes are requested. Invoked as a subagent by mint-creation, or used on its own |
+| [**mint-video-prompt-review**](skills/mint-video-prompt-review/README.en.md) | The prompt reviewer: independently checks worksheets against the script, assets, project brief and model conventions, records comments in the same worksheet and registers `approved`, `changes_requested` or `blocked`. It never rewrites the prompt |
 
 **Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for English interface labels (story content and raw diagnostics retain their original language). The UI language can also be settled once in `production.json`.
 
-**To run the whole thing without interruptions**, switch on autopilot in `production.json` (`novel-setup init --autopilot`): reading `"autopilot": true`, each of the five creative skills runs its own stage end to end — no questions, no waiting for sign-off, deciding for itself and listing every decision in its final report. **It transfers approval, it does not remove checkpoints**: gates stay gates, money is still costed first, and loss limits still apply. Off by default.
+**To run the whole thing without interruptions**, switch on autopilot in `production.json` (`mint-setup init --autopilot`): reading `"autopilot": true`, each of the five creative skills runs its own stage end to end — no questions, no waiting for sign-off, deciding for itself and listing every decision in its final report. **It transfers approval, it does not remove checkpoints**: gates stay gates, money is still costed first, and loss limits still apply. Off by default.
 
 ## Creative guides and data versions
 
@@ -65,27 +65,27 @@ node scripts/pipeline-selftest.mjs # real rendering, interaction adapters, isola
 
 The following screenshots show historical interfaces. Render the local samples for the current report UI:
 
-**novel-outline · short-drama adaptation outline**
+**mint-outline · short-drama adaptation outline**
 
-![Adaptation outline report](skills/novel-outline/assets/report.webp)
+![Adaptation outline report](skills/mint-outline/assets/report.webp)
 
-**novel-characters · character bible**
+**mint-characters · character bible**
 
-![Character bible report](skills/novel-characters/assets/report.webp)
+![Character bible report](skills/mint-characters/assets/report.webp)
 
-**novel-art · art bible (scenes + props, sheets actually generated by the skill)**
+**mint-art · art bible (scenes + props, sheets actually generated by the skill)**
 
-![Art bible report](skills/novel-art/assets/report.webp)
+![Art bible report](skills/mint-art/assets/report.webp)
 
-**novel-script · screenplay (duration gauge + episode scripts + line book)**
+**mint-script · screenplay (duration gauge + episode scripts + line book)**
 
-![Screenplay report](skills/novel-script/assets/report.webp)
+![Screenplay report](skills/mint-script/assets/report.webp)
 
-**novel-creation · video creation (segments, cuts, reference mounts, prompts and ordering)**
+**mint-creation · video creation (segments, cuts, reference mounts, prompts and ordering)**
 
-Includes its own example and offline report renderer. See [novel-creation](skills/novel-creation/README.en.md).
+Includes its own example and offline report renderer. See [mint-creation](skills/mint-creation/README.en.md).
 
-The main session only dispatches in this stage: after `seed` it launches a **writer subagent** (novel-video-prompt), runs the structural checks, then launches a **reviewer subagent** (novel-video-prompt-review), and loops until every segment worksheet is approved before writing back to creation.json, exporting and handing off generation. Approval is bound to a segment's content and to the inputs it relies on, so regenerating a reference image, editing a claimed line or changing model parameters sends only the affected segments back to review. A segment still unapproved after three submissions, or one the reviewer marked as blocked, stops the loop and goes to the user. Without the two sibling skills installed, the subagents read the guide copies bundled with novel-creation; pi without a subagent extension launches separate `pi -p` processes through bash; only an environment that can neither dispatch nor start a separate process runs both roles serially in one session, and the report says the review was not independent.
+The main session only dispatches in this stage: after `seed` it launches a **writer subagent** (mint-video-prompt), runs the structural checks, then launches a **reviewer subagent** (mint-video-prompt-review), and loops until every segment worksheet is approved before writing back to creation.json, exporting and handing off generation. Approval is bound to a segment's content and to the inputs it relies on, so regenerating a reference image, editing a claimed line or changing model parameters sends only the affected segments back to review. A segment still unapproved after three submissions, or one the reviewer marked as blocked, stops the loop and goes to the user. Without the two sibling skills installed, the subagents read the guide copies bundled with mint-creation; pi without a subagent extension launches separate `pi -p` processes through bash; only an environment that can neither dispatch nor start a separate process runs both roles serially in one session, and the report says the review was not independent.
 
 ## Install
 
@@ -95,10 +95,10 @@ cd shuohao-skills
 ./scripts/install.sh
 ```
 
-It detects whether you have pi, Claude Code, or codex installed and **symlinks** every skill into place — so `git pull` takes effect immediately. After this update, run the installer once to remove retired skill links pointing to this repository. Real directories and links to other sources are left untouched.
+It detects whether you have pi, Claude Code, or codex installed and **symlinks** every skill into place — so `git pull` takes effect immediately. All 8 `novel-*` skills are now named `mint-*`; script entry points and writer/reviewer agent names have changed too. Run the installer again to replace this repository's old-name links, then reload skills or start a new session. Real directories and links to other sources are left untouched. Old commands and script paths are no longer provided.
 
 ```bash
-./scripts/install.sh novel-characters   # just one skill
+./scripts/install.sh mint-characters   # just one skill
 ./scripts/install.sh --codex            # only into codex
 ./scripts/install.sh --pi               # only into pi
 ./scripts/install.sh --uninstall        # remove the symlinks
@@ -109,12 +109,12 @@ It detects whether you have pi, Claude Code, or codex installed and **symlinks**
 Prefer to do it by hand:
 
 ```bash
-ln -s "$PWD/skills/novel-characters" ~/.claude/skills/novel-characters
-ln -s "$PWD/skills/novel-characters" ~/.codex/skills/novel-characters
-ln -s "$PWD/skills/novel-characters" ~/.pi/agent/skills/novel-characters
+ln -s "$PWD/skills/mint-characters" ~/.claude/skills/mint-characters
+ln -s "$PWD/skills/mint-characters" ~/.codex/skills/mint-characters
+ln -s "$PWD/skills/mint-characters" ~/.pi/agent/skills/mint-characters
 ```
 
-**pi has a second route**: install the whole repository as a pi package and all six skills come in at once, with `git pull` still taking effect immediately:
+**pi has a second route**: install the whole repository as a pi package and all eight skills come in at once, with `git pull` still taking effect immediately:
 
 ```bash
 pi install /path/to/shuohao-skills                        # local directory
@@ -129,8 +129,8 @@ The workflow, the scripts and the artifacts are identical across all three. Only
 
 | | pi | Claude Code | codex |
 | --- | --- | --- | --- |
-| Skill command | `/skill:novel-outline` | `/novel-outline` | `/novel-outline` |
-| Sub-agent concurrency | The core ships without sub-agents, built-in todos or background bash; a subagent extension adds the `subagent` tool. Without it, novel-creation launches separate `pi -p` processes through bash for writing and review | Task | subagent |
+| Skill command | `/skill:mint-outline` | `/mint-outline` | `/mint-outline` |
+| Sub-agent concurrency | The core ships without sub-agents, built-in todos or background bash; a subagent extension adds the `subagent` tool. Without it, mint-creation launches separate `pi -p` processes through bash for writing and review | Task | subagent |
 
 Asking in plain words ("break this book down into characters", plus the path) works on all three and is equivalent to typing the command.
 
@@ -154,7 +154,7 @@ The user-level copies in `~/.agents/skills/` are also discoverable by pi. Reload
 | **Model quota** | Yes | The writing stages use your current session's quota. **No API key needed** |
 | **ly-image / ly-video skills** | Optional | Install separately from [Din-Studio/skills](https://github.com/Din-Studio/skills). Actual generation requires Node 22.20+ and private credentials; existing `~/.config/ly/config.json` is supported. Local writing, validation and plan export remain independent |
 
-> **Note on output language.** These skills are Chinese-first. `novel-characters` produces Chinese character profiles even for an English source novel, and its validator actively rejects English in those fields. See that skill's README for what it would take to change.
+> **Note on output language.** These skills are Chinese-first. `mint-characters` produces Chinese character profiles even for an English source novel, and its validator actively rejects English in those fields. See that skill's README for what it would take to change.
 
 ## Repository conventions
 
@@ -189,16 +189,16 @@ There is no CI. Run the local tests, including cross-stage integration, explicit
 
 ## Working-directory layout
 
-Running a novel through all five stages produces a pile of `*.json` / `*.md` / `*-report.html`. **Do not flatten them into the root.** Every skill except `novel-setup` writes into its own stage directory, one per pipeline stage:
+Running a novel through all five stages produces a pile of `*.json` / `*.md` / `*-report.html`. **Do not flatten them into the root.** Every skill except `mint-setup` writes into its own stage directory, one per pipeline stage:
 
 ```
 <work-dir>/
-├── production.json ← novel-setup's output: production parameters, **lives at the root**
-├── outline/       ← novel-outline:    <drama>-outline.json / .md / outline-report.html
-├── characters/    ← novel-characters: <drama>-cast.json / .md / report.html + images/
-├── art/           ← novel-art:        <drama>-art.json / .md / art-report.html + images/
-├── script/        ← novel-script:     <drama>-script.json / .md / script-report.html
-├── creation/      ← novel-creation: <drama>-creation.json / .md / creation-report.html
+├── production.json ← mint-setup's output: production parameters, **lives at the root**
+├── outline/       ← mint-outline:    <drama>-outline.json / .md / outline-report.html
+├── characters/    ← mint-characters: <drama>-cast.json / .md / report.html + images/
+├── art/           ← mint-art:        <drama>-art.json / .md / art-report.html + images/
+├── script/        ← mint-script:     <drama>-script.json / .md / script-report.html
+├── creation/      ← mint-creation: <drama>-creation.json / .md / creation-report.html
 │   ├── manifest.json  ← from `export` (each segment's mounted reference list, no sheet files copied)
 │   └── E01-01/…       ← one folder per segment (prompt.md + video.mp4 once ordered, no frame images)
 ├── docs/          ← notes you write yourself, kept apart from generated output
@@ -211,7 +211,7 @@ Key points:
 - **One directory per skill.** New characters or scenes go into the matching stage directory; the root stays clean.
 - **Video packs belong in `creation/`**: `manifest.json` sits beside `E01-0x/`. Reference sheets remain under `characters/images/` and `art/images/`, linked by relative paths rather than copied into frame images.
 - **Every skill checks its own landing spot.** When `validate` finds `production.json` it also compares where the artifact sits, and names the right directory if it is wrong. A misplaced file costs no re-rendering, so this is a notice rather than a gate — but staying silent would be worse, since `--from` discovery finds nothing when the files are flattened. With no `production.json` there is no way to tell where the work-directory root is, and the check says so instead of guessing.
-- **`novel-creation` is the video-creation stage after the screenplay.** It supports both the five-stage merged report and standalone `render --html`. Its renderer requires `--script`; supply `--outline`, `--art` and `--cast` for reference identities and richer display.
+- **`mint-creation` is the video-creation stage after the screenplay.** It supports both the five-stage merged report and standalone `render --html`. Its renderer requires `--script`; supply `--outline`, `--art` and `--cast` for reference identities and richer display.
 - **Report HTML can always be re-rendered** and images re-generated from the prompts — commit `json` / `md` / `docs` / `scripts` and gitignore the report HTML plus the `png` / `mp4` inside the segment folders.
 
 
