@@ -11,7 +11,7 @@ last_updated: 2026-08-25
 
 # Research：这套短视频工作流是如何工作的？
 
-> 历史快照：本文描述提交 `0e5eb68`，不是当前使用指南。当前已移除 novel-storyboard，视频创作由 novel-creation 完成；请查阅仓库 README。固定提交链接保留作为研究证据。
+> 历史快照：本文描述提交 `0e5eb68`，不是当前使用指南。当前已移除 novel-storyboard，视频创作由 mint-creation 完成；请查阅仓库 README。固定提交链接保留作为研究证据。
 
 **Date**: 2026-08-25T08:39:58Z  
 **Git Commit**: 0e5eb68  

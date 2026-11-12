@@ -79,12 +79,12 @@
 
 | 范围 | 最终入口数 |
 | --- | ---: |
-| novel-art | 5 |
-| novel-characters | 5 |
-| novel-creation | 6 |
-| novel-outline | 3 |
-| novel-script | 3 |
-| novel-setup | 4 |
+| mint-art | 5 |
+| mint-characters | 5 |
+| mint-creation | 6 |
+| mint-outline | 3 |
+| mint-script | 3 |
+| mint-setup | 4 |
 | 仓库根 scripts | 4 |
 
 最终命令：

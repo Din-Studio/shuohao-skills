@@ -3,7 +3,7 @@
 > 历史资料：本文记录 v2 profile 体系及当时验收，不是当前操作指南。创作配置和产物精简以 [创作产物与指南精简实施计划](skills-创作产物与指南精简实施计划.md) 为准；历史测试结果不代表 v3 已通过。
 
 - 状态：已实施并完成本地验收。本文保留目标架构、数据契约、修改范围和验收标准；当前实现、测试证据及未验证效果见 [验收记录](skills-创作策略解耦验收.md)。未执行真实图片或视频生成，未提交或发布。
-- 取代文档：`novel-outline-竖屏密集爽点改造方案.md`。旧方案整体作废，不再作为并行实施依据；需要保留的设计已经重新写入本文。
+- 取代文档：`mint-outline-竖屏密集爽点改造方案.md`。旧方案整体作废，不再作为并行实施依据；需要保留的设计已经重新写入本文。
 - 审查基线：开发分支 `dev`，本轮检查时 HEAD 为 `d932ed7`；当前 outline/script 为 1.5.0，setup 为 2.0.0，creation 为 1.3.0。实施前重新核实实际文件与版本。
 - 核心目标：保持 skill 职责、工作流程和数据接口稳定。用户通过各 skill 自带的 references 选择或新增题材、叙事风格、结构与节奏策略，不为每种表现方式修改主流程和校验代码。
 - 首批交付：通用契约、策略加载机制，以及密集兑现连续剧、慢热悬疑、单元生活剧三种组合的完整验证。
@@ -639,12 +639,12 @@ outline/script 的软件主版本建议升级到 2.0.0；setup、characters、ar
 
 | 范围 | 修改内容 |
 | --- | --- |
-| novel-setup | creative 选择结构、初始化与展示、选择合法性、现有视觉与制作参数回归 |
-| novel-outline | SKILL、schema、骨架／分集指南；通用 story/beats/ending/arcs；规则应用、分阶段检查、报告、样例、迁移 |
-| novel-script | SKILL、schema、写作指南；v2 seed、节点 ID 认领、开场集尾定位、时长对账、策略参数、估算视图、独立运行 |
-| novel-creation | SKILL、shot-pass、schema；创作与模型指南分离、镜头参数策略化、项目选择对账、报告、最终集行为 |
-| novel-characters | 项目背景读取、风格边界、指南与样例独立性、现有资产图和视觉参数回归 |
-| novel-art | 同上；可选 reusePlan、节点关联文案与真实关联范围 |
+| mint-setup | creative 选择结构、初始化与展示、选择合法性、现有视觉与制作参数回归 |
+| mint-outline | SKILL、schema、骨架／分集指南；通用 story/beats/ending/arcs；规则应用、分阶段检查、报告、样例、迁移 |
+| mint-script | SKILL、schema、写作指南；v2 seed、节点 ID 认领、开场集尾定位、时长对账、策略参数、估算视图、独立运行 |
+| mint-creation | SKILL、shot-pass、schema；创作与模型指南分离、镜头参数策略化、项目选择对账、报告、最终集行为 |
+| mint-characters | 项目背景读取、风格边界、指南与样例独立性、现有资产图和视觉参数回归 |
+| mint-art | 同上；可选 reusePlan、节点关联文案与真实关联范围 |
 | scripts/report.mjs | 新检查状态、策略信息、面板发现、语言与交互适配 |
 | scripts/pipeline-selftest.mjs | 隔离跨阶段 fixture、三种组合传递、切换失效检查 |
 | README / README.en / CHANGELOG | 通用框架与可替换策略口径、版本边界、升级说明 |

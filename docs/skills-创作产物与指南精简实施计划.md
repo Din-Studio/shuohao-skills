@@ -43,9 +43,9 @@
 每个受影响的创作阶段使用一份本地指南：
 
 ```text
-skills/novel-outline/references/创作指南.md
-skills/novel-script/references/创作指南.md
-skills/novel-creation/references/创作指南.md
+skills/mint-outline/references/创作指南.md
+skills/mint-script/references/创作指南.md
+skills/mint-creation/references/创作指南.md
 ```
 
 三份文档分别负责大纲、剧本和视频表达。相互不依赖，不要求用户安装兄弟 skill。

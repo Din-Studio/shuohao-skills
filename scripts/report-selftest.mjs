@@ -295,16 +295,16 @@ const DOC = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
 {
   const dir = mkdtempSync(join(tmpdir(), 'report-discovery-'));
   try {
-    eq(findJson(dir, 'novel-outline'), null, '缺少产物不伪造面板');
+    eq(findJson(dir, 'mint-outline'), null, '缺少产物不伪造面板');
     mkdirSync(join(dir, 'directory-outline.json'));
     symlinkSync(join(dir, 'missing.json'), join(dir, 'linked-outline.json'));
-    eq(findJson(dir, 'novel-outline'), null, '目录和符号链接不冒充自动发现的正式产物');
+    eq(findJson(dir, 'mint-outline'), null, '目录和符号链接不冒充自动发现的正式产物');
     writeFileSync(join(dir, 'one-outline.json'), '{}');
     writeFileSync(join(dir, 'one-outline.backup.123.json'), '{}');
     writeFileSync(join(dir, 'one-outline.bak.v2.json'), '{}');
-    eq(findJson(dir, 'novel-outline'), join(dir, 'one-outline.json'), '排除迁移备份');
+    eq(findJson(dir, 'mint-outline'), join(dir, 'one-outline.json'), '排除迁移备份');
     writeFileSync(join(dir, 'two-outline.json'), '{}');
-    assert.throws(() => findJson(dir, 'novel-outline'), /显式指定/); passed++;
+    assert.throws(() => findJson(dir, 'mint-outline'), /显式指定/); passed++;
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 

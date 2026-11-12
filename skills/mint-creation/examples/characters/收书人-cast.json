@@ -1,0 +1,18 @@
+{
+  "source": "收书人",
+  "characters": [
+    {
+      "name": "陈叙",
+      "aliases": ["陈老板"],
+      "importance": "protagonist",
+      "oneLiner": "五十五岁，深夜旧书店老板，靠翻开每一本卖来的旧书寻找失散多年的妹妹。"
+    },
+    {
+      "name": "周亦",
+      "aliases": ["小周"],
+      "importance": "supporting",
+      "oneLiner": "二十七岁，深夜卖掉一本诗集，不知道它对老板的分量。"
+    }
+  ],
+  "note": "最小合规夹具，mint-creation 的 prompt-no-names 门只读 name/aliases 两个字段，不追求满足 mint-characters 自己的门与设定图字段。"
+}

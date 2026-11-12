@@ -11,8 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { makePane, scopeJs, splitDoc } from './report.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const sample = join(root, 'skills/novel-creation/examples');
-const temp = mkdtempSync(join(tmpdir(), 'novel-pipeline-'));
+const sample = join(root, 'skills/mint-creation/examples');
+const temp = mkdtempSync(join(tmpdir(), 'mint-pipeline-'));
 let passed = 0;
 const ok = (value, message) => { assert.ok(value, message); passed++; };
 const eq = (a, b, message) => { assert.equal(a, b, message); passed++; };
@@ -61,19 +61,19 @@ try {
 
   // 不同正式故事不得被组合成伪联合交付。完整五面板正例在三组合联合测试中。
   const fixture = (skill, suffix) => {
-    const stories = { 'novel-script': '修伞簿', 'novel-outline': '旧站时刻', 'novel-art': '雨棚留言', 'novel-characters': '渡口' };
+    const stories = { 'mint-script': '修伞簿', 'mint-outline': '旧站时刻', 'mint-art': '雨棚留言', 'mint-characters': '渡口' };
     return join(root, 'skills', skill, 'examples', stories[skill] + suffix);
   };
   const explicit = report('--creation', join(sample, 'creation/收书人-creation.json'),
-    '--script', fixture('novel-script', '-script.json'),
-    '--outline', fixture('novel-outline', '-outline.json'),
-    '--art', fixture('novel-art', '-art.json'),
-    '--cast', fixture('novel-characters', '-cast.json'), '--out', join(temp, 'explicit.html'));
+    '--script', fixture('mint-script', '-script.json'),
+    '--outline', fixture('mint-outline', '-outline.json'),
+    '--art', fixture('mint-art', '-art.json'),
+    '--cast', fixture('mint-characters', '-cast.json'), '--out', join(temp, 'explicit.html'));
   eq(explicit.status, 1, '不同故事的上游投影不匹配，必须报告失败');
   const mixed = readFileSync(join(temp, 'explicit.html'), 'utf8');
-  ok(mixed.includes('面板未生成：novel-script'), '不同故事组合不能伪装成剧本联合通过');
+  ok(mixed.includes('面板未生成：mint-script'), '不同故事组合不能伪装成剧本联合通过');
   ok(mixed.includes('id="pane-creation"'), '其他可渲染面板仍然保留');
-  const urlTextArt = JSON.parse(readFileSync(fixture('novel-art', '-art.json'), 'utf8'));
+  const urlTextArt = JSON.parse(readFileSync(fixture('mint-art', '-art.json'), 'utf8'));
   urlTextArt.scenes[0].summary += ' 资料路径记作 url(images/reference.png)，这是正文。';
   urlTextArt.exportNote = 'url(../original.png)';
   const urlTextFile = join(temp, 'url-text-art.json'); writeFileSync(urlTextFile, JSON.stringify(urlTextArt));
@@ -83,14 +83,14 @@ try {
   const embeddedArt = urlTextHtml.match(/<script type="application\/json" id="art--art-data">([\s\S]*?)<\/script>/)[1];
   assert.deepEqual(JSON.parse(embeddedArt), urlTextArt); passed++;
   ok(urlTextHtml.includes('资料路径记作 url(images/reference.png)'), '真实美术正文中的路径文本不被显示层改写');
-  const partial = report('--cast', fixture('novel-characters', '-cast.json'), '--out', join(temp, 'partial.html'));
+  const partial = report('--cast', fixture('mint-characters', '-cast.json'), '--out', join(temp, 'partial.html'));
   eq(partial.status, 0, partial.stderr);
   ok(partial.stdout.includes('1 个面板'), '单阶段渲染保持可用');
-  const conflict = report('--cast', fixture('novel-characters', '-cast.json'), '--production', 'production.json', '--no-production', '--out', join(temp, 'conflict.html'));
+  const conflict = report('--cast', fixture('mint-characters', '-cast.json'), '--production', 'production.json', '--no-production', '--out', join(temp, 'conflict.html'));
   eq(conflict.status, 1, '独立模式和显式制作配置不能混用');
   ok(!existsSync(join(temp, 'conflict.html')), '冲突参数不写入报告');
   const malformedProduction = join(temp, 'broken-production.json'); writeFileSync(malformedProduction, '{broken');
-  const brokenProduction = report('--cast', fixture('novel-characters', '-cast.json'), '--production', malformedProduction, '--out', join(temp, 'broken-production.html'));
+  const brokenProduction = report('--cast', fixture('mint-characters', '-cast.json'), '--production', malformedProduction, '--out', join(temp, 'broken-production.html'));
   eq(brokenProduction.status, 1, '损坏的显式制作配置不静默变成独立模式');
   ok(!existsSync(join(temp, 'broken-production.html')), '没有成功面板时不生成报告');
   const retired = report('--storyboard', 'old.json', '--cast', join(sample, 'characters/收书人-cast.json'), '--out', join(temp, 'retired.html'));
@@ -103,7 +103,7 @@ try {
   eq(report('--from', legacy, '--out', join(temp, 'legacy.html')).status, 1, '自动发现不再读取退役目录');
 
   // 真正执行 creation 渲染脚本的浏览器端代码；以最小 DOM 替身验证本次接入适配。
-  const rendered = run(process.execPath, [join(root, 'skills/novel-creation/scripts/novel-creation.mjs'),
+  const rendered = run(process.execPath, [join(root, 'skills/mint-creation/scripts/mint-creation.mjs'),
     'render', '收书人-creation.json', '--html', '--script', '../script/收书人-script.json',
     '--outline', '../outline/收书人-outline.json', '--art', '../art/收书人-art.json'], { cwd: join(sample, 'creation') });
   eq(rendered.status, 0, rendered.stderr);
@@ -146,7 +146,7 @@ try {
   eq(clipboardCalls, 1, '当前面板复制只调用一次');
 
   // 实际大纲 renderer 的后半集定位，在合并报告重命名ID之后仍能展开并定位。
-  const outlineRendered = run(process.execPath, [join(root, 'skills/novel-outline/scripts/novel-outline.mjs'), 'render', fixture('novel-outline', '-outline.json'), '--html']);
+  const outlineRendered = run(process.execPath, [join(root, 'skills/mint-outline/scripts/mint-outline.mjs'), 'render', fixture('mint-outline', '-outline.json'), '--html']);
   eq(outlineRendered.status, 0, outlineRendered.stderr);
   const locateCode = splitDoc(outlineRendered.stdout).scripts.join('\n').match(/function locateEpisode\(hash\)\{[\s\S]*?\n\}/)?.[0];
   ok(locateCode, '实际 renderer 包含分集定位逻辑');
@@ -180,11 +180,11 @@ try {
   symlinkSync(own, old);
   eq(install().status, 0, '默认安装成功');
   const piAgent = name => join(home, '.pi/agent/agents', `${name}.md`);
-  for (const agent of ['novel-video-prompt-writer', 'novel-video-prompt-reviewer']) {
+  for (const agent of ['mint-video-prompt-writer', 'mint-video-prompt-reviewer']) {
     eq(readlinkSync(piAgent(agent)), join(root, 'agents/pi', `${agent}.md`), `安装到 pi 时链接角色定义 ${agent}`);
   }
   ok(!existsSync(old) && !lstatSync(old, { throwIfNoEntry: false }), '默认安装清理本仓库旧软链');
-  eq(readlinkSync(join(skills, 'novel-creation')), join(root, 'skills/novel-creation'), '安装当前视频创作 skill');
+  eq(readlinkSync(join(skills, 'mint-creation')), join(root, 'skills/mint-creation'), '安装当前视频创作 skill');
   symlinkSync(own, old);
   eq(install('--uninstall', 'novel-storyboard').status, 0, '源目录删除后仍可显式卸载旧软链');
   ok(!lstatSync(old, { throwIfNoEntry: false }), '显式卸载删除本仓库旧软链');
@@ -201,13 +201,13 @@ try {
   rmSync(old, { recursive: true }); symlinkSync(own, old);
   eq(install('--uninstall').status, 0, '默认卸载可清理退役链接');
   ok(!lstatSync(old, { throwIfNoEntry: false }), '默认卸载删除本仓库旧软链');
-  ok(!lstatSync(piAgent('novel-video-prompt-writer'), { throwIfNoEntry: false }), '卸载删除 pi 角色定义软链');
+  ok(!lstatSync(piAgent('mint-video-prompt-writer'), { throwIfNoEntry: false }), '卸载删除 pi 角色定义软链');
   // subagent 定义只随 Claude Code 安装
   ok(!existsSync(join(home, '.claude')), '只安装到 pi 时不创建 Claude Code 目录');
   const claude = (...args) => run('bash', ['scripts/install.sh', '--claude', ...args], { env: { ...process.env, HOME: home } });
   const agentLink = name => join(home, '.claude/agents', `${name}.md`);
   eq(claude().status, 0, '安装到 Claude Code 成功');
-  for (const [agent, skill] of [['novel-video-prompt-writer', 'novel-video-prompt'], ['novel-video-prompt-reviewer', 'novel-video-prompt-review']]) {
+  for (const [agent, skill] of [['mint-video-prompt-writer', 'mint-video-prompt'], ['mint-video-prompt-reviewer', 'mint-video-prompt-review']]) {
     eq(readlinkSync(agentLink(agent)), join(root, 'agents', `${agent}.md`), `软链 subagent 定义 ${agent}`);
     const text = readFileSync(join(root, 'agents', `${agent}.md`), 'utf8');
     ok(text.includes(`name: ${agent}\n`) && text.includes(`skills: [${skill}]`), `${agent} 预载 ${skill}`);
@@ -215,8 +215,8 @@ try {
   }
   // pi 的角色定义与 Claude Code 的同名：只用子代理扩展认识的字段，不写模型（继承调度会话），指南路径由任务简报给出
   const piTools = {
-    'novel-video-prompt-writer': 'read, write, edit, bash, grep, find, ls',
-    'novel-video-prompt-reviewer': 'read, edit, bash, grep, find, ls',
+    'mint-video-prompt-writer': 'read, write, edit, bash, grep, find, ls',
+    'mint-video-prompt-reviewer': 'read, edit, bash, grep, find, ls',
   };
   for (const [agent, tools] of Object.entries(piTools)) {
     const text = readFileSync(join(root, 'agents/pi', `${agent}.md`), 'utf8');
@@ -228,7 +228,7 @@ try {
   }
   ok(!existsSync(join(root, '.pi')), '仓库不保留项目级 .pi 角色定义');
   eq(claude('--uninstall').status, 0, '从 Claude Code 卸载成功');
-  ok(!lstatSync(agentLink('novel-video-prompt-writer'), { throwIfNoEntry: false }), '卸载删除 subagent 软链');
+  ok(!lstatSync(agentLink('mint-video-prompt-writer'), { throwIfNoEntry: false }), '卸载删除 subagent 软链');
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }

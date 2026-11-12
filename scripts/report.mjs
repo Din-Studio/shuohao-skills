@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * report.mjs —— 把 novel 系列各 skill 的报告合成一张单页，左侧导航切换。
+ * report.mjs —— 把 mint 系列各 skill 的报告合成一张单页，左侧导航切换。
  *
  * 定位：**组装器，不是独立 skill**。它不 import 任何 skill 的代码，而是调各自的
  * `render --html` 拿产物再拼装。三条好处：
@@ -47,7 +47,7 @@ const skillsDir = resolve(here, '..', 'skills');
 export const PANES = [
   {
     id: 'outline',
-    skill: 'novel-outline',
+    skill: 'mint-outline',
     flag: '--outline',
     dir: 'outline',
     label: '大纲',
@@ -58,7 +58,7 @@ export const PANES = [
   },
   {
     id: 'characters',
-    skill: 'novel-characters',
+    skill: 'mint-characters',
     flag: '--cast',
     dir: 'characters',
     label: '角色',
@@ -69,7 +69,7 @@ export const PANES = [
   },
   {
     id: 'art',
-    skill: 'novel-art',
+    skill: 'mint-art',
     flag: '--art',
     dir: 'art',
     label: '美术',
@@ -80,7 +80,7 @@ export const PANES = [
   },
   {
     id: 'script',
-    skill: 'novel-script',
+    skill: 'mint-script',
     flag: '--script',
     dir: 'script',
     label: '剧本',
@@ -91,7 +91,7 @@ export const PANES = [
   },
   {
     id: 'creation',
-    skill: 'novel-creation',
+    skill: 'mint-creation',
     flag: '--creation',
     dir: 'creation',
     label: '视频创作',
@@ -519,7 +519,7 @@ ${panes.map((p) => (p.js ? `<script>\n${p.js}\n</script>` : '')).filter(Boolean)
 /* CLI                                                                 */
 /* ------------------------------------------------------------------ */
 
-const USAGE = `report.mjs —— 把 novel 系列各 skill 的报告合成一张单页
+const USAGE = `report.mjs —— 把 mint 系列各 skill 的报告合成一张单页
 
   node scripts/report.mjs --from <demo目录> [--out report.html] [--lang zh|en]
   node scripts/report.mjs --outline o.json --cast c.json … [--out report.html]
@@ -548,7 +548,7 @@ function flag(argv, name, fallback = null) {
 /** 在一个目录里找唯一一份看着像该段产出的 json（排掉报告与清单类文件）。 */
 export function findJson(dir, skill) {
   if (!existsSync(dir)) return null;
-  const kind = skill.replace('novel-', '');
+  const kind = skill.replace('mint-', '');
   const stem = kind === 'characters' ? 'cast' : kind;
   const files = readdirSync(dir, { withFileTypes: true })
     .filter(entry => entry.isFile()).map(entry => entry.name)

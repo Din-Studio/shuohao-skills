@@ -14,12 +14,12 @@
 
 | Skill | 软件版本 | 本轮主要变化 |
 | --- | --- | --- |
-| novel-setup | 3.0.0 | 严格记录四维 creative 选择，不加载兄弟策略，不从画幅推导节奏 |
-| novel-outline | 2.0.0 | schemaVersion 2；作品承诺、中性节点、集尾问题、阶段里程碑、九项策略规则 |
-| novel-script | 2.0.0 | schemaVersion 2；严格 seed 投影、按 ID 认领、实际坐标、统一估时与上游对账 |
-| novel-creation | 2.0.0 | schemaVersion 2；镜头表达策略与模型限制分离，继承实际集尾，修复投产包失效与续传身份 |
-| novel-characters | 2.0.0 | v2 大纲消费、题材／风格背景、视觉正文边界、稳定 ID、内容语言与界面语言分离 |
-| novel-art | 2.0.0 | v2 大纲消费、可选复用建议、任意节点关联、严格 ID、真实上游与原始 JSON 导出 |
+| mint-setup | 3.0.0 | 严格记录四维 creative 选择，不加载兄弟策略，不从画幅推导节奏 |
+| mint-outline | 2.0.0 | schemaVersion 2；作品承诺、中性节点、集尾问题、阶段里程碑、九项策略规则 |
+| mint-script | 2.0.0 | schemaVersion 2；严格 seed 投影、按 ID 认领、实际坐标、统一估时与上游对账 |
+| mint-creation | 2.0.0 | schemaVersion 2；镜头表达策略与模型限制分离，继承实际集尾，修复投产包失效与续传身份 |
+| mint-characters | 2.0.0 | v2 大纲消费、题材／风格背景、视觉正文边界、稳定 ID、内容语言与界面语言分离 |
+| mint-art | 2.0.0 | v2 大纲消费、可选复用建议、任意节点关联、严格 ID、真实上游与原始 JSON 导出 |
 
 大纲、剧本、视频创作各自携带策略解析代码、契约、指南和测试。共33份本地 profile：大纲12份、剧本12份、视频创作9份。没有根目录共享运行库，没有跨 skill import，没有执行 profile 中的代码。
 
@@ -81,9 +81,9 @@ for f in skills/*/scripts/*selftest.mjs scripts/*-selftest.mjs; do
 
 `/Users/fanlz/Downloads/Demo/strategy-decoupling-20261106/`
 
-- `novel-test/report.html`、`report.en.html`：原小说抽核改编《三次选择》的三阶段合并报告。
-- `novel-test/current-verification.json`：收尾重新执行18次CLI的结果。
-- `novel-test/run-report.md`：代理测试过程、逐节点证据、改编来源与验证边界。
+- `mint-test/report.html`、`report.en.html`：原小说抽核改编《三次选择》的三阶段合并报告。
+- `mint-test/current-verification.json`：收尾重新执行18次CLI的结果。
+- `mint-test/run-report.md`：代理测试过程、逐节点证据、改编来源与验证边界。
 - `verified-combinations/`：三种组合的独立原创联合项目与五面板报告。
 - `browser-evidence/`：窄屏截图、导航记录、真实下载及导出对照。
 - `verification/`：全量测试日志、最终缺陷关闭复核和内容评审材料。
