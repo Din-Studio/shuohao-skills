@@ -9,7 +9,6 @@ import { basename, dirname, join, relative, resolve, isAbsolute } from 'node:pat
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { projectProblems, scriptParams, endPosition, episodeIntent } from './lib/document.mjs';
-import { migrateFile } from './lib/migration.mjs';
 import { verifySources } from './lib/source.mjs';
 import { playbackProblems } from './lib/playback.mjs';
 import { parsePrompt, promptProblems, promptTimecode } from './lib/prompt.mjs';
@@ -352,7 +351,7 @@ export function referenceImagePath(kind, name, id = null, ctx = {}) {
     : [...(ctx.art?.scenes ?? []), ...(ctx.art?.props ?? [])];
   const asset=assets.find(x=>x.id===id);
   // The owning stage's file contract wins. Formal cast sheets are keyed by
-  // stable C ID; art register pins imageStem and legacy migration pins sheetImage.
+  // stable C ID; art pins imageStem or sheetImage.
   if(kind!=='character' && asset?.sheetImage) {
     if(isAbsolute(asset.sheetImage)) return asset.sheetImage;
     return ctx.artPath ? resolve(dirname(ctx.artPath),asset.sheetImage) : `../art/${asset.sheetImage}`;
@@ -374,7 +373,7 @@ export function resolveReferenceImage(kind, name, workDir = '.', { existsImpl = 
 /* ------------------------------------------------------------------ */
 /* 保留上游、来源、身份、节拍覆盖和时长检查。
  * size-phrase/camera-phrase 只查内部枚举；refimage-labeled 查五部分格式和图片引用。
- * prompt-no-names 明确标记退出；正文因果、人设和实际切镜质量由独立审核与成片验证判断。
+ * 正文因果、人设和实际切镜质量由独立审核与成片验证判断。
  */
 export function gateReport(doc, ctx = {}) {
   const errors = shapeProblems(doc);
@@ -519,7 +518,7 @@ function technicalGates(doc, ctx = {}) {
 
           bad.crowd.push(`${cid} 同框 ${cut.characters.length} 人且没有拆解说明`);
         }
-        // 保留 schema v3 的计划枚举，不再要求正文逐镜对应。
+        // schema v3 的计划枚举，不要求正文逐镜对应。
         if (!SHOT_SIZES[cut?.size]) bad.size.push(`${cid} 景别「${cut?.size}」不在枚举里`);
         if (!CAMERA_MOVES[cut?.camera]) bad.camera.push(`${cid} 运镜「${cut?.camera}」不在词表里`);
 
@@ -649,7 +648,6 @@ function technicalGates(doc, ctx = {}) {
   add('camera-phrase', '内部计划运镜属于合法枚举（不要求正文逐镜对应）', bad.camera.length === 0, bad.camera.join('；'));
   add('dialogue-verbatim', '认领节拍的台词逐字出现在 prompt 里', bad.dlgVerbatim.length === 0, script ? bad.dlgVerbatim.join('；') : SKIP_SCRIPT);
   add('prompt-lang', `提示词语言与设定一致（promptLang=${promptLang}）`, bad.lang.length === 0, bad.lang.join('；'));
-  add('prompt-no-names', '旧禁人名检查已退出：新标准使用对象全称', true, 'not-applicable');
   add('refs', '场次／人物／道具对账剧本', bad.refs.length === 0, script ? bad.refs.join('；') : SKIP_SCRIPT);
   add(
     'shot-recipe',
@@ -680,7 +678,6 @@ function technicalGates(doc, ctx = {}) {
     if (g) { g.status = 'skipped'; g.reason = reason; g.messages = g.detail ? [g.detail] : []; }
   });
   if (!script) skip(['coverage','dialogue-fit','ep-duration','dialogue-verbatim','refs'], 'missing-upstream');
-  skip(['prompt-no-names'], 'not-applicable'); // 新标准要求对象全称，不再禁止角色名。
   if (!haveNames && !bad.refCoverage.length) skip(['refimage-coverage'], 'missing-upstream');
   else if (!eps.some(ep=>(ep.segments??[]).some(seg=>seg.images?.length))) skip(['refimage-coverage'], 'not-applicable');
   if (!recipes) skip(['shot-recipe'], 'missing-upstream');
@@ -876,7 +873,6 @@ const GATE_LABELS_EN = {
   'dialogue-verbatim': 'Claimed dialogue appears verbatim inside prompt',
   'prompt-lang': 'Prompt language matches the promptLang setting',
   'prompt-model-fit': 'Prompt matches what the mounted video model expects',
-  'prompt-no-names': 'Retired name prohibition; the new standard uses full object names',
   'refs': 'Scenes / characters / props audited against the script',
   'shot-recipe': 'Referenced recipes exist, their must-phrases are in the matching [Shot k] line, multi-cut recipes run long enough',
   'refimage-coverage': 'Every character/scene/prop appearing in a segment resolves to an existing reference sheet',
@@ -1083,7 +1079,7 @@ const mdRow = (cells) => `| ${cells.map((c) => String(c ?? '').replace(/\|/g, '\
 const mdHead = (cols) => [mdRow(cols), mdRow(cols.map(() => '---'))].join('\n');
 
 function assertReadableVersions(doc, ctx) {
-  if (doc?.schemaVersion !== 3) throw new Error('creation.schemaVersion 必须为 3；迁移见 references/migration.md');
+  if (doc?.schemaVersion !== 3) throw new Error('creation.schemaVersion 必须为 3');
   for (const [key, validator] of [['script',scriptProblems],['outline',outlineProblems]]) if (ctx[key] !== undefined) {
     const issues = validator(ctx[key]);
     if (issues.length) throw new Error(issues.join('；'));
@@ -1631,8 +1627,6 @@ document.querySelector('.expo').addEventListener('click', (e) => {
 
 const USAGE = `mint-creation.mjs — mint-creation skill 的确定性工具（参考图直出视频）
 
-  migrate-v3 INPUT [--out OUTPUT] [--confirm] [--script SCRIPT] [--outline OUTLINE]
-                                                默认预览；保留输入，拒绝覆盖目标
   seed <script.json> [--eps 1-3]               从剧本预填节拍工作底稿（打印到 stdout）
   validate <creation.json> --script <script.json>
            [--outline] [--cast] [--art]         校验；有违规逐条打印并 exit 1
@@ -1725,7 +1719,7 @@ function loadCtx(rest, fromDir = '.') {
     if (ctx[key] !== undefined) continue;
     const dir = join(root, directory);
     try { lstatSync(dir); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
-    const candidates = readdirSync(dir).filter(name => name.endsWith('.json') && !name.startsWith('.') && !/manifest|\.backup|\.bak|\.tmp|\.review|\.migration|\.v2-backup/i.test(name)).sort();
+    const candidates = readdirSync(dir).filter(name => name.endsWith('.json') && !name.startsWith('.') && !/manifest|\.backup|\.bak|\.tmp|\.review/i.test(name)).sort();
     if (candidates.length > 1) throw new Error(`上游 ${key} 不唯一，请显式提供路径：${candidates.join(', ')}`);
     if (candidates.length === 1) {
       ctx[key + 'Path'] = join(dir,candidates[0]);
@@ -1919,18 +1913,6 @@ async function main(argv) {
   if (!cmd || cmd === '-h' || cmd === '--help') {
     console.log(USAGE);
     process.exit(cmd ? 0 : 1);
-  }
-
-  if (cmd === 'migrate-v3') {
-    if (rest.filter(a => a === '--confirm').length > 1) throw new Error('重复 --confirm');
-    for (const arg of rest) if (arg.startsWith('--') && !['--confirm','--out','--script','--outline'].includes(arg)) throw new Error(`未知迁移参数 ${arg}`);
-    if (!rest[0]) throw new Error('用法：migrate-v3 INPUT [--out OUTPUT] [--confirm]');
-    const result = migrateFile(rest[0], {out:flag(rest,'--out'), confirm:rest.includes('--confirm'),
-      script:flag(rest,'--script') ? readJson(flag(rest,'--script')) : undefined,
-      outline:flag(rest,'--outline') ? readJson(flag(rest,'--outline')) : undefined});
-    console.log(JSON.stringify(result,null,2));
-    if (result.pending.length && !rest.includes('--confirm')) process.exitCode = 1;
-    return;
   }
 
   if (cmd === 'seed') {
@@ -2192,7 +2174,7 @@ async function main(argv) {
       : (manifest.segments ?? []);
 
     // 批准绑定的是内容与输入：这里按当前的 creation.json 与上游重新核对，不信任导出那一刻的结论
-    if (!manifest.creation) throw new Error('manifest.json 没有记录 creation.json 的位置——它由旧版本导出，重新运行 export');
+    if (!manifest.creation) throw new Error('manifest.json 没有记录 creation.json 的位置，重新运行 export');
     const creationPath = resolve(outDir, manifest.creation);
     const doc = readJson(creationPath);
     const ctx = loadCtx(rest, dirname(creationPath));

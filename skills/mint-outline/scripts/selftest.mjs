@@ -64,19 +64,19 @@ try {
  const project=join(tmp,'project'),outlineDir=join(project,'outline');mkdirSync(outlineDir,{recursive:true});const docFile=join(outlineDir,'outline.json'),prodFile=join(project,'production.json'),d=clone();delete d.creativeBrief;json(docFile,d);
  eq(findProduction(outlineDir,0),null);json(prodFile,{schemaVersion:3,creativeBrief:fixture.creativeBrief,lang:'en'});eq(findProduction(outlineDir),prodFile);eq(stageDirNote(docFile,prodFile),null);ok(stageDirNote(join(project,'wrong.json'),prodFile));eq(run('validate',docFile).status,0);
  delete d.lang;json(docFile,d);ok(run('render',docFile,'--html').stdout.includes('lang="en"'));
- for(const prod of [{},{schemaVersion:2},{schemaVersion:3,creative:{}},{schemaVersion:3,creativeBrief:''},null]){json(prodFile,prod);eq(run('validate',docFile).status,1);eq(run('render',docFile,'--html').status,1);}
+ for(const prod of [{},{schemaVersion:2},{schemaVersion:3,creativeBrief:''},null]){json(prodFile,prod);eq(run('validate',docFile).status,1);eq(run('render',docFile,'--html').status,1);}
  writeFileSync(prodFile,'{broken');ok(loadProduction(docFile).productionError);eq(run('validate',docFile).status,1);rmSync(prodFile);eq(run('validate',docFile).status,0);eq(run('validate',docFile,'--production',prodFile).status,1);
  for(const v of [false,'true','false',1,null])eq(autopilotOf({autopilot:v}),false);eq(autopilotOf({autopilot:true}),true);
- for(const cmd of ['assets','profiles','profile','apply-profile','migrate'])eq(run(cmd,docFile).status,1);
+ for(const cmd of ['assets','profiles','profile','apply-profile','migrate','migrate-v3','migrate-v4','migrate-v5'])eq(run(cmd,docFile).status,1);
  for(const args of [['validate',docFile,'--unknown'],['checkup',docFile,'extra'],['render',docFile,'--html','--md'],['validate',docFile,'--stage','full','--stage','full'],['validate',docFile,'--stage','unknown']])eq(run(...args).status,1);
  eq(run('verify-sources',sample).status,0);eq(run('checkup',sample,'--json','--verify-sources').status,0);
  assert.throws(()=>renderHtml({...fixture,schemaVersion:4}));count++;
- const legacy=join(HERE,'fixtures/outline-v4.json');for(const cmd of ['validate','checkup','render','verify-sources'])eq(run(cmd,legacy).status,1,'only v5 in formal entry '+cmd);
+ const other=join(tmp,'other-version.json');json(other,{...fixture,schemaVersion:4});for(const cmd of ['validate','checkup','render','verify-sources'])eq(run(cmd,other).status,1,'only v5 in formal entry '+cmd);
  // This skill must run without siblings, their samples or project scripts.
  const isolated=join(tmp,'isolated');cpSync(SKILL_ROOT,isolated,{recursive:true});
  let result=spawnSync(process.execPath,[join(isolated,'scripts/mint-outline.mjs'),'validate',join(isolated,'examples/旧站时刻-outline.json'),'--verify-sources'],{cwd:isolated,encoding:'utf8',timeout:20000});eq(result.status,0,result.stderr+result.stdout);
- for(const entry of ['fixes-selftest.mjs','migration-selftest.mjs','fusion-selftest.mjs','v5-migration-selftest.mjs']){result=spawnSync(process.execPath,[join(HERE,entry)],{cwd:SKILL_ROOT,encoding:'utf8',timeout:60000,maxBuffer:12*1024*1024});eq(result.status,0,result.stderr+result.stdout);console.log(result.stdout.trim());}
+ for(const entry of ['fixes-selftest.mjs','fusion-selftest.mjs']){result=spawnSync(process.execPath,[join(HERE,entry)],{cwd:SKILL_ROOT,encoding:'utf8',timeout:60000,maxBuffer:12*1024*1024});eq(result.status,0,result.stderr+result.stdout);console.log(result.stdout.trim());}
  if(!process.env.OUTLINE_SELFTEST_COPIED){result=spawnSync(process.execPath,[join(isolated,'scripts/selftest.mjs')],{cwd:isolated,env:{...process.env,OUTLINE_SELFTEST_COPIED:'1'},encoding:'utf8',timeout:120000,maxBuffer:12*1024*1024});eq(result.status,0,result.stderr+result.stdout);}
- for(const name of ['SKILL.md','README.md','README.en.md','references/schema.md','references/创作指南.md','references/migration.md','references/handoff.md']){const file=join(SKILL_ROOT,name),body=readFileSync(file,'utf8');for(const m of body.matchAll(/\]\(([^)#]+)(?:#[^)]*)?\)/g))if(!/^https?:/.test(m[1]))ok(existsSync(resolve(dirname(file),m[1])),'local link '+name+' -> '+m[1]);}
+ for(const name of ['SKILL.md','README.md','README.en.md','references/schema.md','references/创作指南.md','references/handoff.md']){const file=join(SKILL_ROOT,name),body=readFileSync(file,'utf8');for(const m of body.matchAll(/\]\(([^)#]+)(?:#[^)]*)?\)/g))if(!/^https?:/.test(m[1]))ok(existsSync(resolve(dirname(file),m[1])),'local link '+name+' -> '+m[1]);}
  console.log(`✓ ${count} assertions passed: formal v5 story-only contracts, CLI, reports, documentation and standalone copy.`);
 }finally{rmSync(tmp,{recursive:true,force:true});}

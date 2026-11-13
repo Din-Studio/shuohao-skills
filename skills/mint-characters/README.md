@@ -4,7 +4,7 @@
 
 正式交付固定包含 `cast.json`、`cast-report.md`、`cast-report.html` 三个文件。两份报告由 `cast.json` 渲染，三个文件均放在项目 `characters/` 目录下。
 
-独立阅读原剧本，建立稳定人物身份。正式产物为 **cast v1**（`schemaVersion: 1, kind: mint-characters`）。outline **v5 仅为可选故事背景**，不是人物权威；production 保持 v3。
+独立阅读原剧本，建立稳定人物身份。正式产物为 **cast v1**（`schemaVersion: 1, kind: mint-characters`）。outline **v5 仅为可选故事背景**，不是人物权威；production 为 v3。只接受这三个版本，其他版本、无版本对象或裸数组一律失败。
 
 ## 安装
 
@@ -21,7 +21,7 @@ node scripts/mint-characters.mjs render cast.json --md > cast-report.md
 node scripts/mint-characters.mjs render cast.json --html > cast-report.html
 ```
 
-交付放在项目 `characters/` 下。`--outline outline-v5.json` 可选；缺少时背景检查 skipped，提供损坏或错误版本则失败。原件路径相对记载它的 JSON；摘要、行数和覆盖必须核验，原件缺失不可跳过。
+交付放在项目 `characters/` 下。`--outline outline.json` 可选；缺少时背景检查 skipped，提供损坏或错误版本则失败。原件路径相对记载它的 JSON；摘要、行数和覆盖必须核验，原件缺失不可跳过。
 
 - 同名不同人、别名、无台词、匿名声音、未知说话者、非人及提及身份均保留。
 - 人物身份不要求画像、声音或图片。persona / voice / image 各自按需设计。
@@ -31,22 +31,13 @@ node scripts/mint-characters.mjs render cast.json --html > cast-report.html
 
 ## 画像、音色与图片
 
-保留历史独立设计、assemble、Markdown、交互报告和离线计划能力。正式身份中的设计块为独立可选项；详见[设计字段](references/design-schema.md)。`images cast.json` 只对存在 image 的身份导出计划，不提交、不生成；正式任务及路径使用 C ID，例如 `images/C01-sheet.png`。外部生成工具由用户选择，不作为本 skill 安装前提。
+画像、音色和图片设计块直接写在 cast v1 的对应身份上，各自独立可选；详见[设计字段](references/design-schema.md)。`images cast.json` 只对存在 image 的身份导出计划，不提交、不生成；正式任务及路径使用 C ID，例如 `images/C01-sheet.png`。外部生成工具由用户选择，不作为本 skill 安装前提。
 
-## 历史迁移
-
-```bash
-node scripts/mint-characters.mjs migrate-outline old-outline-v4.json --out pending.json
-node scripts/mint-characters.mjs migrate-cast old-cast.json --out pending-cast.json
-```
-
-保留原文件、旧 ID、画像、声音、图片、全部字段、关系和预算。输出逐字段 pending 材料，不能冒充正式 cast 或审核通过。正式 seed 不再接受 outline v3/v4；显式 `seed old-outline.json --legacy` 仅保留旧骨架。
-
-[完整工作流](SKILL.md) · [正式契约](references/schema.md) · [来源](references/source-facts.md) · [迁移及消费者矩阵](references/migration.md)
+[完整工作流](SKILL.md) · [正式契约](references/schema.md) · [来源](references/source-facts.md) · [设计字段](references/design-schema.md)
 
 ## 自有样例与测试
 
-`examples/回声台.txt` 和 `回声台-cast.json` 展示独立身份登记与全部语义边界。`examples/渡口-cast.json` 保留完整历史画像、音色和图片提示词样例。HTML 为可重建产物，不提交版本控制。
+`examples/回声台.txt` 和 `回声台-cast.json` 展示独立身份登记与全部语义边界。`examples/渡口-cast.json` 是带完整画像、音色和图片提示词设计块的 cast v1 样例。HTML 为可重建产物，不提交版本控制。
 
 ```bash
 node scripts/test-all.mjs

@@ -6,10 +6,10 @@
 
 - [流程与命令](SKILL.md) · [数据契约](references/schema.md)
 - [解析指南](references/创作指南.md) · [分块读取](references/volume-pass.md)
-- [显式迁移与材料形状](references/migration.md) · [版本及交接矩阵](references/handoff.md)
+- [消费者与交接矩阵](references/handoff.md)
 - 自有[剧本](examples/旧站时刻-script.txt)与[v5 样例](examples/旧站时刻-outline.json)
 
-Node 18+，仅标准库，可以单独复制。正式入口仅接受 v5。assets 命令及资产报告已移除。v4 必须显式 migrate-v5；保留原件与全部旧关系、明确预算，导出 .migration.json 待核验材料，不冒充已审核资产。
+Node 18+，仅标准库，可以单独复制。全部命令只接受 schemaVersion 5，其他版本直接报错，不提供迁移或双读。
 
 --verify-sources 实际读取原件；默认来源核验为 skipped。来源版本核验、语义忠实审核与制作审核分别报告。
 

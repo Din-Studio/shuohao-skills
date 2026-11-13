@@ -1,13 +1,58 @@
 {
+  "schemaVersion": 1,
+  "kind": "mint-characters",
+  "status": "draft",
   "source": "渡口",
   "lang": "zh",
   "summary": "民国年间的清晨，一条河的渡口浓雾未散。摆渡四十年的老船夫照常开船，先后上船的是抱着旧皮箱、独自要过河北上县城的女学生沈知微，穿褪色军呢大衣、右手始终揣在口袋里的男人陆行远，以及挑着货担、嗓门能穿透雾气的货郎胡二爷。四个人同船过河，各自揣着没有说出口的来路与去处，雾越来越浓，船离岸时河面上什么都看不见。",
+  "provenance": {
+    "kind": "script",
+    "scope": "complete",
+    "documents": [
+      {
+        "id": "D01",
+        "path": "渡口.txt",
+        "sha256": "faa58b6088c49578005591040b44746cf5348e52cb5237850c4f5f07d5168730",
+        "lineCount": 25
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 25
+      }
+    ]
+  },
   "characters": [
     {
       "id": "C01",
+      "identityKey": "shen-zhiwei",
       "name": "沈知微",
       "aliases": [
-        "姑娘"
+        {
+          "name": "姑娘",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 19,
+              "endLine": 19
+            }
+          ]
+        }
+      ],
+      "entityType": "human",
+      "presence": [
+        "visible"
+      ],
+      "speech": "speaking",
+      "unknowns": [],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 5,
+          "endLine": 5
+        }
       ],
       "importance": "protagonist",
       "oneLiner": "十九岁，抱着一只旧皮箱独自过河北上，把所有害怕都攥在发白的指节里。",
@@ -27,14 +72,17 @@
         "arc": "在这一段里她仍未解释独自北上的原因；她问明去路，却没有说出必须动身的缘由。（推断）",
         "relationships": [
           {
+            "id": "C03",
             "name": "老周",
             "relation": "向他问路的渡客"
           },
           {
+            "id": "C04",
             "name": "胡二爷",
             "relation": "被他搭话关心的同船人"
           },
           {
+            "id": "C02",
             "name": "陆行远",
             "relation": "同船陌生人，彼此各看过对方一眼"
           }
@@ -70,13 +118,37 @@
         "emotion": "试探、戒备，有所保留",
         "prompt": "19-year-old female, light breathy soprano, mid-to-high pitch, thin chest support, narrow dynamic range. Quiet volume, slightly hesitant pace, rising inflection at phrase ends. Standard Mandarin, no regional accent. Tentative and watchful.",
         "referenceHint": "像一个在陌生地方问路、又怕对方追问下去的人"
-      }
+      },
+      "lifecycleStamp": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
     {
       "id": "C02",
+      "identityKey": "lu-xingyuan",
       "name": "陆行远",
       "aliases": [
-        "陆"
+        {
+          "name": "陆",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 9,
+              "endLine": 9
+            }
+          ]
+        }
+      ],
+      "entityType": "human",
+      "presence": [
+        "visible"
+      ],
+      "speech": "speaking",
+      "unknowns": [],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 9,
+          "endLine": 9
+        }
       ],
       "importance": "major",
       "oneLiner": "二十七八岁的男人，右手一路揣在大衣口袋里，隔着布也能看出握着什么硬东西。",
@@ -96,14 +168,17 @@
         "arc": "静止。唯一的松动是最后回头看了沈知微一眼——比第一次那一眼多了点什么。（推断）",
         "relationships": [
           {
+            "id": "C03",
             "name": "老周",
             "relation": "催他开船的乘客"
           },
           {
+            "id": "C01",
             "name": "沈知微",
             "relation": "同船陌生人，两次注意到她"
           },
           {
+            "id": "C04",
             "name": "胡二爷",
             "relation": "同船人，未有交流"
           }
@@ -139,13 +214,37 @@
         "emotion": "表面无波澜，底下绷着",
         "prompt": "Late-20s male, dry tight baritone, mid-low pitch, narrow resonant core, hard forward consonants. Low volume, fast clipped pace, abrupt full stops, minimal filler. Northern Mandarin, crisp. Controlled with held tension.",
         "referenceHint": "像一个习惯了下达指令、不需要对方回话的人（制作推断）地域口音是本次声音设计，原文引句不能证明具体地域。"
-      }
+      },
+      "lifecycleStamp": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
     {
       "id": "C03",
+      "identityKey": "lao-zhou",
       "name": "老周",
       "aliases": [
-        "老伯"
+        {
+          "name": "老伯",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 5,
+              "endLine": 5
+            }
+          ]
+        }
+      ],
+      "entityType": "human",
+      "presence": [
+        "visible"
+      ],
+      "speech": "speaking",
+      "unknowns": [],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 3
+        }
       ],
       "importance": "major",
       "oneLiner": "在这条河上摆了四十年渡的老船夫，一只眼睛是白的，一船人的来去他都看在另一只里。",
@@ -165,14 +264,17 @@
         "arc": "静止。他是这条河的一部分，不是被这一程改变的人。",
         "relationships": [
           {
+            "id": "C01",
             "name": "沈知微",
             "relation": "向他问路的年轻渡客"
           },
           {
+            "id": "C04",
             "name": "胡二爷",
             "relation": "相熟的老主顾，被他打趣"
           },
           {
+            "id": "C02",
             "name": "陆行远",
             "relation": "催他开船的乘客"
           }
@@ -208,13 +310,37 @@
         "emotion": "疲惫而平静，几乎没有起伏",
         "prompt": "75-year-old male, gravelled husky bass-baritone, low pitch, thick chest resonance, blurred word endings. Low volume, slow pace, long breath pauses, minimal pitch variation. Southern riverside accent, worn-smooth consonants. Settled and weary.",
         "referenceHint": "像一个在同一个渡口喊了四十年\"开船\"、嗓子早就磨平的人（制作推断）地域口音是本次声音设计，原文引句不能证明具体地域。"
-      }
+      },
+      "lifecycleStamp": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
     {
       "id": "C04",
+      "identityKey": "hu-erye",
       "name": "胡二爷",
       "aliases": [
-        "胡"
+        {
+          "name": "胡",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 13,
+              "endLine": 13
+            }
+          ]
+        }
+      ],
+      "entityType": "human",
+      "presence": [
+        "visible"
+      ],
+      "speech": "speaking",
+      "unknowns": [],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 13,
+          "endLine": 13
+        }
       ],
       "importance": "supporting",
       "oneLiner": "挑着两箱货、走一步响三声的胖货郎，一船人的沉默全靠他一个人填。",
@@ -234,14 +360,17 @@
         "arc": "从纯粹的插科打诨，到最后那声叹息——他是船上唯一说破处境的人。（推断）",
         "relationships": [
           {
+            "id": "C03",
             "name": "老周",
             "relation": "相熟的老主顾，敢开他玩笑"
           },
           {
+            "id": "C01",
             "name": "沈知微",
             "relation": "主动搭话、表示关心的同船人"
           },
           {
+            "id": "C02",
             "name": "陆行远",
             "relation": "同船人，未有交流"
           }
@@ -278,7 +407,51 @@
         "emotion": "外放、乐呵，毫无防备",
         "prompt": "Mid-40s male, bright brassy tenor, mid-high pitch, broad forward ring, strong breath support. Loud carrying volume, fast tumbling pace, wide springy intonation, laughter breaking in. Rural northern accent, wide open vowels. Unguardedly cheerful.",
         "referenceHint": "像一个隔着两条街就能听见他招呼你的人（制作推断）地域口音是本次声音设计，原文引句不能证明具体地域。"
-      }
+      },
+      "lifecycleStamp": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     }
-  ]
+  ],
+  "budgets": {
+    "characters": 4
+  },
+  "lifecycle": {
+    "revision": 1,
+    "previousHash": null,
+    "registry": [
+      {
+        "id": "C01",
+        "identityKey": "shen-zhiwei",
+        "state": "active",
+        "allocatedRevision": 1,
+        "fingerprint": "65e48de7f5983bfe16e691e1994833b8ce942c5c5314b57690c64a6f2c97c433"
+      },
+      {
+        "id": "C02",
+        "identityKey": "lu-xingyuan",
+        "state": "active",
+        "allocatedRevision": 1,
+        "fingerprint": "671e7e5347a9e49419db14726d606da252a931dd224f7a27880c1ae69113e4f1"
+      },
+      {
+        "id": "C03",
+        "identityKey": "lao-zhou",
+        "state": "active",
+        "allocatedRevision": 1,
+        "fingerprint": "4c829ee51e677cb573338c714ba7e6550de5186f5ed7db80fd6a8e49f706d802"
+      },
+      {
+        "id": "C04",
+        "identityKey": "hu-erye",
+        "state": "active",
+        "allocatedRevision": 1,
+        "fingerprint": "08a752c6233c7c0a26321af13c0cec4b2a565684bce7b48c057481a5350f7f7b"
+      }
+    ],
+    "changes": [],
+    "recheckIds": []
+  },
+  "review": {
+    "status": "pending",
+    "note": "登记或增量更新不代表语义审核通过；受影响身份及联合引用需重新核验。"
+  }
 }

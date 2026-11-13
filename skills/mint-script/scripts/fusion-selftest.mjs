@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Own story, source bytes, production interface and migration regression tests.
+// Own story, source bytes and production interface regression tests.
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync, cpSync, existsSync, symlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync, cpSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,12 +9,10 @@ import { spawnSync } from 'node:child_process';
 import { validateScript, checkup, computeStats, beatSeconds, renderHtml, renderMarkdown, seedFromOutline, outlineInputErrors } from './mint-script.mjs';
 import { verifySources, evidenceErrors, provenanceErrors, sourceLineCount, unionRanges, rebaseProvenance } from './lib/source.mjs';
 import { checkKnownCreation } from './lib/downstream.mjs';
-import { migrateV4, migrateV4File } from './lib/migration.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixture = join(root,'examples/夜班水尺-script.json');
 const DOC = JSON.parse(readFileSync(fixture,'utf8'));
 const OUTLINE = JSON.parse(readFileSync(join(root,'examples/修伞簿-outline.fixture.json'),'utf8'));
-const OLD = JSON.parse(readFileSync(join(root,'scripts/fixtures/legacy-script-v3.json'),'utf8'));
 const clone = structuredClone;
 let count = 0;
 const test = (name,fn) => {try {fn();count++;} catch(e) {throw new Error(name,{cause:e});}};
@@ -49,11 +47,10 @@ test('unmatched outline/script source identities fail reconciliation',()=>{
   d.provenance.coverage.forEach(r=>r.documentId='different');
   assert(validateScript(d,{stage:'skeleton',outline:OUTLINE}).some(e=>e.includes('no matching outline source identity')));
 });
-test('migration preserves project validation boundaries',()=>{
-  const invalid={schemaVersion:2};
-  assert(migrateV4(OLD,{independent:true,ctx:{production:invalid},validate:validateScript}).errors.length);
-  const doc=clone(OLD);doc.creativeBrief='local brief';
-  assert(migrateV4(doc,{independent:true,ctx:{production:{schemaVersion:3,creativeBrief:'project brief'}},validate:validateScript}).errors.length);
+test('project validation boundaries apply to supplied production',()=>{
+  assert(validateScript(DOC,{production:{schemaVersion:2}}).length);
+  const doc=clone(DOC);doc.creativeBrief='local brief';
+  assert(validateScript(doc,{production:{schemaVersion:3,creativeBrief:'project brief'}}).length);
 });
 test('union coverage never double-counts repeated reads',()=>{
   assert.deepEqual(unionRanges(DOC.provenance.coverage),[[1,19]]);
@@ -164,31 +161,10 @@ try {
     c=>c.episodes[0].segments[2].cuts.shift(),
     c=>delete c.episodes[0].segments[1].cuts[0].audioRefs
   ]) test('bad continuation never cancels ownership/order guarantees',()=>{const c=clone(creation);mutate(c);assert.equal(check(c).status,'fail');});
-  test('v4 migration keeps complete old document and never fabricates provenance',()=>{
-    const r=migrateV4(OLD,{validate:validateScript});assert.deepEqual(r.errors,[]);assert.deepEqual(r.original,OLD);
-    assert.equal(r.document.schemaVersion,4);assert.equal(r.document.provenance,null);assert(validateScript(r.document).length);
-    assert.deepEqual(r.document.episodes,OLD.episodes);assert(r.pending.some(p=>p.path==='provenance'));
-    assert.equal(migrateV4({...OLD,schemaVersion:2}).document,null);
-    assert.deepEqual(validateScript(migrateV4(OLD,{independent:true,validate:validateScript}).document),[]);
-  });
-  const old=join(dir,'old.json'), out=join(dir,'new.draft');write(old,OLD);
-  test('v4 migration preview, byte backup, exclusive output and review record',()=>{
-    const bytes=readFileSync(old);assert.equal(migrateV4File(old,{out,validate:validateScript}).written,false);assert(!existsSync(out));
-    const r=migrateV4File(old,{out,confirm:true,validate:validateScript});assert(r.written);assert(readFileSync(old).equals(bytes));assert(readFileSync(r.backup).equals(bytes));
-    assert.deepEqual(JSON.parse(readFileSync(r.record,'utf8')).original,OLD);
-    assert.throws(()=>migrateV4File(old,{out,confirm:true,validate:validateScript}),/existing output/);
-    assert.throws(()=>migrateV4File(old,{out:old,confirm:true,validate:validateScript}),/existing output/);
-    const link=join(dir,'link.json');symlinkSync(old,link);assert.throws(()=>migrateV4File(link),/non-symlink/);
-    const result=cli('migrate-v4',old,'--no-production');assert.equal(result.status,1);assert.equal(JSON.parse(result.stdout).written,false);
-    const d=JSON.parse(cli('migrate-v4',old,'--independent','--confirm','--no-production').stdout);assert.equal(d.document.schemaVersion,4);assert(!('provenance' in d.document));
-  });
-  test('v4 migration rejects structurally corrupted input, never repairs it silently',()=>{
-    const d=clone(OLD);d.episodes[0].scenes[0].flow[0]={};assert(migrateV4(d,{validate:validateScript}).errors.length);
-  });
   test('source verification survives standalone skill copy',()=>{
     const isolated=join(dir,'isolated');cpSync(root,isolated,{recursive:true});
     const r=spawnSync(process.execPath,[join(isolated,'scripts/mint-script.mjs'),'verify-sources',join(isolated,'examples/夜班水尺-script.json'),'--no-production'],{cwd:dir,encoding:'utf8'});
     assert.equal(r.status,0,r.stderr+r.stdout);
   });
 } finally {rmSync(dir,{recursive:true,force:true});}
-console.log(`✓ ${count} script fusion/source/audio/migration tests passed`);
+console.log(`✓ ${count} script fusion/source/audio tests passed`);

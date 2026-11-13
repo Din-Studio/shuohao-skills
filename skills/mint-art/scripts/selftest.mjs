@@ -16,7 +16,7 @@ import {
   negativeTerms,
   renderHtml,
   renderMarkdown,
-  seedFromLegacyOutline as seedFromOutline,
+  seedFromOutline,
   slug,
   PROP_SCALES,
   validateArt,
@@ -41,7 +41,7 @@ import './media-plan-selftest.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(join(here, '..', 'examples', '雨棚留言-art.json'), 'utf8'));
 const OUTLINE = JSON.parse(
-  readFileSync(join(here, '..', 'examples', '雨棚留言-outline-v3.json'), 'utf8'),
+  readFileSync(join(here, '..', 'examples', '雨棚留言-outline.json'), 'utf8'),
 );
 const CAST = JSON.parse(
   readFileSync(join(here, '..', 'examples', '雨棚留言-cast-names.json'), 'utf8'),
@@ -95,50 +95,11 @@ eq(slug('a/b:c'), 'a-b-c', '危险字符替换');
 
 /* ---------------- seed ---------------- */
 
-const seeded = seedFromOutline(OUTLINE);
-eq(seeded.source, '雨棚留言', 'seed 带书名');
-eq(seeded.style, undefined, 'seed 不写画风——画风一处定死在 production.json，art.json 抄一份只会漂');
-eq(seeded.scenes.length, 3, 'seed 搬全部场景');
-{
-  const s01 = seeded.scenes.find((s) => s.id === 'S01');
-  eq(s01.usage.episodes.join(','), '1,2,3', 'seed 算出出现集');
-  eq(s01.usage.beats.join(','), OUTLINE.beats.map(b => b.outcome).join(','), 'seed 展示同集节点结果，不推断精确归属');
-  eq(s01.summary, '', '设计字段留给模型填');
-  const s03 = seeded.scenes.find((s) => s.id === 'S03');
-  ok(s03.seedNote?.includes('复用方案'), 'outline 的 reusePlan 变成 seedNote 提示做变体');
-  ok(!seeded.scenes.find((s) => s.id === 'S01').seedNote, '没有复用方案的场景不带 seedNote');
-}
-{
-  // 道具：大纲从 1.1.0 起带 props，seed 要吃到
-  eq(seeded.props.length, OUTLINE.props.length, 'seed 搬全部道具');
-  const p01 = seeded.props.find((pr) => pr.id === 'P01');
-  const src = OUTLINE.props.find((pr) => pr.id === 'P01');
-  eq(p01.name, src.name, '道具名从大纲搬过来');
-  // 两边指的是同一件事：这件物件在戏里干什么，不是材质描述
-  eq(p01.summary, src.function, '大纲的 function 落成这里的 summary');
-  const epsWithP01 = OUTLINE.episodes.filter((e) => (e.propIds ?? []).includes('P01')).map((e) => e.ep);
-  eq(p01.usage.episodes.join(','), epsWithP01.join(','), 'seed 算出道具的出现集');
-  // beatIds 是显式引用，art 的阅读标签来自节点结果，不再依赖分类
-  eq(p01.usage.beats.join(','), src.beatIds.map((id) => OUTLINE.beats.find((b) => b.id === id).outcome).join(','),
-    'beatIds 翻译成节点结果');
-  // 设计字段留给模型
-  eq(p01.scale, '', '尺度留空——那是美术层的活');
-  eq(p01.states.length, 0, '状态变体留空');
-  eq(p01.image.prompt, '', '出图提示词留空');
-  eq(p01.carriedBy.length, 0, '跟谁走留空');
-}
-
-// 省略可选 props 的 v3 大纲返回空数组，模型照 prop-pass.md 从原文提取
-{
-  const noProps = JSON.parse(JSON.stringify(OUTLINE));
-  delete noProps.props;
-  for (const ep of noProps.episodes) ep.propIds = [];
-  const r = seedFromOutline(noProps);
-  eq(r.props.length, 0, '省略可选 props 的 v3 大纲 seed 出空道具表，不是 undefined');
-  ok(Array.isArray(r.props), '空道具表仍然是数组，调用方不用判空');
-}
-
-for (const bad of [{}, null, { ...OUTLINE, schemaVersion: 1 }, { ...OUTLINE, scenes: null }]) assert.throws(() => seedFromOutline(bad), /outline v3/);
+// outline v5 只提供故事背景，不派生场景或道具；seed 从原剧本建骨架（见 stage-selftest）
+assert.throws(() => seedFromOutline(OUTLINE), /仅为故事背景/);
+passed++;
+for (const bad of [{}, null, { ...OUTLINE, schemaVersion: 4 }, { ...OUTLINE, scenes: [] }]) assert.throws(() => seedFromOutline(bad), /outline/);
+passed++;
 
 /* ---------------- castNamesOf ---------------- */
 

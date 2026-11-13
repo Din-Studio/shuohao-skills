@@ -6,28 +6,28 @@
 
 独立从原剧本识别地点与物品，维护稳定美术身份，按任务需要完成设计。**登记身份不要求出图。**
 
-正式版本：**art v1**（`kind: mint-art`）；可选故事输入 **outline v5**；人物身份输入 **cast v1**（`kind: mint-characters`）；视觉参数 **production v3**。旧版不隐式双读，详见 [迁移](references/migration.md)。
+正式版本：**art v1**（`kind: mint-art`）；可选故事输入 **outline v5**；人物身份输入 **cast v1**（`kind: mint-characters`）；视觉参数 **production v3**。其他版本一律报错，详见 [接口与生命周期](references/lifecycle.md)。
 
 ## 入口
 
 ```bash
 node scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 --out draft.json
-node scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 --existing old-art.json --out next.json
+node scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 --existing previous-art.json --out next.json
 node scripts/mint-art.mjs seed --design --title 原创空间 --out design.json
 node scripts/mint-art.mjs register draft.json --kind scene --key permanent-key --name 地点名称 --out registered.json
 ```
 
 seed 只计算原件摘要与行数，资产数组和已读范围为空。模型或人工阅读原件后，填写事实、引用、资产取舍、负责范围及身份确认。场次不等于地点；物件被提及、交接或损坏不自动建立新资产。outline 不再提供资产身份。人物身份由 characters 判断。
 
-`identity-inputs FILE` 打印复核输入摘要，不自动确认；身份可以保持 `designStatus: none`。已有独立设计和图片历史通过 `migrate-art` 保留，不能只修改版本号。
+`identity-inputs FILE` 打印复核输入摘要，不自动确认；身份可以保持 `designStatus: none`。
 
 ## 核验与交付
 
 ```bash
-node scripts/mint-art.mjs validate art.json --outline outline-v5.json --cast cast-v1.json
+node scripts/mint-art.mjs validate art.json --outline outline.json --cast cast.json
 node scripts/mint-art.mjs checkup art.json
 node scripts/mint-art.mjs verify-sources art.json
-node scripts/mint-art.mjs reconcile candidate.json --previous old-art.json --out next.json
+node scripts/mint-art.mjs reconcile candidate.json --previous previous-art.json --out next.json
 node scripts/mint-art.mjs render art.json --md > art-report.md
 node scripts/mint-art.mjs render art.json --html > art-report.html
 node scripts/mint-art.mjs images art.json --production production.json --only S01 --out plan.json
@@ -41,16 +41,7 @@ node scripts/mint-art.mjs images art.json --production production.json --only S0
 - 图片计划只离线导出，未提交、未生成。production 画风唯一来自 `style.scene`；不依赖任何外部生成 skill 才能完成本阶段交付。
 - JSON 是唯一编辑源。报告保留输入导出值。报告 HTML 不进入版本控制。技术检查不等于内容或媒体审核。
 
-完整流程固定为 **outline → characters → art → script → creation**。项目级调用方负责顺序与交接；单独运行不证明上游完成，也不声称跨阶段映射已通过。正文局部标记与 S/P ID 字符相同不构成映射，联合映射权威仍在 script.assetMappings；见 [接口盘点](references/migration.md)。
-
-## 显式迁移
-
-```bash
-node scripts/mint-art.mjs migrate-art old-art.json --out new-draft.json --related old-workorder.json
-node scripts/mint-art.mjs migrate-outline outline-v4.json --out pending-art.json
-```
-
-保留原文件及媒体，不覆盖输出。逐字段保存原路径、原值、待处理状态；保留 C/S/P、别名、notes、分集引用、节点关系、焦点人物、说话者和预算的历史材料。v4 资产投影是待核验候选，不是已审核美术产物。
+完整流程固定为 **outline → characters → art → script → creation**。项目级调用方负责顺序与交接；单独运行不证明上游完成，也不声称跨阶段映射已通过。正文局部标记与 S/P ID 字符相同不构成映射，联合映射权威在 script.assetMappings；见 [接口与生命周期](references/lifecycle.md)。
 
 ## 自有样例
 
@@ -60,11 +51,11 @@ node scripts/mint-art.mjs migrate-outline outline-v4.json --out pending-art.json
 - 旧留言板转交不新增道具身份；口头提及雨伞不建立道具。
 - `雨棚留言-识别-art.json` 只登记两个地点、两件物品，无设计、无图片。
 - `雨棚留言-art.json` 保留独立原创设计样例，包括雨棚视觉变体；它不是从剧本自动提取的已审结论。
-- `雨棚留言-outline-v5.json` 仅为本阶段消费测试的故事投影，不冒充全功能 outline 校验样例。
+- `雨棚留言-outline.json` 仅为本阶段消费测试的故事投影，不冒充全功能 outline 校验样例。
 - 人物夹具属于本 skill，不从其他目录读取。所有图片均未实际生成。
 
 ```bash
-node scripts/mint-art.mjs validate examples/雨棚留言-识别-art.json --outline examples/雨棚留言-outline-v5.json --cast examples/雨棚留言-cast-names.json --no-production
+node scripts/mint-art.mjs validate examples/雨棚留言-识别-art.json --outline examples/雨棚留言-outline.json --cast examples/雨棚留言-cast-names.json --no-production
 node scripts/mint-art.mjs validate examples/雨棚留言-art.json --production examples/雨棚留言-production.json --cast examples/雨棚留言-cast-names.json
 node scripts/mint-art.mjs render examples/雨棚留言-识别-art.json --cast examples/雨棚留言-cast-names.json --html
 node scripts/run-selftests.mjs

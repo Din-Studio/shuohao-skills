@@ -22,4 +22,4 @@
 
 中英 UI，不翻译正文。分集双列、窄屏单列，认领并排区域窄屏改为上下排列。正文支持折叠；坐标链接定位实际节拍。台词复制与可选音色提示保留，特殊 delivery 在台词本展示。
 
-打印前展开 details，之后恢复。导出采用 Blob 并延迟撤销 URL。派生 HTML 不进版本控制。assets/report.webp 是历史截图，不是 v4 验收证据。
+打印前展开 details，之后恢复。导出采用 Blob 并延迟撤销 URL。派生 HTML 不进版本控制。assets/report.webp 仅作示意，不是验收证据。

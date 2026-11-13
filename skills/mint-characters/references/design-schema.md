@@ -1,40 +1,17 @@
-# 可选设计字段与历史独立角色卡
+# 可选设计字段
 
-正式身份契约见 [schema.md](schema.md)。本文保留既有独立设计结构。正式 cast v1 的 persona、voice、image 均为可选；提供其中一项时，该项内部遵循本文字段规则。aliases 在正式契约中为带 sourceRefs 的对象数组，不能使用本文历史字符串数组。importance、oneLiner、summary 不作为正式身份登记前置条件。
-
-`cast.json` 顶层：
-
-```json
-{
-  "source": "渡口",
-  "lang": "zh",
-  "summary": "民国年间的清晨，一条河的渡口浓雾未散。摆渡四十年的老船夫照常开船，先后上船的是……",
-  "characters": [ /* 角色卡 */ ]
-}
-```
-
-| 顶层字段 | 必填 | 说明 |
-| --- | --- | --- |
-| `source` | 是 | 书名/篇名，报告标题用 |
-| `lang` | 是 | 内容语言及默认界面语言，默认 `zh`。`render --lang` 仅覆盖界面语言，不改变内容校验语言 |
-| `ui` | 视情况 | 界面文案翻译。`lang` 是 `zh`/`en`/`ja` 时**不需要**（内置）；其他任何语言**必填**，否则 `validate` 报错。用 `ui-template <lang>` 生成骨架后翻译。只覆盖部分键也可以，缺的用内置英文兜底 |
-| `summary` | 是 | **故事摘要**，中文 3–5 句。交代时空背景、核心情境、人物聚在一起的由头。报告顶部显示，让人不看原文也知道这几个角色是什么关系。不要剧透结局，也不要写成推荐语 |
-| `characters` | 是 | 角色卡数组 |
-
-角色 `id`：新版 seed 保留稳定 ID，格式为 `C` 加至少两位数字（`^C\d{2,}$`），全表唯一。旧独立角色卡可以省略 `id`；已经提供时，空白、非法类型、非法格式与重复值始终失败，不依赖原文或 production。
+正式身份契约见 [schema.md](schema.md)。cast v1 的每个角色可以按需附加 `persona`、`image`、`voice` 设计块，以及 `importance`、`oneLiner` 两个展示字段；身份登记不要求其中任何一项。提供某一项时，该项内部遵循本文字段规则。aliases 是带 sourceRefs 的对象数组，校验设计时只取其中的名称。
 
 `image.sheet` 中的画幅占位符必须替换为生产参数实际值，不能直接提交占位符。
 
-`summary` 缺失会被 `validate` 判为违规——报告顶部会空着。
+**cast 顶层没有 `style` 字段。**画风住在工作目录根的 `production.json`，`cast.json` 里再抄一份就是第二个来源，两个来源必然会漂。运行 `node scripts/mint-characters.mjs style` 取这部剧的那一块，详见 `style.md`。
 
-**顶层没有 `style` 字段。**画风住在工作目录根的 `production.json`，`cast.json` 里再抄一份就是第二个来源，两个来源必然会漂。跑 `node scripts/mint-characters.mjs style` 取这部剧的那一块，详见 `style.md`。
-
-单张角色卡：
+角色设计块（与身份字段同在一个角色对象内，示例省略身份字段）：
 
 ```json
 {
+  "id": "C03",
   "name": "老周",
-  "aliases": ["老伯"],
   "importance": "major",
   "oneLiner": "在渡口摆渡四十年的老船夫，一只眼睛是白的。",
 
@@ -47,7 +24,7 @@
     "temperament": "开口时嗓子里像卡着半口江水，含混、发沉。……",
     "motivation": "把船开过去。雾再厚也照常开船。",
     "arc": "静止。他是这条河的一部分。",
-    "relationships": [{ "name": "沈知微", "relation": "向他问路的年轻渡客" }],
+    "relationships": [{ "id": "C01", "name": "沈知微", "relation": "向他问路的年轻渡客" }],
     "evidence": ["雾一厚，连自己的手都看不清。"]
   },
 
@@ -74,12 +51,11 @@
 
 ## 语言分工
 
-「本地语言」= 顶层 `lang` 指定的语言，默认中文。
+「本地语言」= cast 顶层 `lang` 指定的语言，默认中文。
 
 | 字段 | 类型 | 语言 | 说明 |
 | --- | --- | --- | --- |
-| `name` | string | 原文 | 原文里用得最多的称呼 |
-| `aliases` | string[] | 原文 | 其他称谓；职业名词（如「货郎」）归 `identity`，不进这里 |
+| `name` | string | 原文 | 原文里用得最多的称呼；别名见 schema.md，职业名词（如「货郎」）归 `persona.identity` |
 | `importance` | enum | — | `protagonist` / `major` / `supporting` / `minor`，**只能这四个** |
 | `oneLiner` | string | **本地语言** | 一句话抓住这个人 |
 | `persona.*` | — | **本地语言** | `personality` 3–5 个词 |
@@ -107,4 +83,4 @@
 
 ## 校验
 
-`scripts/mint-characters.mjs validate <cast.json> <book.txt>` 会检查：结构完整性、`importance` 枚举、**引文逐字**、**出图提示词不含人名**、**语言分工**。违规逐条列出并 exit 1。
+`scripts/mint-characters.mjs validate <cast.json>` 在 `optional-design` 检查中核对已提供的设计块：字段完整性、`importance` 枚举、**引文逐字**（对照 provenance 记录的原剧本）、**出图提示词不含人名**、**语言分工**、关系必须引用已有 C ID。违规时该项为 fail 并 exit 1。

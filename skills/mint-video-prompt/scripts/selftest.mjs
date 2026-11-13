@@ -27,7 +27,7 @@ try {
     const inputHash=W.inputHashOf(s.structure,m), changed=structuredClone(m);
     changed.assetMappings[0].basis+='新的身份依据';assert.notEqual(W.inputHashOf(s.structure,changed),inputHash);
     const pending=structuredClone(m);pending.assetMappings[0].status='pending';
-    const submitted={...s,meta:{...s.meta,status:'in_review'},review:'结论：仅测试显式映射阻断，不代表内容审核。'};
+    const submitted={...s,meta:{...s.meta,status:'in_review'},review:'# 视频提示词审核\n\n- 审核结论：通过\n\n## 返修意见\n\n## 待确认事项'};
     assert.ok(W.recordVerdict(submitted,'approved',pending).problems.length);
     const absent=structuredClone(m);delete absent.assetMappings;assert.ok(W.recordVerdict(submitted,'approved',absent).problems.length);
     const unrelated=structuredClone(m);unrelated.assets.props.push({id:'P99',name:'未使用的样例资产'});assert.equal(W.inputHashOf(s.structure,unrelated),inputHash);
@@ -75,14 +75,14 @@ try {
     has(mutate(base, s => { s.body = s.body.replaceAll('@图片4', '@图片9'); }), /未提供.*@图片9/);
     has(mutate(base, s => { s.structure.images.pop(); }), /未提供.*@图片4/);
     has(mutate(base, s => { s.body = s.body.replace('负面提示词：', '错误：'); }), /负面提示词/);
-    has(mutate(base, s => { s.body += '\n[Shot 1]'; }), /旧逐镜/);
+    has(mutate(base, s => { s.body += '\n[Shot 1]'; }), /逐镜编号/);
     assert.deepEqual(lintWorksheet(mutate(base, s => { s.meta.model='seedance2.0'; })), [], '固定首行的3秒不误拦');
     has(mutate(base, s => { s.body = ''; }), /正文为空/);
     has(mutate(base, s => { s.meta.model = 'seedance2.0'; s.body += '\n0–3 秒观察'; }), /seedance/);
     for (const audioRefs of [[[1,1]],[[1,0]],[[1,2],[1,2]],[[9,1]],'invalid']) has(mutate(base,s=>{s.structure.cuts[0].audioRefs=audioRefs;}),/audioRefs/);
     assert.deepEqual(lintWorksheet(mutate(example('E01-02'),s=>{s.structure.cuts[1].audioRefs=[[1,4]];})),[]);
     assert.ok(TIMECODE_RE.test('at 3.5 seconds') && !TIMECODE_RE.test('随后缓慢观察'));
-    assert.ok(lintWorksheet(W.parseWorksheet('# 旧格式\n\n---\nbody')).some(p => /状态头/.test(p)));
+    assert.ok(lintWorksheet(W.parseWorksheet('# E01-01\n\n---\nbody')).some(p => /状态头/.test(p)));
   });
 
   test('new creates a blank draft and refuses to overwrite', () => {
@@ -101,7 +101,7 @@ try {
     let r = cli('submit', a); assert.equal(r.status, 1); assert.match(r.stderr, /不能重复提交/);
     const rewrite = (p, fn) => writeFileSync(p, W.serializeWorksheet(fn(W.parseWorksheet(readFileSync(p, 'utf8')))));
     // 审核方退回之后
-    for (const p of [a, b]) rewrite(p, s => ({ ...s, meta: { ...s.meta, status: 'changes_requested' }, review: '结论：退回。\n\n- [必须修改] 镜头 1：示例意见。' }));
+    for (const p of [a, b]) rewrite(p, s => ({ ...s, meta: { ...s.meta, status: 'changes_requested' }, review: '# 视频提示词审核\n\n- 审核结论：需返修\n\n## 返修意见\n\n- 质量｜镜头 1｜示例问题｜示例修订\n\n## 待确认事项' }));
     r = cli('submit', a, b); assert.equal(r.status, 1); assert.match(r.stderr, /编写回应/);
     rewrite(a, s => ({ ...s, response: '- 镜头 1：已修改。' }));
     r = cli('submit', a, b); assert.equal(r.status, 1, '有一份不通过就都不提交');
@@ -109,7 +109,7 @@ try {
     rewrite(b, s => ({ ...s, response: '- 镜头 1：已修改。' }));
     r = cli('submit', a, b); assert.equal(r.status, 0, r.stderr);
     const s = W.parseWorksheet(readFileSync(a, 'utf8'));
-    assert.equal(s.meta.status, 'in_review'); assert.equal(s.meta.round, 2); assert.match(s.review, /必须修改/, '提交不改动审核意见区');
+    assert.equal(s.meta.status, 'in_review'); assert.equal(s.meta.round, 2); assert.match(s.review, /示例问题/, '提交不改动审核意见区');
     // 已批准的工作单被修改后重新提交：旧摘要作废
     const approved = W.parseWorksheet(W.serializeWorksheet({ ...s, meta: { ...s.meta, status: 'approved', bodyHash: W.hashOf(s.structure, s.body) } }));
     assert.equal(W.approvalProblem(approved), null);

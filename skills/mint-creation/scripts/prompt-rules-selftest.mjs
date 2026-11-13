@@ -30,7 +30,7 @@ for(const [name,mutate,expected] of [
   ['ending',p=>p.replace('无配乐、无背景音乐','可以播放音乐'),/固定/],
   ['style sentence',p=>p.replace('写实画风，整体材质自然。',''),/画风/],
   ['negative',p=>p.replace('负面提示词：','排除：'),/负面/],
-  ['old shots',p=>p.replace('测试人物把物件','[Shot 1] 测试人物把物件'),/旧逐镜/],
+  ['old shots',p=>p.replace('测试人物把物件','[Shot 1] 测试人物把物件'),/逐镜编号/],
   ['placeholder',p=>p.replace('测试人物把物件','[散文式正文]测试人物把物件'),/占位符/],
 ])test(`format rejects ${name}`,()=>assert.ok(promptProblems(mutate(base)).some(p=>expected.test(p))));
 for(const stamp of ['0–3秒','第3秒','at 3.5 seconds','00:03','after second 3'])test(`only fixed policy exempt: ${stamp}`,()=>{

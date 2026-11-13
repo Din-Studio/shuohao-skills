@@ -1,6 +1,6 @@
 # art v1 数据契约
 
-正式文档必须包含 `schemaVersion: 1, kind: "mint-art"`。未版本化旧 art、outline v3/v4 不隐式进入正式入口。production 保持 v3，故事背景仅 outline v5，人物身份仅 cast v1（kind: mint-characters）。版本数字不要求跨阶段相同。
+正式文档必须包含 `schemaVersion: 1, kind: "mint-art"`；其他版本或缺少版本一律报错。production 为 v3，故事背景仅 outline v5，人物身份仅 cast v1（kind: mint-characters）。版本数字不要求跨阶段相同。
 
 ## 顶层字段
 
@@ -12,11 +12,10 @@
 | status | draft / ready；draft 不能通过正式 validate |
 | provenance | script 必需；文档身份、版本、范围见来源文档 |
 | scenes / props | 必需数组，允许为空 |
-| registry | entries / changes 必需数组；稳定 ID 和退休历史 |
+| registry | entries / changes 必需数组；稳定 ID 和退休记录 |
 | budgets | 必需对象，无预算时为空；不静默落盘参考默认值 |
 | observations | 可选；未建立资产或尚未确定的线索、依据和 sourceRefs |
 | incremental | 增量基线 previousDigest、previousRegistry、previousIdentities、previousBudgets，以及受影响 recheckIds |
-| migration | 显式迁移材料；pending 或未处理关系阻断正式交付 |
 | budgetChanges | 明确预算变更的 key/from/to/basis；不得无依据取消预算 |
 | lang | 可选 zh/en；只影响报告默认语言 |
 
@@ -44,12 +43,12 @@
 - decision 说明为何需要美术资产，不是自动复制场次名称或正文中的名词。
 - facts 保存可定位的来源事实、状态和限制。事实的 notes/aliases 等嵌套 sourceRefs 同样检查。
 - identityReview 为 `{status:"pending"}` 或 `{status:"confirmed",basis:"非空复核依据",inputDigest:"64位小写SHA256"}`。摘要来自 identity-inputs；命令不替人填写确认。
-- 摘要包括标题、mode、身份字段、全部资产引用、实际涉及文档的 ID/摘要/行数，以及引用是否处于负责范围。图像提示词等设计文本不冒充身份事实。更改引用或相关原件版本后旧确认不能沿用。
-- lifecycleStamp 是该身份相关 registry.changes 的摘要，由 reconcile 更新。合并后继续使用的目标 ID 同样改变逐资产摘要，旧联合映射不能因 ID 沿用而跳过复核。
+- 摘要包括标题、mode、身份字段、全部资产引用、实际涉及文档的 ID/摘要/行数，以及引用是否处于负责范围。图像提示词等设计文本不冒充身份事实。更改引用或相关原件版本后既有确认不能沿用。
+- lifecycleStamp 是该身份相关 registry.changes 的摘要，由 reconcile 更新。合并后继续使用的目标 ID 同样改变逐资产摘要，既有联合映射不能因 ID 沿用而跳过复核。
 - 资产数组重排、增加未关联集号不改变身份。引用重核、关系变化和设计变化分别影响对应审核，不能一概宣称无关资产失效。
 - designStatus 为 none / planned / ready。none 不要求 summary、锚点、光照、状态或 image；已存在 image 不得标成 none 隐藏设计。
-- register 为新资产设置固定 `imageStem: ID`。它不随名称变化；旧项目迁移固定原图片路径。手工产物可显式提供稳定 imageStem 或 sheetImage。
-- `relatedScenes` 只能引用本产物地点。人物关系使用 `carrierRefs: [{characterId,basis,sourceRefs}]` 并提供 cast；旧 carriedBy 自由名称仅保存在迁移材料，不作为确认映射。
+- register 为新资产设置固定 `imageStem: ID`。它不随名称变化。手工产物可显式提供稳定 imageStem 或 sheetImage。
+- `relatedScenes` 只能引用本产物地点。人物关系使用 `carrierRefs: [{characterId,basis,sourceRefs}]` 并提供 cast；资产不接受 carriedBy 自由名称或 sourceFacts 字段，来源事实写入 facts 与 sourceRefs。
 - `usage: {episodes,beats,beatIds?}` 可选。集号为无重复正整数；B ID 引用由已提供 outline 对账。共同出现于一集不能证明节点发生于某个地点。
 - `variantOf` 只能引用现有地点，不能自身引用或循环；必需 changes。是否新增视觉变体资产由制作需求决定，不按每个场次复制身份。
 
@@ -63,9 +62,9 @@
 }
 ```
 
-允许键 scenes、primaryScenes、props。max 为非负安全整数。explicit 超额是 error 阻断；reference 超额为 warn 提醒。计数为登记资产数，不是图片任务数。角色预算不属于本产物，旧值保留在迁移关系材料交给 characters。
+允许键 scenes、primaryScenes、props。max 为非负安全整数。explicit 超额是 error 阻断；reference 超额为 warn 提醒。计数为登记资产数，不是图片任务数。角色预算不属于本产物，由 characters 负责。
 
-明确预算基线包括既有 art 和 migration.original 中的明确美术预算。迁移字段核对完成不等于预算变更已经批准。当前 budgets 删除、改值或降级必须提供与基线及当前值匹配的 budgetChanges；不能通过清空 budgets 或改为 reference 静默取消阻断。
+明确预算基线为 `--previous` 既有 art 或 incremental.previousBudgets 中的明确美术预算。当前 budgets 删除、改值或降级必须提供与基线及当前值匹配的 budgetChanges；不能通过清空 budgets 或改为 reference 静默取消阻断。
 
 ## 可选设计字段
 
@@ -91,12 +90,11 @@ planned / ready 设计遵循以下视觉规则，none 不适用：
 
 ## 检查与报告
 
-检查对象为 status: pass/fail/skipped、category、level、detail，可选 reason。只有 fail + error 阻断；跳过不算通过。v1 保留 Markdown/HTML 报告和原始 JSON 导出；报告显示来源、身份、预算和迁移状态。CLI 总是回查原件；内存 API 不假称已查文件。
+检查对象为 status: pass/fail/skipped、category、level、detail，可选 reason。只有 fail + error 阻断；跳过不算通过。v1 保留 Markdown/HTML 报告和原始 JSON 导出；报告显示来源、身份、预算和生命周期状态。CLI 总是回查原件；内存 API 不假称已查文件。
 
 公开 API：
 - `mint-art.mjs`：seedFromSource、registerAsset、identityDigest、validateArt、gateReport、renderMarkdown、renderHtml、imageJobsFrom。
-- `lib/stage.mjs`：stageErrors、evidenceErrors、verifySources、lifecycleErrors、budgetChecks、identityCoreDigest、lifecycleStamp、syncLifecycleStamps、sourceIdentity、digest、assertStoryOutline、assertCharacters、upstreamErrors、upstreamCheck、migrateArt、migrateOutline。
-- `seedFromLegacyOutline` 仅供显式迁移和历史回归，不属于正式身份识别接口。
-- `seedFromOutline` 拒绝旧资产权威及故事背景当作资产 seed，指向原剧本入口。
+- `lib/stage.mjs`：stageErrors、evidenceErrors、verifySources、lifecycleErrors、budgetChecks、identityCoreDigest、lifecycleStamp、syncLifecycleStamps、sourceIdentity、digest、assertStoryOutline、assertCharacters、upstreamErrors、upstreamCheck。
+- `seedFromOutline` 拒绝把故事背景当作资产 seed，指向原剧本入口。
 
-媒体计划保持 schemaVersion 1，新增逐任务 inputDigest，不上传、不生成。变体依赖按参考顺序排列；只有 ready 任务进入计划。报告渲染不写回默认值、来源状态或自动挂图。
+媒体计划为 schemaVersion 1，带逐任务 inputDigest，不上传、不生成。变体依赖按参考顺序排列；只有 ready 任务进入计划。报告渲染不写回默认值、来源状态或自动挂图。

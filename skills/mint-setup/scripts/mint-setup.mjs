@@ -3,13 +3,11 @@
 // Zero dependencies on purpose: 和其余 skill 一样，任何目录里 node 直接跑。
 // Node 18+ (stdlib only).
 
-import { lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { documentProblems, check, blocking, mark } from './lib/contracts.mjs';
 export { documentProblems } from './lib/contracts.mjs';
-import { migrateProduction } from './lib/migration.mjs';
-export { migrateProduction } from './lib/migration.mjs';
 
 /* ------------------------------------------------------------------ */
 /* 文件名与查找                                                         */
@@ -46,7 +44,7 @@ export function findProduction(fromDir = '.', depth = LOOKUP_DEPTH) {
  * input_schema 原样打出来，所以这两张表**有本机可查的确凿依据**，
  * 不是凭记忆编的——每条都注明了取数命令，过期了重新跑一次就能对账。
  *
- * 关键差别（相对旧的按像素下单）：网关 的 resolution 就是**档位本身**
+ * 关键差别（区别于按像素下单）：网关 的 resolution 就是**档位本身**
  * （1K / 2K / 4K），aspect_ratio 是**枚举**，两者都是结构化字段。
  * 所以本 skill 不再需要把档位折算成像素，也不再往提示词里写 `Render at …`。
  *
@@ -336,7 +334,7 @@ export function initProduction({
     );
   }
 
-  if (selection !== undefined) throw new Error('selection 已废弃；使用 creativeBrief');
+  if (selection !== undefined) throw new Error('selection 不属于 production 契约；使用 creativeBrief');
   const problems = documentProblems({ schemaVersion: 3, ...(creativeBrief === undefined ? {} : { creativeBrief }) });
   if (problems.length) throw new Error(problems.join('；'));
   return {
@@ -739,7 +737,6 @@ const USAGE = `mint-setup.mjs — mint-setup skill 的确定性工具（生产�
        [--style <style.json>]            画风正文；不给就留一份空骨架待填
        [--lang zh|en]                    报告界面语言，默认 zh
        [--prompt-lang zh|en]             H3 提示词语言，默认 en
-  migrate-v3 INPUT [--out OUTPUT] [--confirm]  预览迁移；显式确认语义项后写入新文件
   style-template                         打印画风骨架与逐字段说明（填好放进顶层 style）
   style <production.json>                打印这部剧的画风
         [--for character|scene]          只打印某一块（下游 skill 抄的就是它）
@@ -785,37 +782,6 @@ function main(argv) {
   if (!cmd || cmd === '-h' || cmd === '--help') {
     console.log(USAGE);
     process.exit(cmd ? 0 : 1);
-  }
-
-  if (cmd === 'migrate-v3') {
-    const [input, ...options] = rest;
-    if (!input || input.startsWith('--')) throw new Error('用法：migrate-v3 INPUT [--out OUTPUT] [--confirm]');
-    let output;
-    let confirm = false;
-    for (let i = 0; i < options.length; i++) {
-      if (options[i] === '--confirm' && !confirm) confirm = true;
-      else if (options[i] === '--out' && !output && options[i + 1] && !options[i + 1].startsWith('--')) output = options[++i];
-      else throw new Error('无效或重复迁移选项：' + options[i]);
-    }
-    const inputPath = resolve(input);
-    if (!lstatSync(inputPath).isFile()) throw new Error('迁移输入必须为常规文件，不能使用符号链接');
-    const original = readFileSync(inputPath);
-    const result = migrateProduction(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(original)), validateProduction);
-    if (output) {
-      if (resolve(output) === resolve(input)) throw new Error('迁移不能覆盖原文件；请选择新路径');
-      if (result.pending.length && !confirm) {
-        console.log(JSON.stringify(result, null, 2));
-        throw new Error('存在待人工确认项；检查预览后使用 --confirm，或先人工合并');
-      }
-      if (!readFileSync(inputPath).equals(original)) throw new Error('迁移期间输入已变化，请重新预览');
-      // Exclusive create also rejects existing files, directories and symlinks.
-      writeFileSync(resolve(output), JSON.stringify(result.candidate, null, 2) + '\n', { flag: 'wx' });
-      result.status = 'written';
-      result.output = resolve(output);
-      result.contentReview = 'not-performed';
-    }
-    console.log(JSON.stringify(result, null, 2));
-    return;
   }
 
   if (cmd === 'init') {

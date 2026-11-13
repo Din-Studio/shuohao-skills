@@ -12,7 +12,7 @@ const REASONS={zh:{'not-requested':'尚未请求原件核验','not-performed':'�
 const getText=lang=>{if(!['zh','en'].includes(lang))throw Error('报告界面语言目前内置 zh / en');return TEXT[lang];};
 export function fmtEps(eps,lang='zh') {const a=[...arr(eps)].sort((a,b)=>a-b);if(!a.length)return '—';if(a.length===1)return String(a[0]);if(a.every((v,i)=>i===0||v===a[i-1]+1))return `${a[0]}–${a.at(-1)}`;return a.length<=4?a.join(' · '):`${a.length} ${lang==='en'?'episodes':'集'}`;}
 function view(doc,lang,options) {
- if(doc?.schemaVersion!==5)throw Error('Reports require outline schemaVersion 5; migrate legacy input explicitly');
+ if(doc?.schemaVersion!==5)throw Error('Reports require outline schemaVersion 5');
  const t={...getText(lang),summary:lang==='en'?'Story summary':'故事摘要',sourceRefs:lang==='en'?'Source ranges':'来源范围'}, report=checkup(doc,options), sections=[];
  const section=(id,title,rows=[],cols=[],note='')=>{const s={id,title,rows,cols,note};sections.push(s);return s;};
  const values=x=>typeof x==='object'?pretty(x):x;

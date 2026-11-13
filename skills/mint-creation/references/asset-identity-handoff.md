@@ -8,11 +8,11 @@
 | --- | --- | --- | --- |
 | outline | 5 | 故事、B 节点、分集开场与集尾、故事来源 | skipped；独立 script 可以提供自己的计划 |
 | script | 4 | 正文、位置、声音、局部 C/S/P、assetMappings | 独立报告可 skipped；制作派发、导出要求实际剧本 |
-| cast | 显式 v1 | 人物完整资产规范、稳定身份、来源 | skipped；实际依赖人物身份时阻断交接 |
-| art | 显式 v1 | 地点与物品完整资产规范、稳定身份、来源 | skipped；实际依赖美术身份时阻断交接 |
+| cast | 1 | 人物完整资产规范、稳定身份、来源 | skipped；实际依赖人物身份时阻断交接 |
+| art | 1 | 地点与物品完整资产规范、稳定身份、来源 | skipped；实际依赖美术身份时阻断交接 |
 | creation / production | 3 | 制作结构、参数与项目要求 | production 可 skipped |
 
-cast/art v1 是身份阶段的正式版本；消费者仅接受该版本，不接受缺版本、未经声明的未来版本或按字段猜版本。人物设定图按稳定 C ID 解析；美术设定图优先沿用资产的 sheetImage 或 imageStem，不随改名重新猜测路径。这里检查消费端所需结构和来源，不替代资产阶段的身份语义审核、生命周期审核或预算检查。完整流程按 outline → characters → art → script → creation 推进，由项目级 pipeline 记录状态；本 skill 的独立命令不声明前序阶段已完成。
+每个输入只接受上表版本，缺版本或其他版本直接报错，不按字段猜版本。人物设定图按稳定 C ID 解析；美术设定图优先沿用资产的 sheetImage 或 imageStem，不随改名重新猜测路径。这里检查消费端所需结构和来源，不替代资产阶段的身份语义审核、生命周期审核或预算检查。完整流程按 outline → characters → art → script → creation 推进，由项目级 pipeline 记录状态；本 skill 的独立命令不声明前序阶段已完成。
 
 提供但损坏、版本不支持、标题不匹配、来源字节摘要不匹配或来源不可读取的输入必须报错，不能改报 skipped。来源路径相对各自 JSON；规范化后的 dispatch 来源路径为绝对路径。不同阶段的路径字符串不必相同；文档 id、sha256、lineCount 与负责范围必须能够对账。
 
@@ -54,15 +54,3 @@ cuts.characters、cuts.props、段所属场次的 sceneId，以及 images.ref �
 未参与本段的资产、映射和来源变化不撤销本段审核。无关资产的失效映射可以留待负责阶段处理，不应阻断未依赖它的段。已提供的原件损坏或字节不匹配仍属于输入错误，不能以选择性失效为理由忽略。
 
 正文与声音语义不变：notes 不朗读；audioRefs 按原文位置延续同一次播放，不新增台词、不重播、不提前揭晓。结构、来源与映射检查不是内容审核。approved 必须由审核方独立检查故事表达、声音、画面与参考素材之后登记；也不表示成片验收通过。
-
-## 消费端迁移检查表
-
-| 旧读取位置 | 当前权威与行为 |
-| --- | --- |
-| outline.characters、旧角色同名回退 | cast.characters；没有有效显式映射不解析身份 |
-| outline.scenes/props 与分集资产数组 | art.scenes/props；镜头依赖从 script 局部引用确定 |
-| outline 中的资产 sourceRefs | cast/art 的资产 sourceRefs、来源文档和覆盖范围 |
-| 工作单、报告、manifest 的素材路径 | 通过映射取得目标资产 ID 及负责阶段的稳定图片路径 |
-| 审核输入摘要只绑定挂载图片 | 同时绑定实际镜头身份、显式映射、完整资产规范与相关证据 |
-
-旧 outline v4 必须在上游显式迁移，不能在 creation 中隐式双读。旧工作单需要重新派发并审核；旧编号沿用不证明映射已确认。creation 的历史 migrate-v3 仍保留，但不替代 outline/资产/script 的迁移或确认。

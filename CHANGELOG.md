@@ -1,5 +1,12 @@
 # Changelog
 
+## 移除多版本共存 — 2026-11-13
+
+- 每种产物只保留一个现行版本：outline v5、script v4、production/creation v3、cast/art v1。各 skill 的校验、seed、render 及消费端只接受该版本，版本号不符直接报错。
+- **命令语义变更**：删除全部迁移命令（outline 的 `migrate-v3/v4/v5`，characters/art 的大纲与产物迁移，script、setup、creation 的 `migrate-v3` 等）及 `--legacy` 旧投影入口；旧版报错不再提示迁移。
+- 删除旧版校验内核、迁移库、旧版夹具与样例、迁移自测和各 skill 的 `references/migration.md`。根目录联合测试改名为 `scripts/strategy-pipeline-selftest.mjs`，去掉迁移用例与旧格式构造器。
+- 旧项目不再由本仓库转换；需要时在原工具版本中继续使用。以下历史记录中的迁移说明仅代表当时实现。
+
 ## 剧情与资产职责拆分 — 2026-11-13
 
 - outline 正式升级为仅含剧情的 v5，移除资产清单、分档、预算和调度。来源、故事、剧情节点、分集及问题回答关系保留。

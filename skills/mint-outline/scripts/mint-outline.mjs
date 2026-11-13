@@ -3,14 +3,8 @@
 import {mkdirSync,readFileSync,realpathSync,writeFileSync,lstatSync} from 'node:fs';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {migrateFile} from './lib/migration.mjs';
-import {migrateFileV5} from './lib/migration-v5.mjs';
-export {migrationDraftV5,migrateFileV5} from './lib/migration-v5.mjs';
-import {migrateFileV4} from './lib/migration-v4.mjs';
 import {chunkScript,sourceDocument,verifySources} from './lib/source.mjs';
 export * from './lib/source.mjs';
-export {migrationDraftV4} from './lib/migration-v4.mjs';
-export {migrationDraft} from './lib/migration.mjs';
 import {checkup,validateOutline,STAGES,SKILL_ROOT} from './lib/outline-core.mjs';
 import {renderHtml,renderMarkdown} from './lib/outline-report.mjs';
 import {checkKnownDownstream} from './lib/outline-downstream.mjs';
@@ -119,9 +113,6 @@ const USAGE=`mint-outline v5 (existing scripts only)
   validate DOC [--stage skeleton|beats|full] [--production FILE]
   checkup DOC [--stage skeleton|beats|full] [--production FILE] [--json] [--downstream]
   render DOC [--html|--md] [--lang zh|en] [--stage STAGE] [--production FILE]
-  migrate-v5 INPUT [--out DRAFT.json] [--confirm] [--project ROOT]
-  migrate-v4 INPUT [--out DRAFT] [--confirm]  evidence-incomplete draft; never overwrite input
-  migrate-v3 INPUT [--out OUTPUT] [--confirm]  historical v2 -> v3 only
   slug NAME
 Read references/创作指南.md. Structural validation is not content review.`;
 async function main(argv) {
@@ -144,12 +135,6 @@ async function main(argv) {
  if(cmd==='verify-sources'){
   if(!args[0])throw Error('verify-sources requires DOC');validateOptions(args,1);
   const report=checkup(readJson(args[0]),{verifySources:true,artifactPath:args[0]});console.log(JSON.stringify(report,null,2));if(report.stats.fail)process.exitCode=1;return;
- }
- if(['migrate-v3','migrate-v4','migrate-v5'].includes(cmd)){
-  if(!args[0]||args[0].startsWith('--'))throw Error(cmd+' requires INPUT');
-  validateOptions(args,1,cmd==='migrate-v5'?['--out','--project']:['--out'],['--confirm']);
-  const output=flag(args,'--out'),result=(cmd==='migrate-v5'?migrateFileV5:cmd==='migrate-v4'?migrateFileV4:migrateFile)(args[0],output,{confirm:args.includes('--confirm'),projectRoot:flag(args,'--project')});
-  console.log(JSON.stringify(result,null,2));if(output&&!result.written)process.exitCode=1;return;
  }
  if(!['validate','checkup','render'].includes(cmd))throw Error('Unknown command '+cmd+'\n'+USAGE);
  if(!args[0]||args[0].startsWith('--'))throw Error(cmd+' requires DOC');

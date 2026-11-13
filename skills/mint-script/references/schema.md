@@ -1,6 +1,6 @@
 # script.json v4 数据契约
 
-正式入口只接受 schemaVersion:4，outline 消费边界只接受 v5。production 与 creation 仍为 v3。旧剧本必须显式迁移，不双读旧规划字段。Node 18+，标准库，无兄弟代码依赖。
+正式入口只接受 schemaVersion:4，outline 消费边界只接受 v5。production 与 creation 使用 v3。其他版本一律拒绝。Node 18+，标准库，无兄弟代码依赖。
 
 ## 独立创作与解析
 
@@ -58,7 +58,7 @@ sourceRefs 使用与 coverage 相同的 documentId/startLine/endLine 三字段�
 
 ## 参数与估时
 
-params 可省略。只保存用户明确覆盖：charsPerSecond 有限正数，默认 4.5；actionSeconds 有限正数，默认 2.5；tolerance 为 [0,1)，默认 0.15。拒绝未知参数及 rules/defaults/preferences 等旧配置。不将默认值回写 JSON。
+params 可省略。只保存用户明确覆盖：charsPerSecond 有限正数，默认 4.5；actionSeconds 有限正数，默认 2.5；tolerance 为 [0,1)，默认 0.15。拒绝未知参数及 rules/defaults/preferences 等契约外配置。不将默认值回写 JSON。
 
 - line：去除空白后的 JavaScript 字符串长度除以语速，标点计入。
 - action：固定 actionSeconds。
@@ -79,7 +79,7 @@ params 可省略。只保存用户明确覆盖：charsPerSecond 有限正数，�
 | beatClaims | 独立无节点可省略；有 outline 时按数组顺序认领全部当集 B ID |
 | scenes | full 为非空有序数组；skeleton 可为空 |
 
-独立 ending 只允许 mode/event，mode 为 suspense/closure/open，event 非空。独立 suspense 不强制建立 Q。结束坐标由 endBeatOf 从最后一个实际 flow 计算，不保存 endBeat。seedNote 的旧信息保存在迁移记录。
+独立 ending 只允许 mode/event，mode 为 suspense/closure/open，event 非空。独立 suspense 不强制建立 Q。结束坐标由 endBeatOf 从最后一个实际 flow 计算，不保存 endBeat，也不接受 seedNote。
 
 认领格式：`{"beatId":"B01","start":[1,3],"end":[2,2]}`。只允许这三个字段。B 加至少两位数字，全文件唯一；端点存在，包含两端，起点不晚于终点。后一个核心段严格晚于前一个终点。允许跨场次，允许范围之外的共同铺垫。来源引用不能代替事件认领。
 
@@ -125,7 +125,7 @@ script.assetMappings 是唯一权威数组。不能在 scene、flow、outline �
 | assetDigest | 完整目标资产 JSON 的 SHA256，小写 64 位；递归按对象 key 排序，保留数组顺序，无空白 JSON，UTF-8；不是 ID/name 或挑选字段的摘要 |
 | documentVersions | 非空数组 `{id,sha256,lineCount}`；无重复，至少包含映射及完整目标资产 sourceRefs 涉及的文档；每个提供的快照都核验；同时匹配 script 与目标阶段的文档身份、原件摘要、行数；目标资产更广的来源范围不要求冒充 script 已读取范围 |
 
-正式 cast/art 输入仅接受 schemaVersion 1，必须包含对应资产数组、唯一 ID、名称及匹配作品名。人物／美术生产端正式版本均为 v1；其他版本不能按形状相似隐式读取。无版本旧文件不隐式兼容，须在负责阶段显式版本化或迁移。映射引用的资产还须提供非空 sourceRefs 及有效 provenance 版本与覆盖；不能拿仅有设计提示词的旧资产冒充已核验来源。
+正式 cast/art 输入仅接受 schemaVersion 1，必须包含对应资产数组、唯一 ID、名称及匹配作品名。人物／美术生产端正式版本均为 v1；其他版本或无版本文件一律拒绝，不能按形状相似隐式读取。映射引用的资产还须提供非空 sourceRefs 及有效 provenance 版本与覆盖；不能拿仅有设计提示词的资产冒充已核验来源。
 
 没有已知目标时不伪造摘要或来源，可暂不建立该映射并在 notes 记录必要歧义。有候选但身份待核对时填写 pending/conflict，保留候选和真实依据。这些状态不等于确认；不因同名、别名、字符相同、图片文件名相同或用户要求“继续”自动确认。
 
@@ -148,7 +148,7 @@ validateScript/checkup 接受 ctx.requiredMappings；--production-ready 同时�
 
 ## outline v5 消费边界
 
-正式入口只接受 schemaVersion:5；v4 及更早版本必须在原阶段显式迁移，不更改版本号冒充转换。不依赖 outline 的人物、地点、物品、分档、预算或资产调度；出现 characters/scenes/props、story.focusCharacterIds、分集 characterIds/sceneIds/propIds、params.thresholds 或 notes 的资产 ID/speakerId 即失败。
+正式入口只接受 schemaVersion:5，其他版本一律拒绝。不依赖 outline 的人物、地点、物品、分档、预算或资产调度；出现 characters/scenes/props、story.focusCharacterIds、分集 characterIds/sceneIds/propIds、params.thresholds 或 notes 的资产 ID/speakerId 即失败。
 
 只接受已有剧本 provenance。故事使用 summary，可选 endingBeatId；endingBeatId 只能定位已识别的全剧终点，不因提供批次结束而填写。继续拒绝 adaptation/arcs、params.adaptMode/minutesPerEpisode/episodes、beats.position/kind/weight/type 等退役字段。
 

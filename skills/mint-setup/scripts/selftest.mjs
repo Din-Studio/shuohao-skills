@@ -207,7 +207,7 @@ eq(clampDuration('大概十秒', 'MiniMax H3').duration, null, '不是数字也�
   eq(d.schemaVersion, 3, 'production 显式采用 v3');
 }
 eq(autopilotOf(initProduction({ aspect: '9:16' })), false, '默认关');
-eq(autopilotOf(null), false, '没有生产参数就是关——老项目照旧该问就问');
+eq(autopilotOf(null), false, '没有生产参数就是关，照常逐步询问');
 eq(autopilotOf({}), false, '字段缺失是关，不是错');
 eq(autopilotOf({ autopilot: 'false' }), false, '字符串 "false" 不算开——只认布尔真值');
 eq(autopilotOf({ autopilot: 'true' }), false, '字符串 "true" 也不算开，写法错了就按关处理');
@@ -293,11 +293,9 @@ eq(gateReport(PORTRAIT).length, 9, '一共八道门');
   ok(/adaptive/.test(gate(d, 'aspect-format').detail), '这道门点名说清 adaptive 为什么不行');
 }
 
-// 旧字段不再参与校验；视频画幅不受资产图模型限制。
+// 视频画幅不受资产图模型限制。
 {
   const d = clone();
-  d.image.frame = { aspectRatio: 'invalid', resolution: '' };
-  eq(validateProduction(d).length, 0, '旧分镜图配置被忽略');
   d.video.aspectRatio = '4:3';
   eq(validateProduction(d).length, 0, '视频 4:3 不要求 nanobanana2 资产图也支持 4:3');
   ok(!gateReport(d).some((g) => g.id === 'frame-matches-video'), '不再有关键帧比例门');
@@ -308,8 +306,8 @@ passed++;
 // init 不得静默接受已删除的选项。
 {
   const r = spawnSync(process.execPath, [join(here, 'mint-setup.mjs'), 'init', '--aspect', '9:16', '--frame-resolution', '2K'], { encoding: 'utf8' });
-  eq(r.status, 1, '旧分镜图选项返回失败');
-  ok(r.stderr.includes('未知选项'), '明确报告旧选项无效');
+  eq(r.status, 1, '未知选项返回失败');
+  ok(r.stderr.includes('未知选项'), '明确报告未知选项');
 }
 
 // 3 asset-landscape

@@ -26,7 +26,7 @@ try {
   assert.throws(() => mediaPlan([job('a'), job('b', { file: 'a.png' })], opts), /重复/);
   assert.throws(() => mediaPlan([job('a', { prompt: '' })], opts), /提示词/);
   for (const option of ['--force', '--cutout', '--timeout', '--concurrency', '--force=true'])
-    assert.throws(() => checkPlanFlags([option]), /已移除/);
+    assert.throws(() => checkPlanFlags([option]), /不支持/);
   for (const option of ['--out', '--only', '--style-ref', '--images'])
     assert.throws(() => checkPlanFlags([option, '--dry-run']), /参数值/);
   checkPlanFlags(['--dry-run', '--out', 'plan.json']);
@@ -44,5 +44,5 @@ try {
   assert.deepEqual(JSON.parse(readFileSync(output)), plan);
   assert.throws(() => printPlan(vp, output), /EEXIST/);
   assert.deepEqual(JSON.parse(readFileSync(output)), plan);
-  console.log('✓ 离线交接：依赖排序、原文、类型、素材顺序、缺失文件、退役选项与防覆盖通过');
+  console.log('✓ 离线交接：依赖排序、原文、类型、素材顺序、缺失文件、不支持的生成选项与防覆盖通过');
 } finally { rmSync(dir, { recursive: true, force: true }); }

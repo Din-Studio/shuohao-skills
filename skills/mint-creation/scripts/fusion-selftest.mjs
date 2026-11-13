@@ -56,7 +56,7 @@ try {
     assert.equal(expandScript(s).get(1).scenes[0].beats.length,2);
     assert.deepEqual(computeStats(doc,s).dialogue,computeStats(doc,script).dialogue);
   });
-  test('no invented target at production boundary or legacy acceptance',()=>{
+  test('no invented target at production boundary; only script v4 accepted',()=>{
     const s=clone(script);delete s.episodes[0].targetSeconds;
     assert.throws(()=>seedFromScript(s),/targetSeconds/);assert.throws(()=>exportPack(doc,s),/targetSeconds/);
     assert.ok(validateCreation(doc,{script:s}).length);
@@ -188,7 +188,7 @@ try {
     const brief=JSON.parse(run('prompts','brief',cp,'--ep','1').stdout);assert.equal(brief.seedScenes[0].notes[0].kind,'restriction');
     for(const seg of doc.episodes[0].segments){const {prompt,...structure}=seg;mkdirSync(join(cd,seg.id));writeFileSync(join(cd,seg.id,'prompt.md'),W.serializeWorksheet({meta:{segment:seg.id,status:'draft',round:0,model:'MiniMax H3',promptLang:'zh'},structure,body:prompt,review:W.REVIEW_PLACEHOLDER,response:W.RESPONSE_PLACEHOLDER}));}
     run('prompts','check',cp);run('prompts','submit',cp);
-    for(const seg of doc.episodes[0].segments){const p=join(cd,seg.id,'prompt.md'),sheet=W.parseWorksheet(readFileSync(p,'utf8'));sheet.review='结论：通过。离线夹具登记，不代表真人语义审核或成片通过。';writeFileSync(p,W.serializeWorksheet(sheet));run('prompts','verdict',cp,'approved',seg.id);}
+    for(const seg of doc.episodes[0].segments){const p=join(cd,seg.id,'prompt.md'),sheet=W.parseWorksheet(readFileSync(p,'utf8'));sheet.review='# 视频提示词审核\n\n- 审核结论：通过\n\n## 返修意见\n\n## 待确认事项';writeFileSync(p,W.serializeWorksheet(sheet));run('prompts','verdict',cp,'approved',seg.id);}
     run('prompts','status',cp);run('prompts','apply',cp);run('export',cp,'--out',cd);
     const applied=json(cp);assert.deepEqual(applied.episodes[0].segments[1].cuts[0].audioRefs,[[1,1]]);assert.equal(json(join(cd,'manifest.json')).segments.length,4);
     const manifest=json(join(cd,'manifest.json'));
@@ -249,9 +249,9 @@ try {
     assert.equal(namer(renamed).nameOf('character','C02'),null,'asset digest change requires explicit reconfirmation');
     const wrongId=clone(context);wrongId.cast.characters=[{id:'C99',name:'阿宁'}];
     assert.equal(namer(wrongId).nameOf('character','C01'),null,'a different stable ID cannot match by name');
-    const legacy=clone(context);legacy.cast.characters=[{name:'阿宁'}];
-    assert.equal(namer(legacy).nameOf('character','C01'),null,'ambiguous legacy name cannot merge identities');
-    assert.equal(namer(legacy).nameOf('character','C01'),null,'no name fallback even for unique names');
+    const unnamed=clone(context);unnamed.cast.characters=[{name:'阿宁'}];
+    assert.equal(namer(unnamed).nameOf('character','C01'),null,'ambiguous name cannot merge identities');
+    assert.equal(namer(unnamed).nameOf('character','C01'),null,'no name fallback even for unique names');
     const segments=[{id:'E01-01',sceneIndex:1,images:[{kind:'character',ref:'C01'},{kind:'character',ref:'C02'},{kind:'scene',ref:'S01'},{kind:'prop',ref:'P01'}],
       cuts:[{beats:[1,1],seconds:5,size:'wide',camera:'Static Shot',characters:['C01','C02'],props:['P01']}],
       prompt:promptFixture('图1中的人物把图4中的模型交给图2中的人物。',Array(4).fill(null))},
@@ -267,7 +267,7 @@ try {
     assert.deepEqual([...brief.assets.scenes,...brief.assets.props].map(x=>x.name),['候车亭','候车亭','候车亭']);
     for(const {prompt,...structure} of segments){mkdirSync(join(cd,structure.id));writeFileSync(join(cd,structure.id,'prompt.md'),W.serializeWorksheet({meta:{segment:structure.id,status:'draft',round:0,model:'MiniMax H3',promptLang:'zh'},structure,body:prompt}));}
     run('prompts','check',cp);run('prompts','submit',cp);
-    for(const seg of segments){const path=join(cd,seg.id,'prompt.md'),sheet=W.parseWorksheet(readFileSync(path,'utf8'));sheet.review='结论：通过。仅登记技术夹具，不代表内容或视觉审核。';writeFileSync(path,W.serializeWorksheet(sheet));run('prompts','verdict',cp,'approved',seg.id);}
+    for(const seg of segments){const path=join(cd,seg.id,'prompt.md'),sheet=W.parseWorksheet(readFileSync(path,'utf8'));sheet.review='# 视频提示词审核\n\n- 审核结论：通过\n\n## 返修意见\n\n## 待确认事项';writeFileSync(path,W.serializeWorksheet(sheet));run('prompts','verdict',cp,'approved',seg.id);}
     run('prompts','apply',cp);run('export',cp,'--out',cd);
     const manifest=json(join(cd,'manifest.json'));
     for(const seg of manifest.segments)for(const img of seg.images)assert.equal(img.path,paths.get(img.ref));

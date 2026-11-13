@@ -51,9 +51,9 @@ export function mediaPlan(jobs, { kind, model, inputBase = {}, outDir, only = nu
 }
 
 export function checkPlanFlags(args) {
-  const retired = ['--force', '--cutout', '--timeout', '--concurrency'];
-  const flag = args.find(arg => retired.some(f => arg === f || arg.startsWith(f + '=')));
-  if (flag) throw new Error(`${flag} 已移除：本命令只导出计划。生成、抠图和任务恢复请交给 ly-image / ly-video；不要自动重新提交。`);
+  const unsupported = ['--force', '--cutout', '--timeout', '--concurrency'];
+  const flag = args.find(arg => unsupported.some(f => arg === f || arg.startsWith(f + '=')));
+  if (flag) throw new Error(`本命令不支持 ${flag}：只导出计划。生成、抠图和任务恢复请交给 ly-image / ly-video；不要自动重新提交。`);
   for (const name of ['--out', '--only', '--style-ref', '--images']) {
     const i = args.indexOf(name);
     if (i >= 0 && (!args[i + 1] || args[i + 1].startsWith('--') || args.indexOf(name, i + 1) >= 0))

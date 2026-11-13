@@ -55,7 +55,7 @@ for target in "${targets[@]}"; do
   mkdir -p "$target"
   # 清理本仓库安装的退役或改名 skill 软链；其他仓库软链和真实目录不动。
   for name in "${retired_skills[@]}"; do
-    # 单独安装／卸载时，只迁移选中的技能；其余旧安装保留到用户更新它们时处理。
+    # 单独安装／卸载时，只清理选中技能的旧链接；其余旧安装保留到用户更新它们时处理。
     if [ "$name" != "novel-storyboard" ] && [[ " ${wanted[*]} " != *" $name "* ]] && [[ " ${wanted[*]} " != *" ${name/novel-/mint-} "* ]]; then
       continue
     fi

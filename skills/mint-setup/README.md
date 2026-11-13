@@ -2,11 +2,11 @@
 
 # mint-setup
 
-## v3 创作契约与迁移
+## v3 创作契约
 
 production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` 收集可选的自然语言创作要求。提供时必须非空，不解析为枚举、规则或模型参数。show 展示要求，resolve 原样返回 creativeBrief；不要求选择策略。
 
-检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-brief.md) 和 [迁移说明](references/migration.md)。
+检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-brief.md)。
 
 给 AI 短剧统一生产参数：资产图模型、分辨率与比例，视频模型、画幅与档位，以及画风、语言和自动驾驶。参数写入工作目录根的 `production.json`，五个创作阶段分别读取。
 
@@ -88,8 +88,7 @@ node scripts/mint-setup.mjs duration 12.5 --model "MiniMax H3"
 
 ```bash
 node scripts/selftest.mjs
-node scripts/migration-selftest.mjs
 node scripts/upstream-selftest.mjs
 ```
 
-自测不调用模型、不访问网络、不花额度。旧配置中的 `image.frame` 不再读取，新配置不再生成该字段。`style.phrase` 保留供视频提示词指南使用。
+自测不调用模型、不访问网络、不花额度。`style.phrase` 供视频提示词指南使用。

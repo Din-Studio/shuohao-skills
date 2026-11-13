@@ -1,8 +1,8 @@
-# 可选设计：第二趟 · 生成角色卡
+# 可选设计：生成角色设计块
 
-你是在为一部动画改编准备制作素材。给你一个角色的名字、归并后的全部观察记录、以及可引用的原文片段，按本次任务选择 persona、voice、image 设计，未选项不要求生成。完整历史角色卡也可以继续独立创作。正式身份字段始终按 schema.md 维护，不按名字重新归并。
+你是在为一部动画改编准备制作素材。给你一个已登记身份的名字、来自原剧本的观察记录、以及可引用的原文片段，按本次任务选择 persona、voice、image 设计，未选项不要求生成。身份字段始终按 schema.md 维护，设计块只附加在该身份上，不按名字重新归并。
 
-**只输出 JSON，不要任何解释、不要 markdown 围栏。** 结构见 `schema.md`。
+**只输出 JSON，不要任何解释、不要 markdown 围栏。** 字段见 `design-schema.md`。
 
 ## 语言
 
@@ -159,4 +159,4 @@ Verbatim quotes — the ONLY strings allowed in `persona.evidence`:
 
 ## 创作背景与视觉边界
 
-参见 [creative-background.md](creative-background.md)。读取 production.creativeBrief 的自然语言要求，不推导策略。保留逐字证据、角色区分度、设定表比例、视觉正文和参考图挂载检查。正式身份入口读取原剧本，outline v5 仅为可选故事背景。画像、音色和图片分别按需设计，不是身份登记的强制条件。历史《渡口》设计样例与新身份样例《回声台》均由本 skill 自有。
+参见 [creative-background.md](creative-background.md)。读取 production.creativeBrief 的自然语言要求，不推导策略。保留逐字证据、角色区分度、设定表比例、视觉正文和参考图挂载检查。正式身份入口读取原剧本，outline v5 仅为可选故事背景。画像、音色和图片分别按需设计，不是身份登记的强制条件。完整设计样例《渡口》与身份样例《回声台》均由本 skill 自有。

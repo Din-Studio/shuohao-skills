@@ -4,7 +4,7 @@
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseWorksheet, recordVerdict, approvalProblem, inputProblem, VERDICTS, MUST_FIX, BLOCKER } from './lib/worksheet.mjs';
+import { parseWorksheet, recordVerdict, approvalProblem, inputProblem, VERDICTS } from './lib/worksheet.mjs';
 
 export { recordVerdict, VERDICTS };
 
@@ -15,7 +15,7 @@ const USAGE = `mint-video-prompt-review.mjs — 视频提示词审核方的确�
   verdict blocked <prompt.md>...
                     登记审核结论。先在工作单的「审核意见（仅本轮）」写好意见，再运行本命令。
                     通过 → approved（需 --inputs）；需返修 → changes_requested；待确认 → blocked。
-                    新审核采用固定标题、审核结论、返修意见、待确认事项；旧标签意见可读取。
+                    审核意见采用固定标题、审核结论、返修意见、待确认事项。
   show [--inputs <输入材料.json>] <prompt.md>...
                     打印状态、轮次与批准是否仍然有效；给出输入材料时一并核对输入绑定
 

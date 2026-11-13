@@ -1,9 +1,9 @@
 // Root-owned screenplay fixtures. Author source bytes FIRST; only then derive evidence.
-// No skill examples, source helpers or migration implementations are imported here.
+// No skill examples or source helpers are imported here.
 import {createHash} from 'node:crypto';
 import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {dirname, join, relative} from 'node:path';
-import {buildOutline, fillScript} from './stories.mjs';
+import {fillScript} from './stories.mjs';
 
 export function writeStorySource(story, directory) {
   mkdirSync(directory, {recursive:true});
@@ -34,25 +34,6 @@ export function provenanceFor(source,artifact) {
   return {kind:'script',scope:'complete',totalEpisodes:3,
     documents:[{id:'D01',path:relative(dirname(artifact),source.file),sha256:source.sha256,lineCount:source.lineCount}],
     coverage:ref(1,source.lineCount)};
-}
-export function outlineV4(story,source,artifact) {
-  const d=buildOutline(story);d.schemaVersion=4;d.provenance=provenanceFor(source,artifact);
-  delete d.adaptation;delete d.arcs;
-  for(const key of ['adaptMode','minutesPerEpisode','episodes'])delete d.params[key];
-  d.story={summary:`${story.premise}${story.throughline}${story.ending}`,sourceRefs:ref(2,4),focusCharacterIds:d.story.focusCharacterIds,endingBeatId:d.story.endingBeatId};
-  d.characters.forEach((c,i)=>{delete c.from;c.sourceRefs=ref(source.characters[i]);});
-  d.scenes[0].sourceRefs=ref(source.scene);d.props[0].sourceRefs=ref(source.prop);
-  let n=0;
-  d.episodes.forEach((e,i)=>{
-    delete e.stateChange;e.sourceRefs=ref(source.episodes[i].start,source.episodes[i].end);
-    if(e.ending.question){delete e.ending.question.resolution;delete e.ending.question.dueByEp;e.ending.question.sourceRefs=ref(source.episodes[i].question);}
-    story.episodes[i].nodes.forEach((node,j)=>{
-      const b=d.beats[n++];b.setup=b.type+'：'+b.setup;
-      for(const key of ['type','kind','position','weight'])delete b[key];
-      b.sourceRefs=[...ref(source.episodes[i].actions[node.start-1],source.episodes[i].actions[node.end-1]),...ref(source.episodes[i].nodes[j])];
-    });
-  });
-  return d;
 }
 export function scriptV4(seed,story,source,artifact,{production=true}={}) {
   const d=fillScript(seed,story);d.schemaVersion=4;d.provenance=provenanceFor(source,artifact);

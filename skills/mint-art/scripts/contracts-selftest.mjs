@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { seedFromLegacyOutline as seedFromOutline, gateReport, creativeBackground, imageJobsFrom, renderHtml, slug } from './mint-art.mjs';
-import { assertOutlineV3, assetProductionProblems } from './lib/contracts.mjs';
+import { seedFromOutline, gateReport, creativeBackground, imageJobsFrom, renderHtml, renderMarkdown, slug } from './mint-art.mjs';
+import { assetProductionProblems, documentProblems } from './lib/contracts.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
-const outline = JSON.parse(readFileSync(join(here, '../examples/雨棚留言-outline-v3.json'), 'utf8'));
+const outline = JSON.parse(readFileSync(join(here, '../examples/雨棚留言-outline.json'), 'utf8'));
 const doc = JSON.parse(readFileSync(join(here, '../examples/雨棚留言-art.json'), 'utf8'));
 // Natural language requirements do not select strategy implementations.
 const blockName = 'scene';
@@ -50,32 +50,30 @@ for (const mutate of [
 }
 assert.ok(imageJobsFrom(input, null).problems.length, 'generation cannot guess production');
 assert.equal(imageJobsFrom(input, production).problems.length, 0);
-for (const bad of [null, {}, [], { ...outline, schemaVersion: 1 }, { ...outline, schemaVersion: '2' }, { ...outline, schemaVersion: 2 }, { ...outline, characters: 'broken' }, { ...outline, scenes: null }])
-  assert.throws(() => seedFromOutline(bad), /outline v3/);
-for (const mutate of [
-  o => { o.characters[0].id = '../C01'; },
-  o => { o.characters[0].id = ['C01']; },
-  o => { o.scenes[0].id = [['S01']]; },
-  o => { o.characters.push(structuredClone(o.characters[0])); },
-  o => { o.characters[0].tier = 'unknown'; },
-  o => { o.characters[0].from = 'wrong'; }
-]) {
-  const bad = structuredClone(outline); mutate(bad); assert.throws(() => seedFromOutline(bad), /outline v3/);
+// outline v5 is story background only; it never seeds assets. Other versions are rejected.
+assert.throws(() => seedFromOutline(outline), /仅为故事背景/);
+for (const bad of [null, {}, [], { ...outline, schemaVersion: 4 }, { ...outline, schemaVersion: '5' }, { ...outline, scenes: [] }])
+  assert.throws(() => seedFromOutline(bad), /outline/);
+// production v3 document checks.
+assert.deepEqual(documentProblems({ schemaVersion: 3 }), []);
+for (const value of ['', ' ', null, [], {}, false, 12])
+  assert.ok(documentProblems({ schemaVersion: 3, creativeBrief: value }).length);
+for (const key of ['creative','creativeContext','selection','decisions','overrides'])
+  assert.ok(documentProblems({ schemaVersion: 3, [key]: {} }).length);
+for (const version of [undefined, 2, 4, '3']) assert.ok(documentProblems({ schemaVersion: version }).length);
+assert.equal(creativeBackground({ schemaVersion: 3, creativeBrief: ' 不强行和解。 ' }), ' 不强行和解。 ');
+for (const lang of ['zh', 'en']) {
+  const html = renderHtml(doc, lang), md = renderMarkdown(doc, lang);
+  assert.ok(!html.includes('creativeContext') && !md.includes('creativeContext'));
+  assert.ok(!html.includes('未配置') && !md.includes('未配置'));
+  assert.ok(html.indexOf('id="sec-cards"') < html.indexOf('id="sec-gates"'), 'assets precede structural checks');
 }
-for (const kind of ['event','pressure','turn','payoff']) {
-  const o = structuredClone(outline); o.beats[0].kind = kind;
-  if (kind === 'payoff') o.beats[0].weight = 'minor';
-  const seeded = seedFromOutline(o);
-  assert.equal(seeded.props[0].usage.beatIds[0], 'B01');
-  assert.ok(seeded.props[0].usage.beats.includes(o.beats[0].outcome));
-}
-const oneOff = structuredClone(outline); for (const s of oneOff.scenes) delete s.reusePlan;
-assert.ok(seedFromOutline(oneOff).scenes.every(s => !s.seedNote));
-for (const mutate of [
-  o => { o.props[0].beatIds = ['B99']; }, o => { o.props[0].beatIds = ['B01','B01']; },
-  o => { o.beats[0].episode = 99; }, o => { o.beats[0].kind = 'reward'; },
-  o => { o.episodes[0].sceneIds = ['S99']; }, o => { o.scenes[0].reusePlan = null; }
-]) { const bad = structuredClone(outline); mutate(bad); assert.throws(() => assertOutlineV3(bad), /outline v3/); }
+// Same-named scene and prop plates never collide on one output file.
+const collision = structuredClone(doc);
+collision.props[0].name = collision.scenes[0].name;
+const collidingJobs = imageJobsFrom(collision, production).jobs;
+assert.ok(collidingJobs.length > 1);
+assert.equal(new Set(collidingJobs.map(j => j.file)).size, collidingJobs.length);
 const noProps = { ...doc, props: [] };
 assert.ok(gateReport(noProps).filter(g => g.id.startsWith('prop-')).every(g => g.status === 'skipped' && g.reason === 'not-applicable'));
 const malformed = structuredClone(doc); malformed.scenes[0].lighting = 'wrong';
@@ -88,16 +86,6 @@ assert.equal(JSON.stringify(doc), before, 'render does not write context or infe
 const dir = mkdtempSync(join(tmpdir(), 'art-contract-'));
 const cli = (...args) => spawnSync(process.execPath, [join(here, 'mint-art.mjs'), ...args], { encoding: 'utf8' });
 try {
-  const upstream = join(dir, 'outline.json');
-  writeFileSync(upstream, JSON.stringify(outline)); assert.equal(cli('migrate-outline', upstream).status, 0);
-  for (const text of ['{', 'null', JSON.stringify({ ...outline, schemaVersion: 1 })]) {
-    writeFileSync(upstream, text); assert.equal(cli('migrate-outline', upstream).status, 1);
-  }
-  assert.equal(cli('migrate-outline', join(dir, 'absent.json')).status, 1);
-  for (const field of ['characters','scenes']) {
-    const bad = structuredClone(outline); bad[field][0].id = [bad[field][0].id];
-    writeFileSync(upstream, JSON.stringify(bad)); assert.equal(cli('migrate-outline', upstream).status, 1, 'array ID must fail the real seed CLI');
-  }
   const asset = join(dir, 'art.json'); writeFileSync(asset, JSON.stringify(doc));
   const prod = join(dir, 'production.json'); writeFileSync(prod, JSON.stringify(production));
   assert.equal(cli('validate', asset, '--production', prod).status, 0);
@@ -180,4 +168,4 @@ try {
   assert.equal(cli('validate', asset, '--production', join(dir, 'missing.json')).status, 1);
   assert.equal(cli('validate', asset, '--production', prod, '--no-production').status, 1);
 } finally { rmSync(dir, { recursive: true, force: true }); }
-console.log('✓ art v1 正式入口、历史 v3 显式迁移、创作背景及检查状态回归通过');
+console.log('✓ art v1 正式入口、outline v5 背景边界、production v3、创作背景及检查状态回归通过');

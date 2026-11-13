@@ -2,9 +2,9 @@
 
 ## 原件与负责范围
 
-原剧本直接输入本阶段。outline v5 是可选故事背景，不是资产权威；cast v1 是人物身份权威。缺少可选上游为 skipped；已经提供但损坏、旧版、身份或版本不匹配时失败。
+原剧本直接输入本阶段。outline v5 是可选故事背景，不是资产权威；cast v1 是人物身份权威。缺少可选上游为 skipped；已经提供但损坏、版本不符、身份或来源版本不匹配时失败。
 
-provenance 必须声明 kind: script、scope: partial/complete、documents 和 coverage。documents 每项包含唯一 id、path、64 位小写原始字节 SHA256、正整数 lineCount。路径相对所属 JSON；也接受绝对路径。CLI seed、迁移和重定位输出绝对路径以防 stdout 落点改变路径含义。搬迁机器须显式更新路径并重新核验，不按同名文件猜测原件。
+provenance 必须声明 kind: script、scope: partial/complete、documents 和 coverage。documents 每项包含唯一 id、path、64 位小写原始字节 SHA256、正整数 lineCount。路径相对所属 JSON；也接受绝对路径。CLI seed 和重定位输出绝对路径以防 stdout 落点改变路径含义。搬迁机器须显式更新路径并重新核验，不按同名文件猜测原件。
 
 coverage/sourceRefs 每项为 documentId/startLine/endLine；一基行号、包含两端。LF、CRLF、裸 CR 都是换行；末尾换行不额外增加空行。严格 UTF-8 解码。相邻、重叠区间按位置并集检查；相同文本出现在不同位置不能合并位置。sourceRefs 必须处于文档和负责范围内；提供 quote 时回查实际原件行内文本。
 
@@ -16,15 +16,15 @@ CLI validate/checkup/render/images 总是读取实际原件，核对字节摘要
 
 内存 stageErrors/validateArt/gateReport 只做结构、摘要一致性和引用检查；调用 verifySources(doc,artifactPath) 才有实际文件核验。技术核验成功不是语义忠实度审核，也不是内容、图片或成片批准。
 
-资产上保留的 sourceFacts.documents、notes、aliases、sourceRefs 属于活动证据，继续校验实际原件。顶层 provenance.documents 与全部资产 sourceFacts.documents 统一核对：相同 documentId 的 SHA256 和 lineCount 必须一致。不同路径的相同字节副本允许；两份各自合法但版本不同的原件不能共享当前文档身份。历史版本单独保存在 migration.original/fields 或关联材料，不作为当前出处；不能把当前资产上的 sourceFacts 当作免校验历史。正式 facts 与全部嵌套引用进入身份摘要。身份摘要不只取文件 SHA256，修改文档 ID、事实、引用坐标或相关范围同样不能沿用旧确认。
+顶层 provenance.documents 是唯一来源文档登记：documentId 必须唯一，两份各自合法但版本不同的原件不能共享同一文档身份；不同 ID 的相同字节副本允许。正式 facts 与全部嵌套引用进入身份摘要。身份摘要不只取文件 SHA256，修改文档 ID、事实、引用坐标或相关范围同样不能沿用既有确认。
 
 ## 上游消费与来源对账
 
-已提供的 outline 必须满足本阶段自包含的 v5 full 消费契约：必需故事摘要、节点数组、非空分集及 synopsis；来源、引用和全部嵌套说明处于负责范围；分集编号递增，节点和问题引用有效。complete 声明必须实际提供 1..totalEpisodes 连续全集，并完整覆盖登记原件。partial 可从 E4 开始，但不能冒称 complete。未知或退役字段失败，不导入 outline 脚本。
+已提供的 outline 必须满足本阶段自包含的 v5 full 消费契约：必需故事摘要、节点数组、非空分集及 synopsis；来源、引用和全部嵌套说明处于负责范围；分集编号递增，节点和问题引用有效。complete 声明必须实际提供 1..totalEpisodes 连续全集，并完整覆盖登记原件。partial 可从 E4 开始，但不能冒称 complete。未知字段失败，不导入 outline 脚本。
 
 outline 来源路径遵循 v5 契约，必须相对 outline JSON 且唯一；美术产物自身仍接受相对或绝对原件路径。CLI 按各自 JSON 位置读取原件，不按工作目录猜测。
 
-提供活动证据时，script/design 均核对共同 documentId 的版本、行数及美术引用的上游负责范围。修改 mode 并重新确认身份不能绕过冲突。有共同原件时，美术登记的来源和实际引用都必须能对账；无共同原件的独立设计只能标记 skipped，不能标记 pass。已提供的上游无论是否有共同原件，仍校验其契约和实际来源；skipped 不隐藏损坏输入。
+提供来源文档时，script/design 均核对共同 documentId 的版本、行数及美术引用的上游负责范围。修改 mode 并重新确认身份不能绕过冲突。有共同原件时，美术登记的来源和实际引用都必须能对账；无共同原件的独立设计只能标记 skipped，不能标记 pass。已提供的上游无论是否有共同原件，仍校验其契约和实际来源；skipped 不隐藏损坏输入。
 
 ## 语义与制作
 
@@ -38,9 +38,9 @@ outline 来源路径遵循 v5 契约，必须相对 outline JSON 且唯一；美
 
 ## 变更与交接
 
-增量读取既有 art。源文件改版只撤回关联文档范围及引用该文档资产的确认，保留设计与图片历史。同文档版本变化仍必须复读相关事实；其他文档的无关身份不自动失效。
+增量读取既有 art。原件改版只撤回关联文档范围及引用该文档资产的确认，保留设计与图片。同文档版本变化仍必须复读相关事实；其他文档的无关身份不自动失效。
 
-逐图片任务 inputDigest 包括当前资产、其身份输入摘要及直接变体参考资产，不以全项目任意变化一概撤回所有任务。script 的局部映射仍由 script.assetMappings 保存；creation 按实际制作依赖核验 assetDigest、原件版本及范围。原件、身份、引用或素材变化后重新核验受影响映射、工作单和批准，不拿 ID 沿用当作旧审核仍有效。
+逐图片任务 inputDigest 包括当前资产、其身份输入摘要及直接变体参考资产，不以全项目任意变化一概撤回所有任务。script 的局部映射由 script.assetMappings 保存；creation 按实际制作依赖核验 assetDigest、原件版本及范围。原件、身份、引用或素材变化后重新核验受影响映射、工作单和批准，不拿 ID 沿用当作既有审核仍有效。
 
 ## 方法来源
 

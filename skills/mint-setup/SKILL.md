@@ -35,11 +35,11 @@ metadata:
     - codex
 ---
 
-## v3 创作契约与迁移
+## v3 创作契约
 
 production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` 收集可选的自然语言创作要求。提供时必须非空，不解析为枚举、规则或模型参数。show 展示要求，resolve 原样返回 creativeBrief；不要求选择策略。
 
-检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-brief.md) 和 [迁移说明](references/migration.md)。
+检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-brief.md)。
 
 ## mint-setup
 
@@ -162,7 +162,6 @@ node {baseDir}/scripts/mint-setup.mjs duration 12.5 --model "MiniMax H3"
 
 ```bash
 node {baseDir}/scripts/selftest.mjs
-node {baseDir}/scripts/migration-selftest.mjs
 node {baseDir}/scripts/upstream-selftest.mjs
 ```
 
@@ -171,4 +170,4 @@ node {baseDir}/scripts/upstream-selftest.mjs
 - `examples/回南天-production.json`：竖屏、真人实拍、2K 资产图、英文提示词、自动驾驶关闭。
 - `examples/雪线-production.json`：横屏、手绘动画、4K 资产图、中文提示词、自动驾驶开启。
 
-样例展示有效参数组合，不是画风选项列表。旧文件中的 `image.frame` 不再读取或校验；新文件不生成该字段。`style.phrase` 仍用于视频提示词指南。
+样例展示有效参数组合，不是画风选项列表。`style.phrase` 供视频提示词指南使用。

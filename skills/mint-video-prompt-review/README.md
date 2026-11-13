@@ -1,6 +1,6 @@
 # mint-video-prompt-review
 
-当前交接使用 script v4 / outline v5；creation/production 仍为 v3。完整规则见 [来源、非发声说明与跨镜声音交接](references/source-audio-handoff.md)。场次 notes 不发声，audioRefs 只延续同一次台词，不跳过镜头、不改变台词顺序。解析来源 ID 必须与上游版本对齐。摘要绑定显式场次资产与局部开场／集尾意图；来源、声音方式或相关限制改变后，仅相关段重新审核。script 的 C/S/P 是局部标记；仅以 script.assetMappings 显式连接 cast/art，名称或编号相同不代表确认。结构／字节核验不是来源忠实性或成片验收。
+交接契约：script v4、outline v5、creation v3、production v3、cast/art v1，只接受这些版本。完整规则见 [来源、非发声说明与跨镜声音交接](references/source-audio-handoff.md)。场次 notes 不发声，audioRefs 只延续同一次台词，不跳过镜头、不改变台词顺序。解析来源 ID 必须与上游版本对齐。摘要绑定显式场次资产与局部开场／集尾意图；来源、声音方式或相关限制改变后，仅相关段重新审核。script 的 C/S/P 是局部标记；仅以 script.assetMappings 显式连接 cast/art，名称或编号相同不代表确认。结构／字节核验不是来源忠实性或成片验收。
 
 视频提示词**审核方**。独立审核编写方提交的工作单，把意见写进同一份工作单，并登记结论。
 

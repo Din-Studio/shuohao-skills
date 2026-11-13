@@ -8,7 +8,7 @@
 
 ## v4 重点
 
-- script 保持 schemaVersion:4，只消费 outline v5；production/creation 仍为 v3。有大纲时从当前 outline 读取 opening/ending，不保存副本；独立时可选。
+- script 使用 schemaVersion:4，只消费 outline v5；production/creation 使用 v3。有大纲时从当前 outline 读取 opening/ending，不保存副本；独立时可选。
 - 删除 endBeat，从最后一个 flow 项计算。openingBeat 可省略，报告诚实标明未标注。
 - 有大纲时按 B ID 完整认领，包括未分类节点；范围合法、有序、不重叠。独立无规划节点可省略 beatClaims。
 - targetSeconds 是剧本逐集唯一目标，解析时可省略，制作前必须确认；不从大纲复制。粗略估时偏差只提醒。语速/动作秒数/容差默认 4.5/2.5/0.15，仅保存用户覆盖。
@@ -48,17 +48,13 @@ node scripts/mint-script.mjs validate examples/修伞簿-mapped-script.json --no
 # --md 输出 Markdown；--lang en 切换英文界面
 node scripts/mint-script.mjs validate PROJECT/script/STORY.json --production PROJECT/production.json --production-ready
 # 骨架增加 --stage skeleton，不等于完整交付
-node scripts/mint-script.mjs migrate-v4 OLD-v3.json --no-production
-node scripts/mint-script.mjs migrate-v4 OLD-v3.json --out PROJECT/script/.work/NEW.draft --confirm --no-production
-# 只有确认原输入是独立创作时才使用 --independent；不可借此免除解析来源证据
-# 历史 v2→v3 仍可先执行 migrate-v3，再显式 migrate-v4
 ```
 
 完整流程必须依次完成 outline → characters → art → script → creation，每阶段交接完成后再进入下一阶段。项目级流程状态由流程组装器维护，不是本 skill 的运行依赖。单独执行本 CLI 不更新流程状态；--full-workflow 只额外要求三个上游输入，不证明交接顺序。独立入口无上游可继续，但联合对账 skipped。
 
 CLI 自动发现唯一 outline/art/cast。显式文件优先，多候选需要人工指定，损坏或非法 UTF-8 输入失败。--no-production 与 --production 互斥，不禁止显式或唯一发现的大纲。项目配置要求 schemaVersion:3。
 
-validate/checkup/render 同时检查已知 creation 的实际节拍覆盖与 v3 接口。模型硬限制、参考图与内容仍需制作阶段检查。迁移默认预览；待确认项不能静默删除。新输出、逐字节备份和工作记录使用独占创建，不覆盖原文件。详见 [迁移说明](references/migration.md)。
+validate/checkup/render 同时检查已知 creation 的实际节拍覆盖与 v3 接口。模型硬限制、参考图与内容仍需制作阶段检查。
 
 ## 报告
 
@@ -72,16 +68,15 @@ validate/checkup/render 同时检查已知 creation 的实际节拍覆盖与 v3 
 
 [《夜班水尺》](examples/夜班水尺-story.md)：只提供第七集、第九集，保留缺集、长心理说明、无台词人物、不同位置重复台词、字幕和报警声；不预设制作目标。自有原件与解析正文可实际核验。
 
-outline/art/cast/production fixture 全部本地自有。修伞簿-script.json 保持独立创作，无来源冒称或映射。修伞簿-mapped-script.json 是对本地自有原件的逐句解析，附完整来源与映射；目标 ID C11/S11/P11 等刻意不同于局部 C01/S01/P01。outline v5 消费夹具只有故事与来源，cast/art v1 夹具保存身份与出处；不冒称外部来源。迁移旧输入在 scripts/fixtures/，不作为正式样例。旧截图不是 v4 验收证据。
+outline/art/cast/production fixture 全部本地自有。修伞簿-script.json 保持独立创作，无来源冒称或映射。修伞簿-mapped-script.json 是对本地自有原件的逐句解析，附完整来源与映射；目标 ID C11/S11/P11 等刻意不同于局部 C01/S01/P01。outline v5 消费夹具只有故事与来源，cast/art v1 夹具保存身份与出处；不冒称外部来源。截图仅作示意，不是验收证据。
 
 ```bash
 node scripts/selftest.mjs
 node scripts/downstream-selftest.mjs
-node scripts/migration-selftest.mjs
 node scripts/fusion-selftest.mjs
 node scripts/asset-mappings-selftest.mjs
 ```
 
-五个入口覆盖来源字节与范围、非发声说明、声音延续、制作目标边界、正文、估时统一入口、节点与资产、可选字段、计划单一来源、严格版本、损坏输入、真实 CLI、迁移备份、安全读取和隔离复制。无需付费调用。
+四个入口覆盖来源字节与范围、非发声说明、声音延续、制作目标边界、正文、估时统一入口、节点与资产、可选字段、计划单一来源、严格版本、损坏输入、真实 CLI、安全读取和隔离复制。无需付费调用。
 
 工作流程见 [SKILL.md](SKILL.md)，接口见 [schema.md](references/schema.md)，界面约定见 [report-style.md](references/report-style.md)。

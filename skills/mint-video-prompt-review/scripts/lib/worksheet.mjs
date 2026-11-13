@@ -12,9 +12,6 @@ export const RESPONSE_HEADING = '## 编写回应（仅本轮）';
 export const STRUCTURE_HEADING = '## 分镜结构';
 export const REVIEW_PLACEHOLDER = '（尚未审核）';
 export const RESPONSE_PLACEHOLDER = '（无）';
-export const MUST_FIX = '[必须修改]';
-export const SUGGEST = '[建议]';
-export const BLOCKER = '[阻塞]';
 const SEPARATOR = '\n---\n';
 const META_KEYS = ['segment', 'status', 'round', 'model', 'promptLang', 'bodyHash', 'inputHash'];
 const HEADINGS = [STRUCTURE_HEADING, REVIEW_HEADING, RESPONSE_HEADING];
@@ -229,13 +226,9 @@ export function serializeWorksheet({ meta, structure, review, response, body }) 
   return lines.join('\n').replace(/[ \t]+\n/g, '\n');
 }
 
-const ITEM_PREFIX = String.raw`^(?:[-*+•]|\d+[.)、．])?\s*(?:\*\*|__)?\s*`;
-const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const itemRe = tag => new RegExp(ITEM_PREFIX + escapeRe(tag));
-
 /**
- * 审核意见里的条目：以列表符号（- * + 或数字编号）加标签开头的行。
- * loose 收集提到了「必须修改」或「阻塞」标签却不是条目的行——批准时一并拒绝，不让换一种写法绕过。
+ * 审核意见：固定标题、唯一审核结论，再依次是「返修意见」「待确认事项」两个条目区。
+ * 返修条目为「质量或格式｜字段或事件｜问题｜修订要求」，待确认条目为「位置｜缺少的依据｜影响的判断」。
  */
 export function structuredReview(review) {
   const text = String(review ?? '').trim(), problems = [];
@@ -253,17 +246,10 @@ export function structuredReview(review) {
     if (fields.length !== 4 || !fields.every(Boolean) || !['质量','格式'].includes(fields[0])) problems.push(`返修意见需填写质量或格式｜字段或事件｜问题｜修订要求：${line}`);
   }
   for (const line of block) if (line.replace(/^[-*+]\s*/, '').split('｜').filter(x=>x.trim()).length !== 3) problems.push(`待确认事项需填写位置｜缺少的依据｜影响的判断：${line}`);
-  return {conclusion,must,block,suggest:[],loose:[],problems};
+  return {conclusion,must,block,problems};
 }
 
-export function reviewItems(review) {
-  if (/审核结论[：:]/.test(review)) return structuredReview(review);
-  const lines = String(review ?? '').split('\n').map(l => l.trim()).filter(Boolean);
-  const pick = tag => lines.filter(l => itemRe(tag).test(l));
-  const must = pick(MUST_FIX), block = pick(BLOCKER), suggest = pick(SUGGEST);
-  const loose = lines.filter(l => (l.includes(MUST_FIX) || l.includes(BLOCKER)) && !must.includes(l) && !block.includes(l));
-  return { must, suggest, block, loose };
-}
+export const reviewItems = structuredReview;
 
 /** 批准是否仍然有效：状态为 approved 且摘要与当前内容一致。 */
 export function approvalProblem(sheet) {
@@ -297,9 +283,6 @@ export function submittedText(sheet) {
   return serializeWorksheet({ ...sheet, meta: { ...sheet.meta, status: 'in_review', round: sheet.meta.round + 1, bodyHash: '', inputHash: '' } });
 }
 
-const CONCLUSION_RE = /^结论[：:]\s*\S/m;
-const EVIDENCE_RE = /镜头\s*\d+|Shot\s*\d+|整段|参考图|声景|图\s*\d+|Picture\s*\d+/i;
-
 /**
  * 登记结论。审核方只写审核区与状态：分镜结构与提示词正文原样保留。
  * approved 绑定当前内容与输入材料的摘要，此后任一变化都让批准失效。
@@ -311,28 +294,11 @@ export function recordVerdict(sheet, verdict, material = null) {
   if (sheet.meta.status !== 'in_review') problems.push(`只能审核 in_review 的工作单，当前为 ${sheet.meta.status}——由编写方提交后再审核`);
   if (!sheet.review || sheet.review === REVIEW_PLACEHOLDER) problems.push('「审核意见（仅本轮）」还没有填写');
   else {
-    if (/审核结论[：:]/.test(sheet.review)) {
-      const r = structuredReview(sheet.review);
-      problems.push(...r.problems);
-      const expected = r.must.length ? 'changes_requested' : r.block.length ? 'blocked' : 'approved';
-      if (r.conclusion !== ({approved:'通过',changes_requested:'需返修',blocked:'待确认'})[expected]) problems.push('审核结论与返修意见、待确认事项不一致');
-      if (verdict !== expected) problems.push(`本轮审核应登记 ${expected}，不能登记 ${verdict}`);
-    } else {
-      // 旧工作单意见仍可读取；新写作与审核只使用 structuredReview 的格式。
-      if (!CONCLUSION_RE.test(sheet.review)) problems.push('审核意见需要一行「结论：……」，概括本轮判断与依据');
-      const { must, suggest, block, loose } = reviewItems(sheet.review);
-      if (verdict === 'approved') {
-        if (must.length) problems.push(`仍有 ${must.length} 条 ${MUST_FIX}，不能批准`);
-        if (block.length) problems.push(`仍有 ${block.length} 条 ${BLOCKER}，不能批准`);
-        for (const line of loose) problems.push(`意见提到了 ${MUST_FIX} 或 ${BLOCKER}，但不是清单条目，不能批准；改写成「- ${MUST_FIX} 位置：……」或删去标签：${line}`);
-      }
-      if (verdict === 'changes_requested') {
-        if (!must.length) problems.push(`要求修改时至少写一条「- ${MUST_FIX} ……」；只有「- ${SUGGEST}」不构成退回理由`);
-        if (block.length) problems.push(`存在 ${BLOCKER} 时登记 blocked：编写方无法单独解决，需要调度方先协调`);
-      }
-      if (verdict === 'blocked' && !block.length) problems.push(`登记阻塞时至少写一条「- ${BLOCKER} ……」，说明缺少什么材料或需要谁决定`);
-      for (const line of [...must, ...suggest, ...block]) if (!EVIDENCE_RE.test(line)) problems.push(`意见需要指明镜号或位置（镜头 k／整段／参考图／声景）：${line}`);
-    }
+    const r = structuredReview(sheet.review);
+    problems.push(...r.problems);
+    const expected = r.must.length ? 'changes_requested' : r.block.length ? 'blocked' : 'approved';
+    if (r.conclusion !== ({approved:'通过',changes_requested:'需返修',blocked:'待确认'})[expected]) problems.push('审核结论与返修意见、待确认事项不一致');
+    if (verdict !== expected) problems.push(`本轮审核应登记 ${expected}，不能登记 ${verdict}`);
   }
   if (!sheet.body) problems.push('提示词正文为空，无法审核');
   if (verdict === 'approved' && material) problems.push(...materialMappingErrors(sheet.structure,material));

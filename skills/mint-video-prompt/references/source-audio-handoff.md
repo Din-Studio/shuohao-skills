@@ -2,7 +2,7 @@
 
 ## 核验对象
 
-outline 使用 v5，script 使用 v4；creation 与 production 仍使用 v3。解析与独立创作是不同入口。独立 script 不强行补造来源；解析 script 的实际正文与 notes 必须有 sourceRefs。进入制作前，每集 targetSeconds 必须是已确认的有限正数，不能从 outline 复制分钟数或虚构目标。
+outline 使用 v5，script 使用 v4，creation 与 production 使用 v3，只接受这些版本。解析与独立创作是不同入口。独立 script 不强行补造来源；解析 script 的实际正文与 notes 必须有 sourceRefs。进入制作前，每集 targetSeconds 必须是已确认的有限正数，不能从 outline 复制分钟数或虚构目标。
 
 provenance 记录原剧本文档 ID、相对 JSON 的路径、原始文件字节 SHA256、行数与覆盖。sourceRefs 是一基、含两端的 documentId/startLine/endLine 坐标。相同文字发生在不同位置时是不同内容，不能按文本去重。重叠覆盖取并集；partial 可以缺集或不从第一集开始，complete 需要全部文档覆盖和已知 1..N 集。
 

@@ -305,7 +305,7 @@ const DOC = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
     writeFileSync(join(dir, 'one-outline.json'), '{}');
     writeFileSync(join(dir, 'one-outline.backup.123.json'), '{}');
     writeFileSync(join(dir, 'one-outline.bak.v2.json'), '{}');
-    eq(findJson(dir, 'mint-outline'), join(dir, 'one-outline.json'), '排除迁移备份');
+    eq(findJson(dir, 'mint-outline'), join(dir, 'one-outline.json'), '排除备份文件');
     writeFileSync(join(dir, 'two-outline.json'), '{}');
     assert.throws(() => findJson(dir, 'mint-outline'), /显式指定/); passed++;
   } finally { rmSync(dir, { recursive: true, force: true }); }

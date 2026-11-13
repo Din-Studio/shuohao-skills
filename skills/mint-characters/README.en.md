@@ -4,7 +4,7 @@
 
 Each formal delivery uses three fixed filenames: `cast.json`, `cast-report.md`, and `cast-report.html`. Render both reports from `cast.json` and save all three files in the project's `characters/` directory.
 
-Independently read an original script and maintain character identities. The formal artifact is **cast v1** (`schemaVersion: 1`, `kind: mint-characters`). Optional **outline v5** supplies story background, never character authority. Optional production configuration remains v3.
+Independently read an original script and maintain character identities. The formal artifact is **cast v1** (`schemaVersion: 1`, `kind: mint-characters`). Optional **outline v5** supplies story background, never character authority. Optional production configuration is v3. Any other version, unversioned object or bare array fails.
 
 Copy this entire directory into your agent's skills directory. Node 18+, standard library only. No other skill is required.
 
@@ -30,14 +30,10 @@ Reordering preserves IDs. Merge/split/delete/correction require explicit mapping
 
 `--outline file` accepts only v5. Missing optional background is skipped; supplied corrupt, incompatible or mismatched background fails. Source paths are relative to the containing artifact; source bytes, SHA256, physical lines and coverage are checked. Missing originals fail.
 
-Historical standalone profiles, voice/image prompts, assembly and reports remain available. `images` exports offline plans only; formal jobs use C IDs and `images/C01-sheet.png`. Generation is optional and requires explicit production configuration plus a separately authorized execution tool. It is not an installation dependency.
+Profile, voice and image designs live on the matching cast v1 identities and are each optional. `images` exports offline plans only; formal jobs use C IDs and `images/C01-sheet.png`. Generation is optional and requires explicit production configuration plus a separately authorized execution tool. It is not an installation dependency.
 
 ```bash
-node scripts/mint-characters.mjs migrate-outline old-v4.json --out pending.json
-node scripts/mint-characters.mjs migrate-cast unversioned-cast.json --out pending-cast.json
 node scripts/test-all.mjs
 ```
 
-Migration preserves original snapshots, every field path/value, old IDs, media designs, relations and budgets as pending material, not approved assets. No overwrite or implicit version upgrade. Legacy projection requires explicit `seed old-outline.json --legacy`.
-
-See [workflow](SKILL.md), [formal schema](references/schema.md), [design fields](references/design-schema.md), and [migration/interface matrix](references/migration.md). Owned examples: Echo Station (`回声台`) for identities; Ferry (`渡口`) for legacy designs. All stage tests are offline. Generated HTML is not version-controlled. Standalone execution does not claim completion of the ordered five-stage workflow.
+See [workflow](SKILL.md), [formal schema](references/schema.md), [design fields](references/design-schema.md), and [report conventions](references/report-style.md). Owned examples: Echo Station (`回声台`) for identities; Ferry (`渡口`) for a cast v1 with full designs. All stage tests are offline. Generated HTML is not version-controlled. Standalone execution does not claim completion of the ordered five-stage workflow.

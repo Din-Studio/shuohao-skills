@@ -1,15 +1,15 @@
 # 三种故事的隔离联合测试
 
-入口：`scripts/v3-pipeline-selftest.mjs`。
+入口：`scripts/strategy-pipeline-selftest.mjs`。
 
 ```bash
-node scripts/v3-pipeline-selftest.mjs
-node scripts/v3-pipeline-selftest.mjs --keep /tmp/shuohao-v3-projects-new
+node scripts/strategy-pipeline-selftest.mjs
+node scripts/strategy-pipeline-selftest.mjs --keep /tmp/shuohao-projects-new
 ```
 
-目录名称为历史路径，不代表仍使用策略系统。`stories.mjs` 保留原始故事及旧字段构造器，供显式历史迁移测试使用。正式联合测试使用 outline v5、cast/art v1、script v4 和 creation/production v3。selection 仅作为历史迁移输入，不加载 profile，不参与正式创作。
+目录名称不代表使用策略系统。`stories.mjs` 只保存原创故事与动作；联合测试使用 outline v5、cast/art v1、script v4 和 creation/production v3，不加载 profile。
 
-`--keep` 导出三份隔离项目及浏览器入口 `index.html`，目标必须不存在。默认删除本轮临时目录，不覆盖历史文件，不生成永久检查日志。
+`--keep` 导出三份隔离项目及浏览器入口 `index.html`，目标必须不存在。默认删除本轮临时目录，不覆盖已有文件，不生成永久检查日志。
 
 ## 故事与数据
 
@@ -23,13 +23,11 @@ node scripts/v3-pipeline-selftest.mjs --keep /tmp/shuohao-v3-projects-new
 
 ## 执行范围
 
-真实 CLI 覆盖 production 初始化、各阶段 seed/validate、中文与英文 HTML/Markdown、同故事五面板合并报告。大纲直接从故事事实构造剧情数据，不生成资产。characters/art 独立从原剧本 seed，再登记本阶段身份及来源。script.assetMappings 显式保存唯一映射，资产摘要递归排序对象键。大纲 v4 资产构造器只参与显式迁移测试。
+真实 CLI 覆盖 production 初始化、各阶段 seed/validate、中文与英文 HTML/Markdown、同故事五面板合并报告。大纲直接从故事事实构造剧情数据，不生成资产。characters/art 独立从原剧本 seed，再登记本阶段身份及来源。script.assetMappings 显式保存唯一映射，资产摘要递归排序对象键。
 
 真正按 outline → characters → art → script → creation 顺序推进的项目流程见 `scripts/ordered-pipeline-selftest.mjs`。它使用根目录自有《井口双签》故事，实际调用 pipeline 的 init/begin/run/complete，不注入 validator。
 
-负例覆盖节点认领、坐标、上游目标时长、Q 承诺、引用、明确预算、损坏与多候选输入、镜头顺序覆盖、模型时长及参考图身份。精简回归覆盖可选分类、无 Q 悬念、估时默认值、正文计算结束位置、唯一项目要求、指南修改不使产物失效、旧字段拒绝及显式迁移安全。
-
-迁移测试检查预览、待确认项、原件字节保持、禁止覆盖、符号链接与非法编码。历史配置只存在于这些显式旧格式测试输入中。
+负例覆盖节点认领、坐标、上游目标时长、Q 承诺、引用、明确预算、损坏与多候选输入、镜头顺序覆盖、模型时长及参考图身份。精简回归覆盖可选分类、无 Q 悬念、估时默认值、正文计算结束位置、唯一项目要求、指南修改不使产物失效及未知字段拒绝。
 
 ## 验证边界
 

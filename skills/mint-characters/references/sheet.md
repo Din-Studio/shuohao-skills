@@ -52,7 +52,7 @@ same expression`。拿到图先扫一眼两边是不是同一个人，不一致�
 
 ## 想要透明背景
 
-白底主图保留。透明底作为独立编辑任务交给 ly-image，查询当前模型、参数与价格，核验结果后放到计划 optionalCutoutOutput。不要沿用旧 --cutout 命令或固定价格。
+白底主图保留。透明底作为独立编辑任务交给 ly-image，查询当前模型、参数与价格，核验结果后放到计划 optionalCutoutOutput。本地命令不提供抠图选项，也不使用固定价格。
 
 ## 其他约束
 
@@ -63,9 +63,8 @@ same expression`。拿到图先扫一眼两边是不是同一个人，不一致�
 
 ## 文件名
 
-产物路径由 `slug`（中文会保留）算出，`images` 与 `render` 用的是**同一个函数**——
-所以两边永远对得上。`render` 会自动去 `images/<slug>-sheet.png` 找图，找到就嵌进
-cast-report.html，**先出图再 render**。
+产物路径使用稳定 C ID：`images/<C ID>-sheet.png`，`images` 计划与 `render` 找图使用同一规则，
+改名或新增同名人物都不会漂移。`render` 找到图片就嵌进 cast-report.html，**先出图再 render**。
 
 ## 创作与制作参数分离
 

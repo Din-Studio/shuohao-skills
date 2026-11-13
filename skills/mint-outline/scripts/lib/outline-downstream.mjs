@@ -25,7 +25,7 @@ export function checkKnownDownstream(outline,root,options={}) {
  for(const stage of ['script','creation']) {
   const dir=join(root,stage);
   let names;
-  try {names=readdirSync(dir).filter(n=>n.endsWith('.json')&&!n.endsWith('.migration.json')).sort();}
+  try {names=readdirSync(dir).filter(n=>n.endsWith('.json')).sort();}
   catch(error) {
    // A dangling stage directory must not be mistaken for an absent one.
    let absent=false;
@@ -43,7 +43,7 @@ export function checkKnownDownstream(outline,root,options={}) {
   }
  }
  for(const {file,stage,doc} of records) {
-  add(file,stage,'version',doc.schemaVersion===(stage==='script'?4:3)?[]:[`schemaVersion must be ${stage==='script'?4:3}; migrate explicitly`]);
+  add(file,stage,'version',doc.schemaVersion===(stage==='script'?4:3)?[]:[`schemaVersion must be ${stage==='script'?4:3}`]);
   add(file,stage,'document',documentErrors(doc,options.production));
   add(file,stage,'source',doc.source===outline.source?[]:['source must match outline']);
   const errors=[];
@@ -185,5 +185,5 @@ export function checkKnownDownstream(outline,root,options={}) {
 }
 function checkProjection(ep,upstream,label,errors) {
  if(!upstream){errors.push(`${label}: no valid outline episode for projection reconciliation`);return;}
- for(const key of ['opening','ending','endBeat'])if(ep?.[key]!==undefined)errors.push(`${label}: ${key} is not copied into downstream project documents; migrate explicitly`);
+ for(const key of ['opening','ending','endBeat'])if(ep?.[key]!==undefined)errors.push(`${label}: ${key} is not copied into downstream project documents`);
 }

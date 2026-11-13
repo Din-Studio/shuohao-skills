@@ -7,9 +7,9 @@ import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {seedFromSource,registerAsset,migrateArt,fileDigest,digest} from './lib/stage.mjs';
+import {seedFromSource,registerAsset,fileDigest,digest} from './lib/stage.mjs';
 import {sourceLineCount} from './lib/source-facts.mjs';
-import {confirm,originalDoc,originalPath,makeCast} from './test-fixtures.mjs';
+import {confirm,storyDoc,originalPath,makeCast} from './test-fixtures.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),root=resolve(here,'..');
 const temp=mkdtempSync(join(tmpdir(),'mint-art-fixes-'));
 const executable=process.env.MINT_ART_FIX_CLI??join(here,'mint-art.mjs');
@@ -30,87 +30,49 @@ function art() {
   return confirm(d);
 }
 function story() {
-  const d=clone(originalDoc);d.schemaVersion=5;
-  for(const k of ['characters','scenes','props'])delete d[k];
-  for(const e of d.episodes)for(const k of ['characterIds','sceneIds','propIds'])delete e[k];
-  d.provenance.documents[0].path='原件A.txt';return d;
-}
-function reviewed(d) {
-  d.migration.status='reviewed';d.migration.unresolved=[];
-  for(const f of d.migration.fields)Object.assign(f,{status:'retained',basis:'人工逐字段核对并保留原路径和原值'});
-  for(const a of [...d.scenes,...d.props]){
-    if(d.mode==='script'&&!a.sourceRefs)a.sourceRefs=clone(a.sourceFacts?.sourceRefs??[ref]);
-    delete a.carriedBy; // Historical value remains in the reviewed migration snapshot.
-  }
-  return confirm(d);
+  const d=clone(storyDoc);d.provenance.documents[0].path='原件A.txt';return d;
 }
 let cases=0;
 function test(name,fn){if(selected&&selected!==name)return;try{fn();cases++;console.log(`✓ ${name} CLI 回归`);}catch(e){console.error(`[${name} regression]`);throw e;}}
 try {
   test('budget',()=>{
-    const old=clone(originalDoc);old.params={thresholds:{maxProps:1,maxScenes:2,maxPrimaryScenes:1,maxLeads:3}};old.provenance.documents[0].path=source;
-    const input=save('旧outline',old),out=join(temp,'迁移.json');
-    success(cli('migrate-outline',input,'--out',out),'真实迁移入口');
-    const d=reviewed(JSON.parse(readFileSync(out)));
-    // The migration original is untouched; fields are fully reviewed.
-    assert.deepEqual(d.budgets.props,{kind:'explicit',max:1});
-    success(cli('validate',save('迁移基线',d),'--no-production'),'原预算下单道具通过');
-    const second=registerAsset(d,'prop','spare-flag','备用旗');second.sourceRefs=[clone(ref)];second.decision='第二件实物';confirm(d);
-    failure(cli('validate',save('预算超额',d),'--no-production'),'明确预算超额阻断',/美术预算/);
+    const d=art();d.budgets={props:{kind:'explicit',max:1},scenes:{kind:'explicit',max:2},primaryScenes:{kind:'explicit',max:1}};
+    const previous=save('预算基线',d);
+    success(cli('validate',previous,'--no-production','--previous',previous),'原预算下单道具通过');
+    const over=clone(d);const second=registerAsset(over,'prop','spare-flag','备用旗');second.sourceRefs=[clone(ref)];second.decision='第二件实物';confirm(over);
+    failure(cli('validate',save('预算超额',over),'--no-production'),'明确预算超额阻断',/美术预算/);
     for(const [label,budgets] of [
-      ['删除迁移预算',{}],
-      ['改值迁移预算',{props:{kind:'explicit',max:2}}],
-      ['降级迁移预算',{props:{kind:'reference',max:1}}]
+      ['删除既有预算',{}],
+      ['改值既有预算',{...d.budgets,props:{kind:'explicit',max:2}}],
+      ['降级既有预算',{...d.budgets,props:{kind:'reference',max:1}}]
     ]) {
-      const changed=clone(d);changed.budgets={...d.budgets,...budgets};if(label==='删除迁移预算')changed.budgets={};
+      const changed=clone(d);changed.budgets=budgets;
       for(const cmd of ['validate','checkup','images']){
         const flags=cmd==='images'?['--production',join(root,'examples/雨棚留言-production.json')]:['--no-production'];
-        failure(cli(cmd,save(label,changed),...flags),label+' '+cmd,/预算变更/);
+        failure(cli(cmd,save(label,changed),'--previous',previous,...flags),label+' '+cmd,/预算变更/);
       }
       changed.budgetChanges=Object.entries(d.budgets).filter(([key,b])=>digest(b)!==digest(changed.budgets[key])).map(([key,from])=>({key,from,to:changed.budgets[key]??null,basis:'用户明确批准本次取消、调整或降级预算'}));
-      success(cli('validate',save(label+'已批准',changed),'--no-production'),'明确变更依据允许实际新预算');
+      success(cli('validate',save(label+'已批准',changed),'--previous',previous,'--no-production'),'明确变更依据允许实际新预算');
       changed.budgetChanges[0].from={kind:'explicit',max:999};
-      failure(cli('validate',save(label+'伪原值',changed),'--no-production'),'错误原值不能冒充批准',/预算变更/);
+      failure(cli('validate',save(label+'伪原值',changed),'--previous',previous,'--no-production'),'错误原值不能冒充批准',/预算变更/);
     }
-    // A new art baseline must not mask the original migration budget.
-    const hidden=clone(d);hidden.budgets={};hidden.incremental={previousBudgets:{}};
-    failure(cli('validate',save('空增量掩盖迁移',hidden),'--no-production'),'增量空预算不覆盖迁移基线',/预算变更/);
-    // Legacy art also has an immutable-from-snapshot budget baseline.
-    const legacy={source:'桥下旗',scenes:[],props:[],budgets:{props:{kind:'explicit',max:1}}};
-    const migrated=reviewed(migrateArt(legacy,save('旧美术',legacy)));migrated.budgets={};
-    failure(cli('validate',save('旧美术预算删除',migrated),'--no-production'),'art 迁移预算不能消失',/预算变更/);
-    // Every recognized outline budget key is independently protected.
+    // The recorded incremental snapshot protects budgets even without --previous.
+    const carried=clone(d);carried.incremental={previousBudgets:clone(d.budgets)};carried.budgets={};
+    failure(cli('validate',save('增量快照预算删除',carried),'--no-production'),'增量快照预算不能消失',/预算变更/);
+    // Every recognized budget key is independently protected.
     for(const key of ['props','scenes','primaryScenes']){
-      const changed=reviewed(JSON.parse(readFileSync(out)));delete changed.budgets[key];
-      failure(cli('validate',save('删除'+key,changed),'--no-production'),key+' 迁移预算',/预算变更/);
+      const changed=clone(d);delete changed.budgets[key];
+      failure(cli('validate',save('删除'+key,changed),'--previous',previous,'--no-production'),key+' 既有预算',/预算变更/);
     }
   });
   test('evidence',()=>{
-    const d=art(),a=d.props[0];
+    const d=art();
     const b={id:'D01',path:other,sha256:fileDigest(readFileSync(other)),lineCount:sourceLineCount(readFileSync(other))};
     assert.notEqual(b.sha256,d.provenance.documents[0].sha256);
-    // Matching active copies with distinct paths remain valid.
-    const same=join(temp,'相同原件副本.txt');copyFileSync(source,same);
-    a.sourceFacts={documents:[{...d.provenance.documents[0],path:same}],sourceRefs:[clone(ref)]};confirm(d);
-    success(cli('verify-sources',save('一致活动证据',d)),'相同 ID/版本的路径副本');
-    success(cli('validate',save('一致活动证据',d),'--no-production'),'一致活动证据可以交付');
-    a.sourceFacts.documents=[b];confirm(d);
-    for(const cmd of ['verify-sources','validate','checkup','render','images'])failure(cli(cmd,save('冲突活动证据',d),'--no-production'),'同 D01 两份合法原件不能双通过 '+cmd,/活动证据版本冲突/);
-    // A line-count-only identity conflict is detectable without trusting either file.
-    a.sourceFacts.documents=[{...d.provenance.documents[0],lineCount:5}];confirm(d);
-    failure(cli('verify-sources',save('冲突活动行数',d)),'同 ID 行数也必须一致',/活动证据版本冲突/);
-    // Asset/asset collisions are checked, not just top-level vs first asset.
-    const second=registerAsset(d,'prop','second','第二件');second.sourceRefs=[clone(ref)];second.decision='另一件物品';second.sourceFacts={documents:[b],sourceRefs:[clone(ref)]};
-    a.sourceFacts.documents=clone(d.provenance.documents);confirm(d);
-    failure(cli('validate',save('跨资产证据冲突',d),'--no-production'),'所有活动证据统一校验',/活动证据版本冲突/);
-    // History remains verbatim in migration.original; it is not current evidence.
-    const legacy={source:'桥下旗',scenes:[],props:[{id:'P01',name:'历史旗',sourceFacts:{documents:[b],sourceRefs:[clone(ref)]}}]};
-    const history=reviewed(migrateArt(legacy,save('历史迁移输入',legacy)));
-    Object.assign(history,{mode:'script',provenance:clone(d.provenance)});
-    delete history.props[0].sourceFacts;history.props[0].sourceRefs=[clone(ref)];confirm(history);
-    assert.deepEqual(history.migration.original.props[0].sourceFacts.documents,[b]);
-    success(cli('verify-sources',save('历史不作当前依据',history)),'历史版本单独保存，不冒充当前依据');
-    success(cli('validate',save('历史不作当前依据',history),'--no-production'),'历史材料完整保留仍可交付');
+    success(cli('verify-sources',save('单一来源',d)),'单一来源身份');
+    // Two legal originals cannot share one document identity.
+    d.provenance.documents.push(b);confirm(d);
+    for(const cmd of ['verify-sources','validate','checkup','render','images'])failure(cli(cmd,save('同 ID 两份原件',d),'--no-production'),'同 D01 两份合法原件不能双通过 '+cmd,/来源身份、路径、SHA256 或行数非法/);
   });
   test('outline',()=>{
     const d=art(),base=story();
@@ -130,8 +92,8 @@ try {
       ['节点结果缺失',x=>delete x.beats[0].outcome,/outcome/],
       ['非法来源文档',x=>x.provenance.documents[0].sha256='bad',/SHA256/],
       ['顶层未知字段',x=>x.assetInventory=[],/不属于/],
-      ['说明无来源',x=>x.notes=[{kind:'continuity',text:'旧限制'}],/sourceRefs/],
-      ['未知说话者对象',x=>x.notes=[{kind:'continuity',text:'旧限制',sourceRefs:[clone(ref)],speaker:{status:'guessed',description:'某人'}}],/speaker/],
+      ['说明无来源',x=>x.notes=[{kind:'continuity',text:'既有限制'}],/sourceRefs/],
+      ['未知说话者对象',x=>x.notes=[{kind:'continuity',text:'既有限制',sourceRefs:[clone(ref)],speaker:{status:'guessed',description:'某人'}}],/speaker/],
       ['无出处问题',x=>x.episodes[0].ending={event:'交接完成',question:{id:'Q01',text:'谁来接手'}},/sourceRefs/],
       ['回答不存在问题',x=>x.beats[0].resolves=['Q99'],/resolves/],
       ['结尾节点不是终局',x=>x.story.endingBeatId='B01',/endingBeatId/],
@@ -184,8 +146,8 @@ try {
   });
   if(!selected){
     const ablations=[
-      ['budget',"...migrationBudgetBaselines(doc.migration)","...[]"],
-      ['evidence',"const errors = activeEvidenceErrors(doc), p = doc?.provenance;","const errors = [], p = doc?.provenance;"],
+      ['budget',"for(const [key,b]of Object.entries(previousBudgets??{}))","for(const [key,b]of [])"],
+      ['evidence',"if (!obj(d) || !text(d.id) || ids.has(d.id) ||","if (!obj(d) || !text(d.id) ||"],
       ['outline',"...outlineInputErrors(doc)","...[]"],
       ['design',"if(doc.mode==='script'||shared) {","if(doc.mode==='script') {"]
     ];

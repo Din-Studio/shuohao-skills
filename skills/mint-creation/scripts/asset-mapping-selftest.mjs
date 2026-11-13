@@ -52,7 +52,7 @@ try {
   const material=dispatchBrief(d,{...ctx,script:s},1);
   const sourceSeg=d.episodes[0].segments.find(seg=>requiredMappings(seg,s.episodes[0].scenes[seg.sceneIndex-1],s.episodes[0].scenes).some(r=>r.kind==='character'));
   const {prompt,...structure}=sourceSeg;
-  const sheet=W.parseWorksheet(W.serializeWorksheet({meta:{segment:structure.id,status:'in_review',round:1},structure,body:prompt,review:'仅核验离线阻断，不代表内容审核。'}));
+  const sheet=W.parseWorksheet(W.serializeWorksheet({meta:{segment:structure.id,status:'in_review',round:1},structure,body:prompt,review:'# 视频提示词审核\n\n- 审核结论：通过\n\n## 返修意见\n\n## 待确认事项'}));
   assert.ok(W.recordVerdict(sheet,'approved',material).problems.some(e=>/映射|确认/.test(e)));
   assert.ok(materialMappingErrors(continuation,material).some(e=>/映射|确认/.test(e)));
   s.assetMappings.filter(m=>m.kind==='character').forEach(m=>m.status='confirmed');
@@ -63,14 +63,14 @@ try {
   const s=clone(script);s.assetMappings.find(m=>m.kind==='character').documentVersions[0].sha256='f'.repeat(64);assert.ok(mappingErrors(s,ctx,dep).some(e=>e.includes('来源')));
   const a=clone(cast);a.provenance.scope='partial';a.provenance.coverage=[];assert.ok(mappingErrors(script,{...ctx,cast:a},dep).some(e=>e.includes('覆盖')));
  });
- test('stable producer image contracts do not guess names or lose legacy paths',()=>{
+ test('stable producer image contracts do not guess names or lose pinned paths',()=>{
   const c={schemaVersion:1,kind:'mint-characters',characters:[{id:'C01',name:'同名'},{id:'C02',name:'同名'}]};
-  const a={scenes:[{id:'S01',name:'更名后空间',imageStem:'S01'},{id:'S02',name:'旧空间',sheetImage:'images/旧版设定.png'}],props:[{id:'P01',name:'更名后道具',imageStem:'P01'}]};
+  const a={scenes:[{id:'S01',name:'更名后空间',imageStem:'S01'},{id:'S02',name:'旧空间',sheetImage:'images/固定设定.png'}],props:[{id:'P01',name:'更名后道具',imageStem:'P01'}]};
   assert.equal(referenceImagePath('character','同名','C02',{cast:c}),'../characters/images/C02-sheet.png');
   assert.equal(referenceImagePath('scene','更名后空间','S01',{art:a}),'../art/images/S01-sheet.png');
   assert.equal(referenceImagePath('prop','更名后道具','P01',{art:a}),'../art/images/P01-sheet.png');
-  assert.equal(referenceImagePath('scene','旧空间','S02',{art:a}),'../art/images/旧版设定.png');
-  assert.equal(referenceImagePath('scene','旧空间','S02',{art:a,artPath:'/project/art/art.json'}),'/project/art/images/旧版设定.png');
+  assert.equal(referenceImagePath('scene','旧空间','S02',{art:a}),'../art/images/固定设定.png');
+  assert.equal(referenceImagePath('scene','旧空间','S02',{art:a,artPath:'/project/art/art.json'}),'/project/art/images/固定设定.png');
  });
  test('nested target source snapshots do not expand script owned scope',()=>{
   const s=clone(script),c=clone(cast),m=s.assetMappings.find(m=>m.kind==='character'),a=c.characters.find(a=>a.id===m.assetId);
@@ -118,7 +118,7 @@ try {
  });
  test('review refuses required missing, ambiguous or stale material mapping',()=>{
   const m=brief(),{prompt,...structure}=segments[0];
-  const sheet=W.parseWorksheet(W.serializeWorksheet({meta:{segment:structure.id,status:'in_review',round:1},structure,body:prompt,review:'结论：仅作离线规则测试，不代表内容审核。'}));
+  const sheet=W.parseWorksheet(W.serializeWorksheet({meta:{segment:structure.id,status:'in_review',round:1},structure,body:prompt,review:'# 视频提示词审核\n\n- 审核结论：通过\n\n## 返修意见\n\n## 待确认事项'}));
   assert.deepEqual(W.recordVerdict(sheet,'approved',m).problems,[]);
   for(const mutate of [x=>delete x.assetMappings,x=>x.assetMappings[0].status='conflict',x=>x.assetMappings.push(clone(x.assetMappings[0])),x=>x.assets.characters[0].specification.name='tampered']){
    const x=clone(m);mutate(x);assert.ok(W.recordVerdict(sheet,'approved',x).problems.length);
@@ -137,7 +137,7 @@ try {
   const file='收书人-creation.json',run=(...args)=>{const r=spawnSync(process.execPath,[join(root,'scripts/mint-creation.mjs'),...args],{cwd:cd,encoding:'utf8'});assert.equal(r.status,0,r.stderr+r.stdout);return r;};
   run('prompts','init',file);run('prompts','submit',file);
   const doc=JSON.parse(readFileSync(join(cd,file)));
-  for(const seg of doc.episodes[0].segments){const p=join(cd,seg.id,'prompt.md'),w=W.parseWorksheet(readFileSync(p,'utf8'));w.review='结论：离线夹具登记，不表示内容审核已完成。';writeFileSync(p,W.serializeWorksheet(w));run('prompts','verdict',file,'approved',seg.id);}
+  for(const seg of doc.episodes[0].segments){const p=join(cd,seg.id,'prompt.md'),w=W.parseWorksheet(readFileSync(p,'utf8'));w.review='# 视频提示词审核\n\n- 审核结论：通过\n\n## 返修意见\n\n## 待确认事项';writeFileSync(p,W.serializeWorksheet(w));run('prompts','verdict',file,'approved',seg.id);}
   run('prompts','apply',file);run('export',file,'--out','.');
   const manifest=JSON.parse(readFileSync(join(cd,'manifest.json'))),images=manifest.segments.flatMap(s=>s.images).filter(i=>i.ref==='C01');
   assert.ok(images.length);for(const i of images){assert.equal(i.mappedAssetId,'C17');assert.match(i.path,/C17-.*sheet.png$/);assert.equal(i.assetDigest,assetDigest(c.characters[0]));}

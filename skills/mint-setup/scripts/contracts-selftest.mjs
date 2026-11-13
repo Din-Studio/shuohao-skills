@@ -33,7 +33,7 @@ for (const field of ['creative', 'creativeContext', 'selection', 'decisions', 'o
 }
 for (const field of ['rules','defaults','preferences'])
   assert.ok(validateProduction({ ...doc, params: { [field]: {} } }).length);
-assert.throws(() => initProduction({ aspect: '9:16', selection: {} }), /已废弃/);
+assert.throws(() => initProduction({ aspect: '9:16', selection: {} }), /不属于 production 契约/);
 for (const stage of ['characters', 'art', 'video']) {
   const result = resolveStage(doc, stage);
   assert.equal(result.creativeBrief, doc.creativeBrief);

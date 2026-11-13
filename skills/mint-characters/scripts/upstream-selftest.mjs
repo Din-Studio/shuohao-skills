@@ -16,9 +16,10 @@ try {
   assert.equal(findProduction(stage,1),production,'dangling entry must be found, not skipped');
   const file=join(stage,'input.json');
   writeFileSync(file,readFileSync(join(here,'../examples/渡口-cast.json')));
+  writeFileSync(join(stage,'渡口.txt'),readFileSync(join(here,'../examples/渡口.txt')));
   const args=['validate',file];
   const result=spawnSync(process.execPath,[join(here,'mint-characters.mjs'),...args],{encoding:'utf8'});
-  assert.equal(result.status,1,result.stdout);assert.match(result.stderr,/ENOENT/);
+  assert.equal(result.status,1,result.stdout);assert.match(result.stderr,/ENOENT.*production\.json/);
   writeFileSync(target,'{}');
   assert.equal(findProduction(stage,1),production,'valid symlink remains supported');
   rmSync(production);assert.equal(findProduction(stage,1),null,'true absence remains distinct');

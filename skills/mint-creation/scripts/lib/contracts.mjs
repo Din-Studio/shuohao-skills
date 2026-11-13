@@ -35,7 +35,7 @@ export function endingProblems(ending, label) {
 export function shapeProblems(doc) {
   const errors = [];
   if (!object(doc)) return ['creation.json 必须是对象'];
-  if (doc.schemaVersion !== 3) errors.push('creation.schemaVersion 必须为 3；迁移见 references/migration.md');
+  if (doc.schemaVersion !== 3) errors.push('creation.schemaVersion 必须为 3');
   errors.push(...documentProblems(doc));
   if (!text(doc.source)) errors.push('缺少 source');
   if (doc.video !== undefined && (!object(doc.video) || !text(doc.video.model))) errors.push('video.model 必须为非空字符串');
@@ -50,9 +50,9 @@ export function shapeProblems(doc) {
     if (!object(ep)) { errors.push('episode 必须为对象'); continue; }
     if (!Number.isInteger(ep.ep) || ep.ep < 1 || seen.has(ep.ep)) errors.push('集号必须为唯一正整数');
     seen.add(ep.ep);
-    for (const key of ['opening', 'ending', 'endBeat']) if (Object.hasOwn(ep, key)) errors.push(`E${ep.ep} ${key} 不再持久化，请迁移并读取当前上游`);
+    for (const key of ['opening', 'ending', 'endBeat']) if (Object.hasOwn(ep, key)) errors.push(`E${ep.ep} ${key} 不属于 creation 契约，读取当前上游`);
     if (ep.openingBeat !== undefined && (!Array.isArray(ep.openingBeat) || ep.openingBeat.length !== 2 || !ep.openingBeat.every(n => Number.isInteger(n) && n > 0))) errors.push(`E${ep.ep} openingBeat 必须为有效可选坐标`);
-    if (['hook', 'cliff', 'closure', 'hookBeat'].some(k => k in ep)) errors.push('拒绝旧开场/集尾字段');
+    if (['hook', 'cliff', 'closure', 'hookBeat'].some(k => k in ep)) errors.push(`E${ep.ep} hook/cliff/closure/hookBeat 不属于当前契约`);
     if (!Array.isArray(ep.segments) || !ep.segments.length) { errors.push(`E${ep.ep} segments 必须为非空数组`); continue; }
     for (const seg of ep.segments) {
       if (!object(seg)) { errors.push('segment 必须为对象'); continue; }
@@ -72,7 +72,7 @@ export function shapeProblems(doc) {
   return errors;
 }
 export function scriptProblems(script) {
-  if (!object(script) || script.schemaVersion !== 4) return ['script.schemaVersion 必须为 4；旧字段不能静默读取'];
+  if (!object(script) || script.schemaVersion !== 4) return ['script.schemaVersion 必须为 4'];
   const errors = [...documentProblems(script, 'script'), ...sourceProblems(script), ...mappingShapeErrors(script)];
   for (const k of ['candidates','context']) if (Object.hasOwn(script,k)) errors.push(`${k} 不得进入正式正文；使用 notes 或 .work`);
   if (!text(script.source)) errors.push('script.source 不能为空');
@@ -88,8 +88,8 @@ export function scriptProblems(script) {
     if (!positive(ep.targetSeconds)) errors.push(`E${ep.ep} targetSeconds 必须为有限正数`);
     if (ep.opening !== undefined && !text(ep.opening)) errors.push(`E${ep.ep} opening 不能为空`);
     if (ep.ending !== undefined) errors.push(...endingProblems(ep.ending, `script E${ep.ep}`));
-    for (const key of ['endBeat','seedNote']) if (Object.hasOwn(ep,key)) errors.push(`E${ep.ep} ${key} 已停用，请显式迁移`);
-    if (['hook','cliff','closure','hookBeat'].some(k => k in ep)) errors.push('script 拒绝旧开场/集尾字段');
+    for (const key of ['endBeat','seedNote']) if (Object.hasOwn(ep,key)) errors.push(`E${ep.ep} ${key} 不属于当前契约`);
+    if (['hook','cliff','closure','hookBeat'].some(k => k in ep)) errors.push(`script E${ep.ep} hook/cliff/closure/hookBeat 不属于当前契约`);
     if (!Array.isArray(ep.scenes) || !ep.scenes.length) { errors.push(`E${ep.ep} scenes 不能为空`); continue; }
     let validShape = true;
     for (const sc of ep.scenes) {
@@ -127,7 +127,7 @@ export function scriptProblems(script) {
   return errors;
 }
 export function outlineProblems(outline) {
-  if (!object(outline) || outline.schemaVersion !== 5) return ['outline.schemaVersion 必须为 5；v4 需要显式迁移'];
+  if (!object(outline) || outline.schemaVersion !== 5) return ['outline.schemaVersion 必须为 5'];
   const errors = [...documentProblems(outline, 'outline'), ...sourceProblems(outline, {required:true})];
   if (!text(outline.source)) errors.push('outline.source 不能为空');
   const forbidden = new Set(['characterIds','sceneIds','propIds','speakerId','characterId','sceneId','propId','focusCharacterIds']);
@@ -181,7 +181,7 @@ export function reconcile(doc, script, outline) {
     // Paths are relative to each stage's artifact, not coordination identities.
   }
   if (script && outline) for (const ep of script.episodes) {
-    if (Object.hasOwn(ep, 'opening') || Object.hasOwn(ep, 'ending')) errors.push(`script E${ep.ep} 重复保存上游计划，请显式迁移`);
+    if (Object.hasOwn(ep, 'opening') || Object.hasOwn(ep, 'ending')) errors.push(`script E${ep.ep} 重复保存上游计划；提供 outline 时 opening/ending 只由 outline 负责`);
     if (!outline.episodes.some(o => o.ep === ep.ep)) errors.push(`script E${ep.ep} 在大纲里不存在`);
     const ids = outline.beats.filter(b => b.episode === ep.ep).map(b => b.id);
     if (JSON.stringify(ids) !== JSON.stringify(ep.beatClaims?.map(c => c.beatId))) errors.push(`E${ep.ep} 节点认领与大纲顺序/身份不一致`);

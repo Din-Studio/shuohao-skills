@@ -51,11 +51,17 @@ export function mediaPlan(jobs, { kind, model, inputBase = {}, outDir, only = nu
   };
 }
 
-export function checkPlanFlags(args) {
-  const retired = ['--force', '--cutout', '--timeout', '--concurrency'];
-  const flag = args.find(arg => retired.some(f => arg === f || arg.startsWith(f + '=')));
-  if (flag) throw new Error(`${flag} 已移除：本命令只导出计划。生成、抠图和任务恢复请交给 ly-image / ly-video；不要自动重新提交。`);
-  for (const name of ['--out', '--only', '--style-ref', '--images']) {
+// Only listed options are accepted; anything else fails instead of being ignored.
+export const PLAN_VALUE_FLAGS = ['--out', '--only', '--production', '--cast', '--outline', '--previous'];
+export const PLAN_SWITCHES = ['--dry-run', '--no-production'];
+export function checkPlanFlags(args, valueFlags = PLAN_VALUE_FLAGS, switches = PLAN_SWITCHES) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (!arg.startsWith('--')) continue;
+    if (valueFlags.includes(arg)) { i++; continue; }
+    if (!switches.includes(arg)) throw new Error(`${arg} 不是本命令的选项：本命令只导出计划。生成、抠图和任务恢复请交给 ly-image / ly-video；不要自动重新提交。`);
+  }
+  for (const name of valueFlags) {
     const i = args.indexOf(name);
     if (i >= 0 && (!args[i + 1] || args[i + 1].startsWith('--') || args.indexOf(name, i + 1) >= 0))
       throw new Error(`${name} 需要唯一参数值`);

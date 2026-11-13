@@ -1,6 +1,6 @@
 import {readFileSync,existsSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
-import {hash,reviewHash,budgetChecks,seedSource,identityErrors,outlineErrors,reconcile,migrationMaterial,rebaseSources,writeNew,renderIdentity} from './identity.mjs';
+import {hash,reviewHash,budgetChecks,seedSource,identityErrors,outlineErrors,reconcile,rebaseSources,writeNew,renderIdentity} from './identity.mjs';
 const read=p=>JSON.parse(readFileSync(resolve(p),'utf8'));
 const valued=['--source','--title','--out','--outline','--previous','--changes','--budget','--lang'];
 function flag(args,k) {const i=args.indexOf(k);if(i<0)return null;if(!args[i+1]||args[i+1].startsWith('--')||args.indexOf(k,i+1)>=0)throw Error(`${k} 需要唯一参数值`);return args[i+1];}
@@ -15,17 +15,14 @@ function background(doc,file,args) {
 }
 export async function identityCommand(cmd,args,helpers) {
   const independent=cmd==='seed'&&args.includes('--source');
-  const migration=['migrate-outline','migrate-cast'].includes(cmd);
   const registered=['reconcile'].includes(cmd);
   let doc;
-  if(!independent&&!migration&&!registered) {
+  if(!independent&&!registered) {
     if(!['validate','checkup','render','images'].includes(cmd)||!args[0]||args[0].startsWith('--'))return false;
     doc=read(args[0]);
-    if(doc?.kind==='mint-characters-migration')throw Error('迁移材料不能作为正式 cast 或冒充审核通过');
-    if(doc?.schemaVersion===undefined)return false; // Explicit historical unversioned design entry.
-    if(doc.schemaVersion!==1||doc.kind!=='mint-characters')throw Error('不支持的 cast 版本；正式产物为 cast v1，历史文件请显式 migrate-cast');
+    if(doc?.schemaVersion!==1||doc?.kind!=='mint-characters')throw Error('cast 需要 schemaVersion: 1, kind: mint-characters');
   }
-  if(independent||migration||registered) for(const k of valued)if(args.includes(k))flag(args,k);
+  if(independent||registered) for(const k of valued)if(args.includes(k))flag(args,k);
   if(independent) {
     doc=seedSource(flag(args,'--source'),flag(args,'--title'));
     const budget=flag(args,'--budget');
@@ -40,7 +37,6 @@ export async function identityCommand(cmd,args,helpers) {
     }
     emit(doc,args);return true;
   }
-  if(migration) {if(!args[0]||args[0].startsWith('--'))throw Error(`${cmd} <历史文件> [--out 待核对材料.json]`);emit(migrationMaterial(read(args[0]),args[0],cmd==='migrate-outline'?'outline':'cast'),args);return true;}
   if(registered) {
     if(!args[0]||args[0].startsWith('--'))throw Error('reconcile <候选cast.json> [--previous 既有cast.json] [--changes changes.json]');
     const file=args[0],previousPath=flag(args,'--previous'),changesPath=flag(args,'--changes');

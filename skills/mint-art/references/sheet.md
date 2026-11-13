@@ -43,7 +43,7 @@ node <baseDir>/scripts/mint-art.mjs images <剧名>-art.json --out image-plan.js
 是最常见污染，出现就重生成。尺度短语（`handheld scale` 等）必须在提示词里，否则
 手持铁盒会被画成柜子。
 
-新登记资产通过固定 imageStem（默认稳定 ID）落到 `./images/<imageStem>-sheet.png`；历史媒体优先保留显式 sheetImage 原路径，
+新登记资产通过固定 imageStem（默认稳定 ID）落到 `./images/<imageStem>-sheet.png`；显式 sheetImage 优先，
 `render` 按同一个算法找图。
 
 ## 三条硬要求

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// mint 命名与安装迁移回归。仅操作临时 HOME，不修改真实安装目录。
+// mint 命名与安装回归。仅操作临时 HOME，不修改真实安装目录。
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -28,11 +28,11 @@ try {
     const help = spawnSync(process.execPath, [join(base, 'scripts', `${name}.mjs`), '--help'], { encoding: 'utf8' });
     eq(help.status, 0, help.stderr);
     ok(help.stdout.includes(name) && !help.stdout.includes('novel-'), `${name} 帮助使用新名称`);
+    ok(!/migrate|legacy/i.test(help.stdout), `${name} 只提供当前版本命令，没有迁移或旧版入口`);
     if (name === 'mint-outline') {
-      ok(/mint-outline v5/.test(help.stdout) && /migrate-v5/.test(help.stdout), '正式 v5 与历史迁移入口区分');
       ok(!/^\s+assets\b/m.test(help.stdout), '大纲资产命令不再作为正式接口发布');
     }
-    if (['mint-characters','mint-art'].includes(name)) ok(/seed --source path --title title/.test(help.stdout) && /migrate-outline/.test(help.stdout), `${name} 独立原件 seed 与大纲迁移入口区分`);
+    if (['mint-characters','mint-art'].includes(name)) ok(/seed --source path --title title/.test(help.stdout), `${name} 独立原件 seed 入口`);
   }
   for (const [flag, skillDir, agentDir, defs] of [
     ['--pi', '.pi/agent/skills', '.pi/agent/agents', 'agents/pi'],
@@ -93,4 +93,4 @@ try {
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }
-console.log(`✓ ${passed} 项命名与安装迁移自测全部通过`);
+console.log(`✓ ${passed} 项命名与安装自测全部通过`);

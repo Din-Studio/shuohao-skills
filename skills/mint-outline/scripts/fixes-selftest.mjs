@@ -50,7 +50,6 @@ try {
   return {ep:ep.ep,targetSeconds:24,openingBeat:[1,1],scenes:[{flow:beats.map(b=>({action:b.outcome,sourceRefs:clone(b.sourceRefs)}))}],beatClaims:beats.map((b,i)=>({beatId:b.id,start:[1,i+1],end:[1,i+1]}))};
  })};
  const creation={schemaVersion:3,source:fixture.source,params:{tolerance:0.15},episodes:script.episodes.map(ep=>({ep:ep.ep,openingBeat:clone(ep.openingBeat),segments:[{sceneIndex:1,cuts:ep.scenes[0].flow.map((_,i)=>({beats:[i+1,i+1],seconds:ep.targetSeconds/ep.scenes[0].flow.length}))}]}))};
- writeFileSync(join(scriptDir,'ignored.migration.json'),'{pending material, not authority');
  const reset=()=>{json(docFile,fixture);json(scriptFile,script);json(creationFile,creation);};
  const apply=()=>{
   const r=run('checkup',docFile,'--production',prodFile,'--downstream','--json');
@@ -84,8 +83,6 @@ try {
   ['script',d=>d.schemaVersion=999,'version'],
   ['creation',d=>delete d.schemaVersion,'version'],
   ['creation',d=>d.schemaVersion=999,'version'],
-  ['script',d=>d.creativeContext={},'document'],
-  ['creation',d=>d.params.rules={},'document'],
   ['script',d=>d.source='stale','source'],
   ['creation',d=>d.source='stale','source'],
   ['script',d=>d.episodes[0].endBeat=[1,2],'projection'],

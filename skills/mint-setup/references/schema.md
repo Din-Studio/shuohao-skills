@@ -1,10 +1,10 @@
 # production.json 结构
 
-## v3 创作契约与迁移
+## v3 创作契约
 
 production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` 收集可选的自然语言创作要求。提供时必须非空，不解析为枚举、规则或模型参数。show 展示要求，resolve 原样返回 creativeBrief；不要求选择策略。
 
-检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](creative-brief.md) 和 [迁移说明](migration.md)。
+检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](creative-brief.md)。
 
 一部剧一份，住在**工作目录根**——五个 skill 各自的段目录都在它下面，下游从自己的段目录**向上**找它（最多 5 层）。
 
@@ -40,7 +40,7 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `schemaVersion` | number，必需 | 固定为 3；旧版须显式迁移 |
+| `schemaVersion` | number，必需 | 固定为 3 |
 | `creativeBrief` | string，可选 | 提供时必须非空；自然语言项目要求，不选择规则 |
 | `source` | string | 剧名，可选。只用来在参数表里显示 |
 | `autopilot` | bool | **自动驾驶**，默认 `false`。为 `true` 时下游五个 skill 各自把自己那一段一口气跑完：不提问、不等拍板、该做的决定自己做。详见下面一节 |
@@ -145,7 +145,7 @@ node scripts/mint-setup.mjs style <production.json> --for character
 
 | 检查项 | 查什么 | 为什么是门 |
 | --- | --- | --- |
-| `document-contract` | schemaVersion=3、可选非空 creativeBrief、拒绝废弃配置 | 防止新旧契约混用；内容要求由 Agent 另行评审 |
+| `document-contract` | schemaVersion=3、可选非空 creativeBrief、拒绝契约外配置 | 防止契约外字段混入；内容要求由 Agent 另行评审 |
 | `fields` | 字段齐全、`style` 是对象、`lang` / `promptLang` 在枚举里、`autopilot` 写了就得是布尔值 | 少一个字段，下游读到 `undefined` 会静默用回默认值；`autopilot` 写成字符串 `"false"` 反而是开着 |
 | `aspect-format` | 资产图与视频比例都是 `W:H` 写法 | 写成 `9-16` 下游解析不出来；`adaptive` 也在这里拦掉 |
 | `asset-landscape` | 资产图是横构图或方形 | 竖构图会把设定图的三视图压扁 |

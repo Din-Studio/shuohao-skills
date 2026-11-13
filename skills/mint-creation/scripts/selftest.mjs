@@ -290,7 +290,6 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   ok(gates.find((g) => g.id === 'coverage').detail.includes('跳过'), 'script 缺失时 coverage 明说跳过');
   ok(gates.find((g) => g.id === 'dialogue-verbatim').detail.includes('跳过'), 'script 缺失时 dialogue-verbatim 明说跳过');
   ok(gates.find((g) => g.id === 'refimage-coverage').detail.includes('跳过'), '没给 outline/art 时 refimage-coverage 明说跳过');
-  ok(gates.find((g) => g.id === 'prompt-no-names').status === 'skipped', '没有 outline/cast 时 prompt-no-names 明说跳过');
 }
 {
   // 有 script 但没有 imageExists 注入：refimage-coverage 默认全 false，必须点名缺哪张
@@ -337,12 +336,12 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   ok(gProd.detail.includes('MiniMax H3') && gProd.detail.includes('时长区间'), '点名模型与区间');
 }
 
-// Retired creative rules must fail explicitly; technical limits remain separate.
+// params.rules is not part of the contract; technical limits remain separate.
 for (const seconds of [1, 6]) {
   const d = clone(FIXTURE);
   d.params.rules = {cutDuration:{level:'error',minSeconds:2,maxSeconds:5}};
   d.episodes[0].segments[0].cuts[0].seconds = seconds;
-  ok(gate(d, 'fields').status === 'fail', '旧镜头规则要求显式迁移');
+  ok(gate(d, 'fields').status === 'fail', 'params.rules 不属于当前契约');
 }
 
 // dialogue-fit
@@ -385,7 +384,7 @@ for (const seconds of [1, 6]) {
   ok(gate(d, 'segment-id').status === 'fail', '段号格式不对被拦');
 }
 
-// 内部枚举仍检查，但不再约束散文正文中的切镜。
+// 内部枚举仍检查，但不约束散文正文中的切镜。
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].cuts[0].camera = 'Not A Real Move';
@@ -404,11 +403,10 @@ for (const seconds of [1, 6]) {
   ok(g.detail.includes('E01-01'), '点名到段');
 }
 
-// 固定字段中文；不再以英文模型规则禁止全称。
+// 固定字段中文；不禁止全称。
 {
   const d=clone(FIXTURE);d.promptLang='invalid';
   ok(gate(d,'prompt-lang').status==='fail','非法语言仍被拦');
-  eq(gate(FIXTURE,'prompt-no-names').status,'skipped','旧禁人名检查退出');
 }
 
 // refs：cut 引用了剧本该场没有的人物

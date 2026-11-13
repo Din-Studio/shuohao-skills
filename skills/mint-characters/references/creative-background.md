@@ -4,8 +4,6 @@ production 保持 schemaVersion 3。读取可选非空 creativeBrief 作为自�
 
 正式 seed 输入为原剧本文件。可选 outline 只接受 v5 故事背景，核对共同原件身份、SHA256 与范围。人物身份、别名、分档和是否设计由 characters 依据原剧本判断。冲突必须回查原文，不静默改写任一产物。
 
-历史 outline v3/v4 只能显式迁移为待核对材料，或显式 --legacy 生成历史骨架；不作为正式人物权威。完整逐字段保存和版本矩阵见 [migration.md](migration.md)。
-
 检查对象为 status=pass/fail/skipped、category、level、detail。缺少可选上游只跳过对应对账。提供但损坏的输入失败。结构通过不是语义审核或联合制作通过；完整流程顺序由项目状态管理，本阶段不能自行宣布已经完成其他阶段。
 
 本 skill 可整体独立复制，不读取兄弟目录，不要求安装任何第三方 skill。

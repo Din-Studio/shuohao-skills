@@ -18,6 +18,6 @@ production 必须包含 `schemaVersion: 3`。唯一创作要求是可选的非�
 - 独立产物接入项目时先合并到 production，再删除本地副本。
 - 要求修改后，Agent 根据实际内容检查受影响阶段。结构检查通过不代表内容已重新评审。
 - style 仍是唯一视觉正文；image/video 仍是媒体技术配置，创作要求不覆盖它们。
-- 历史 genre 是题材描述，不自动转换为规则。旧 creative 与阶段策略字段只由显式迁移处理，见 [migration.md](migration.md)。
+- genre 是题材描述，不自动转换为规则。creative 与阶段策略字段不属于 production 契约，校验直接拒绝。
 
 检查使用 status/category/level。缺少可选要求不会产生警告；未知模型的能力检查仍明确跳过。工具不执行内容评审。

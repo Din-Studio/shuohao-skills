@@ -73,11 +73,11 @@ export function sourceErrors(doc, file, {verify=true}={}) {
     if(change.revision===doc.lifecycle.revision) refs(change.sourceRefs,'lifecycle.changes');
     else {
       // Past decisions cite their original source version, not today's rewritten file.
-      const historical=new Map(arr(change.sourceDocuments).map(d=>[d?.id,d]));
-      if(!arr(change.sourceRefs).length) errors.push('历史映射缺少 sourceRefs');
+      const recorded=new Map(arr(change.sourceDocuments).map(d=>[d?.id,d]));
+      if(!arr(change.sourceRefs).length) errors.push('既往映射缺少 sourceRefs');
       for(const r of arr(change.sourceRefs)) {
-        const d=historical.get(r?.documentId);
-        if(!d||!/^[a-f0-9]{64}$/.test(d.sha256??'')||!pos(d.lineCount)||!pos(r.startLine)||!pos(r.endLine)||r.startLine>r.endLine||r.endLine>d.lineCount) errors.push('历史映射缺少有效的原始来源版本依据');
+        const d=recorded.get(r?.documentId);
+        if(!d||!/^[a-f0-9]{64}$/.test(d.sha256??'')||!pos(d.lineCount)||!pos(r.startLine)||!pos(r.endLine)||r.startLine>r.endLine||r.endLine>d.lineCount) errors.push('既往映射缺少有效的原始来源版本依据');
       }
     }
   }
@@ -85,7 +85,7 @@ export function sourceErrors(doc, file, {verify=true}={}) {
   return errors;
 }
 export function outlineErrors(outline, cast, outlinePath, castPath) {
-  if(!obj(outline)||outline.schemaVersion!==5) return ['正式 outline 背景仅接受 v5；v3/v4 请显式 migrate-outline'];
+  if(!obj(outline)||outline.schemaVersion!==5) return ['outline 故事背景需要 schemaVersion: 5'];
   const errors=outlineInputErrors(outline);
   if(outline.source!==cast.source) errors.push('outline 与 cast 文档标题不匹配');
   for(const k of ['characters','scenes','props']) if(Object.hasOwn(outline,k)) errors.push(`outline v5 不应含 ${k} 资产权威`);
@@ -123,7 +123,7 @@ export function outlineErrors(outline, cast, outlinePath, castPath) {
   return [...new Set(errors)];
 }
 export function identityErrors(doc, file, {verify=true}={}) {
-  if(!obj(doc)||doc.schemaVersion!==1||doc.kind!=='mint-characters') return ['正式 cast 需要 schemaVersion: 1, kind: mint-characters；旧文件请显式 migrate-cast'];
+  if(!obj(doc)||doc.schemaVersion!==1||doc.kind!=='mint-characters') return ['cast 需要 schemaVersion: 1, kind: mint-characters'];
   const errors=sourceErrors(doc,file,{verify});
   if(!txt(doc.source)||!txt(doc.lang)) errors.push('source/lang 必须非空');
   if(!['draft','identified'].includes(doc.status)) errors.push('status 必须为 draft/identified');
@@ -164,8 +164,8 @@ export function identityErrors(doc, file, {verify=true}={}) {
     const retired=new Set();
     for(const change of l.changes) {
       const from=arr(change?.from),to=arr(change?.to);
-      if(!obj(change)||!['merge','split','delete','correct'].includes(change.type)||!txt(change.reason)||!['source','user'].includes(change.basis)||change.basis==='user'&&!txt(change.decision)||!pos(change.revision)||change.revision>l.revision||from.some(id=>!registry.has(id))||to.some(id=>!registry.has(id))) errors.push('历史变更依据或引用非法');
-      if(!from.length||new Set(from).size!==from.length||new Set(to).size!==to.length||change.type==='merge'&&(from.length<2||to.length!==1)||change.type==='split'&&(from.length!==1||to.length<2)||change.type==='delete'&&(from.length!==1||to.length!==0)||change.type==='correct'&&(from.length!==1||to.length!==1||from[0]!==to[0])) errors.push('历史变更映射形状非法');
+      if(!obj(change)||!['merge','split','delete','correct'].includes(change.type)||!txt(change.reason)||!['source','user'].includes(change.basis)||change.basis==='user'&&!txt(change.decision)||!pos(change.revision)||change.revision>l.revision||from.some(id=>!registry.has(id))||to.some(id=>!registry.has(id))) errors.push('身份变更依据或引用非法');
+      if(!from.length||new Set(from).size!==from.length||new Set(to).size!==to.length||change.type==='merge'&&(from.length<2||to.length!==1)||change.type==='split'&&(from.length!==1||to.length<2)||change.type==='delete'&&(from.length!==1||to.length!==0)||change.type==='correct'&&(from.length!==1||to.length!==1||from[0]!==to[0])) errors.push('身份变更映射形状非法');
       from.filter(id=>!to.includes(id)).forEach(id=>retired.add(id));
     }
     for(const r of l.registry) if(r.state==='retired'&&!retired.has(r.id)||r.state==='active'&&retired.has(r.id)) errors.push('身份退役缺少映射或发生 ID 复用');
@@ -266,19 +266,6 @@ export function reconcile(candidate, previous=null, changes=[]) {
   doc.review=unchangedReview?structuredClone(previous.review):{status:'pending',note:'登记或增量更新不代表语义审核通过；受影响身份及联合引用需重新核验。'};
   doc.status=unchangedReview?previous.status:'draft';
   return doc;
-}
-export function migrationMaterial(input, path, kind) {
-  if(kind==='outline'&&![3,4].includes(input?.schemaVersion)) throw Error('历史迁移仅接受 outline v3/v4');
-  if(kind==='cast'&&(!obj(input)&&!Array.isArray(input)||input.schemaVersion!==undefined)) throw Error('历史 cast 迁移仅接受无版本对象');
-  const characters=kind==='cast'&&Array.isArray(input)?input:input?.characters;
-  if(!Array.isArray(characters)) throw Error('历史材料缺少 characters');
-  const fields=[];
-  function walk(v,p) {if(obj(v)&&Object.keys(v).length) for(const [k,x] of Object.entries(v)) walk(x,p?`${p}.${k}`:k);else if(Array.isArray(v)&&v.length) v.forEach((x,i)=>walk(x,`${p}[${i}]`));else fields.push({path:p,value:structuredClone(v),status:'pending'});}
-  walk(input,'');
-  return {schemaVersion:1,kind:'mint-characters-migration',status:'pending',source:input.source,
-    legacy:{kind,path:resolve(path),sha256:hash(readFileSync(resolve(path))),snapshot:structuredClone(input)},
-    candidates:characters.map(c=>({legacyId:c.id??null,name:c.name,legacy:structuredClone(c),status:'pending'})),
-    fields,note:'逐字段待核对材料，不是正式 cast，不是审核通过。预算原值及无法归属关系均保留；不得只改版本号。'};
 }
 export function rebaseSources(doc, file) {
   const copy=structuredClone(doc);

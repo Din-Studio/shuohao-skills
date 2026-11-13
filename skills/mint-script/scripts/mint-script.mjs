@@ -4,8 +4,7 @@ import { lstatSync, realpathSync } from 'node:fs';
 import { dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_PARAMS, effectiveParams, parameterErrors, documentErrors, productionErrors } from './lib/document.mjs';
-import { migrateFile, migrateV4File, validateHistoricalV3, readJsonStrict } from './lib/migration.mjs';
-import { projectRoot, loadKnownUpstreams, checkKnownCreation } from './lib/downstream.mjs';
+import { projectRoot, loadKnownUpstreams, checkKnownCreation, readJsonStrict } from './lib/downstream.mjs';
 
 import { sceneSemanticsErrors } from './lib/semantics.mjs';
 import { mappingErrors, mappedAssetId } from './lib/asset-mappings.mjs';
@@ -144,7 +143,7 @@ function artInputErrors(art, source) {
   if (!obj(art) || !Array.isArray(art.scenes) || !Array.isArray(art.props)) return ['art: expected scenes and props arrays'];
   const errors = [];
   if (!text(art.source) || source !== undefined && art.source !== source) errors.push('art.source: expected matching work title');
-  if (art.schemaVersion !== 1) errors.push('art.schemaVersion: expected 1; explicitly migrate legacy art');
+  if (art.schemaVersion !== 1) errors.push('art.schemaVersion: expected 1');
   for (const [key, prefix] of [['scenes', 'S'], ['props', 'P']]) {
     const seen = new Set();
     for (const item of art[key]) {
@@ -160,7 +159,7 @@ function castInputErrors(cast, source) {
   if (!obj(cast) || !Array.isArray(cast.characters)) return ['cast: expected characters array'];
   const errors = [], seen = new Set();
   if (!text(cast.source) || source !== undefined && cast.source !== source) errors.push('cast.source: expected matching work title');
-  if (cast.schemaVersion !== 1) errors.push('cast.schemaVersion: expected 1; explicitly migrate legacy cast');
+  if (cast.schemaVersion !== 1) errors.push('cast.schemaVersion: expected 1');
   for (const c of cast.characters) {
     if (!obj(c) || !text(c.name)) errors.push('cast.characters: expected named character objects');
     if (!own(c, 'id')) errors.push('cast.characters: explicit identity required');
@@ -175,7 +174,7 @@ function castInputErrors(cast, source) {
 function localErrors(doc, stage) {
   const errors = [];
   if (!obj(doc)) return ['script: expected object'];
-  if (doc.schemaVersion !== 4) errors.push('schemaVersion must be 4; run migrate-v4');
+  if (doc.schemaVersion !== 4) errors.push('schemaVersion must be 4');
   errors.push(...evidenceErrors(doc));
   for (const key of ['candidates','context']) if (own(doc,key)) errors.push(`${key}: candidates belong in .work; context belongs in scene notes`);
   errors.push(...documentErrors(doc, 'script'));
@@ -193,8 +192,8 @@ function localErrors(doc, stage) {
     if (own(ep, 'targetSeconds') && !positive(ep.targetSeconds)) errors.push(`${path}.targetSeconds: expected finite positive number`);
     if (own(ep, 'opening') && !text(ep.opening)) errors.push(`${path}.opening: expected nonempty text`);
     if (own(ep, 'ending')) errors.push(...endingErrors(ep.ending, `${path}.ending`));
-    for (const key of ['endBeat', 'seedNote']) if (own(ep, key)) errors.push(`${path}.${key}: retired field; run migrate-v3`);
-    for (const key of ['hook', 'hookBeat', 'cliff', 'closure', 'beatsClaimed']) if (own(ep, key)) errors.push(`${path}.${key}: v1 field rejected; see references/migration.md`);
+    for (const key of ['endBeat', 'seedNote']) if (own(ep, key)) errors.push(`${path}.${key}: not part of script v4`);
+    for (const key of ['hook', 'hookBeat', 'cliff', 'closure', 'beatsClaimed']) if (own(ep, key)) errors.push(`${path}.${key}: not part of script v4`);
     if (!Array.isArray(ep?.scenes) || (stage === 'full' && !ep.scenes.length)) errors.push(`${path}.scenes: expected ${stage === 'full' ? 'nonempty ' : ''}array`);
     if (own(ep, 'openingBeat') && coordinateIndex(ep, ep.openingBeat) === null) errors.push(`${path}.openingBeat: invalid coordinate`);
     if (own(ep, 'beatClaims') && !Array.isArray(ep.beatClaims)) errors.push(`${path}.beatClaims: expected array`);
@@ -287,7 +286,7 @@ export function gateReport(doc, ctx = {}) {
       const upstream = outline.episodes.find(e => e.ep === ep?.ep);
       if (!upstream) { projection.push(`E${ep?.ep}: episode absent from outline`); }
       else {
-        for (const key of ['opening', 'ending']) if (own(ep, key)) projection.push(`E${ep?.ep}.${key}: duplicate upstream plan; run migrate-v3`);
+        for (const key of ['opening', 'ending']) if (own(ep, key)) projection.push(`E${ep?.ep}.${key}: duplicates the outline plan; remove the local copy`);
       }
       const expected = outline.beats.filter(b => b.episode === ep?.ep).map(b => b.id), actual = arr(ep?.beatClaims).map(c => c?.beatId);
       if (JSON.stringify(actual) !== JSON.stringify(expected)) claimErrors.push(`E${ep?.ep}: expected ordered IDs ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}`);
@@ -393,7 +392,7 @@ function resolutionLocations(q, doc, ctx, t, n) {
 function statusText(g, t) { return g.status === 'fail' && (g.level === 'warn' || g.category === 'source') ? t.warn : t[g.status] ?? g.status; }
 function gateLabel(g, lang) { return LABELS[g.id]?.[lang === 'en' ? 1 : 0] ?? g.id; }
 export function renderMarkdown(doc, ctx = {}) {
-  if (doc?.schemaVersion !== 4) throw new Error('schemaVersion must be 4; run migrate-v4');
+  if (doc?.schemaVersion !== 4) throw new Error('schemaVersion must be 4');
   const lang = langOf(doc, ctx), t = tOf(lang), n = names(doc, ctx), report = checkup(doc, ctx), p = paramsOf(doc);
   const out = [`# ${esc(doc?.source)} · ${t.title}`, ...(doc?.provenance ? ['','## provenance',esc(pretty(doc.provenance))] : []), '', `## ${t.script}`];
   for (const [i, ep] of arr(doc?.episodes).entries()) {
@@ -430,7 +429,7 @@ export function renderMarkdown(doc, ctx = {}) {
   return out.join('\n') + '\n';
 }
 export function renderHtml(doc, ctx = {}) {
-  if (doc?.schemaVersion !== 4) throw new Error('schemaVersion must be 4; run migrate-v4');
+  if (doc?.schemaVersion !== 4) throw new Error('schemaVersion must be 4');
   const lang = langOf(doc, ctx), t = tOf(lang), n = names(doc, ctx), report = checkup(doc, ctx), p = paramsOf(doc);
   const pre = value => `<pre>${esc(pretty(value))}</pre>`;
   const copy = value => `<button data-copy="${esc(value)}">${t.copy}</button>`;
@@ -473,10 +472,8 @@ const USAGE = `mint-script v4 (Node 18+, no dependencies)
   checkup SCRIPT [same options] [--json]
   render SCRIPT [--html|--md] [--lang zh|en] [same options] [--cast FILE]
   verify-sources SCRIPT [--outline FILE] [--no-production]
-  migrate-v4 INPUT [--out DRAFT] [--confirm] [--independent] [--outline FILE]
-  migrate-v3 INPUT [--out OUTPUT] [--confirm] [--outline FILE] [--production FILE | --no-production]
   slug NAME
-Full delivery requires upstream reconciliation and separate content review. See references/migration.md for explicit v3→v4 and historical v2→v3 migration.`;
+Full delivery requires upstream reconciliation and separate content review.`;
 const readJson = path => readJsonStrict(resolve(path));
 function flag(args, key, fallback = undefined) {
   const i = args.indexOf(key);
@@ -515,24 +512,11 @@ export async function main(argv) {
     if (outputPath) seeded.provenance = rebaseProvenance(seeded.provenance,path,outputPath);
     console.log(pretty(seeded)); return;
   }
-  if (command === 'migrate-v3') {
-    const ctx = loadCtx(args, path);
-    const result = migrateFile(path, { out: flag(args, '--out'), confirm: args.includes('--confirm'), ctx, validate: (d,c) => validateHistoricalV3(d,c,validateScript) });
-    console.log(pretty(result));
-    if (result.errors.length || (result.pending.length && !args.includes('--confirm'))) process.exitCode = 1;
-    return;
-  }
-  if (command === 'migrate-v4') {
-    const result = migrateV4File(path, { out:flag(args,'--out'), confirm:args.includes('--confirm'), independent:args.includes('--independent'), ctx:loadCtx(args,path), validate:validateScript });
-    console.log(pretty(result));
-    if (result.errors.length || result.pending.length && !args.includes('--confirm')) process.exitCode = 1;
-    return;
-  }
   const doc = readJson(path), ctx = loadCtx(args, path);
   if (command === 'verify-sources') { ctx.verifySources = true; const result = checkup(doc,ctx); console.log(pretty(result)); if(result.blockingFailures) process.exitCode=1; return; }
   if (autopilotOf(ctx.production)) console.error(AUTOPILOT_NOTE);
   if (command === 'render') {
-    if (doc?.schemaVersion !== 4) throw new Error('schemaVersion must be 4; run migrate-v4');
+    if (doc?.schemaVersion !== 4) throw new Error('schemaVersion must be 4');
     process.stdout.write((args.includes('--html') ? renderHtml(doc, ctx) : renderMarkdown(doc, ctx)) + '\n');
     if (checkup(doc, ctx).blockingFailures) process.exitCode = 1;
     return;

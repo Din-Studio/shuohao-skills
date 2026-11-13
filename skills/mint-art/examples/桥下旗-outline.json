@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 5,
+  "source": "桥下旗",
+  "provenance": {
+    "kind": "script",
+    "scope": "partial",
+    "documents": [
+      {
+        "id": "D01",
+        "path": "桥下旗-来源.txt",
+        "sha256": "3a2e70b20fd00808a52102f3a9adbd5031192868976476f8acfafe0f33ec496b",
+        "lineCount": 4
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 3
+      },
+      {
+        "documentId": "D01",
+        "startLine": 3,
+        "endLine": 4
+      }
+    ]
+  },
+  "story": {
+    "summary": "仅解析本次提供场次，不补写前情或结局。",
+    "sourceRefs": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 4
+      }
+    ]
+  },
+  "beats": [
+    {
+      "id": "B01",
+      "episode": 4,
+      "setup": "交接前由交接者持有",
+      "outcome": "接收者接过物件；限制仍有效",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 4
+        }
+      ]
+    }
+  ],
+  "episodes": [
+    {
+      "ep": 4,
+      "synopsis": "一次有条件的交接",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 4
+        }
+      ]
+    }
+  ]
+}

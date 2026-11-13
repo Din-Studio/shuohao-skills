@@ -21,20 +21,19 @@ export function checkup(doc,options={}){
  const stage=options.stage??'full',gates=[];
  const add=(id,messages=[],extra={})=>gates.push({id,category:'base',level:'error',status:messages.length?'fail':'pass',messages,...extra});
  const skip=(id,reason,category='base',level='error')=>add(id,[],{status:'skipped',reason,category,level});
- const reject=(x,keys,path,errors)=>{for(const k of keys)if(x?.[k]!==undefined)errors.push(`${path}.${k}: not allowed in outline v5; use explicit migration`);};
  const fields=(x,keys,path,errors)=>{if(!object(x)){errors.push(path+': object required');return;}for(const k of keys)if(!text(x[k]))errors.push(`${path}.${k}: non-empty string required`);};
  if(!object(doc)){add('document',['outline must be an object']);return finish();}
  if(!STAGES.includes(stage))add('stage',['unknown stage '+stage]);
  const p=object(doc.params)?doc.params:{},beats=arr(doc.beats),eps=arr(doc.episodes);
  const bi=new Map(beats.map(b=>[b?.id,b]));
  const errors=[];
- if(doc.schemaVersion!==5)errors.push('schemaVersion must be 5; run migrate-v5 explicitly (v2/v3 require historical migration first)');
+ if(doc.schemaVersion!==5)errors.push('schemaVersion must be 5');
  fields(doc,['source'],'outline',errors);
  if(doc.lang!==undefined&&!['zh','en'].includes(doc.lang))errors.push('lang must be zh/en');
  if(doc.params!==undefined&&!object(doc.params))errors.push('params must be an object');
  if(p.genre!==undefined&&!text(p.genre))errors.push('params.genre must be non-empty');
- // Closed contract: reject unknown or historical fields, including nested assets at every stage.
- const shape=(x,keys,path)=>{if(!object(x))return;for(const k of Object.keys(x))if(!keys.includes(k))errors.push(`${path}.${k}: not allowed in outline v5; migrate explicitly`);};
+ // Closed contract: reject unknown fields, including nested assets at every stage.
+ const shape=(x,keys,path)=>{if(!object(x))return;for(const k of Object.keys(x))if(!keys.includes(k))errors.push(`${path}.${k}: not allowed in outline v5`);};
  shape(doc,['schemaVersion','source','lang','params','creativeBrief','provenance','story','beats','episodes','notes'],'outline');
  shape(p,['genre'],'params');
  shape(doc.story,['summary','endingBeatId','sourceRefs','notes'],'story');
@@ -43,9 +42,6 @@ export function checkup(doc,options={}){
  for(const [i,b] of beats.entries()){shape(b,['id','episode','setup','outcome','resolves','sourceRefs','notes'],`beats[${i}]`);noteShape(b,`beats[${i}]`);}
  for(const [i,e] of eps.entries()){shape(e,['ep','synopsis','opening','ending','warnings','sourceRefs','notes'],`episodes[${i}]`);noteShape(e,`episodes[${i}]`);shape(e?.ending,['event','mode','question','sourceRefs'],`episodes[${i}].ending`);shape(e?.ending?.question,['id','text','reason','sourceRefs'],`episodes[${i}].ending.question`);}
  errors.push(...documentErrors(doc,options.production));
- // Reject old persisted fields at every stage, even if the corresponding stage is incomplete.
- for(const b of beats)reject(b,['position','kind','weight','type','payoff'],`beats.${b?.id}`,errors);
- for(const e of eps){reject(e,['stateChange','hook','suspense','crowdPlan','beatIds'],`ep${e?.ep}`,errors);reject(e?.ending?.question,['resolution','dueByEp'],`ep${e?.ep}.question`,errors);}
  add('fields',errors);
  add('provenance',provenanceErrors(doc.provenance,{episodes:eps,requireEpisodes:stage==='full'}));
  const refs=(x,path,errors,required=true)=>errors.push(...sourceRefsErrors(x?.sourceRefs,doc.provenance,path+'.sourceRefs',{required}));
@@ -65,7 +61,6 @@ export function checkup(doc,options={}){
  };
  const se=[],story=doc.story;
  fields(story,['summary'],'story',se);refs(story,'story',se);
- reject(story,['premise','throughline','ending','audiencePromise','drive'],'story',se);
  notes(doc,'outline',se);notes(story,'story',se);add('story',se);
  if(stage==='skeleton'){for(const id of ['beats','ending-beat'])skip(id,'stage-incomplete');}
  else{

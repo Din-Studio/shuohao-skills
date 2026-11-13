@@ -34,7 +34,7 @@
       ]
     }
   ],
-  "note": "最小合规夹具，mint-creation 的 prompt-no-names 门只读 name/aliases 两个字段，不追求满足 mint-characters 自己的门与设定图字段。",
+  "note": "最小合规夹具，mint-creation 只读取人物身份、名称与别名，不追求满足 mint-characters 自己的门与设定图字段。",
   "schemaVersion": 1,
   "provenance": {
     "kind": "script",

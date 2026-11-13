@@ -1,6 +1,6 @@
 # creation.json 结构
 
-保持 schemaVersion:3，不重构现有段、cuts、images 或投产流程。正式提示词改为五部分散文格式，完整规则见 creation-prompt.md；模型文件只解释技术适配，不再定义另一套写法。
+creation 为 schemaVersion:3。提示词采用五部分散文格式，完整规则见 creation-prompt.md；模型文件只解释技术适配，不定义另一套写法。
 
 ## 数据与正文的分工
 
@@ -8,9 +8,9 @@
 - cuts 保留 beats、seconds、audioRefs、size、camera、characters、props、recipe、note；beats 连续覆盖，seconds 为有限正数，size/camera 仍须合法枚举。但这些是内部认领与估时计划，不代表生成视频的切镜，不要求对应正文自然段。
 - 段保存 id、sceneIndex、cuts、images、prompt 和可选 note。段总秒数仍为 cuts.seconds 求和，不另存一份。
 - images 仍为 kind/ref/role，kind 为 character/scene/prop，ref 是 script 局部标记，通过 script.assetMappings 的 confirmed 记录映射到 cast/art 身份。数组顺序就是 @图片N 和实际提交素材的顺序。不新增音频或状态素材管理。
-- prompt 为五部分：七个全局字段、参考素材、散文正文、画风与固定结尾、负面提示词。固定字段中文；默认 promptLang=zh，显式 en 可使用英文叙述，但固定文字和对象全称保留。台词保留原文或正式译文。不再禁止角色名。
+- prompt 为五部分：七个全局字段、参考素材、散文正文、画风与固定结尾、负面提示词。固定字段中文；默认 promptLang=zh，显式 en 可使用英文叙述，但固定文字和对象全称保留。台词保留原文或正式译文。不禁止角色名。
 - video.model 仍由 creation 覆盖 production，均缺省时 MiniMax H3。模型时长边界和已有参数继承不变。
-- 景别和运镜检查只验证内部枚举，不查逐镜短语；引用配方时仍核对配方存在、正文包含必备短语及内部连排数量，但不再逐镜切片。正文不能混入旧 shots/ambience 或镜头编号。
+- 景别和运镜检查只验证内部枚举，不查逐镜短语；引用配方时仍核对配方存在、正文包含必备短语及内部连排数量，但不逐镜切片。正文不能混入 shots/ambience 骨架或镜头编号。
 - 五部分检查包括字段顺序、固定文字、色温 K、有序 @图片N 引用和模板占位符；动作因果、人设、素材引用时机及负面词质量由内容审核判断。
 - 图片只对实际挂载项要求存在；画内人物、已知画外发声者等实际依赖仍须确认身份映射。不强制所有人物出图。缺少匹配素材时准确描述状态，不能编造引用。
 - 稳定路径由 cast 目标身份 ID、art imageStem/sheetImage 解析，不按名称或同号回退；所有检查、报告、派发和导出使用同一解析规则。
@@ -22,11 +22,11 @@
 
 ## 当前上游与唯一执行目标
 
-script 必须显式 schemaVersion:4；outline 必须显式 schemaVersion:5；creation、production 仍为 schemaVersion:3。正式读取拒绝旧 creative/creativeContext、params.rules/defaults/preferences、旧镜头阈值和旧开场字段，不静默忽略。
+script 必须显式 schemaVersion:4；outline 必须显式 schemaVersion:5；creation、production 必须为 schemaVersion:3；cast/art 必须为 schemaVersion:1。只接受这些版本。creative/creativeContext、params.rules/defaults/preferences、minCutSeconds/maxCutSeconds 以及 hook/cliff/closure/hookBeat 不属于当前契约，出现即报错，不静默忽略。
 
-creation 集对象不持久化 opening、ending、endBeat。计划只从当前加载的 outline 读取；无 outline 时读取独立 script 的可选 opening/ending。提供 outline 时，script 中的计划副本报待迁移错误。source、ep、目标秒数和 B ID 顺序进行实际对账，但同名不证明语义同步。
+creation 集对象不持久化 opening、ending、endBeat。计划只从当前加载的 outline 读取；无 outline 时读取独立 script 的可选 opening/ending。提供 outline 时，script 中的计划副本报错。source、ep、目标秒数和 B ID 顺序进行实际对账，但同名不证明语义同步。
 
-creation.openingBeat 与 script 的可选显式标注一致，不补默认坐标。script.openingBeat 可选，缺省显示 not-marked，不生成虚假的开场映射。结束坐标从最后一个实际 flow 项计算，正文追加动作后自动变化。镜头必须覆盖最后一拍；旧镜头遗漏追加正文时失败。
+creation.openingBeat 与 script 的可选显式标注一致，不补默认坐标。script.openingBeat 可选，缺省显示 not-marked，不生成虚假的开场映射。结束坐标从最后一个实际 flow 项计算，正文追加动作后自动变化。镜头必须覆盖最后一拍；正文追加后镜头未覆盖时失败。
 
 script beatClaims 在独立模式可以省略；提供 outline 时必须按顺序完整认领全部当集节点。不分类的节点仍按 ID 认领。已提供的认领坐标继续检查存在、重复、倒序、重叠和所属集。场次 characters 包括无台词在场人物，不从 speaker 推导替代；props 可选，填写时为唯一合法 P ID。
 
@@ -36,7 +36,7 @@ outline v5 必须有 provenance、story.summary、故事与事件出处。删除
 
 ## 创作要求与发现
 
-creativeBrief 提供时为非空字符串。项目与任一已加载阶段同时存在要求时失败，人工合并到 production 后删除阶段副本。要求是自然语言，不解析成规则。指南修改不使旧故事失效。
+creativeBrief 提供时为非空字符串。项目与任一已加载阶段同时存在要求时失败，人工合并到 production 后删除阶段副本。要求是自然语言，不解析成规则。指南修改不使既有故事失效。
 
 CLI 从产物所在目录向上最多五层寻找 production.json；随后在项目 script、outline、art、characters 目录发现唯一 JSON。显式路径优先。过滤 manifest、隐藏文件及备份／工作记录。多候选失败，要求明确路径。损坏、不可读、悬空链接不能当作缺失。API 仅 undefined 表示缺失，显式 null 失败。
 
@@ -81,10 +81,10 @@ inputHash: <批准时写入的输入摘要>
 
 - **批准绑定内容与输入**：`bodyHash` 是分镜结构与正文的摘要；`inputHash` 是这一段依据的输入的摘要——拥有与延续正文、来源身份、相关场次 notes、事件认领、挂载资产证据与参考图内容、视频模型参数、提示词语言、目标时长、同框与单段限制、项目要求。任何一样变化，这一段的批准失效，`status`、`apply`、`export`、`videos` 全部拒绝。绑定范围只到这一段：别的段、别的集、上游文件里无关的字段发生变化，不影响它。显式场次 characters/props 也进入绑定，包括声音来源场。开场措辞只绑定实际开场坐标所在段（未标注时使用第一拍），集尾措辞只绑定实际最后一拍所在段；修改后自动使相关批准失效，不影响其他段。
 - **状态头只由角色命令改写**：`in_review` 由编写方的提交命令写入，`approved`、`changes_requested` 与 `blocked` 由审核方的结论命令写入。主会话只在 `prompts init` 时写出草稿；`prompts new|submit|verdict` 是给没有安装兄弟 skill 的 subagent 使用的本地等价物，不是给主会话代替两个角色使用的。
-- **manifest 记录来源**：`creation` 是 creation.json 相对 manifest 的路径，`videos` 靠它重新核对；每段的 `prompt` 与参考图路径同样相对 manifest。没有 `creation` 的旧 manifest 需要重新导出。
-- **工作单区域仍为三个**：审核区允许固定子标题「返修意见」「待确认事项」；其他区域不增加二级标题。解析边界不随审核子标题截断。
+- **manifest 记录来源**：`creation` 是 creation.json 相对 manifest 的路径，`videos` 靠它重新核对；每段的 `prompt` 与参考图路径同样相对 manifest。没有 `creation` 的 manifest 需要重新导出。
+- **工作单区域固定为三个**：审核区允许固定子标题「返修意见」「待确认事项」；其他区域不增加二级标题。解析边界不随审核子标题截断。
 - **模型一致**：状态头的 `model` 与当前有效视频模型不同则检查失败——更换模型后需要重新编写并审核。
 - **意见不累积**：审核意见与编写回应只保留本轮，轮次只由 `round` 计数；`round` 达到三轮仍为 `changes_requested` 时 `prompts status` 提示交给用户决定。
 - 三个 skill 各自携带一份相同的工作单解析库 `scripts/lib/worksheet.mjs`；本 skill 的 `references/` 还保存编写方与审核方指南的副本（`creation-prompt.md`、`h3-prompt.md`、`seedance2-prompt.md`、`分镜指南.md`、`worksheet.md`、`审核清单.md`）。仓库级自测核对这些副本逐字一致，修改时各处一起修改。
 
-完整的身份来源、版本支持、映射记录、失效范围及消费端迁移检查表见 [资产身份与显式映射交接](asset-identity-handoff.md)。manifest 的 ref 仍是局部标记，mappedAssetId 和 assetDigest 记录实际目标，图片路径使用目标资产 ID。
+完整的身份来源、接受版本、映射记录及失效范围见 [资产身份与显式映射交接](asset-identity-handoff.md)。manifest 的 ref 仍是局部标记，mappedAssetId 和 assetDigest 记录实际目标，图片路径使用目标资产 ID。

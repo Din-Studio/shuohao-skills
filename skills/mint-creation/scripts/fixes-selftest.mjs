@@ -141,13 +141,13 @@ try {
   await test('R8 videos validates seedance prompt again after export',()=>{
     const m=manifest(5);m.video.model='seedance2.0';publish(m,promptFixture('0–3 秒观察'));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/seedance/);
   });
-  await test('videos rejects unapproved, stale and legacy prompt files',()=>{
+  await test('videos rejects unapproved, stale and headerless prompt files',()=>{
     publish(manifest(5));const good=readFileSync(sheetPath,'utf8');
     const ok=cli('videos',manifestPath,'--dry-run');assert.equal(ok.status,0,ok.stderr);assert.match(JSON.parse(ok.stdout).approval.input,/^[0-9a-f]{16}$/);
     writeFileSync(sheetPath,good.replace('status: approved','status: in_review'));let r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/尚未批准/);
     writeFileSync(sheetPath,good.replace('observe.','observe closely.'));r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/批准已失效/);
     writeFileSync(sheetPath,'# E01-01\n\n---\nshots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.');r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/状态头/);
-    // 批准还绑定输入：模型参数、认领节拍的原文发生变化，旧批准失效；旧版本导出的 manifest 需要重新导出
+    // 批准还绑定输入：模型参数、认领节拍的原文发生变化，旧批准失效；manifest 与当前输入不一致时需要重新导出
     writeFileSync(sheetPath,good);const m=manifest(5);m.video.resolution='2K';json(manifestPath,{creation:'c.json',...m});
     r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/视频参数.*不一致/);
     const cPath=join(temp,'pack/c.json'),c=JSON.parse(readFileSync(cPath,'utf8'));c.video.resolution='2K';json(cPath,c);

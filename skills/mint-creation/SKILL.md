@@ -28,7 +28,7 @@ metadata:
 
 两种来源的状态规则出自同一份工作单解析库。主会话在任何情况下都不代替它们编写或审核。
 
-**提示词标准已更新**：按 `references/creation-prompt.md` 的五部分散文编写，按 `references/审核清单.md` 审核。cuts、schema v3、估时和投产链保持不变；内部 size/camera 不要求进入正文，不代表模型实际切镜。默认中文模板，模型文件只做技术适配。旧工作单正文必须重写、重新审核，不自动转换或继承批准。旧意见可读取，但新审核统一输出通过／需返修／待确认及返修、待确认条目。
+**提示词标准**：按 `references/creation-prompt.md` 的五部分散文编写，按 `references/审核清单.md` 审核。cuts 记录内部节拍认领、估时和投产依赖；内部 size/camera 不要求进入正文，不代表模型实际切镜。默认中文模板，模型文件只做技术适配。审核统一输出通过／需返修／待确认及返修、待确认条目，不接受其他审核格式。
 
 **主会话是调度方**：不写分镜，不写提示词，不做内容评审。它负责准备材料、运行确定性命令、派发 subagent、判断循环是否结束，以及向用户汇报。
 
@@ -42,7 +42,7 @@ seed ─→ 编写 subagent ─→ prompts check ─→ 审核 subagent ─→ �
 
 ## 1. 确认输入
 
-完整读取 `references/schema.md`、`references/dispatch.md` 和 `references/source-audio-handoff.md`。script 要求 `schemaVersion:4`，outline 要求 `schemaVersion:5`，creation/production 保持 `schemaVersion:3`。上游先在各自阶段显式迁移当前版本，补齐真实来源证据；本工具保留 creation 的历史 `migrate-v3`，见 `references/migration.md`。正式读取不静默兼容旧契约。来源字节核验、来源忠实性审核与制作审核分别汇报。
+完整读取 `references/schema.md`、`references/dispatch.md` 和 `references/source-audio-handoff.md`。script 要求 `schemaVersion:4`，outline 要求 `schemaVersion:5`，creation/production 要求 `schemaVersion:3`，cast/art 要求 `schemaVersion:1`。只接受这些版本，其他版本直接报错；上游缺少真实来源证据时回到对应阶段补齐。来源字节核验、来源忠实性审核与制作审核分别汇报。
 
 项目的自然语言 `creativeBrief` 是唯一要求，不解释成枚举或生成规则。独立 creation 可以保存 creativeBrief；项目与阶段同时存在要求时停止，请人工合并到 production。
 
@@ -73,7 +73,7 @@ mkdir -p .work
 node {baseDir}/scripts/mint-creation.mjs prompts brief 作品-creation.json --ep 1 > .work/E01-输入材料.json
 ```
 
-工作单目录就是 `creation/`：每段一份 `creation/<段号>/prompt.md`。已经有段的旧 creation.json 需要补走审核时，运行 `prompts init` 生成草稿工作单。
+工作单目录就是 `creation/`：每段一份 `creation/<段号>/prompt.md`。已经有段但没有工作单的 creation.json，运行 `prompts init` 生成草稿工作单。
 
 ## 3. 编写与审核循环
 
@@ -144,7 +144,7 @@ production.autopilot 只有布尔 true 生效。它转移审批权，不取消�
 
 ## 样例与自测
 
-`examples/` 是本 skill 自有《收书人》：一集、四段、九个镜头、十个节拍，目标三十秒、镜头计划三十二秒。样例的 creation.json 早于审核流程，没有附带工作单，因此不能直接导出；自测在临时目录里生成并批准工作单来覆盖完整流程。详情见 `examples/MIGRATION.md`。
+`examples/` 是本 skill 自有《收书人》：一集、四段、九个镜头、十个节拍，目标三十秒、镜头计划三十二秒。样例不附带工作单，因此不能直接导出；自测在临时目录里生成并批准工作单来覆盖完整流程。
 
 ```bash
 node {baseDir}/scripts/selftest.mjs
@@ -152,7 +152,6 @@ node {baseDir}/scripts/strategy-selftest.mjs
 node {baseDir}/scripts/fixes-selftest.mjs
 node {baseDir}/scripts/discovery-selftest.mjs
 node {baseDir}/scripts/media-plan-selftest.mjs
-node {baseDir}/scripts/migration-selftest.mjs
 node {baseDir}/scripts/worksheet-selftest.mjs
 node {baseDir}/scripts/prompt-rules-selftest.mjs
 node {baseDir}/scripts/fusion-selftest.mjs

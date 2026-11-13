@@ -12,11 +12,11 @@ npx skills@latest add Din-Studio/skills --agent codex --skill ly-image ly-video 
 
 安装器把资源放到用户级 `~/.agents/skills/`，pi 也能发现该目录；其他 agent 按安装器选项选择目标。安装后重新加载技能或启动新会话。
 
-外部 skill 要求 Node.js 22.20+，不要求安装 `ly` CLI。可复用已有 `~/.config/ly/config.json`；也支持执行环境中的 `LY_API_KEY` / `LY_ACCESS_TOKEN` 或 `LY_CONFIG_FILE`。不要打印配置、把密钥写进仓库、请求文件、回执或命令参数。旧 `~/.config/lingying/` 与 assethub 管理令牌不是新链路的前置条件。
+外部 skill 要求 Node.js 22.20+，不要求安装 `ly` CLI。可复用已有 `~/.config/ly/config.json`；也支持执行环境中的 `LY_API_KEY` / `LY_ACCESS_TOKEN` 或 `LY_CONFIG_FILE`。不要打印配置、把密钥写进仓库、请求文件、回执或命令参数。`~/.config/lingying/` 与 assethub 管理令牌不是前置条件。
 
 ## 从计划到生成
 
-视频计划带有 `approval.manifest` 与 `approval.input`。提交之前重新运行 `videos <approval.manifest> --dry-run`，核对新的 `input` 与待提交的计划一致；严格按计划的提示词、有序素材与参数构造请求，不把审核意见或编写回应发送给模型。实时 schema 要求修改内容或参数时，回到编写与审核流程，不静默调整。没有 `approval` 的旧计划需要重新导出。内容批准不等于付费授权。
+视频计划带有 `approval.manifest` 与 `approval.input`。提交之前重新运行 `videos <approval.manifest> --dry-run`，核对新的 `input` 与待提交的计划一致；严格按计划的提示词、有序素材与参数构造请求，不把审核意见或编写回应发送给模型。实时 schema 要求修改内容或参数时，回到编写与审核流程，不静默调整。没有 `approval` 的计划需要重新导出。内容批准不等于付费授权。
 
 1. 本地 `images` / `videos` 输出 `status: planned`。默认和 `--dry-run` 都不访问网络。`--out plan.json` 另存计划，不覆盖现有文件；不用该选项则只有 stdout。
 2. 计划包含明确模型、每项 `id`、原文 `prompt`、原生类型 `params`、有序 `references`、`dependsOn`、目标 `output`。路径均为本机绝对路径；移动项目后重新导出。计划不是外部 skill 的请求 JSON，不可直接传给 `generate`。
@@ -27,10 +27,9 @@ npx skills@latest add Din-Studio/skills --agent codex --skill ly-image ly-video 
 7. 使用新回执路径 `generate --request request.json --job jobs/<id>.json` 提交一次。使用 `task --job jobs/<id>.json --wait 60 --download --output-dir downloads/<id>` 恢复查询和下载。退出码零不代表完成；检查 `ok` 和 `data.status`。
 8. 检查返回文件存在、非空和真实媒体格式；图片查看构图、身份与锚点，视频核对时长、运动、画幅和音轨。外部脚本下载名不等于计划 output，检查后复制或转换到 output；不能把 JPEG 直接改扩展名当 PNG。目标已存在时先核对身份，替换须保留旧产物并确认范围。再运行本 skill 的 render，并汇报实际文件与任务 ID。
 
-## 恢复与迁移
+## 任务恢复
 
-- 新生成、上传、下载和任务回执完全归外部 skill。本地不再维护 `.tasks.json`。
-- 旧台账先保留；有 taskId 时，核对原网关、项目和任务身份，再通过外部 `task --task <ID>` 查询。不要把旧台账当成新回执，不自动重新提交。
+- 新生成、上传、下载和任务回执完全归外部 skill，本地不维护任务台账。
 - 超时、网络错误或下载失败只恢复原任务。`submitting` / `submission_unknown` 且缺 task ID 时先核对网关记录。不要删除回执或换文件名绕过状态不确定。
-- `--force`、`--cutout`、`--timeout`、`--concurrency` 已从本地命令退役并报错。透明底另交 ly-image 选择实时可用编辑模型，审核费用后生成到 `optionalCutoutOutput`；保留白底主图。
+- `--force`、`--cutout`、`--timeout`、`--concurrency` 不属于本地命令，传入即报错。透明底另交 ly-image 选择实时可用编辑模型，审核费用后生成到 `optionalCutoutOutput`；保留白底主图。
 - 新生成或质量重做是另一项可能计费的任务。不得因轮询超时、效果不满意或自动驾驶而无限重投；没有明确授权就先汇报。

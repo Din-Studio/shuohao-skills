@@ -98,7 +98,7 @@ for (const value of [0, -1, '60', Infinity]) mutate(`target invalid ${value}`, d
 mutate('opening nonempty', d => { d.episodes[0].opening = ' '; });
 for (const value of [null, {}, { mode: 'wrong', event: '事件' }, { mode: 'open', event: ' ' }]) mutate('ending type/mode/event', d => { d.episodes[0].ending = value; });
 for (const key of ['question', 'questionId', 'dueByEp', 'resolves', 'unknown']) mutate(`ending rejects ${key}`, d => { d.episodes[0].ending = { mode: 'open', event: '结束', [key]: 'Q01' }; });
-for (const key of ['hook', 'hookBeat', 'cliff', 'closure', 'beatsClaimed']) mutate(`v1 episode ${key}`, d => { d.episodes[0][key] = 'legacy'; });
+for (const key of ['hook', 'hookBeat', 'cliff', 'closure', 'beatsClaimed']) mutate(`non-contract episode ${key}`, d => { d.episodes[0][key] = 'x'; });
 for (const key of ['openingBeat']) for (const value of [undefined, null, [0, 1], [1, 0], ['1', 1], [1, 1.5], [99, 1], [1, 99], [1, 1, 1]]) mutate(`${key} invalid ${JSON.stringify(value)}`, d => { d.episodes[0][key] = value; });
 mutate('endBeat must be last', d => { d.episodes[0].endBeat = [2, 7]; });
 mutate('upstream claims required', d => { delete d.episodes[0].beatClaims; }, 'beats-claimed', CTX);
@@ -154,7 +154,7 @@ test('same type different IDs still required separately', () => {
   assert.deepEqual(validateScript(DOC, { ...CTX, outline: o }), []);
   const d = clone(DOC); d.episodes[0].beatClaims.pop(); assert.equal(gate(d, 'beats-claimed', { outline: o }).status, 'fail');
 });
-test('retired upstream minutes cannot silently provide targets', () => { const o = clone(OUTLINE); o.params.minutesPerEpisode = 2; assert.equal(gate(DOC, 'outline-input', { outline: o }).status, 'fail'); });
+test('non-contract upstream minutes cannot silently provide targets', () => { const o = clone(OUTLINE); o.params.minutesPerEpisode = 2; assert.equal(gate(DOC, 'outline-input', { outline: o }).status, 'fail'); });
 test('batch final does not become series final', () => { const d = clone(DOC); d.episodes = [d.episodes[0]]; assert.deepEqual(validateScript(d, CTX), []); });
 mutate('character refs', d => { d.episodes[0].scenes[0].characters.push('C99'); }, 'asset-mappings', { ...CTX, requiredMappings:true });
 mutate('scene refs', d => { d.episodes[0].scenes[0].sceneId = 'S99'; }, 'asset-mappings', { ...CTX, requiredMappings:true });
@@ -172,9 +172,9 @@ test('unsupported art and cast versions fail', () => {
 test('duplicate upstream beat fails', () => { const o = clone(OUTLINE); o.beats[1].id = o.beats[0].id; assert.equal(gate(DOC, 'outline-input', { outline: o }).status, 'fail'); });
 test('malformed upstream beat fails', () => { const o = clone(OUTLINE); o.beats[0].kind = 'unknown'; assert.equal(gate(DOC, 'outline-input', { outline: o }).status, 'fail'); });
 
-// Retired configuration never silently changes v3 behavior.
-for (const key of ['rules', 'defaults', 'preferences', 'hookWindow', 'maxLineChars']) mutate(`retired params ${key}`, d => { d.params[key] = {}; });
-for (const key of ['creativeContext', 'creative', 'seedNote', 'selection', 'decisions', 'overrides']) mutate(`retired root ${key}`, d => { d[key] = {}; });
+// Non-contract configuration never silently changes behavior.
+for (const key of ['rules', 'defaults', 'preferences', 'hookWindow', 'maxLineChars']) mutate(`non-contract params ${key}`, d => { d.params[key] = {}; });
+for (const key of ['creativeContext', 'creative', 'seedNote', 'selection', 'decisions', 'overrides']) mutate(`non-contract root ${key}`, d => { d[key] = {}; });
 test('no implicit params persisted by rendering', () => { const d = clone(DOC); delete d.params; const before = JSON.stringify(d); renderHtml(d); renderMarkdown(d); assert.equal(JSON.stringify(d), before); assert.deepEqual(validateScript(d), []); });
 test('default and explicit timing axes equal', () => { const d = clone(DOC); d.params = {...DEFAULT_PARAMS}; assert.deepEqual(computeStats(d), computeStats(DOC)); });
 test('partial overrides applied everywhere', () => {
@@ -207,7 +207,7 @@ test('brief conflict requires human merge', () => {
   assert.deepEqual(validateScript(d),[]);assert(validateScript(d,{production:{schemaVersion:3,creativeBrief:'表达克制'}}).length);
   assert(validateScript(DOC,{production:{schemaVersion:3,creativeBrief:' '}}).length);
 });
-test('v2 project and old creative fields rejected', () => {
+test('wrong production version and non-contract creative fields rejected', () => {
   assert(validateScript(DOC,{production:{schemaVersion:2}}).length);
   assert(validateScript(DOC,{production:{schemaVersion:3,creative:{}}}).length);
 });
@@ -261,7 +261,7 @@ test('unknown UI language fails', () => assert.throws(() => renderHtml(DOC, { la
 test('warning display', () => { const d = clone(DOC); d.params.actionSeconds = 100; const h = renderHtml(d, { lang: 'en' }); assert(h.includes('Warning · Estimated duration notice')); assert(h.includes('Blocking failures: 0')); });
 test('missing upstream is not pass', () => { const h = renderHtml(DOC, { lang: 'en' }); assert(h.includes('Missing upstream')); assert(!h.includes('treated as passing')); });
 test('no payoff classification without outline', () => assert(!renderHtml(DOC, { lang: 'en' }).includes(' · payoff /')));
-test('renderer API rejects v2 rather than dual-reading it', () => { for(const render of [renderHtml,renderMarkdown]) assert.throws(()=>render({...DOC,schemaVersion:2}),/migrate-v4/); });
+test('renderer API rejects other schema versions', () => { for(const render of [renderHtml,renderMarkdown]) assert.throws(()=>render({...DOC,schemaVersion:2}),/schemaVersion must be 4/); });
 test('malformed parameters are escaped in Markdown diagnostics', () => { const d=clone(DOC);d.params.actionSeconds='<img src=x onerror=alert(1)>';assert(!renderMarkdown(d).includes('<img')); });
 test('source / line / attribute / JSON escaping', () => {
   const d = clone(DOC); d.source = '</script><img src=x onerror=alert(1)>'; d.episodes[0].scenes[0].flow[1].line = '<img src=x onerror="alert(1)">';
@@ -288,7 +288,7 @@ test('stats API retained', () => { const s = computeStats(DOC); assert.equal(s.s
 test('slug and autopilot', () => { assert.equal(slug('a b/c'), 'a-b-c'); assert.equal(slug(' '), 'script'); assert(autopilotOf({ autopilot: true })); assert(!autopilotOf({ autopilot: 'true' })); });
 
 // Real CLI failures, atomic application through the frozen API, and isolated copy.
-const temp = mkdtempSync(join(tmpdir(), 'mint-script-v3-'));
+const temp = mkdtempSync(join(tmpdir(), 'mint-script-'));
 try {
   const scriptDir = join(temp, 'script'); mkdirSync(scriptDir);
   const file = join(scriptDir, '修伞簿-script.json'), productionFile = join(temp, 'production.json');

@@ -1,6 +1,6 @@
 # outline.json v5 唯一正式契约
 
-正式命令只接受数值 schemaVersion:5。不双读历史版本，不把同一 v4 解释为两种语义。production 仍为 v3。source 是作品标题，不是路径。契约封闭：顶层及剧情对象的未知字段失败，不能通过换字段名重新建立资产表。完整自有[样例](../examples/旧站时刻-outline.json)。
+全部命令只接受数值 schemaVersion:5，其他版本直接报错。production 为 schemaVersion 3。source 是作品标题，不是路径。契约封闭：顶层及剧情对象的未知字段失败，不能通过换字段名重新建立资产表。完整自有[样例](../examples/旧站时刻-outline.json)。
 
 ## 顶层与阶段
 
@@ -74,6 +74,5 @@ scripts/mint-outline.mjs 导出：
 - checkup(doc,{stage,verifySources,artifactPath,baseDir,production,productionError})；validateOutline(doc,stage,options)；gateReport(doc,options)。
 - renderHtml/renderMarkdown(doc,lang,options)：只读派生；中英界面，正文不翻译。
 - sourceDocument、sourceLines、unionRanges、coverageOf、provenanceErrors、sourceRefsErrors、verifySources、chunkScript：自包含来源工具。
-- migrationDraftV5(oldV4)、migrateFileV5(input,output,{confirm,projectRoot})：形状见[显式迁移](migration.md)。
 
-本地下游接口与版本矩阵见[交接说明](handoff.md)。本地检查不代替项目流程状态、资产映射、语义审核、工作单批准或成片审核。
+本地下游接口见[交接说明](handoff.md)。本地检查不代替项目流程状态、资产映射、语义审核、工作单批准或成片审核。

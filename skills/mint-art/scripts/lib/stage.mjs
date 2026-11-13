@@ -1,4 +1,4 @@
-// Art v1: stage-owned identities, evidence, incremental changes and explicit migration.
+// Art v1: stage-owned identities, evidence and incremental changes.
 // Standard library only. This module never imports another skill.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -23,22 +23,9 @@ export function covered(ref, coverage) {
   }
   return next > ref.endLine;
 }
-// Only active evidence participates. migration.original/fields and related
-// materials are historical snapshots, never an alternative current authority.
-export const activeDocuments = doc => [...rows(doc?.provenance?.documents), ...assetsOf(doc).flatMap(a=>rows(a?.sourceFacts?.documents))];
-export function activeEvidenceErrors(doc) {
-  const errors=[], documents=new Map();
-  for(const d of activeDocuments(doc)) {
-    if(!obj(d)||!text(d.id)||!/^[a-f0-9]{64}$/.test(d.sha256??'')||!Number.isSafeInteger(d.lineCount)||d.lineCount<1){errors.push('活动证据文档身份、SHA256 或行数非法');continue;}
-    const prior=documents.get(d.id);
-    if(prior&&(prior.sha256!==d.sha256||prior.lineCount!==d.lineCount))errors.push(`${d.id} 活动证据版本冲突：同 documentId 必须具有相同 SHA256 和行数`);
-    documents.set(d.id,d);
-  }
-  return errors;
-}
 export function evidenceErrors(doc, {requireAssetRefs = false} = {}) {
-  const errors = activeEvidenceErrors(doc), p = doc?.provenance;
-  const refs = refsIn({...doc, migration:undefined, upstreams:undefined, incremental:undefined});
+  const errors = [], p = doc?.provenance;
+  const refs = refsIn({...doc, upstreams:undefined, incremental:undefined});
   if (!p) return [...errors,...(refs.length || requireAssetRefs ? ['来源引用缺少 provenance'] : [])];
   if (!obj(p) || p.kind !== 'script' || !['partial','complete'].includes(p.scope)) errors.push('provenance.kind/scope 非法');
   const documents = rows(p.documents), ids = new Map();
@@ -55,7 +42,7 @@ export function evidenceErrors(doc, {requireAssetRefs = false} = {}) {
   const walk = v => {
     if (!obj(v) && !Array.isArray(v)) return;
     for (const [k,x] of Object.entries(v)) {
-      if (['migration','upstreams','incremental'].includes(k)) continue;
+      if (['upstreams','incremental'].includes(k)) continue;
       if (k === 'sourceRefs' && (!Array.isArray(x) || !x.length)) errors.push('sourceRefs 必须是非空数组');
       else walk(x);
     }
@@ -76,20 +63,13 @@ export function verifySources(doc, artifactPath) {
       if (fileDigest(bytes) !== d.sha256) errors.push(`${d.id} 来源版本已变化`);
       if (sourceLineCount(bytes) !== d.lineCount) errors.push(`${d.id} 来源行数不一致`);
       const lines=new TextDecoder('utf-8',{fatal:true}).decode(bytes).split(/\r\n|\n|\r/);
-      for(const r of refsIn({...doc,migration:undefined,upstreams:undefined,incremental:undefined}).filter(r=>r?.documentId===d.id&&r.quote!==undefined))if(!text(r.quote)||!lines.slice(r.startLine-1,r.endLine).join('\n').includes(r.quote))errors.push(`${d.id} 引文与实际原件行不一致`);
+      for(const r of refsIn({...doc,upstreams:undefined,incremental:undefined}).filter(r=>r?.documentId===d.id&&r.quote!==undefined))if(!text(r.quote)||!lines.slice(r.startLine-1,r.endLine).join('\n').includes(r.quote))errors.push(`${d.id} 引文与实际原件行不一致`);
     } catch (e) { errors.push(`${d?.id} 来源无法读取：${e.message}`); }
   }
-  // Legacy sourceFacts also carry real originals; they are not exempt from verification.
-  for (const a of assetsOf(doc)) if (a?.sourceFacts?.documents) {
-    const factDoc = {provenance:{kind:'script',scope:'partial',documents:a.sourceFacts.documents,coverage:rows(doc.provenance?.coverage).length?doc.provenance.coverage:refsIn(a.sourceFacts)},facts:a.sourceFacts};
-    errors.push(...verifySources(factDoc, artifactPath).errors.map(e => `${a.id}.sourceFacts ${e}`));
-  }
-  return {status:errors.length?'fail':doc?.provenance || assetsOf(doc).some(a=>a?.sourceFacts) ? 'pass' : 'skipped', errors, semanticReview:'not-performed'};
+  return {status:errors.length?'fail':doc?.provenance ? 'pass' : 'skipped', errors, semanticReview:'not-performed'};
 }
 export function identityBasis(a) {
-  const basis=Object.fromEntries(Object.entries(a).filter(([k])=>!['usage','identityReview','designStatus','image','imageStem','sheetImage','summary','anchors','lighting','states','scale','changes'].includes(k)));
-  if(obj(basis.sourceFacts))basis.sourceFacts={...basis.sourceFacts,documents:rows(basis.sourceFacts.documents).map(d=>obj(d)?Object.fromEntries(Object.entries(d).filter(([k])=>k!=='path')):d)};
-  return basis;
+  return Object.fromEntries(Object.entries(a).filter(([k])=>!['usage','identityReview','designStatus','image','imageStem','sheetImage','summary','anchors','lighting','states','scale','changes'].includes(k)));
 }
 export function identityDigest(doc, a) {
   const refs = refsIn(a).filter(obj);
@@ -100,13 +80,13 @@ export function identityDigest(doc, a) {
   return digest({source:doc.source,mode:doc.mode,identity:identityBasis(a),refs,documents,coverage});
 }
 export function sourceIdentity(doc) {
-  return digest({source:doc.source,provenance:doc.provenance,refs:refsIn({...doc,migration:undefined,upstreams:undefined,incremental:undefined})});
+  return digest({source:doc.source,provenance:doc.provenance,refs:refsIn({...doc,upstreams:undefined,incremental:undefined})});
 }
 export function seedFromSource(sourcePath, title, {existing = null} = {}) {
   if (!text(title)) throw Error('seed --source path --title title 必须提供标题');
   const path = resolve(sourcePath), bytes = readFileSync(path), lineCount = sourceLineCount(bytes);
   if (!lineCount) throw Error('原剧本不能为空');
-  if (existing && existing.schemaVersion !== ART_VERSION) throw Error('既有 art 必须是 v1；旧版请显式 migrate-art');
+  if (existing && existing.schemaVersion !== ART_VERSION) throw Error('既有 art 必须是 schemaVersion: 1');
   if (existing && existing.source !== title) throw Error('既有产物标题不一致；不得按名称重新分配身份');
   const doc = existing ? structuredClone(existing) : {schemaVersion:ART_VERSION,kind:'mint-art',source:title,mode:'script',status:'draft',scenes:[],props:[],registry:{entries:[],changes:[]},budgets:{},upstreams:{}};
   if (existing) doc.incremental = {previousDigest:digest(existing),previousRegistry:structuredClone(existing.registry),previousIdentities:assetsOf(existing).map(a=>({id:a.id,coreDigest:identityCoreDigest(a)})),previousBudgets:structuredClone(existing.budgets)};
@@ -124,7 +104,7 @@ export function seedFromSource(sourcePath, title, {existing = null} = {}) {
 export function registerAsset(doc, kind, key, name) {
   if (doc?.schemaVersion !== ART_VERSION || !['scene','prop'].includes(kind) || !text(key) || !text(name)) throw Error('register 需要 art v1、scene/prop、非空 key/name');
   if (!obj(doc.registry) || !Array.isArray(doc.registry.entries)) throw Error('缺少 registry');
-  if (doc.registry.entries.some(e=>!obj(e)||!idOK(e.id)||!text(e.key))) throw Error('既有 registry 损坏，不得绕过历史重新分配 ID');
+  if (doc.registry.entries.some(e=>!obj(e)||!idOK(e.id)||!text(e.key))) throw Error('既有 registry 损坏，不得绕过已分配记录重新分配 ID');
   if (doc.registry.entries.some(e=>e.key===key)) throw Error('identityKey 已分配，不得复用');
   const prefix = kind==='scene'?'S':'P';
   const max = doc.registry.entries.filter(e=>e.id.startsWith(prefix)).reduce((max,e)=>{const n=BigInt(e.id.slice(1));return n>max?n:max;},0n);
@@ -144,7 +124,7 @@ export function syncLifecycleStamps(doc) {
   return doc;
 }
 export function lifecycleErrors(doc, previous = null) {
-  if(previous&&(!obj(previous)||previous.schemaVersion!==ART_VERSION||previous.kind!=='mint-art'||!obj(previous.registry)||!Array.isArray(previous.registry.entries)||!Array.isArray(previous.registry.changes)))return ['既有 art v1 基线损坏或版本不兼容'];
+  if(previous&&(!obj(previous)||previous.schemaVersion!==ART_VERSION||previous.kind!=='mint-art'||!obj(previous.registry)||!Array.isArray(previous.registry.entries)||!Array.isArray(previous.registry.changes)))return ['既有 art v1 基线损坏或版本不符'];
   const errors=[], reg=doc?.registry;
   if (!obj(reg) || !Array.isArray(reg.entries) || !Array.isArray(reg.changes)) return ['registry.entries/changes 必须是数组'];
   const ids=new Map(),keys=new Set();
@@ -183,10 +163,7 @@ export function lifecycleErrors(doc, previous = null) {
   const previousIdentities=previous?assetsOf(previous).map(a=>({id:a.id,coreDigest:identityCoreDigest(a)})):rows(doc.incremental?.previousIdentities);
   for(const old of previousIdentities){const now=current.get(old.id);if(now&&identityCoreDigest(now)!==old.coreDigest&&!reg.changes.some(c=>!rows(oldReg?.changes).some(o=>o?.id===c?.id)&&rows(c.from).includes(old.id)))errors.push(`${old.id} 身份纠正缺少显式映射和依据`);}
   const previousBudgets=previous?.budgets??doc.incremental?.previousBudgets;
-  // Re-derive migration baselines from the preserved original, not the editable
-  // reviewed fields, current budgets or a caller-supplied incremental snapshot.
-  const budgetBaselines=[...Object.entries(previousBudgets??{}),...migrationBudgetBaselines(doc.migration)];
-  for(const [key,b]of budgetBaselines)if(b?.kind==='explicit'&&digest(doc.budgets?.[key]??null)!==digest(b)&&!rows(doc.budgetChanges).some(c=>obj(c)&&c.key===key&&text(c.basis)&&digest(c.from)===digest(b)&&digest(c.to??null)===digest(doc.budgets?.[key]??null)))errors.push(`${key} 明确预算变更缺少用户依据和原值`);
+  for(const [key,b]of Object.entries(previousBudgets??{}))if(b?.kind==='explicit'&&digest(doc.budgets?.[key]??null)!==digest(b)&&!rows(doc.budgetChanges).some(c=>obj(c)&&c.key===key&&text(c.basis)&&digest(c.from)===digest(b)&&digest(c.to??null)===digest(doc.budgets?.[key]??null)))errors.push(`${key} 明确预算变更缺少用户依据和原值`);
   if (previous) {
     if (previous.schemaVersion!==ART_VERSION||doc.source!==previous.source) errors.push('增量基线必须是同一作品的 art v1');
     if (doc.incremental?.previousDigest && doc.incremental.previousDigest!==digest(previous)) errors.push('增量基线摘要不匹配');
@@ -207,32 +184,8 @@ export function budgetChecks(doc) {
   }
   return results.length?results:[{id:'art-budget',label:'美术资产预算',status:'skipped',category:'base',level:'error',reason:'not-configured',detail:'未设置明确预算；道具 3–8 件仅为参考值'}];
 }
-const budgetMapping={primaryScenes:'primaryScenes',maxPrimaryScenes:'primaryScenes',scenes:'scenes',maxScenes:'scenes',props:'props',maxProps:'props'};
-function migrationBudgetBaselines(m) {
-  if(!obj(m?.original))return [];
-  const original=m.original;
-  return [
-    ...Object.entries(original.budgets??{}).filter(([k,b])=>Object.hasOwn(budgetMapping,k)&&b?.kind==='explicit'),
-    ...Object.entries(original.params?.thresholds??{}).filter(([k,v])=>Object.hasOwn(budgetMapping,k)&&Number.isSafeInteger(v)&&v>=0).map(([k,v])=>[budgetMapping[k],{kind:'explicit',max:v}])
-  ];
-}
-function migrationFields(input) {
-  const fields=[];
-  const walk=(v,p)=>{if(obj(v)||Array.isArray(v)){if(!Object.keys(v).length)fields.push({path:p,value:structuredClone(v)});for(const [k,x]of Object.entries(v))walk(x,`${p}/${k}`);}else fields.push({path:p,value:v});};
-  walk(input,'');return fields;
-}
-function migrationErrors(m) {
-  if(!obj(m))return ['migration 必须是显式迁移材料对象'];
-  const errors=[];
-  if(!['art','outline'].includes(m.kind)||!obj(m.original)||m.inputDigest!==digest(m.original))errors.push('迁移原始快照或身份摘要损坏');
-  const expected=migrationFields(m.original),fields=rows(m.fields);
-  if(!Array.isArray(m.fields)||fields.length!==expected.length||new Set(fields.map(f=>f?.path)).size!==fields.length||expected.some(e=>!fields.some(f=>f?.path===e.path&&digest(f.value)===digest(e.value))))errors.push('迁移逐字段原路径/原值不完整，不得删除待处理材料');
-  if(m.status!=='reviewed'||!Array.isArray(m.unresolved)||m.unresolved.length||fields.some(f=>!obj(f)||!['mapped','retained','not-applicable'].includes(f.status)||!text(f.basis)))errors.push('迁移材料待核验或存在未归属关系，不得冒充已审核资产');
-  if(m.related!==undefined&&(!Array.isArray(m.related)||m.related.some(r=>!obj(r)||!['reviewed','not-applicable'].includes(r.status)||!text(r.basis)||!text(r.path)||!/^[a-f0-9]{64}$/.test(r.sha256??''))))errors.push('历史关联材料尚未核验');
-  return errors;
-}
 export function stageErrors(doc, {previous=null} = {}) {
-  if (!obj(doc)||(doc.schemaVersion!==ART_VERSION||doc.kind!=='mint-art')) return ['art 需要 schemaVersion: 1, kind: mint-art；旧版必须显式 migrate-art，outline v3/v4 使用 migrate-outline'];
+  if (!obj(doc)||(doc.schemaVersion!==ART_VERSION||doc.kind!=='mint-art')) return ['art 需要 schemaVersion: 1, kind: mint-art'];
   const errors=[];
   if (!text(doc.source)||!['script','design'].includes(doc.mode)||!['draft','ready'].includes(doc.status)) errors.push('source/mode/status 非法');
   if (doc.status!=='ready') errors.push('art 为草稿/待核验，不是正式交付');
@@ -254,7 +207,8 @@ export function stageErrors(doc, {previous=null} = {}) {
     if(a.relatedScenes!==undefined&&Array.isArray(a.relatedScenes)&&a.relatedScenes.some(id=>!rows(doc.scenes).some(s=>s?.id===id)))errors.push(`${a.id} relatedScenes 引用不存在`);
     if(a.sheetImage!==undefined&&!text(a.sheetImage))errors.push(`${a.id} sheetImage 路径非法`);
     if(a.imageStem!==undefined&&(!text(a.imageStem)||/[\\/]/.test(a.imageStem)))errors.push(`${a.id} imageStem 必须是文件名，不是路径`);
-    if (a.carriedBy!==undefined) errors.push(`${a.id} carriedBy 自由名称已退役；人物身份由 characters 的 carrierRefs 明确映射`);
+    if (a.carriedBy!==undefined) errors.push(`${a.id} carriedBy 不是 art v1 字段；人物身份由 characters 的 carrierRefs 明确映射，不按自由名称`);
+    if (a.sourceFacts!==undefined) errors.push(`${a.id} sourceFacts 不是 art v1 字段；来源事实写入 facts 与 sourceRefs`);
     for (const c of rows(a.carrierRefs)) if (!obj(c)||!/^C\d{2,}$/.test(c.characterId??'')||!text(c.basis)||!rows(c.sourceRefs).length) errors.push(`${a.id} carrierRefs 需要明确 C ID、依据与来源`);
     if (a.variantOf) {
       if (!rows(doc.scenes).some(s=>s?.id===a.variantOf)||a.variantOf===a.id||!text(a.changes)) errors.push(`${a.id} 变体引用缺失或缺少 changes`);
@@ -262,11 +216,10 @@ export function stageErrors(doc, {previous=null} = {}) {
       while(next) {if(seen.has(next)){errors.push(`${a.id} 变体循环`);break;}seen.add(next);next=rows(doc.scenes).find(s=>s?.id===next)?.variantOf;}
     }
   }
-  if(doc.migration!==undefined)errors.push(...migrationErrors(doc.migration));
   return errors;
 }
 export function assertStoryOutline(doc) {
-  if (!obj(doc)||doc.schemaVersion!==5) throw Error('正式 outline 仅支持 v5；v3/v4 必须显式 migrate-outline，不能作为资产权威');
+  if (!obj(doc)||doc.schemaVersion!==5) throw Error('正式 outline 仅支持 v5，且只提供故事背景，不能作为资产权威');
   if (!text(doc.source)||!obj(doc.story)||!text(doc.story.summary)||!rows(doc.story.sourceRefs).length||!Array.isArray(doc.beats)||!Array.isArray(doc.episodes)) throw Error('outline v5 故事投影结构损坏');
   for (const k of ['characters','scenes','props']) if (Object.hasOwn(doc,k)) throw Error(`outline v5 不得具有资产表 ${k}`);
   if (doc.params?.thresholds!==undefined||doc.story.focusCharacterIds!==undefined||rows(doc.episodes).some(e=>['characterIds','sceneIds','propIds'].some(k=>Object.hasOwn(e,k)))) throw Error('outline v5 残留资产权威字段');
@@ -283,7 +236,7 @@ export function characterIdentityDigest(c,p) {
   return digest({identityKey:c.identityKey,name:c.name,aliases:rows(c.aliases).map(a=>({...a,sourceRefs:sortedRefs(a.sourceRefs)})).sort((a,b)=>a.name.localeCompare(b.name)),entityType:c.entityType,lifecycleStamp:c.lifecycleStamp,presence:[...rows(c.presence)].sort(),speech:c.speech,unknowns:c.unknowns,notes:c.notes,sourceRefs:sortedRefs(c.sourceRefs),documents:rows(p?.documents).filter(d=>obj(d)&&used.has(d.id)).map(({id,sha256})=>({id,sha256})).sort((a,b)=>a.id.localeCompare(b.id))});
 }
 export function assertCharacters(doc) {
-  if (!obj(doc)||doc.schemaVersion!==1||doc.kind!=='mint-characters'||!text(doc.source)||!Array.isArray(doc.characters)) throw Error('characters 正式输入需要 cast v1, kind: mint-characters；旧名单不能冒充身份交接');
+  if (!obj(doc)||doc.schemaVersion!==1||doc.kind!=='mint-characters'||!text(doc.source)||!Array.isArray(doc.characters)) throw Error('characters 正式输入需要 cast v1, kind: mint-characters；其他名单不能冒充身份交接');
   if(doc.status!=='identified'||doc.review?.status!=='confirmed'||!text(doc.review.by)||!text(doc.review.note))throw Error('characters 身份尚未确认');
   if(!obj(doc.lifecycle)||!Number.isSafeInteger(doc.lifecycle.revision)||doc.lifecycle.revision<1||!Array.isArray(doc.lifecycle.registry)||!Array.isArray(doc.lifecycle.changes)||!Array.isArray(doc.lifecycle.recheckIds)||doc.lifecycle.revision===1&&doc.lifecycle.previousHash!==null||doc.lifecycle.revision>1&&!/^[a-f0-9]{64}$/.test(doc.lifecycle.previousHash??''))throw Error('characters 生命周期登记损坏');
   const registryIDs=new Set(),registryKeys=new Set();for(const r of doc.lifecycle.registry){if(!obj(r)||!/^C\d{2,}$/.test(r.id??'')||registryIDs.has(r.id)||!text(r.identityKey)||registryKeys.has(r.identityKey)||!['active','retired'].includes(r.state))throw Error('characters registry 非法或重复');registryIDs.add(r.id);registryKeys.add(r.identityKey);}
@@ -301,7 +254,7 @@ export function upstreamErrors(doc, upstream, kind) {
   const errors=[];
   try {kind==='outline'?assertStoryOutline(upstream):assertCharacters(upstream);}catch(e){return [e.message];}
   if(upstream.source!==doc.source)errors.push(`${kind} 作品标题不匹配`);
-  const documents=activeDocuments(doc);
+  const documents=rows(doc?.provenance?.documents);
   const shared=documents.some(d=>rows(upstream.provenance?.documents).some(u=>u.id===d?.id));
   if(doc.mode==='script'||shared) {
     for(const d of documents) {
@@ -317,37 +270,6 @@ export function upstreamErrors(doc, upstream, kind) {
 }
 export function upstreamCheck(doc,upstream,kind) {
   const errors=upstreamErrors(doc,upstream,kind);
-  const shared=activeDocuments(doc).some(d=>rows(upstream?.provenance?.documents).some(u=>u?.id===d?.id));
+  const shared=rows(doc?.provenance?.documents).some(d=>rows(upstream?.provenance?.documents).some(u=>u?.id===d?.id));
   return {status:errors.length?'fail':shared?'pass':'skipped',errors,...(!shared?{detail:'无共同原件；独立设计未完成来源对账'}:{}),semanticReview:'not-performed'};
-}
-// Every original field remains traceable, including relations this stage cannot own.
-export function migrationMaterial(input, path, kind, projected) {
-  const fields=migrationFields(input).map(f=>({...f,status:'pending'}));
-  return {...projected,migration:{kind,path:resolve(path),inputDigest:digest(input),status:'pending',fields,original:structuredClone(input),unresolved:fields.filter(f=>/characters|characterIds|focusCharacterIds|speakerId|thresholds|notes|beatIds|sceneIds|propIds|carriedBy/.test(f.path)).map(f=>({path:f.path,value:f.value,status:'pending'}))}};
-}
-export function migrateArt(input, path) {
-  if(!obj(input)||input.schemaVersion===1||!text(input.source)||!Array.isArray(input.scenes)||!Array.isArray(input.props??[]))throw Error('migrate-art 仅接受未版本化或显式 v2–v4 历史美术产物');
-  if(Object.hasOwn(input,'characters')||Object.hasOwn(input,'beats'))throw Error('outline 资产表必须使用 migrate-outline，不能假装旧 art');
-  if(input.schemaVersion!==undefined&&![2,3,4].includes(input.schemaVersion))throw Error('不支持的旧 art 版本');
-  const doc={...structuredClone(input),schemaVersion:1,kind:'mint-art',mode:input.provenance?'script':'design',status:'draft',props:structuredClone(input.props??[]),registry:{entries:[],changes:[]},budgets:structuredClone(input.budgets??{}),upstreams:{}};
-  for(const a of assetsOf(doc)) {
-    if(!idOK(a?.id)||doc.registry.entries.some(e=>e.id===a.id))throw Error('旧资产 ID 非法或重复，不能自动迁移');
-    a.identityKey=`legacy:${a.id}`;a.identityReview={status:'pending'};a.decision='待独立核验旧美术资产的识别依据';a.designStatus=a.image?'ready':'none';
-    doc.registry.entries.push({id:a.id,key:a.identityKey,status:'active'});
-    if(a.carriedBy!==undefined){a.legacyCarriedBy=structuredClone(a.carriedBy);delete a.carriedBy;}
-  }
-  return migrationMaterial(input,path,'art',doc);
-}
-export function migrateOutline(input, path, legacyProjection) {
-  if(!obj(input)||![3,4].includes(input.schemaVersion)||!obj(legacyProjection)||!Array.isArray(legacyProjection.scenes)||!Array.isArray(legacyProjection.props))throw Error('migrate-outline 仅接受显式 outline v3/v4 及已检查的历史投影');
-  const doc={...legacyProjection,schemaVersion:1,kind:'mint-art',mode:input.provenance?'script':'design',status:'draft',registry:{entries:[],changes:[]},budgets:{},upstreams:{}};
-  if(input.provenance)doc.provenance=structuredClone(input.provenance);
-  for(const a of assetsOf(doc)) {
-    a.identityKey=`legacy:${a.id}`;a.identityReview={status:'pending'};a.decision='待原剧本独立识别';a.designStatus='none';delete a.image;
-    doc.registry.entries.push({id:a.id,key:a.identityKey,status:'active'});
-  }
-  const t=input.params?.thresholds??{};
-  // Preserve exact values. Unsupported budget shapes stay unresolved rather than becoming advice.
-  for(const [k,v]of Object.entries(t))if(Object.hasOwn(budgetMapping,k)&&Number.isSafeInteger(v)&&v>=0)doc.budgets[budgetMapping[k]]={kind:'explicit',max:v};
-  return migrationMaterial(input,path,'outline',doc);
 }

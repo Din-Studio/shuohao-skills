@@ -1,8 +1,10 @@
-// Local v3 project interface checks. No sibling code imports.
-import { lstatSync, readdirSync } from 'node:fs';
+// Local project interface checks. No sibling code imports.
+import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { documentErrors, productionErrors } from './document.mjs';
-import { readJsonStrict } from './migration.mjs';
+export function readJsonStrict(file) {
+  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(file)));
+}
 const array = x => Array.isArray(x) ? x : [];
 const equal = (a,b) => JSON.stringify(a) === JSON.stringify(b);
 export function projectRoot(file, productionPath) {
@@ -13,7 +15,7 @@ export function projectRoot(file, productionPath) {
 export function stageFiles(root, stage) {
   const dir = join(root, stage);
   try { lstatSync(dir); } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
-  return readdirSync(dir).filter(n => n.endsWith('.json') && !n.startsWith('.') && !/manifest|\.backup|\.bak|\.tmp|\.review|\.migration|\.v[234]-backup/i.test(n)).sort().map(n => join(dir,n));
+  return readdirSync(dir).filter(n => n.endsWith('.json') && !n.startsWith('.') && !/manifest|\.backup|\.bak|\.tmp/i.test(n)).sort().map(n => join(dir,n));
 }
 export function loadKnownUpstreams(root, explicit = {}) {
   const context = {};
@@ -46,7 +48,7 @@ export function checkKnownCreation(script, { root, production } = {}) {
         if (!Number.isSafeInteger(ep?.ep) || ep.ep <= lastEp || seen.has(ep.ep)) messages.push('creation ep must be ordered unique positive integers');
         seen.add(ep?.ep); lastEp = ep?.ep;
         if (!upstream) { messages.push(`E${ep?.ep}: not in current script`); continue; }
-        for (const key of ['opening', 'ending', 'endBeat']) if (Object.hasOwn(ep, key)) messages.push(`E${ep.ep}.${key}: duplicate/retired field; migrate-v3`);
+        for (const key of ['opening', 'ending', 'endBeat']) if (Object.hasOwn(ep, key)) messages.push(`E${ep.ep}.${key}: not part of creation v3`);
         if (!equal(ep.openingBeat, upstream.openingBeat)) messages.push(`E${ep.ep}.openingBeat: stale script landing; never invent a missing opening`);
         if (!Array.isArray(ep.segments) || !ep.segments.length) messages.push(`E${ep.ep}.segments must be a nonempty array`);
         let seconds = 0;

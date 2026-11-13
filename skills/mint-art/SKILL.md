@@ -5,7 +5,7 @@ description: |
   独立阅读原剧本，识别地点与物品，判断哪些需要美术资产，维护稳定 S/P 身份与来源。
   按任务需要完成场景、道具、复用与变体设计；场景物品整理完成后立即生图，交付 art v1、图片和报告。
   seed 仅生成骨架；语义识别由模型或人工完成。outline v5 仅提供故事背景，人物身份来自 cast v1。
-  支持独立设计和历史资产显式迁移；登记身份不要求设计或出图。
+  支持独立设计；登记身份不要求设计或出图。
   Use when asked to 美术设定、场景设定、道具设定、环境一致性、scene bible、prop sheet。
 allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
 triggers:
@@ -28,9 +28,9 @@ metadata:
 
 本 skill 的本地脚本自包含，Node 18+、标准库，无第三方 skill 或兄弟脚本依赖。本地脚本交付身份、设计、报告及离线计划，不调用生成网关；场景物品整理完成后，由执行 agent 立即衔接可用图片生成工具。没有生成工具时仍可完成本地工作，并明确图片未生成。
 
-`{baseDir}` 是本文件所在目录。正式接口为 **art v1（kind: mint-art）**、可选 outline v5 故事背景、可选 cast v1 人物身份、可选 production v3 视觉正文和制作参数。旧 outline v3/v4 不再是资产权威；旧美术文件必须显式迁移。
+`{baseDir}` 是本文件所在目录。正式接口为 **art v1（kind: mint-art）**、可选 outline v5 故事背景、可选 cast v1 人物身份、可选 production v3 视觉正文和制作参数。其他版本一律报错；outline 不是资产权威。
 
-开工阅读 [schema](references/schema.md)、[来源事实](references/source-facts.md)、[生命周期与迁移](references/migration.md)。需要设计时，再阅读 [场景](references/scene-pass.md)、[道具](references/prop-pass.md)、[真实感](references/realism.md)、[版面](references/sheet.md)。
+开工阅读 [schema](references/schema.md)、[来源事实](references/source-facts.md)、[接口与生命周期](references/lifecycle.md)。需要设计时，再阅读 [场景](references/scene-pass.md)、[道具](references/prop-pass.md)、[真实感](references/realism.md)、[版面](references/sheet.md)。
 
 ## 阶段职责与顺序
 
@@ -50,10 +50,10 @@ metadata:
 
 ```bash
 node {baseDir}/scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 --out art-draft.json
-# 增量识别：完整保留已有 ID、设计、图片路径、预算及历史
-node {baseDir}/scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 --existing old-art.json --out next-draft.json
+# 增量识别：完整保留已有 ID、设计、图片路径、预算及变更记录
+node {baseDir}/scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 --existing previous-art.json --out next-draft.json
 # 可选背景及人物接口；已经提供但损坏、版本错误或来源不匹配会失败
-node {baseDir}/scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 --outline outline-v5.json --cast cast-v1.json
+node {baseDir}/scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 --outline outline.json --cast cast.json
 # 保留独立原创设计入口；不得借此隐瞒已有原件
 node {baseDir}/scripts/mint-art.mjs seed --design --title 原创空间 --out design-draft.json
 ```
@@ -71,7 +71,7 @@ node {baseDir}/scripts/mint-art.mjs register registered.json --kind prop --key p
 
 登记后仍是待核验骨架。填写 `decision`、`sourceRefs`、`facts`、场景 `primary` 和实际需要的引用。未知身份保持待确认，不为了通过检查编造答案。不建立资产的线索可以写入 `observations`，保留来源及取舍理由。
 
-涉及人物身份时提供 `carrierRefs: [{characterId,basis,sourceRefs}]` 并在核验、渲染和出图命令提供 `--cast`。旧 `carriedBy` 自由名称不能冒充确认关系。
+涉及人物身份时提供 `carrierRefs: [{characterId,basis,sourceRefs}]` 并在核验、渲染和出图命令提供 `--cast`。自由名称不能冒充确认关系。
 
 ```bash
 node {baseDir}/scripts/mint-art.mjs identity-inputs registered-prop.json
@@ -97,16 +97,16 @@ production 中的 `creativeBrief` 是自然语言要求，不解析成规则。�
 ## 第四步：核验与增量交接
 
 ```bash
-node {baseDir}/scripts/mint-art.mjs validate art.json --outline outline-v5.json --cast cast-v1.json
+node {baseDir}/scripts/mint-art.mjs validate art.json --outline outline.json --cast cast.json
 node {baseDir}/scripts/mint-art.mjs checkup art.json
 node {baseDir}/scripts/mint-art.mjs verify-sources art.json
-node {baseDir}/scripts/mint-art.mjs reconcile candidate.json --previous old-art.json --out reconciled.json
-node {baseDir}/scripts/mint-art.mjs validate reconciled.json --previous old-art.json
+node {baseDir}/scripts/mint-art.mjs reconcile candidate.json --previous previous-art.json --out reconciled.json
+node {baseDir}/scripts/mint-art.mjs validate reconciled.json --previous previous-art.json
 ```
 
-CLI 的 validate/checkup/render/images 都回查实际原件。缺原件、摘要或行数变化、引用越界、覆盖缺口必须失败；`--no-production` 不能关闭来源核验。`--verify-sources` 可兼容调用方，但不是启用来源核验所必需。
+CLI 的 validate/checkup/render/images 都回查实际原件。缺原件、摘要或行数变化、引用越界、覆盖缺口必须失败；`--no-production` 不能关闭来源核验。`--verify-sources` 可以显式提供（流程组装器统一传入），但不是启用来源核验所必需。
 
-合并、拆分、纠正、删除须在 `registry.changes` 追加显式 from/to 映射、依据和来源。退休 ID 与 identityKey 永不复用；既有变更不能覆盖。增量基线摘要保存在本产物，不另建共享身份服务。reconcile 不自动理解或批准变更；受影响身份重新确认，未受影响身份不自动撤回确认。详见迁移文档。
+合并、拆分、纠正、删除须在 `registry.changes` 追加显式 from/to 映射、依据和来源。退休 ID 与 identityKey 永不复用；既有变更不能覆盖。增量基线摘要保存在本产物，不另建共享身份服务。reconcile 不自动理解或批准变更；受影响身份重新确认，未受影响身份不自动撤回确认。详见 [接口与生命周期](references/lifecycle.md)。
 
 ## 第五步：整理完成后立即生图与报告
 
@@ -130,7 +130,7 @@ images 只导出 `designStatus: ready` 的任务，按变体依赖排序。计�
 
 ## 自有样例与测试
 
-先阅读 `examples/雨棚留言-故事提案.md`。本目录包含原剧本、v5 故事消费投影、v1 人物交接夹具、身份登记样例和独立设计样例；历史 v3/v4 仅用于显式迁移测试。不读取兄弟 skill 样例，不包含真实生成图片。
+先阅读 `examples/雨棚留言-故事提案.md`。本目录包含原剧本、v5 故事消费投影、v1 人物交接夹具、身份登记样例和独立设计样例。不读取兄弟 skill 样例，不包含真实生成图片。
 
 ```bash
 node {baseDir}/scripts/run-selftests.mjs

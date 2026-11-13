@@ -36,7 +36,7 @@ Outline, script and creation each carry a self-contained `references/创作指�
 
 JSON stores source facts and necessary handoff relationships. Outline no longer holds adaptation planning, arcs, event categories or fixed episode minutes. Source preservation is not an instruction to speak every sentence. One utterance can continue across shots without replay or repeated timing; actual repeated lines remain separate occurrences. Model duration limits remain hard constraints.
 
-**Breaking data change:** outline now accepts **v5 (story only)**. Script stays at v4; production and creation stay at v3. See each asset stage's schema for its contract. Old projects can keep their original tool version. Explicit migration preserves originals and emits drafts and traceable pending material, including all asset relationships, IDs and budgets. Reusing an ID is not approval of a mapping or an old review.
+**One version per data contract:** outline is **v5 (story only)**, script is v4, production and creation are v3, characters and art are v1. Each skill reads and writes only its current version: there are no migration commands and no compatibility readers for older versions. A version mismatch is an error.
 
 Notes, audio semantics, source relations and reveal restrictions reach writers and reviewers and bind affected worksheet approvals. Unrelated scenes do not invalidate them. Originals remain unchanged. Markdown/HTML displays are derived; `<segment>/prompt.md` remains an editable production worksheet. Report structural checks, source/script review and production-plan review separately. Prompt approval is not finished-video approval. This change adds no translation, rough-cut or finished-video review stage.
 
@@ -189,7 +189,7 @@ Run every self-test before adding a skill:
 for f in skills/*/scripts/*selftest.mjs scripts/*-selftest.mjs; do node "$f" || exit; done
 ```
 
-There is no CI. Run the local tests, including cross-stage integration, explicit migration and isolated-copy checks. **Only tested on macOS with Node 24**; there is no platform-specific code, so Linux and older Node releases should be fine, but that is unverified.
+There is no CI. Run the local tests, including cross-stage integration and isolated-copy checks. **Only tested on macOS with Node 24**; there is no platform-specific code, so Linux and older Node releases should be fine, but that is unverified.
 
 ## Working-directory layout
 

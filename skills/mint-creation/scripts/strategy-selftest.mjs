@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// v3 integration regressions, replacing retired strategy-application assertions.
+// creation integration regressions.
 import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync,mkdtempSync,cpSync,rmSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -12,24 +12,24 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),ex=join(root,'e
 const read=p=>JSON.parse(readFileSync(join(ex,p),'utf8'));
 const doc=read('creation/收书人-creation.json'),script=read('script/收书人-script.json'),outline=read('outline/收书人-outline.json'),production=read('production.json');
 const ctx={script,outline,production,art:read('art/收书人-art.json'),cast:read('characters/收书人-cast.json'),imageExists:p=>existsSync(resolve(ex,'creation',p))};
-const clone=structuredClone, temp=mkdtempSync(join(tmpdir(),'creation-v3-'));
+const clone=structuredClone, temp=mkdtempSync(join(tmpdir(),'creation-int-'));
 let count=0;
 const test=(name,fn)=>{try{fn();count++;}catch(e){e.message=`${name}: ${e.message}`;throw e;}};
 const find=(d,id,c=ctx)=>gateReport(d,c).find(g=>g.id===id);
 const cli=(args,cwd=temp)=>spawnSync(process.execPath,[join(root,'scripts/mint-creation.mjs'),...args],{cwd,encoding:'utf8',maxBuffer:8*1024*1024});
 const file=(name,value)=>{const p=join(temp,name);writeFileSync(p,JSON.stringify(value));return p;};
 try {
-  test('sample v3 chain and honest content-review status',()=>{
+  test('sample chain and honest content-review status',()=>{
     const r=checkup(doc,ctx);assert.equal(r.blocking,0);assert.equal(r.contentReview,'not-performed');
     assert.ok(r.gates.every(g=>!Object.hasOwn(g,'ok')&&Array.isArray(g.messages)));assert.ok(!r.gates.some(g=>/selection|creative-context|cut-length/.test(g.id)));
   });
   for(const value of [0,-1,NaN,Infinity,'4',null]) test(`finite positive seconds ${value}`,()=>{
     const d=clone(doc);d.episodes[0].segments[0].cuts[0].seconds=value;assert.ok(validateCreation(d,ctx).some(m=>m.includes('seconds')));
   });
-  for(const field of ['rules','defaults','preferences','minCutSeconds','maxCutSeconds']) test(`retired params rejected ${field}`,()=>{
+  for(const field of ['rules','defaults','preferences','minCutSeconds','maxCutSeconds']) test(`non-contract params rejected ${field}`,()=>{
     const d=clone(doc);d.params[field]={};assert.ok(validateCreation(d,ctx).some(m=>m.includes(field)));assert.throws(()=>renderHtml(d,ctx));
   });
-  for(const field of ['creative','creativeContext','selection','decisions','overrides','seedNote']) test(`retired document field ${field}`,()=>{
+  for(const field of ['creative','creativeContext','selection','decisions','overrides','seedNote']) test(`non-contract document field ${field}`,()=>{
     const d=clone(doc);d[field]={};assert.ok(validateCreation(d,ctx).some(m=>m.includes(field)));
   });
   for(const key of ['opening','ending','endBeat']) test(`creation has no persisted upstream projection ${key}`,()=>{
@@ -182,5 +182,5 @@ try {
     const local=clone(script);local.provenance.documents.forEach(d=>d.path=join(ex,'收书人-原剧本.txt'));const s=file('script.json',local),p=file('creation.json',doc);assert.equal(cli(['seed',s]).status,0);assert.equal(cli(['render',p,'--script',s,'--no-production','--html']).status,0);
     const d=clone(doc);d.episodes[0].segments[0].cuts[0].seconds='<img onerror=bad>';assert.throws(()=>renderHtml(d,ctx));
   });
-  console.log(`✓ ${count} creation v3 integration tests passed; offline only`);
+  console.log(`✓ ${count} creation integration tests passed; offline only`);
 }finally{rmSync(temp,{recursive:true,force:true});}

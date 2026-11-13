@@ -4,9 +4,9 @@
 
 ## v3 production contract
 
-Production requires schemaVersion 3. Collect an optional non-empty natural-language creativeBrief with --creative-brief. No strategy selection or default rules. show displays the brief; resolve returns it unchanged. Use migrate-v3 INPUT for a read-only preview, then --out OUTPUT and --confirm when semantic review is required. Existing targets are never overwritten.
+Production requires schemaVersion 3. Collect an optional non-empty natural-language creativeBrief with --creative-brief. No strategy selection or default rules. show displays the brief; resolve returns it unchanged.
 
-Check objects use `status: pass|fail|skipped`, `category`, and `level`, never an ok boolean. Skips are not passes. Content review is not performed by these checks. See [contract](references/creative-brief.md) and [migration](references/migration.md).
+Check objects use `status: pass|fail|skipped`, `category`, and `level`, never an ok boolean. Skips are not passes. Content review is not performed by these checks. See [contract](references/creative-brief.md).
 
 Locks asset-image and video models, resolution tiers, independent aspect ratios, art style, languages and autopilot in one `production.json` at the work-directory root.
 
@@ -86,8 +86,7 @@ These are examples, not a style menu. They also serve as independent test fixtur
 
 ```bash
 node scripts/selftest.mjs
-node scripts/migration-selftest.mjs
 node scripts/upstream-selftest.mjs
 ```
 
-No model calls, network access or quota. Legacy `image.frame` is ignored and omitted from new configurations. `style.phrase` remains available to model-specific video prompt guides.
+No model calls, network access or quota. `style.phrase` remains available to model-specific video prompt guides.

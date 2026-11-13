@@ -20,7 +20,7 @@ node <baseDir>/scripts/mint-creation.mjs videos manifest.json --only E01-01 --dr
 
 ## 时长检查
 
-videos 使用自包含的历史能力快照做离线检查；不依赖其他 skill 的代码。实时约束由 ly-video 再核对。
+videos 使用自包含的离线能力快照做检查；不依赖其他 skill 的代码。实时约束由 ly-video 再核对。
 
 - 非整数向上取整；短于快照下限时补到下限，并明确提示。
 - 长于上限直接失败，包括 15.04 秒超过 15 秒。重新拆段、校验并导出，不能截短故事后提交。
@@ -30,6 +30,6 @@ videos 使用自包含的历史能力快照做离线检查；不依赖其他 ski
 
 ## 恢复
 
-旧 --force、--timeout、--concurrency 不再执行；不要重跑本地命令试图恢复远端任务。通过 ly-video 的原 task ID / 回执查询和下载，详见交接文档。旧 .tasks.json 保留用于人工对账，不自动转换、删除或重投。
+本地命令不支持 --force、--timeout、--concurrency，不要重跑本地命令试图恢复远端任务。通过 ly-video 的原 task ID / 回执查询和下载，详见交接文档。
 
 每段保存一个外部回执。提交结果不确定时先核对网关；等待到期不算失败。质量不满意或真正失败的新生成必须在授权范围内，不能无限重试。

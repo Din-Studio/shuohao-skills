@@ -1,6 +1,6 @@
 # 来源事实与制作补定
 
-正式 cast v1 直接读取原剧本。outline v5 仅是可选故事背景，不能提供人物权威。旧 outline v3/v4 的资产、sourceFacts 和预算仅通过显式迁移成为待核对材料。
+正式 cast v1 直接读取原剧本。outline v5 仅是可选故事背景，不能提供人物权威，也不提供人物资产或预算。
 
 ## 核验边界
 
@@ -18,7 +18,7 @@ sourceRefs、aliases 的证据和 notes 是原文身份依据。persona、image�
 
 ## 变化与审核
 
-reconcile 消费既有 cast。相关文档的摘要变化会使实际依赖该文档的身份进入 recheckIds，ID 不变；无关文档不自动使所有身份失效。身份改名、别名或出处纠正要记录 correct 及依据。合拆删保留退役登记和显式映射，历史 ID 永不复用。
+reconcile 消费既有 cast。相关文档的摘要变化会使实际依赖该文档的身份进入 recheckIds，ID 不变；无关文档不自动使所有身份失效。身份改名、别名或出处纠正要记录 correct 及依据。合拆删保留退役登记和显式映射，退役 ID 永不复用。
 
 参考图、图片计划、联合映射、工作单和内容审核必须按受影响的实际引用重新核验。图片计划中的 identityFingerprint 只证明计划绑定的身份输入，不是图片审核证明。review.inputHash 变化时原语义确认失效；reconcile 对身份、来源和范围变化输出 pending，纯重排可沿用绑定摘要不变的既有审核。
 

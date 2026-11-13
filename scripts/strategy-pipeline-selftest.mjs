@@ -1,22 +1,22 @@
 #!/usr/bin/env node
-// 三组合 outline v5 / script v4 真实 CLI 联合测试（保留文件名，兼容已有测试入口）。仅 Node 标准库；不调用生成服务，不使用正式样例。
-// node scripts/v3-pipeline-selftest.mjs [--keep /absolute/new-directory]
+// 三组合 outline / script 真实 CLI 联合测试。仅 Node 标准库；不调用生成服务，不使用正式样例。
+// node scripts/strategy-pipeline-selftest.mjs [--keep /absolute/new-directory]
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {cpSync,existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
+import {cpSync,existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve,relative} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {stories,style,buildOutline,fillCreation} from './fixtures/strategy-pipeline/stories.mjs';
+import {stories,style,fillCreation} from './fixtures/strategy-pipeline/stories.mjs';
 import {fillAssets} from './fixtures/strategy-pipeline/assets.mjs';
 
-import {writeStorySource,outlineV4,outlineV5,provenanceFor,scriptV4,relocate} from './fixtures/strategy-pipeline/source-backed.mjs';
+import {writeStorySource,outlineV5,provenanceFor,scriptV4,relocate} from './fixtures/strategy-pipeline/source-backed.mjs';
 
 import {identifyCast,identifyArt,mapAssets} from './fixtures/stage-identities.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const args=process.argv.slice(2);
-if(args.length && (args.length!==2 || args[0]!=='--keep' || !args[1])) throw Error('用法：node scripts/v3-pipeline-selftest.mjs [--keep <新目录>]');
+if(args.length && (args.length!==2 || args[0]!=='--keep' || !args[1])) throw Error('用法：node scripts/strategy-pipeline-selftest.mjs [--keep <新目录>]');
 const keep=args.length?resolve(args[1]):null;
 if(keep && existsSync(keep)) throw Error('--keep 目标必须不存在，不覆盖已有项目');
 const temp=mkdtempSync(join(tmpdir(),'shuohao-three-combinations-'));
@@ -350,7 +350,7 @@ try{
   for(const p of ready.values())for(const stage of stages){
     await test(`${p.story.title}/${stage}：旧字段与双重创作要求明确拒绝`,()=>{
       for(const change of [d=>d.schemaVersion=2,d=>d.creativeContext={},d=>d.params.rules={},d=>d.params.defaults={},d=>d.creativeBrief='本地要求需要人工合并'])
-        rejected(variant(p,stage,change),/迁移|v[345]|schema|creative|rules|defaults|合并|brief/i,'拒绝旧契约或要求冲突');
+        rejected(variant(p,stage,change),/v[345]|schema|creative|rules|defaults|合并|brief|契约/i,'拒绝契约外字段或要求冲突');
     });
     await test(`${p.story.title}/${stage}：指南文字变更不使故事失效`,()=>{
       const installed=copySkill(stage,`guide-${p.story.key}-${stage}`);
@@ -366,41 +366,7 @@ try{
     });
   }
   if(gradual){
-    await test('旧 v4 资产及预算显式迁移，正式 v5 不再登记预算',()=>{
-      const legacy=outlineV4(gradual.story,gradual.source,gradual.files.outline);
-      const legacyPath=join(gradual.dir,'legacy-outline-v4.json');
-      const path=write(legacyPath,relocate(legacy,gradual.files.outline,legacyPath)),bytes=readFileSync(path);
-      rejected(cli('outline',['validate',path]),/v5|5|migrate/,'旧 v4 不能正式消费');
-      for(const stage of ['characters','art']) {
-        rejected(cli(stage,['seed',path]),/source|迁移|migrate|v5|5|title/i,'不允许大纲资产正式 seed');
-        const material=jsonResult(success(cli(stage,['migrate-outline',path]),'显式迁移资产'));
-        assert.match(JSON.stringify(material),/pending/);assert.ok(JSON.stringify(material).includes('maxProps'),'旧预算原值完整保留');
-        assert.ok(JSON.stringify(material).includes('P01'),'旧 ID 可追踪');
-      }
-      assert.deepEqual(readFileSync(path),bytes);
-      const withRelations=clone(json(path)),refs=clone(withRelations.characters[0].sourceRefs);
-      withRelations.characters[0].aliases=[{name:'许记录员',sourceRefs:refs}];
-      withRelations.notes=[{kind:'continuity',text:'许苒的故障判断只是说法，不是已经核实的事实。',characterIds:['C01'],sceneIds:['S01'],propIds:['P01'],speakerId:'C01',epistemic:'claim',episode:1,sourceRefs:refs}];
-      const historical=write(join(gradual.dir,'v4-relations.json'),withRelations),historicalBytes=readFileSync(historical);
-      const out=join(gradual.dir,'outline','v5-migration-draft.json');
-      const migration=jsonResult(success(cli('outline',['migrate-v5',historical,'--out',out,'--confirm','--project',gradual.dir]),'显式 v4→v5 草稿及逐字段材料'));
-      assert.deepEqual(readFileSync(historical),historicalBytes);assert.deepEqual(readFileSync(migration.backup),historicalBytes);
-      const draft=json(out),material=json(migration.migrationFile);
-      assert.equal(draft.schemaVersion,5);assert.deepEqual(material.original,withRelations);
-      assert.equal(material.identityMapping,'not-verified');assert.equal(material.contentReview,'not-performed');
-      assert.equal(material.sourceVerification.status,'pass');
-      for(const key of ['characters','scenes','props'])assert.ok(!(key in draft));
-      assert.ok(!('thresholds' in draft.params)&&!('focusCharacterIds' in draft.story));
-      for(const ep of draft.episodes)for(const key of ['characterIds','sceneIds','propIds'])assert.ok(!(key in ep));
-      const paths=new Map(material.fields.map(f=>[f.originalPath,f]));
-      const visit=(value,path='')=>{for(const [key,v]of Object.entries(value??{})){const p=path+'/'+key.replace(/~/g,'~0').replace(/\//g,'~1');assert.deepEqual(paths.get(p)?.originalValue,v,p);if(v&&typeof v==='object')visit(v,p);}};visit(withRelations);
-      for(const p of ['/characters/0/aliases/0/name','/props/0/beatIds/0','/notes/0/speakerId','/notes/0/characterIds/0','/notes/0/sceneIds/0','/notes/0/propIds/0','/story/focusCharacterIds/0','/episodes/0/characterIds/0','/episodes/0/sceneIds/0','/episodes/0/propIds/0','/params/thresholds/maxProps'])assert.ok(paths.has(p),p);
-      for(const [k,v]of Object.entries(withRelations.params.thresholds))assert.equal(material.budgets.find(b=>b.originalPath.endsWith('/'+k)).originalValue,v);
-      rejected(cli('outline',['validate',migration.migrationFile]),/schema|migration|5|story/i,'迁移材料不是正式大纲');
-      success(cli('outline',['validate',out,'--verify-sources']),'投影故事结构仍可验证，不冒充身份审核');
-      rejected(cli('outline',['migrate-v5',historical,'--out',out,'--confirm']),/exist|存在|覆盖/i,'显式迁移不能覆盖草稿');
-      // Keep discovery deterministic: migration draft is not a second authoritative outline.
-      rmSync(out);rmSync(migration.backup);rmSync(migration.migrationFile);
+    await test('正式 v5 不再登记预算，明确美术预算仍阻断',()=>{
       const reference=clone(gradual.art);reference.budgets.props={kind:'reference',max:0};
       const m=modules.art;assert.ok(m,'加载独立预算权威');
       const gs=m.gateReport(reference,gradual.cast.characters.map(c=>c.name),gradual.production);
@@ -408,7 +374,7 @@ try{
       reference.budgets.props.kind='explicit';
       const file=write(join(gradual.dir,'art','.budget.json'),reference);
       rejected(cli('art',['validate',file,'--production',gradual.files.production]),/预算|budget|1 \/ 0/i,'明确美术预算仍阻断');
-      rejected(variant(gradual,'outline',d=>d.params.thresholds={maxProps:8}),/thresholds|资产|migrate/i,'预算不返回 outline');
+      rejected(variant(gradual,'outline',d=>d.params.thresholds={maxProps:8}),/thresholds|资产/i,'预算不返回 outline');
     });
     await test('未分类节点仍完整认领，suspense 可以不登记问题',()=>{
       const d=clone(gradual.outline);
@@ -496,142 +462,6 @@ try{
       rejected(variant(gradual,'creation',change),null,name);
     });
   }
-  // Explicit migration: originals are the recovery copy; no in-place mutation or paid calls.
-  for(const stage of ['setup',...stages])await test(`${stage}：显式迁移预览、语义待确认、原件恢复与损坏输入`,()=>{
-    const p=gradual;assert.ok(p,'迁移依赖完整原创基线');
-    let old;
-    if(stage==='setup'){
-      old=clone(p.production);delete old.schemaVersion;old.creative={version:1,selection:clone(p.story.selection)};
-    }else if(stage==='outline'){
-      old=buildOutline(p.story);old.params.preferences=['保留独立测量，不提前指认责任人。'];
-      old.params.rules=Object.fromEntries(['payoffCoverage','firstMajor','majorGap','endingPayoff','endingModes','optionalQuestions','stateProgress','arcCoverage','arcPayoff'].map(key=>[key,{level:'off'}]));
-      old.params.defaults={questionResolveWithin:null};
-      old.adaptation.evidence='原文证据：“记录没有被丢弃。”';
-    }else{
-      old=clone(p[stage]);old.schemaVersion=2;
-      if(stage==='script'){
-        delete old.provenance;delete old.assetMappings;for(const ep of old.episodes){delete ep.sourceRefs;for(const sc of ep.scenes){delete sc.sourceRefs;for(const b of sc.flow)delete b.sourceRefs;}}
-      }
-      old.params.rules=stage==='script'?{openingWindow:{level:'off'},lineLength:{level:'off'}}:{cutDuration:{level:'off'}};
-      for(const [i,ep] of old.episodes.entries()){
-        ep.opening=p.outline.episodes[i].opening;
-        ep.ending={mode:p.outline.episodes[i].ending.mode,event:p.outline.episodes[i].ending.event};
-        ep.openingBeat=clone(p.script.episodes[i].openingBeat);
-        ep.endBeat=[1,p.script.episodes[i].scenes[0].flow.length];
-      }
-      if(stage==='script')old.episodes[0].seedNote='保留观察等待，不把记录动作改成指认。';
-    }
-    const dir=join(temp,'migration',`case-${stage}`),input=write(join(dir,'input.json'),old),out=join(dir,'output.json');
-    const before=readFileSync(input,'utf8');
-    const historicalOutline=buildOutline(p.story);historicalOutline.schemaVersion=3;
-    delete historicalOutline.adaptation;for(const c of historicalOutline.characters)delete c.from;
-    for(const b of historicalOutline.beats){b.setup=b.type+'：'+b.setup;delete b.type;}
-    for(const e of historicalOutline.episodes)delete e.stateChange;
-    const historicalPath=write(join(dir,'historical-outline.json'),historicalOutline);
-    const migrationFlags=stage==='script'?['--outline',p.files.outline,'--no-production']
-      :stage==='creation'?['--script',p.files.script,'--outline',p.files.outline]:[];
-    const migrate=(...args)=>cli(stage,['migrate-v3',...args,...migrationFlags]);
-    const preview=migrate(input);
-    assert.equal(readFileSync(input,'utf8'),before,'预览不改原件');assert.ok(!existsSync(out));
-    assert.match(preview.output,/pending|待确认|待人工|preview|预览/i,`必须真实提供迁移预览而不是未知命令：${preview.output}`);
-    assert.doesNotThrow(()=>JSON.parse(preview.stdout),'迁移预览是可读 JSON');
-    migrate(input,'--out',out);
-    assert.ok(!existsSync(out),'语义待确认时不能写入正式产物');assert.equal(readFileSync(input,'utf8'),before);
-    const migrated=migrate(input,'--out',out,'--confirm');
-    success(migrated,'明确确认后写新文件');assert.equal(readFileSync(input,'utf8'),before,'原件可恢复');
-    const next=json(out);assert.equal(next.schemaVersion,3);assert.equal(next.source,old.source);
-    assert.ok(!('creativeContext' in next)&&!('creative' in next));
-    for(const key of ['rules','defaults','preferences'])assert.ok(!(key in (next.params??{})));
-    if(stage!=='setup')assert.deepEqual(next.episodes.map(e=>e.ep),old.episodes.map(e=>e.ep));
-    if(stage==='outline'){
-      assert.deepEqual(next.beats.map(b=>b.id),old.beats.map(b=>b.id));
-      assert.deepEqual(next.characters.map(c=>c.id),old.characters.map(c=>c.id));
-      assert.deepEqual(next.scenes.map(c=>c.id),old.scenes.map(c=>c.id));
-      assert.deepEqual(next.props.map(c=>c.id),old.props.map(c=>c.id));
-      assert.deepEqual(next.adaptation.evidence,old.adaptation.evidence,'原文证据逐字保持');
-      for(const preference of old.params.preferences)assert.ok(JSON.stringify(next).includes(preference),'真实偏好不能静默丢弃');
-    }
-    if(stage==='script')assert.deepEqual(next.episodes.map(e=>e.scenes),old.episodes.map(e=>e.scenes),'正文与资产不变');
-    if(stage==='creation')assert.deepEqual(next.episodes.map(e=>e.segments),old.episodes.map(e=>e.segments),'镜头与媒体协议不变');
-    if(stage==='creation'){
-      assert.equal(next.schemaVersion,3,'creation 版本保持 v3');
-      // Real migration outputs must remain discoverable without treating review/backup sidecars as documents.
-      const project=join(dir,'discovery-project');cpSync(p.dir,project,{recursive:true});
-      const migratedFile=join(project,stage,`${p.story.title}-${stage}.json`);rmSync(migratedFile);
-      success(migrate(input,'--out',migratedFile,'--confirm'),'迁移到真实阶段目录');
-      const combined=spawnSync(process.execPath,[join(root,'scripts/report.mjs'),'--from',project,'--out',join(project,'migrated-report.html')],{cwd:project,encoding:'utf8',timeout:30000,maxBuffer:32*1024*1024});cliCalls++;
-      assert.ifError(combined.error);assert.equal(combined.status,0,combined.stderr);assert.match(combined.stdout,/5 个面板/,'迁移副产物不能造成多个上游候选');
-    }
-    const saved=readFileSync(out,'utf8');
-    rejected(migrate(input,'--out',out,'--confirm'),/存在|exist|覆盖/i,'拒绝覆盖已有目标');
-    assert.equal(readFileSync(out,'utf8'),saved);
-    rejected(migrate(input,'--out',input,'--confirm'),null,'禁止输入输出相同');
-    assert.equal(readFileSync(input,'utf8'),before);
-    const alias=join(dir,'alias.json');symlinkSync(input,alias);
-    rejected(migrate(alias,'--out',join(dir,'alias-out.json'),'--confirm'),/符号链接|symlink/i,'不通过符号链接迁移');
-    assert.equal(readFileSync(input,'utf8'),before);
-    const malformed=clone(old);
-    if(stage==='setup')malformed.video.resolution='invalid';
-    else if(stage==='outline')malformed.beats[0].id='bad';
-    else malformed.episodes[0].endBeat=[99,99];
-    for(const bad of ['{broken',JSON.stringify({...old,schemaVersion:999}),JSON.stringify(malformed)]){
-      const broken=write(join(dir,'broken.json'),bad),target=join(dir,'invalid-output.json');
-      rejected(migrate(broken,'--out',target,'--confirm'),null,'非法输入不能修饰成 v3');
-      assert.equal(readFileSync(broken,'utf8'),bad);assert.ok(!existsSync(target));
-    }
-    const invalidUtf8=join(dir,'invalid-utf8.json'),invalidOut=join(dir,'invalid-utf8-out.json');
-    const encodingDoc=clone(old);
-    if(stage==='script')encodingDoc.episodes[0].scenes[0].flow[0].action+='__invalid_utf8__';
-    else if(stage==='creation')encodingDoc.episodes[0].segments[0].prompt+='__invalid_utf8__';
-    else encodingDoc.source='__invalid_utf8__';
-    const encodingParts=JSON.stringify(encodingDoc).split('__invalid_utf8__');
-    writeFileSync(invalidUtf8,Buffer.concat([Buffer.from(encodingParts[0]),Buffer.from([0xff]),Buffer.from(encodingParts[1])]));
-    const invalidBytes=readFileSync(invalidUtf8);
-    rejected(migrate(invalidUtf8,'--out',invalidOut,'--confirm'),null,'损坏编码不能修饰成新文件');
-    assert.ok(!existsSync(invalidOut));assert.deepEqual(readFileSync(invalidUtf8),invalidBytes);
-    const restored=write(join(dir,'restored.json'),before);assert.deepEqual(json(restored),old);
-  });
-  for(const stage of ['outline','script'])await test(`${stage}：v3→v4 显式迁移保留原件与历史决定，不捏造来源或时长`,()=>{
-    const p=gradual;assert.ok(p,'需要完整基线');
-    const previous=join(temp,'migration',`case-${stage}`,'output.json');
-    const old=json(previous);
-    if(stage==='script')old.episodes.forEach(e=>delete e.targetSeconds);
-    const dir=join(temp,'migration-v4',`case-${stage}`),input=write(join(dir,'input.json'),old),out=join(dir,'draft.json');
-    const bytes=readFileSync(input);
-    const migrate=(...args)=>cli(stage,['migrate-v4',input,...args]);
-    const previewResult=migrate();
-    assert.ok([0,1].includes(previewResult.status),'预览只允许成功或待确认状态');
-    const preview=jsonResult(previewResult);assert.ok(preview.pending.length,'明确列出待补证据');
-    assert.deepEqual(preview.errors??[],[],'有效历史输入不产生格式错误');
-    assert.equal(preview.document.schemaVersion,4);assert.deepEqual(readFileSync(input),bytes);
-    assert.ok(!preview.document.provenance,'没有读取原件，不能伪造来源');
-    assert.match(JSON.stringify(preview),/pending|evidence|provenance|来源/i);
-    const unconfirmed=jsonResult(rejected(migrate('--out',out),null,'未确认不得写入'));
-    assert.equal(unconfirmed.written,false);assert.ok(!existsSync(out));
-    const written=jsonResult(success(migrate('--out',out,'--confirm'),'确认写入待补证据草稿'));
-    const draft=json(out);assert.equal(draft.schemaVersion,4);
-    assert.deepEqual(readFileSync(input),bytes);assert.ok(!draft.provenance);
-    const review=json(stage==='outline'?written.reviewFile:written.record);assert.deepEqual(review.original,old,'所有历史决定可恢复');
-    if(stage==='outline'){
-      for(const key of ['adaptation','arcs'])assert.ok(!(key in draft));
-      for(const key of ['episodes','minutesPerEpisode','adaptMode'])assert.ok(!(key in draft.params));
-      assert.ok(!draft.story.endingBeatId,'历史规划不能冒充已核实结局');
-    }else{
-      assert.deepEqual(draft.episodes.map(e=>e.scenes),old.episodes.map(e=>e.scenes));
-      assert.ok(draft.episodes.every(e=>!('targetSeconds' in e)),'迁移不能推测目标时长');
-    }
-    rejected(cli(stage,['validate',out,'--verify-sources']),/provenance|sourceRefs|来源|证据|schemaVersion|migrate-v5/i,'待补证据草稿不能冒充正式解析');
-    rejected(migrate('--out',out,'--confirm'),/exist|存在|覆盖/i,'不覆盖已存在输出');
-    rejected(migrate('--out',input,'--confirm'),null,'不覆盖原件');
-    assert.deepEqual(readFileSync(input),bytes);
-    const alias=join(dir,'alias.json');symlinkSync(input,alias);
-    rejected(cli(stage,['migrate-v4',alias,'--out',join(dir,'alias-output.json'),'--confirm']),/symlink|regular|符号链接/i,'拒绝符号链接输入');
-    assert.ok(!existsSync(join(dir,'alias-output.json')));
-    for(const bad of ['{broken',JSON.stringify({...old,schemaVersion:999})]){
-      const broken=write(join(dir,'broken.json'),bad),target=join(dir,'broken-output.json');
-      rejected(cli(stage,['migrate-v4',broken,'--out',target,'--confirm']),null,'损坏输入不能迁移');assert.ok(!existsSync(target));
-    }
-  });
   if(ready.size!==3)failures.push({name:'三组合完整执行',message:`只有 ${ready.size}/3 条基线完成；依赖基线的后续断言未全部执行，不能宣布联合通过。`});
 }finally{
   try{if(keep){

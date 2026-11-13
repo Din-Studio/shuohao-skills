@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// v3 read paths: absent stages differ from damaged or ambiguous entries.
+// Upstream discovery: absent stages differ from damaged or ambiguous entries.
 import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,symlinkSync,chmodSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -29,9 +29,9 @@ try {
       writeFileSync(batch,'{');r=run('--script',batch);assert.equal(r.status,1);count++;
       write(batch,script);rmSync(join(actual,'another.json'));
       if(process.getuid?.()!==0){chmodSync(batch,0);try{assert.equal(run().status,1);count++;}finally{chmodSync(batch,0o600);}}
-      write(join(actual,'ignored.backup.json'),script);write(join(actual,'.hidden.json'),script);write(join(actual,'manifest.json'),{});write(join(actual,'batch.json.migration.json'),{});write(join(actual,'batch.v2-backup.json'),{});
+      write(join(actual,'ignored.backup.json'),script);write(join(actual,'.hidden.json'),script);write(join(actual,'manifest.json'),{});
       assert.equal(run().status,0);count++;
     }
   }
-  console.log(`✓ ${count} creation v3 upstream discovery cases passed`);
+  console.log(`✓ ${count} creation upstream discovery cases passed`);
 }finally{rmSync(root,{recursive:true,force:true});}

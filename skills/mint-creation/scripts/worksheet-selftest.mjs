@@ -23,14 +23,15 @@ try {
   // 审核方的动作：写好意见，再用本 skill 的本地等价命令登记结论（与审核方 skill 的 verdict 共用同一份规则）
   const review = (id, text) => { const s = W.parseWorksheet(readFileSync(sheetPath(id), 'utf8'));
     writeFileSync(sheetPath(id), W.serializeWorksheet({...s, meta: {...s.meta, status: 'in_review', round: Math.max(1, s.meta.round), bodyHash: '', inputHash: ''}, review: text})); };
-  const approve = id => { review(id, '# 视频提示词审核\n\n- 审核结论：通过\n\n## 返修意见\n\n## 待确认事项'); const r = cli('prompts', 'verdict', file, 'approved', id); assert.equal(r.status, 0, r.stderr); };
+  const structured = (conclusion, must = '', pending = '') => `# 视频提示词审核\n\n- 审核结论：${conclusion}\n\n## 返修意见\n\n${must}\n\n## 待确认事项\n\n${pending}`;
+  const approve = id => { review(id, structured('通过')); const r = cli('prompts', 'verdict', file, 'approved', id); assert.equal(r.status, 0, r.stderr); };
   const staleIds = () => cli('prompts', 'status', file).stdout.split('\n').filter(l => l.startsWith('✗')).map(l => l.split(/\s+/)[1]);
 
   test('parse and serialize round trip; body below the last separator only', () => {
     const structure = {id: 'E01-01', sceneIndex: 1, cuts: [], images: []};
-    const md = W.serializeWorksheet({meta: {segment: 'E01-01', status: 'draft', round: 0, model: 'MiniMax H3', promptLang: 'en'}, structure, review: '- [必须修改] 镜头 1：示例', body: 'shots:\nbody'});
+    const md = W.serializeWorksheet({meta: {segment: 'E01-01', status: 'draft', round: 0, model: 'MiniMax H3', promptLang: 'en'}, structure, review: '# 视频提示词审核\n\n- 审核结论：需返修\n\n## 返修意见\n\n- 质量｜镜头 1｜示例｜示例修订\n\n## 待确认事项', body: 'shots:\nbody'});
     const s = W.parseWorksheet(md);
-    assert.deepEqual(s.problems, []); assert.equal(s.body, 'shots:\nbody'); assert.ok(!s.body.includes('必须修改'));
+    assert.deepEqual(s.problems, []); assert.equal(s.body, 'shots:\nbody'); assert.ok(!s.body.includes('返修'));
     assert.equal(W.reviewItems(s.review).must.length, 1);
     assert.equal(W.hashOf({sceneIndex: 1, id: 'E01-01', images: [], cuts: []}, 'shots:\nbody\n'), W.hashOf(structure, 'shots:\nbody'));
     assert.ok(W.parseWorksheet(md.replace('shots:\nbody', 'shots:\n\n---\n\nbody')).problems.some(p => /只允许一条分隔线/.test(p)));
@@ -152,15 +153,15 @@ try {
 
   test('verdict cannot be talked around; blocked pauses the loop until the writer responds', () => {
     const before = readFileSync(sheetPath('E01-04'), 'utf8');
-    review('E01-04', '结论：通过。\n\n* [必须修改] 镜头 1：台词被改写。');
-    let r = cli('prompts', 'verdict', file, 'approved', 'E01-04'); assert.equal(r.status, 1); assert.match(r.stderr, /不能批准/);
-    review('E01-04', '结论：通过，上一轮的 [必须修改] 仍然没有解决。');
-    r = cli('prompts', 'verdict', file, 'approved', 'E01-04'); assert.equal(r.status, 1); assert.match(r.stderr, /不是清单条目/);
-    rewrite('E01-04', md => md.replace('结论：通过，上一轮的 [必须修改] 仍然没有解决。', '结论：通过。\n\n## 复审补充\n\n小标题之下的意见。'));
+    review('E01-04', structured('通过', '- 质量｜镜头 1｜台词被改写｜恢复原文台词'));
+    let r = cli('prompts', 'verdict', file, 'approved', 'E01-04'); assert.equal(r.status, 1); assert.match(r.stderr, /不一致/);
+    review('E01-04', structured('通过').replace('## 返修意见', '上一轮的问题仍然没有解决。\n\n## 返修意见'));
+    r = cli('prompts', 'verdict', file, 'approved', 'E01-04'); assert.equal(r.status, 1); assert.match(r.stderr, /未归类/);
+    review('E01-04', structured('通过') + '\n\n## 复审补充\n\n小标题之下的意见。');
     r = cli('prompts', 'verdict', file, 'approved', 'E01-04'); assert.equal(r.status, 1); assert.match(r.stderr, /多余的二级标题/);
     assert.match(readFileSync(sheetPath('E01-04'), 'utf8'), /小标题之下的意见/, '被拒绝的工作单原样保留，不丢内容');
     writeFileSync(sheetPath('E01-04'), before);
-    review('E01-04', '结论：无法继续。\n\n- [阻塞] 参考图：这一段需要的设定图内容与剧本描述不符，需要美术确认。');
+    review('E01-04', structured('待确认', '', '- 参考图｜设定图内容与剧本描述不符｜需要美术确认'));
     r = cli('prompts', 'verdict', file, 'changes_requested', 'E01-04'); assert.equal(r.status, 1);
     r = cli('prompts', 'verdict', file, 'blocked', 'E01-04'); assert.equal(r.status, 0, r.stderr);
     r = cli('prompts', 'status', file); assert.equal(r.status, 1); assert.match(r.stdout, /E01-04\s+blocked.*登记了阻塞/);

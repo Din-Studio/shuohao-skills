@@ -48,7 +48,7 @@ try {
     if(stage==='outline') {
       const bytes=readFileSync(source),provenance={kind:'script',scope:'complete',totalEpisodes:1,documents:[{id:'D01',path:relative(dirname(files.outline),source),sha256:createHash('sha256').update(bytes).digest('hex'),lineCount:6}],coverage:ref(1,6)};
       write(files.outline,outline(provenance));
-      mutation(files.outline,d=>d.schemaVersion=4,()=>unchangedFailure(stage,()=>complete(stage),/schemaVersion|5|migrate/,'真实 validator 拒绝旧正式版本'));
+      mutation(files.outline,d=>d.schemaVersion=4,()=>unchangedFailure(stage,()=>complete(stage),/schemaVersion|5/,'真实 validator 拒绝旧正式版本'));
       mutation(files.outline,d=>d.provenance.documents[0].sha256='a'.repeat(64),()=>unchangedFailure(stage,()=>complete(stage),/来源|版本/,'来源摘要不属于流程版本'));
     } else if(stage==='characters') {
       const seed=JSON.parse(success(cli(stage,'seed','--source',source,'--title',title,'--outline',files.outline),'人物独立原文 seed').stdout);

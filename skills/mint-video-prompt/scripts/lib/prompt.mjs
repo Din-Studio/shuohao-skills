@@ -38,7 +38,7 @@ export function promptProblems(value, images = []) {
   if (!p.body) problems.push('缺少散文正文；参考素材后以空行分隔正文');
   if (!p.ending.endsWith(FIXED_ENDING) || !p.ending.slice(0, -FIXED_ENDING.length).trim()) problems.push('结尾必须先写画风句，再逐字保留固定声音与画面说明');
   if (!p.negative || /\n/.test(p.negative)) problems.push('负面提示词必须另起一段，下一行以逗号分隔错误项');
-  if (/\[(?:Shot|镜头)\s*\d+\]|^\s*(?:shots:|ambience:|镜头描述：|环境声与配乐：)/im.test(p.text)) problems.push('正文采用散文，不使用旧逐镜编号或 shots/ambience 骨架');
+  if (/\[(?:Shot|镜头)\s*\d+\]|^\s*(?:shots:|ambience:|镜头描述：|环境声与配乐：)/im.test(p.text)) problems.push('正文采用散文，不使用逐镜编号或 shots/ambience 骨架');
   if (/\[(?:本段|角色全称|该角色|年龄|全剧角色|本段应|散文|画风句)[^\]\n]*\]/.test(p.text) || /<提示词正文>/.test(p.text)) problems.push('提示词不能保留模板占位符');
   const refs = [...p.text.matchAll(/@(图片|音频|视频)(\d+)/g)];
   for (const [,kind,n] of refs) if (kind !== '图片' || Number(n) < 1 || Number(n) > images.length) problems.push(`未提供可提交的素材引用 @${kind}${n}；本工具只挂载 images 中的图片`);

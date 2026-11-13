@@ -230,7 +230,7 @@ try{
       }
       if(['E01-01','E01-07'].includes(seg.id))assertOwnerBody(sheet.body,script.episodes[0].scenes[0].flow[1].line);
       if(seg.id==='E01-01')assert.ok(sheet.body.includes(script.episodes[0].scenes[0].flow[0].action));
-      write(file,W.serializeWorksheet({...sheet,meta:{...sheet.meta,status:'in_review',round:1},review:'结论：通过。仅模拟批准协议，未执行独立语义审核。'}));
+      write(file,W.serializeWorksheet({...sheet,meta:{...sheet.meta,status:'in_review',round:1},review:'# 视频提示词审核\n\n- 审核结论：通过\n\n## 返修意见\n\n## 待确认事项'}));
       success(creationCLI('prompts','verdict',creationPath,'approved',seg.id));
     }
     success(creationCLI('prompts','status',creationPath));success(creationCLI('prompts','apply',creationPath));
@@ -341,7 +341,7 @@ try{
     for(const seg of planned.episodes.flatMap(e=>e.segments)){
       const file=join(dirname(cp),seg.id,'prompt.md'),sheet=W.parseWorksheet(readFileSync(file,'utf8'));
       assert.equal(sheet.body,seg.prompt.trim());
-      write(file,W.serializeWorksheet({...sheet,meta:{...sheet.meta,status:'in_review',round:1},review:'结论：通过。仅模拟批准协议，未执行独立语义审核。'}));
+      write(file,W.serializeWorksheet({...sheet,meta:{...sheet.meta,status:'in_review',round:1},review:'# 视频提示词审核\n\n- 审核结论：通过\n\n## 返修意见\n\n## 待确认事项'}));
       success(cc('prompts','verdict',cp,'approved',seg.id));
     }
     success(cc('prompts','status',cp));success(cc('prompts','apply',cp));

@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {seedSource,reconcile,identityErrors,identityHash,hash,reviewHash,renderIdentity,migrationMaterial,budgetChecks} from './lib/identity.mjs';
+import {seedSource,reconcile,identityErrors,identityHash,hash,reviewHash,renderIdentity,budgetChecks} from './lib/identity.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),cliPath=join(root,'scripts/mint-characters.mjs');
 const temp=mkdtempSync(join(tmpdir(),'characters-identity-')),source=join(temp,'source.txt'),file=join(temp,'cast.json');
 copyFileSync(join(root,'examples/回声台.txt'),source);
@@ -39,7 +39,7 @@ try {
   ['complete gap',d=>d.provenance.coverage=[...ref(1,4),...ref(6,10)]],['bad doc',d=>d.provenance.documents[0].id='other'],
   ['bad speech',d=>d.characters[0].speech='mute'],['bad presence',d=>d.characters[2].presence=['anonymous']],
   ['invention quote',d=>d.characters[0].sourceRefs[0].quote='从未说过的话'],['name-only relationship',d=>d.characters[0].persona={relationships:[{name:'许禾'}]}],
-  ['migration is not formal',d=>d.kind='mint-characters-migration'],['source version',d=>d.provenance.documents[0].sha256='0'.repeat(64)],
+  ['unknown kind',d=>d.kind='other'],['source version',d=>d.provenance.documents[0].sha256='0'.repeat(64)],
   ['false review',d=>{d.status='identified';d.review={status:'confirmed',by:'test',note:'reviewed'};}]
  ])test(name,()=>{const d=clone(cast);mutate(d);assert.ok(identityErrors(d,file).length);});
  test('partial scope supported',()=>{const d=clone(cast);d.provenance.scope='partial';d.provenance.coverage=ref(1,9);assert.deepEqual(identityErrors(d,file),[]);});
@@ -86,21 +86,28 @@ try {
   }
  });
  test('provided broken/wrong/mismatched outline fails',()=>{for(const mutate of [d=>d.schemaVersion=4,d=>d.source='另一部',d=>d.characters=[],d=>d.provenance.documents[0].sha256='2'.repeat(64),d=>delete d.story]){const d=clone(outline);mutate(d);write(outlinePath,d);assert.notEqual(cli('validate',file,'--outline',outlinePath).status,0);}writeFileSync(outlinePath,'{');assert.notEqual(cli('validate',file,'--outline',outlinePath).status,0);assert.notEqual(cli('validate',file,'--outline',join(temp,'absent')).status,0);});
- test('migration preserves all fields and never passes as cast',()=>{const oldPath=join(root,'examples/值班牌-outline-v4.json'),old=JSON.parse(readFileSync(oldPath));const m=migrationMaterial(old,oldPath,'outline');assert.deepEqual(m.legacy.snapshot,old);assert.ok(m.fields.some(f=>f.path.includes('characterIds')));assert.ok(m.fields.every(f=>f.status==='pending'));write(file,m);assert.notEqual(cli('validate',file).status,0);const output=join(temp,'migration.json');assert.equal(cli('migrate-outline',oldPath,'--out',output).status,0);assert.notEqual(cli('migrate-outline',oldPath,'--out',output).status,0);assert.equal(cli('seed',oldPath).status,1);});
+ test('only cast v1 and current commands are accepted',()=>{
+  for(const args of [['seed',file],['merge',temp]])assert.notEqual(cli(...args).status,0,args[0]);
+  const designed=JSON.parse(readFileSync(join(root,'examples/渡口-cast.json'),'utf8'));
+  for(const value of [{source:'回声台',lang:'zh',summary:'',characters:[]},[],{...clone(cast),schemaVersion:2}]) {
+    write(file,value);for(const cmd of ['validate','render','images'])assert.notEqual(cli(cmd,file,'--no-production').status,0,cmd);
+  }
+  assert.equal(designed.schemaVersion,1);
+ });
  test('optional voice does not force profile/image',()=>{
-  const d=clone(cast),legacy=JSON.parse(readFileSync(join(root,'examples/渡口-cast.json'),'utf8'));
-  d.characters[0].voice=legacy.characters[0].voice;write(file,d);
+  const d=clone(cast),designed=JSON.parse(readFileSync(join(root,'examples/渡口-cast.json'),'utf8'));
+  d.characters[0].voice=designed.characters[0].voice;write(file,d);
   assert.equal(cli('validate',file,'--no-production').status,0);
   d.characters[0].voice.prompt='中文声音';write(file,d);assert.notEqual(cli('validate',file).status,0);
  });
  test('optional profile does not force voice/image',()=>{
-  const d=clone(cast),legacy=JSON.parse(readFileSync(join(root,'examples/渡口-cast.json'),'utf8'));
-  d.characters[0].persona={...legacy.characters[0].persona,evidence:[],relationships:[]};write(file,d);
+  const d=clone(cast),designed=JSON.parse(readFileSync(join(root,'examples/渡口-cast.json'),'utf8'));
+  d.characters[0].persona={...designed.characters[0].persona,evidence:[],relationships:[]};write(file,d);
   assert.equal(cli('validate',file,'--no-production').status,0);
  });
  test('formal image plan pins ID/path/facts/design and skips undesigned',()=>{
-  const d=clone(cast),legacy=JSON.parse(readFileSync(join(root,'examples/渡口-cast.json'),'utf8'));
-  d.characters[0].image=legacy.characters[0].image;write(file,d);
+  const d=clone(cast),designed=JSON.parse(readFileSync(join(root,'examples/渡口-cast.json'),'utf8'));
+  d.characters[0].image=designed.characters[0].image;write(file,d);
   const production={schemaVersion:3,source:d.source,style:{label:{zh:'真人实拍'},phrase:'live action',character:{render:'Photorealistic portrait of a real human actor',surface:'authentic materials',lighting:'soft directional light',negative:'watermark',tags:['photorealistic']}},image:{model:'nanobanana2',asset:{resolution:'2K',aspectRatio:'16:9'}}};
   const pp=join(temp,'params.json');write(pp,production);
   const r=cli('images',file,'--production',pp);assert.equal(r.status,0,r.stderr);
@@ -110,7 +117,7 @@ try {
   const d=clone(cast);d.review={status:'confirmed',by:'test',note:'source reviewed',inputHash:reviewHash(d)};d.status='identified';
   const c=clone(d);c.characters.reverse();const r=reconcile(c,d);assert.equal(r.review.status,'confirmed');assert.deepEqual(identityErrors(r,file),[]);
  });
- test('old per-tier budgets retain exact meaning and block excess',()=>{
+ test('per-tier budgets retain exact meaning and block excess',()=>{
   const d=clone(cast);d.characters.forEach((c,i)=>c.tier=i===0?'lead':i===1?'support':'functional');
   d.budgets={characters:8,maxLeads:1,maxSupport:1,maxFunctional:6};assert.deepEqual(identityErrors(d,file),[]);
   d.budgets.maxFunctional=5;assert.match(identityErrors(d,file).join(),/超额/);
@@ -129,21 +136,8 @@ try {
   d.budgets.characters=1;assert.match(identityErrors(d,file).join(),/超额/);
  });
  test('unrecognized explicit budgets cannot be ignored',()=>{const d=clone(cast);d.budgets.cast=1;assert.match(identityErrors(d,file).join(),/预算/);});
- test('formal identities rejected by old name merger',()=>{
-  const wk=join(temp,'roster-00.json');write(wk,{characters:cast.characters});assert.notEqual(cli('merge',temp).status,0);
- });
  test('explicit null baseline is not missing',()=>{
   const p=join(temp,'null.json');write(p,null);const d=clone(draft);write(file,d);assert.notEqual(cli('reconcile',file,'--previous',p).status,0);
- });
- test('migration keeps budgets and every relation leaf',()=>{
-  const old={schemaVersion:4,source:'回声台',characters:[{id:'C01',name:'许禾',aliases:[{name:'小禾'}]}],scenes:[{id:'S01',name:'控制室'}],props:[{id:'P01',name:'摇柄',beatIds:['B01']}],story:{focusCharacterIds:['C01']},episodes:[{ep:1,characterIds:['C01']}],notes:[{speakerId:'C01'}],params:{thresholds:{characters:2,mainScenes:3,props:4}}};
-  const p=join(temp,'old.json');write(p,old);const m=migrationMaterial(old,p,'outline');
-  for(const key of ['params.thresholds.characters','params.thresholds.mainScenes','params.thresholds.props','story.focusCharacterIds[0]','notes[0].speakerId','props[0].beatIds[0]','episodes[0].characterIds[0]'])assert.ok(m.fields.some(f=>f.path===key&&f.status==='pending'),key);
-  assert.deepEqual(m.legacy.snapshot,old);
- });
- test('legacy naked array migration preserves full snapshot',()=>{
-  const old=JSON.parse(readFileSync(join(root,'examples/渡口-cast.json'),'utf8')).characters,p=join(temp,'old-array.json');write(p,old);
-  const r=cli('migrate-cast',p);assert.equal(r.status,0,r.stderr);const material=JSON.parse(r.stdout);assert.deepEqual(material.legacy.snapshot,old);assert.equal(material.candidates.length,old.length);assert.equal(material.status,'pending');
  });
  test('unrelated existing source revision does not affect identities',()=>{
   const d=clone(cast);d.provenance.documents.push({id:'D02',path:source,sha256:hash(readFileSync(source)),lineCount:10});d.provenance.coverage.push({documentId:'D02',startLine:1,endLine:10});const previous=reconcile(d,cast);const c=clone(previous);c.provenance.documents[1].sha256='f'.repeat(64);const r=reconcile(c,previous);assert.deepEqual(r.lifecycle.recheckIds,[]);
@@ -151,7 +145,7 @@ try {
  test('committed formal sample is independently valid',()=>{
   const p=join(root,'examples/回声台-cast.json'),d=JSON.parse(readFileSync(p,'utf8'));assert.deepEqual(identityErrors(d,p),[]);assert.equal(d.review.status,'pending');
  });
- test('historical mapping keeps original source version across revisions',()=>{
+ test('recorded mapping keeps original source version across revisions',()=>{
   const d=clone(cast);d.characters[0].name='夜班许禾';const changes=[{type:'correct',from:['C01'],to:['C01'],basis:'source',reason:'原文限定夜班',sourceRefs:[{documentId:'D01',startLine:2,endLine:2,quote:'大家叫我小禾'}]}];
   const r=reconcile(d,cast,changes);assert.deepEqual(identityErrors(r,file),[]);assert.equal(r.lifecycle.changes[0].sourceDocuments[0].sha256,cast.provenance.documents[0].sha256);
   const original=readFileSync(source);

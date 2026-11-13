@@ -1,10 +1,8 @@
 // 原创隔离文本。故事先行依据：同目录《故事提案.md》。不读取任何正式样例。
 import {promptFixture} from '../../../skills/mint-creation/scripts/test-prompt.mjs';
-const selection = (genre, narrativeStyle, structure, pacing) => Object.fromEntries(
-  Object.entries({genre, narrativeStyle, structure, pacing}).map(([k,id]) => [k,{id,version:'1.0.0'}]));
 export const stories = [
   {
-    key:'dense', title:'失物登记', selection:selection('drama','intense','serial-cliff','dense-payoff'), seconds:4, cutsPerSegment:2,
+    key:'dense', title:'失物登记', seconds:4, cutsPerSegment:2,
     premise:'失物室管理员发现义卖捐款短缺，主管以账目延迟阻止核查。',
     throughline:'罗宁从被撤凭证追到私人报销，逐笔追回失物义卖捐款。',
     promise:'每集获得一项可核实的反击结果，并追问尚未解释的账目。',
@@ -24,11 +22,10 @@ export const stories = [
       {opening:'罗宁把三个月的收据按日期铺在捐款登记簿旁。',before:'余下两笔捐款尚未归还',after:'全部款项追回，登记过程向捐助站公开',
        ending:{mode:'closure',event:'罗宁把完整收据和到账记录挂上公开登记栏。'},
        actions:['罗宁把三张收据的编号对齐。','她将各笔转账记录封袋交给捐助站，收到逐笔材料的接收确认。','戴衡在剩余两笔退款确认页上签名。','罗宁逐笔核对到账金额，划去最后两项欠款。','她把三个月的收据贴进公开登记栏。','新的义卖款到来，罗宁当面登记并递出可查询的凭证。'],
-       nodes:[{kind:'turn',type:'证据提交',start:1,end:3,setup:'重复编号连接三个月的账目',outcome:'完整证据提交后，戴衡确认余款责任'},{kind:'payoff',weight:'major',type:'公开归还',start:4,end:6,setup:'捐助站收到逐笔证据',outcome:'余款全部到账，公开登记取代内部口头解释',resolves:['Q02']}]}],
-    arcs:[{id:'A01',startEp:1,endEp:3,goal:'保全证据、追回捐款并公开登记',endBeatId:'B06'}]
+       nodes:[{kind:'turn',type:'证据提交',start:1,end:3,setup:'重复编号连接三个月的账目',outcome:'完整证据提交后，戴衡确认余款责任'},{kind:'payoff',weight:'major',type:'公开归还',start:4,end:6,setup:'捐助站收到逐笔证据',outcome:'余款全部到账，公开登记取代内部口头解释',resolves:['Q02']}]}]
   },
   {
-    key:'gradual',title:'夜班温度',selection:selection('mystery','restrained','serial','gradual'),seconds:6,cutsPerSegment:1,
+    key:'gradual',title:'夜班温度',seconds:6,cutsPerSegment:1,
     premise:'冷库的夜间温度缓慢升高，记录员尚不能区分设备误报与人为操作。',
     throughline:'许苒用独立测量、门磁记录和交班签字逐步缩小原因范围。',
     promise:'跟随证据排除错误解释，观察认知如何改变，不提前给出凶手答案。',
@@ -48,11 +45,10 @@ export const stories = [
       {opening:'许苒将门磁断开时间与交班签字并排核对。',before:'门磁断开可能仍是维护操作',after:'无维护安排时有人开门的证据链完整',
        ending:{mode:'open',event:'许苒封存记录夹，把调查申请放进值班交接柜。',question:{id:'Q02',text:'调查之后冷库会如何调整夜班制度？',resolution:'optional',reason:'本次交付只确认人为开门事实，不承诺后续制度决定。'}},
        actions:['许苒核对交班记录的维护与装卸两栏：异常时段均无安排，最后一次装卸已在此前签收结束。','高路出示备用机械门计数器，与门磁的开门次数一致。','许苒把维护与装卸记录、两份开门记录夹在同一页，对照时间写明非装卸时段人为开门。','她封好原件，把调查申请投入交接柜，手在柜门上停留后离开。'],
-       nodes:[{kind:'turn',type:'交叉核实',start:1,end:3,setup:'门磁可能误触，或来自计划内维护及正常装卸',outcome:'独立门计数确认开门，交班与签收记录排除计划内维护和正常装卸',resolves:['Q01']},{kind:'event',type:'证据封存',start:4,end:4,setup:'人为开门事实已可追溯',outcome:'记录正式提交，调查结果仍然开放'}]}],
-    arcs:[{id:'A01',startEp:2,endEp:3,goal:'排除故障并封存人为开门证据',endBeatId:'B06'}]
+       nodes:[{kind:'turn',type:'交叉核实',start:1,end:3,setup:'门磁可能误触，或来自计划内维护及正常装卸',outcome:'独立门计数确认开门，交班与签收记录排除计划内维护和正常装卸',resolves:['Q01']},{kind:'event',type:'证据封存',start:4,end:4,setup:'人为开门事实已可追溯',outcome:'记录正式提交，调查结果仍然开放'}]}]
   },
   {
-    key:'episodic',title:'楼下早餐',selection:selection('life','warm','episodic','measured'),seconds:8,cutsPerSegment:1,
+    key:'episodic',title:'楼下早餐',seconds:8,cutsPerSegment:1,
     premise:'摊主照顾家人，邻居轮流接手早餐摊，在每日小事里学习照顾别人。',
     throughline:'一张轮值表连接三次独立的早餐交付，互助逐渐成为习惯。',
     promise:'每集完成一件小事，留出看见等待与体谅的时间。',
@@ -72,7 +68,7 @@ export const stories = [
       {characterIds:['C01','C02','C03'],opening:'周姨回到摊前，轮值板上多了两条代班心得。',before:'周姨仍打算每天独自开摊',after:'周姨接受固定休息，邻居继续轮值',
        ending:{mode:'closure',event:'周姨圈出每周休息日，把早餐递给前来代班的邻居。'},
        actions:['周姨站在轮值板前，逐字看完软馒头和停电饭团的两条记录。','阿禾和老郑把下一周的代班日期放到板上，等周姨自己作决定。','周姨慢慢圈出自己的休息日，把早已备好的早餐分别递给两位邻居。'],
-       nodes:[{kind:'event',type:'阅读心意',start:1,end:2,setup:'邻居完成两次代班而没有要求回报',outcome:'周姨看见互助可以持续而非一次性救急'},{kind:'event',type:'接受照顾',start:3,end:3,setup:'下一周的代班日期留出选择空间',outcome:'周姨确认休息日，互助关系在当天早餐中闭合'}]}],arcs:[]
+       nodes:[{kind:'event',type:'阅读心意',start:1,end:2,setup:'邻居完成两次代班而没有要求回报',outcome:'周姨看见互助可以持续而非一次性救急'},{kind:'event',type:'接受照顾',start:3,end:3,setup:'下一周的代班日期留出选择空间',outcome:'周姨确认休息日，互助关系在当天早餐中闭合'}]}]
   }
 ];
 
@@ -81,25 +77,6 @@ export const style = {
   character:{render:'documentary live action',surface:'natural skin and cotton fabric',lighting:'soft practical light',negative:'cartoon',tags:['documentary']},
   scene:{render:'documentary live action',surface:'worn wood and brushed metal',negative:'cartoon',tags:['documentary']}
 };
-
-export function buildOutline(story) {
-  let number=0;
-  const beats=story.episodes.flatMap((ep,i)=>ep.nodes.map((node,j)=>({
-    id:`B${String(++number).padStart(2,'0')}`,episode:i+1,position:j===0?'early':'ending',
-    kind:node.kind,type:node.type,setup:node.setup,outcome:node.outcome,
-    ...(node.weight?{weight:node.weight}:{}),...(node.resolves?{resolves:node.resolves}:{})
-  })));
-  return {schemaVersion:2,source:story.title,lang:'zh',
-    params:{episodes:3,minutesPerEpisode:0.4,genre:story.premise,adaptMode:'原创',thresholds:{maxLeads:3,maxSupport:3,maxFunctional:3,maxPrimaryScenes:2,maxProps:3}},
-    story:{focusCharacterIds:['C01'],premise:story.premise,throughline:story.throughline,audiencePromise:story.promise,ending:story.ending,endingBeatId:beats.at(-1).id},
-    adaptation:{core:story.premise,sourceNote:'原创隔离联合测试故事，没有外部原作证据。',keep:[],cut:[],merge:[],risks:[]},
-    characters:story.people.map(([name,role,arc],i)=>({id:`C0${i+1}`,name,role,arc,tier:i===0?'lead':'support',from:['本测试原创人物']})),
-    scenes:[{id:'S01',name:story.scene,primary:true}],
-    props:[{id:'P01',name:story.prop,function:story.propFunction,beatIds:beats.map(b=>b.id)}],
-    beats,arcs:structuredClone(story.arcs),
-    episodes:story.episodes.map((ep,i)=>({ep:i+1,opening:ep.opening,synopsis:ep.nodes.map(n=>n.outcome).join('；'),ending:structuredClone(ep.ending),stateChange:{before:ep.before,after:ep.after},sceneIds:['S01'],characterIds:ep.characterIds??story.people.map((_,j)=>`C0${j+1}`),propIds:['P01']}))
-  };
-}
 
 export function fillScript(seed, story) {
   seed.params={...seed.params,actionSeconds:story.seconds,charsPerSecond:4.5,tolerance:0.15};
