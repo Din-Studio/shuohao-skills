@@ -49,7 +49,7 @@ try {
  eq(run('migrate-v3',invalidUtf8,'--out',join(tmp,'utf8-out.json'),'--confirm').status,1);ok(!fs.existsSync(join(tmp,'utf8-out.json')));
  const link=join(tmp,'link.json');fs.symlinkSync(input,link);eq(run('migrate-v3',link,'--out',join(tmp,'link-out.json'),'--confirm').status,1);
  const dangling=join(tmp,'dangling.json');fs.symlinkSync('missing',dangling);throws(()=>migrateFile(input,dangling,{confirm:true}));
- const collision=join(tmp,'collision.json');fs.writeFileSync(collision+'.review','retain');throws(()=>migrateFile(input,collision,{confirm:true}));ok(!fs.existsSync(collision));eq(fs.readFileSync(collision+'.review','utf8'),'retain');
+ const collision=join(tmp,'collision.json');fs.writeFileSync(collision+'.migration.json','retain');throws(()=>migrateFile(input,collision,{confirm:true}));ok(!fs.existsSync(collision));eq(fs.readFileSync(collision+'.migration.json','utf8'),'retain');
  for(const fn of [
   x=>x.schemaVersion=3,x=>delete x.schemaVersion,x=>x.params.episodes='6',x=>x.params.minutesPerEpisode=0,x=>x.params.preferences=[''],x=>x.story.drive={goal:42},x=>x.story.premise='',x=>x.story.throughline='',x=>delete x.story.audiencePromise,x=>x.adaptation.core='',x=>x.adaptation.keep[0].evidence='',x=>x.characters[0].from=[],x=>x.characters[0].arc='',x=>x.beats[0].type=null,x=>x.beats[0].setup='',x=>x.beats[0].position='invalid',x=>x.beats[0].kind='invalid',x=>x.beats[1].id='B01',x=>x.beats[0].episode=999,x=>x.episodes[0].stateChange={before:'',after:'x'},x=>x.episodes[0].synopsis='',x=>x.episodes[0].sceneIds=['S99'],x=>delete x.beats[2].resolves,x=>x.beats[2].resolves=['Q99'],x=>delete x.episodes[0].ending.question,x=>x.params.rules={},x=>x.params.rules.stateProgress={level:'error',other:true},x=>x.params.rules.endingModes.final=['invalid'],x=>x.params.defaults.questionResolveWithin=0,x=>x.creativeContext.selection.genre.version='latest',x=>x.creativeContext.references[0].sha256='bad',x=>x.creativeContext.overridePaths=[1]
  ]){const x=clone();fn(x);throws(()=>migrationDraft(x,{confirm:true}));json(input,x);eq(run('migrate-v3',input,'--out',join(tmp,'invalid.json'),'--confirm').status,1);ok(!fs.existsSync(join(tmp,'invalid.json')));}
@@ -59,16 +59,16 @@ try {
  const failed=join(tmp,'failure.json');
  try{fs.writeFileSync=function(p,...args){if(p===failed)throw Error('injected write failure');return write.call(this,p,...args);};syncBuiltinESMExports();throws(()=>migrateFile(input,failed,{confirm:true}));}
  finally{fs.writeFileSync=write;syncBuiltinESMExports();}
- eq(fs.readFileSync(input),safe);for(const p of [failed,failed+'.v2-backup',failed+'.review'])ok(!fs.existsSync(p));
+ eq(fs.readFileSync(input),safe);for(const p of [failed,failed+'.v2-backup',failed+'.migration.json'])ok(!fs.existsSync(p));
  // Concurrent source change at backup time is detected, not silently migrated.
  const changed=join(tmp,'changed.json'),copy=fs.copyFileSync;
  try{fs.copyFileSync=function(from,to,...args){if(to===changed+'.v2-backup')fs.writeFileSync(from,'concurrent source');return copy.call(this,from,to,...args);};syncBuiltinESMExports();throws(()=>migrateFile(input,changed,{confirm:true}));}
  finally{fs.copyFileSync=copy;syncBuiltinESMExports();}
- eq(fs.readFileSync(input,'utf8'),'concurrent source');for(const p of [changed,changed+'.v2-backup',changed+'.review'])ok(!fs.existsSync(p));json(input,legacy);
+ eq(fs.readFileSync(input,'utf8'),'concurrent source');for(const p of [changed,changed+'.v2-backup',changed+'.migration.json'])ok(!fs.existsSync(p));json(input,legacy);
  // A destination created after preflight is never overwritten or removed during rollback.
  const raced=join(tmp,'race.json');
  try{fs.writeFileSync=function(p,...args){if(p===raced)write.call(this,raced,'concurrent author');return write.call(this,p,...args);};syncBuiltinESMExports();throws(()=>migrateFile(input,raced,{confirm:true}));}
  finally{fs.writeFileSync=write;syncBuiltinESMExports();}
- eq(fs.readFileSync(raced,'utf8'),'concurrent author');eq(fs.readFileSync(input),safe);ok(!fs.existsSync(raced+'.v2-backup'));ok(!fs.existsSync(raced+'.review'));
+ eq(fs.readFileSync(raced,'utf8'),'concurrent author');eq(fs.readFileSync(input),safe);ok(!fs.existsSync(raced+'.v2-backup'));ok(!fs.existsSync(raced+'.migration.json'));
  console.log(`✓ ${count} assertions passed: explicit migration preview, semantic preservation, malformed inputs, backups and safe writes.`);
 }finally{fs.rmSync(tmp,{recursive:true,force:true});}

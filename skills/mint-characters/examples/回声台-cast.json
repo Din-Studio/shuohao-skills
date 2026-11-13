@@ -1,0 +1,279 @@
+{
+  "schemaVersion": 1,
+  "kind": "mint-characters",
+  "status": "draft",
+  "source": "回声台",
+  "lang": "zh",
+  "summary": "停电让一次同名值班员之间的交接变得困难。女孩和值守犬帮助夜班员离开，几处声音的真实身份仍不明确。",
+  "provenance": {
+    "kind": "script",
+    "scope": "complete",
+    "documents": [
+      {
+        "id": "D01",
+        "path": "回声台.txt",
+        "sha256": "410dff7ef79cf0ff44e71608e04fb89f43df2a71e49861d64269cb4a55c97e53",
+        "lineCount": 10
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 10
+      }
+    ]
+  },
+  "characters": [
+    {
+      "identityKey": "night",
+      "name": "许禾",
+      "aliases": [
+        {
+          "name": "小禾",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 2,
+              "endLine": 2
+            }
+          ]
+        }
+      ],
+      "entityType": "human",
+      "presence": [
+        "visible"
+      ],
+      "speech": "speaking",
+      "unknowns": [],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 1
+        }
+      ],
+      "id": "C01",
+      "lifecycleStamp": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "identityKey": "morning",
+      "name": "许禾",
+      "aliases": [],
+      "entityType": "human",
+      "presence": [
+        "visible"
+      ],
+      "speech": "silent",
+      "unknowns": [],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 1
+        }
+      ],
+      "id": "C02",
+      "lifecycleStamp": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "identityKey": "girl",
+      "name": "陌生女孩",
+      "aliases": [],
+      "entityType": "human",
+      "presence": [
+        "visible"
+      ],
+      "speech": "silent",
+      "unknowns": [
+        "姓名未知"
+      ],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 3,
+          "endLine": 3
+        }
+      ],
+      "id": "C03",
+      "lifecycleStamp": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "identityKey": "neighbor",
+      "name": "隔壁喊话者",
+      "aliases": [],
+      "entityType": "human",
+      "presence": [
+        "voice-only"
+      ],
+      "speech": "speaking",
+      "unknowns": [
+        "姓名未知"
+      ],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 4,
+          "endLine": 4
+        }
+      ],
+      "id": "C04",
+      "lifecycleStamp": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "identityKey": "dog",
+      "name": "灰点",
+      "aliases": [],
+      "entityType": "nonhuman",
+      "presence": [
+        "visible"
+      ],
+      "speech": "silent",
+      "unknowns": [],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 5,
+          "endLine": 5
+        }
+      ],
+      "id": "C05",
+      "lifecycleStamp": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "identityKey": "mentor",
+      "name": "梁师傅",
+      "aliases": [],
+      "entityType": "human",
+      "presence": [
+        "mentioned"
+      ],
+      "speech": "unknown",
+      "unknowns": [],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 6,
+          "endLine": 6
+        }
+      ],
+      "id": "C06",
+      "lifecycleStamp": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "identityKey": "speaker",
+      "name": "扬声器声音",
+      "aliases": [],
+      "entityType": "unknown",
+      "presence": [
+        "voice-only"
+      ],
+      "speech": "speaking",
+      "unknowns": [
+        "声音来源与录音状态未知"
+      ],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 7,
+          "endLine": 7
+        }
+      ],
+      "id": "C07",
+      "lifecycleStamp": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "identityKey": "outside",
+      "name": "窗外喊话者",
+      "aliases": [],
+      "entityType": "human",
+      "presence": [
+        "voice-only"
+      ],
+      "speech": "speaking",
+      "unknowns": [
+        "不能确认与隔壁喊话者是否同一身份"
+      ],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 9,
+          "endLine": 9
+        }
+      ],
+      "id": "C08",
+      "lifecycleStamp": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  ],
+  "budgets": {
+    "characters": 8
+  },
+  "lifecycle": {
+    "revision": 1,
+    "previousHash": null,
+    "registry": [
+      {
+        "id": "C01",
+        "identityKey": "night",
+        "state": "active",
+        "allocatedRevision": 1,
+        "fingerprint": "160f6cde659ee465522e5a192a96309f82cf9be9ff9a6afb2ae1ce97de0fe65b"
+      },
+      {
+        "id": "C02",
+        "identityKey": "morning",
+        "state": "active",
+        "allocatedRevision": 1,
+        "fingerprint": "51ebab0f36d073358202c0a33ec6dce9f5b12357128da202478c7ea77a7c08e7"
+      },
+      {
+        "id": "C03",
+        "identityKey": "girl",
+        "state": "active",
+        "allocatedRevision": 1,
+        "fingerprint": "1ea5354292733b4ca1fcd8e7d754940bd1bbae8ff5ea6404397ba2e1dbc362e6"
+      },
+      {
+        "id": "C04",
+        "identityKey": "neighbor",
+        "state": "active",
+        "allocatedRevision": 1,
+        "fingerprint": "460ea77b5d5951dbce181929f2f644a83bd6f9c5d66e300e0d0d6c7db6983f74"
+      },
+      {
+        "id": "C05",
+        "identityKey": "dog",
+        "state": "active",
+        "allocatedRevision": 1,
+        "fingerprint": "03286f4a93bbdb6cfba1c62d7037a0c28682cf2d364fa5abd2102e799ec68f27"
+      },
+      {
+        "id": "C06",
+        "identityKey": "mentor",
+        "state": "active",
+        "allocatedRevision": 1,
+        "fingerprint": "c91f6d1e85e0bb14cbd0cae20352288fd8f30b8a250bdb5a404f5d20501e8bcf"
+      },
+      {
+        "id": "C07",
+        "identityKey": "speaker",
+        "state": "active",
+        "allocatedRevision": 1,
+        "fingerprint": "20bdef38f238e812a6ee13aff6f3734b325f833930faaca2d4c8bdce3f90ec54"
+      },
+      {
+        "id": "C08",
+        "identityKey": "outside",
+        "state": "active",
+        "allocatedRevision": 1,
+        "fingerprint": "e7dec3e0ac9601b5a37dfd8c928cab1c244b07aa28ca2d56d34b947f90c5493b"
+      }
+    ],
+    "changes": [],
+    "recheckIds": []
+  },
+  "review": {
+    "status": "pending",
+    "note": "登记或增量更新不代表语义审核通过；受影响身份及联合引用需重新核验。"
+  }
+}

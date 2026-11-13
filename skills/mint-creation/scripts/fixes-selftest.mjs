@@ -7,12 +7,17 @@ import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import * as C from './mint-creation.mjs';
+import {promptFixture} from './test-prompt.mjs';
 import {scriptProblems} from './lib/contracts.mjs';
 import * as W from './lib/worksheet.mjs';
+import {mediaPlan} from './lib/media-plan.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const read=p=>JSON.parse(readFileSync(join(root,'examples',p),'utf8'));
 const doc=read('creation/收书人-creation.json'), script=read('script/收书人-script.json');
 const outline=read('outline/收书人-outline.json'), production=read('production.json');
+// These numerical/handoff regressions deliberately exercise standalone script mode.
+delete script.provenance; delete script.assetMappings;
+for (const ep of script.episodes) for (const sc of ep.scenes) {delete sc.sourceRefs; for(const b of sc.flow)delete b.sourceRefs;}
 const temp=mkdtempSync(join(tmpdir(),'creation-fixes-'));
 const clone=structuredClone;
 let count=0;
@@ -23,7 +28,7 @@ const gate=(d,id,ctx={})=>C.gateReport(d,ctx).find(g=>g.id===id);
 const short=()=>{
   const d=clone(doc);
   d.episodes=d.episodes.slice(0,1);const e=d.episodes[0];e.segments=e.segments.slice(0,1);
-  Object.assign(e.segments[0],{images:[],cuts:[{beats:[1,1],seconds:5,size:'wide',camera:'Static Shot',characters:[]}],prompt:'shots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.'});return d;
+  Object.assign(e.segments[0],{images:[],cuts:[{beats:[1,1],seconds:5,size:'wide',camera:'Static Shot',characters:[]}],prompt:promptFixture('observe.')});return d;
 };
 
 try {
@@ -35,7 +40,7 @@ try {
     assert.equal(beats[0].seconds,1/3);assert.equal(beats.reduce((n,b)=>n+b.seconds,0),Array(15).fill(1/3).reduce((a,b)=>a+b,0));
     const d=short(),e=d.episodes[0];
     e.segments[0].cuts=[{...e.segments[0].cuts[0],beats:[1,14],seconds:4.6},{...e.segments[0].cuts[0],beats:[15,15],seconds:0.4}];
-    e.segments[0].prompt='shots:\n[Shot 1] wide shot, Static Shot — says "a".\n[Shot 2] wide shot, Static Shot — says "a".\nambience: silence.';
+    e.segments[0].prompt=promptFixture('says "a". says "a".');
     assert.equal(gate(d,'dialogue-fit',{script:s}).status,'fail');
   });
   for(const seconds of [15.04,15.0000001]) await test(`R1 raw model boundary ${seconds}`,()=>{
@@ -53,7 +58,7 @@ try {
     d.episodes.push({...clone(d.episodes[0]),ep:2});assert.equal(C.computeStats(d).totals.seconds,10.08);
   });
   // 最小可核对的投产包：manifest 指向的 creation.json、剧本与已批准的工作单都在临时目录里，批准的两重绑定按真实规则计算
-  const manifestPath=join(temp,'pack/manifest.json'),sheetPath=join(temp,'pack/E01-01/prompt.md'),BODY='shots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.';
+  const manifestPath=join(temp,'pack/manifest.json'),sheetPath=join(temp,'pack/E01-01/prompt.md'),BODY=promptFixture('observe.');
   mkdirSync(join(temp,'pack/E01-01'),{recursive:true});json(join(temp,'pack/script/s.json'),script);
   const publish=(m,body=BODY)=>{
     const structure={id:'E01-01',sceneIndex:1,cuts:[],images:[]};
@@ -71,18 +76,20 @@ try {
   await test('R2 valid decimal rounds up; short clip pads, never truncates',()=>{
     publish(manifest(12.5));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,0,r.stderr);assert.equal(JSON.parse(r.stdout).jobs[0].params.duration,13);assert.equal(C.clampDuration(3,'MiniMax H3').duration,5);
   });
-  await test('handoff CLI preserves ordered references, roles, prompt and output from another cwd',()=>{
+  await test('offline media helper preserves ordered references, roles, prompt and output',()=>{
     const m=manifest(7);m.video.aspectRatio='9:16';m.video.resolution='768p';
     const refs=[{path:'../second.png',kind:'scene',ref:'S01',name:'测试场景',role:'environment reference'},
       {path:'../first.png',kind:'character',ref:'C02',name:'测试角色',role:'identity reference'}];
     m.segments[0].images=refs;
     writeFileSync(join(temp,'first.png'),'fixture one');writeFileSync(join(temp,'second.png'),'fixture two');
     publish(m);
-    const out=join(temp,'handoff.json'),r=cli('videos',manifestPath,'--only','E01-01','--out',out);
-    assert.equal(r.status,0,r.stderr);const plan=JSON.parse(r.stdout),j=plan.jobs[0];
+    assert.equal(cli('videos',manifestPath,'--dry-run').status,1,'unreviewed manifest references must not bypass creation identity checks');
+    const out=join(temp,'handoff.json'),jobs=[{key:'E01-01',prompt:BODY,duration:7,file:'E01-01/video.mp4',images:refs}],options={kind:'video',model:'MiniMax H3',inputBase:{aspect_ratio:'9:16',resolution:'768p'},outDir:join(temp,'pack')};
+    const plan=mediaPlan(jobs,options),j=plan.jobs[0];
+    writeFileSync(out,JSON.stringify(plan));
     assert.equal(plan.status,'planned');assert.equal(plan.skill,'ly-video');assert.equal(plan.model,'MiniMax H3');
     assert.equal(plan.jobs.length,1);assert.equal(j.id,'E01-01');
-    assert.equal(j.prompt,'shots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.');
+    assert.equal(j.prompt,BODY);
     assert.deepEqual(j.params,{aspect_ratio:'9:16',resolution:'768p',duration:7});
     assert.deepEqual(j.references,refs.map(ref=>({...ref,path:resolve(temp,'pack',ref.path)})));
     assert.equal(j.output,join(temp,'pack/E01-01/video.mp4'));
@@ -91,7 +98,7 @@ try {
     for(const option of ['--force','--cutout','--timeout','--concurrency'])
       assert.equal(cli('videos',manifestPath,option,'1').status,1);
     rmSync(join(temp,'second.png'));
-    assert.equal(cli('videos',manifestPath,'--dry-run').status,1,'missing reference fails even in preview');
+    assert.throws(()=>mediaPlan(jobs,options),'missing reference fails even in preview');
   });
   for(const stage of ['script','outline']) await test(`R4 project and ${stage} brief conflict requires manual merge`,()=>{
     const ctx={script:clone(script),outline:clone(outline),production:{...production,creativeBrief:'保持克制'}};
@@ -125,14 +132,14 @@ try {
   });
   if(process.getuid?.() !== 0) await test('R7 discovered permission-denied production fails',()=>{const dir=join(temp,'unreadable'),p=json(join(dir,'creation/doc.json'),doc),config=json(join(dir,'production.json'),production);chmodSync(config,0);try{assert.equal(cli('validate',p).status,1);}finally{chmodSync(config,0o600);}});
   for(const stamp of ['0–3 秒观察，3–5 秒停留','0-3秒','0.5～3.25 秒','第 3 秒','3 秒后','00:03','00:00:03.000','3.00-second','3 seconds later','at 3.5 seconds','at second 3','0–3s']) await test(`R8 seedance rejects ${stamp}`,()=>{
-    const d=short();d.video={model:'seedance2.0'};d.promptLang='zh';d.episodes[0].segments[0].prompt=`镜头描述：\n[镜头 1] 全景，固定 — ${stamp}。\n环境声与配乐：无配乐。`;
+    const d=short();d.video={model:'seedance2.0'};d.promptLang='zh';d.episodes[0].segments[0].prompt=promptFixture(`${stamp}。`);
     assert.equal(gate(d,'prompt-model-fit').status,'fail');
   });
   await test('R8 seedance accepts slow observation without timestamp',()=>{
-    const d=short();d.video={model:'seedance2.0'};d.promptLang='zh';d.episodes[0].segments[0].prompt='镜头描述：\n[镜头 1] 全景，固定 — 缓慢观察。\n环境声与配乐：无配乐。';assert.deepEqual(C.validateCreation(d),[]);
+    const d=short();d.video={model:'seedance2.0'};d.promptLang='zh';d.episodes[0].segments[0].prompt=promptFixture('缓慢观察。');assert.deepEqual(C.validateCreation(d),[]);
   });
   await test('R8 videos validates seedance prompt again after export',()=>{
-    const m=manifest(5);m.video.model='seedance2.0';publish(m,'0–3 秒观察');const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/seedance/);
+    const m=manifest(5);m.video.model='seedance2.0';publish(m,promptFixture('0–3 秒观察'));const r=cli('videos',manifestPath,'--dry-run');assert.equal(r.status,1);assert.match(r.stderr,/seedance/);
   });
   await test('videos rejects unapproved, stale and legacy prompt files',()=>{
     publish(manifest(5));const good=readFileSync(sheetPath,'utf8');

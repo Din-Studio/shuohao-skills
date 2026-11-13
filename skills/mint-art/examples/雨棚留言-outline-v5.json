@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 5,
+  "source": "雨棚留言",
+  "provenance": {
+    "kind": "script",
+    "scope": "complete",
+    "totalEpisodes": 3,
+    "documents": [
+      {
+        "id": "D01",
+        "path": "雨棚留言-原剧本.txt",
+        "sha256": "30266f1b6930e6ae9ea6e8507ed118c9f98d27969c0d9fe22cd08257c70efaa5",
+        "lineCount": 9
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 9
+      }
+    ]
+  },
+  "story": {
+    "summary": "清棚时发现代存的私人留言板。核对便条后尊重主人不公开陈列的决定，最后归还旧板。",
+    "sourceRefs": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 9
+      }
+    ]
+  },
+  "beats": [
+    {
+      "id": "B01",
+      "episode": 1,
+      "setup": "拆棚通知到达",
+      "outcome": "许桂兰找到旧留言板并寻找主人",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 3
+        }
+      ]
+    },
+    {
+      "id": "B02",
+      "episode": 2,
+      "setup": "归还前核对夹纸",
+      "outcome": "陶敏表明旧留言不应公开陈列",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 4,
+          "endLine": 5
+        }
+      ]
+    },
+    {
+      "id": "B03",
+      "episode": 3,
+      "setup": "留言板归属已经明确",
+      "outcome": "旧板交还，棚下只留新的公共告示板约定",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 6,
+          "endLine": 9
+        }
+      ]
+    }
+  ],
+  "episodes": [
+    {
+      "ep": 1,
+      "synopsis": "清棚发现代存旧物",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 3
+        }
+      ]
+    },
+    {
+      "ep": 2,
+      "synopsis": "核对归属与陈列边界",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 4,
+          "endLine": 5
+        }
+      ]
+    },
+    {
+      "ep": 3,
+      "synopsis": "归还旧板并约定公共告示板",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 6,
+          "endLine": 9
+        }
+      ]
+    }
+  ]
+}

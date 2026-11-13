@@ -1,4 +1,5 @@
-// Local production v3 and outline v3/v4 projection; no sibling imports.
+// Local production v3 and EXPLICIT LEGACY MIGRATION outline v3/v4 projection.
+// Formal story consumption lives in stage.mjs/assertStoryOutline. No sibling imports.
 import { sourceProjectionErrors } from './source-facts.mjs';
 const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const text = v => typeof v === 'string' && v.trim().length > 0;

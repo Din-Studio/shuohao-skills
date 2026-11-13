@@ -85,10 +85,12 @@ try {
   const mixed = readFileSync(join(temp, 'explicit.html'), 'utf8');
   ok(mixed.includes('面板未生成：mint-script'), '不同故事组合不能伪装成剧本联合通过');
   // v4 creation also verifies supplied source identity; mismatched upstreams cannot render it.
-  for (const id of ['characters', 'art']) ok(mixed.includes(`id="pane-${id}"`), '独立且可渲染的资产面板仍然保留');
+  ok(mixed.includes('id="pane-characters"'), '独立且可渲染的人物面板仍然保留');
+  ok(mixed.includes('面板未生成：mint-art'), '已提供的异作品人物不能伪装成美术联合对账成功');
   const urlTextArt = JSON.parse(readFileSync(fixture('mint-art', '-art.json'), 'utf8'));
   urlTextArt.scenes[0].summary += ' 资料路径记作 url(images/reference.png)，这是正文。';
   urlTextArt.exportNote = 'url(../original.png)';
+  for (const doc of urlTextArt.provenance?.documents ?? []) doc.path=resolve(dirname(fixture('mint-art', '-art.json')),doc.path);
   const urlTextFile = join(temp, 'url-text-art.json'); writeFileSync(urlTextFile, JSON.stringify(urlTextArt));
   const urlTextResult = report('--art', urlTextFile, '--out', join(temp, 'url-text.html'));
   eq(urlTextResult.status, 0, urlTextResult.stderr);

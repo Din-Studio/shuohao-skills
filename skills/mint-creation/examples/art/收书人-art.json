@@ -5,15 +5,50 @@
       "id": "S01",
       "name": "深夜书铺",
       "primary": true,
-      "summary": "全剧唯一场景：一家只在深夜营业的旧书店，堆到顶的旧书架，柜台后一盏暖黄台灯是唯一的光源。"
+      "summary": "全剧唯一场景：一家只在深夜营业的旧书店，堆到顶的旧书架，柜台后一盏暖黄台灯是唯一的光源。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 13
+        }
+      ]
     }
   ],
   "props": [
     {
       "id": "P01",
       "name": "旧诗集",
-      "summary": "卷边泛黄的诗集，扉页有钢笔字迹，书页间夹着一张折叠的字条——「致晚晚」。"
+      "summary": "卷边泛黄的诗集，扉页有钢笔字迹，书页间夹着一张折叠的字条——「致晚晚」。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 13
+        }
+      ]
     }
   ],
-  "note": "最小合规夹具，mint-creation 的 namer（S/P 的 id→name）只读 scenes[]/props[] 的 id 与 name，不追求满足 mint-art 自己的 13 道质量门与设定图字段。"
+  "note": "最小合规夹具，mint-creation 的 namer（S/P 的 id→name）只读 scenes[]/props[] 的 id 与 name，不追求满足 mint-art 自己的 13 道质量门与设定图字段。",
+  "schemaVersion": 1,
+  "provenance": {
+    "kind": "script",
+    "scope": "complete",
+    "documents": [
+      {
+        "id": "D01",
+        "path": "../收书人-原剧本.txt",
+        "sha256": "32174eb1941dccf02dff6429b53e140d49aa544f8880dcb5acf6995f20c432f2",
+        "lineCount": 13
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 13
+      }
+    ],
+    "totalEpisodes": 1
+  }
 }

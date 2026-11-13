@@ -1,5 +1,5 @@
 // Frozen historical v3 validator ONLY for explicit migration and its regressions.
-// Production entry points use outline-core.mjs (v4); never dual-read this contract.
+// Production entry points use outline-core.mjs (v5); never dual-read this contract.
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { documentErrors } from './document.mjs';

@@ -70,16 +70,16 @@ const dir = mkdtempSync(join(tmpdir(), 'characters-contract-'));
 const cli = (...args) => spawnSync(process.execPath, [join(here, 'mint-characters.mjs'), ...args], { encoding: 'utf8' });
 try {
   const upstream = join(dir, 'outline.json');
-  writeFileSync(upstream, JSON.stringify(outline)); assert.equal(cli('seed', upstream).status, 0);
+  writeFileSync(upstream, JSON.stringify(outline)); assert.equal(cli('seed', upstream, '--legacy').status, 0);
   for (const text of ['{', 'null', JSON.stringify({ ...outline, schemaVersion: 1 })]) {
-    writeFileSync(upstream, text); assert.equal(cli('seed', upstream).status, 1);
+    writeFileSync(upstream, text); assert.equal(cli('seed', upstream, '--legacy').status, 1);
   }
   assert.equal(cli('seed', join(dir, 'absent.json')).status, 1);
   for (const field of ['characters','scenes']) {
     const bad = structuredClone(outline);
     if (!bad[field].length) bad[field].push({id:'S01',name:'测试场景',primary:true});
     bad[field][0].id = [bad[field][0].id];
-    writeFileSync(upstream, JSON.stringify(bad)); assert.equal(cli('seed', upstream).status, 1, 'array ID must fail the real seed CLI');
+    writeFileSync(upstream, JSON.stringify(bad)); assert.equal(cli('seed', upstream, '--legacy').status, 1, 'array ID must fail the real seed CLI');
   }
   const asset = join(dir, 'cast.json'); writeFileSync(asset, JSON.stringify(doc));
   const prod = join(dir, 'production.json'); writeFileSync(prod, JSON.stringify(production));

@@ -1,15 +1,17 @@
 #!/usr/bin/env node
-// Self-contained outline v4 CLI. Node 18+; no third-party dependencies.
+// Self-contained outline v5 CLI. Node 18+; no third-party dependencies.
 import {mkdirSync,readFileSync,realpathSync,writeFileSync,lstatSync} from 'node:fs';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {migrateFile} from './lib/migration.mjs';
+import {migrateFileV5} from './lib/migration-v5.mjs';
+export {migrationDraftV5,migrateFileV5} from './lib/migration-v5.mjs';
 import {migrateFileV4} from './lib/migration-v4.mjs';
 import {chunkScript,sourceDocument,verifySources} from './lib/source.mjs';
 export * from './lib/source.mjs';
 export {migrationDraftV4} from './lib/migration-v4.mjs';
 export {migrationDraft} from './lib/migration.mjs';
-import {checkup,validateOutline,computeAssets,STAGES,SKILL_ROOT} from './lib/outline-core.mjs';
+import {checkup,validateOutline,STAGES,SKILL_ROOT} from './lib/outline-core.mjs';
 import {renderHtml,renderMarkdown} from './lib/outline-report.mjs';
 import {checkKnownDownstream} from './lib/outline-downstream.mjs';
 export * from './lib/outline-core.mjs';
@@ -110,14 +112,14 @@ export function loadProduction(docPath,explicit) {
  try {const production=readJson(path);if(!production||typeof production!=='object'||Array.isArray(production))throw Error('production.json must be an object');return {production,productionPath:path};}
  catch(error){return {productionError:path+': '+error.message,productionPath:path};}
 }
-const USAGE=`mint-outline v4 (existing scripts only)
+const USAGE=`mint-outline v5 (existing scripts only)
   chunk SCRIPT WORKDIR --kind script [--max-lines N] [--context-lines N]
   source-document SCRIPT --artifact DOC [--id ID]
   verify-sources DOC
   validate DOC [--stage skeleton|beats|full] [--production FILE]
   checkup DOC [--stage skeleton|beats|full] [--production FILE] [--json] [--downstream]
   render DOC [--html|--md] [--lang zh|en] [--stage STAGE] [--production FILE]
-  assets DOC
+  migrate-v5 INPUT [--out DRAFT.json] [--confirm] [--project ROOT]
   migrate-v4 INPUT [--out DRAFT] [--confirm]  evidence-incomplete draft; never overwrite input
   migrate-v3 INPUT [--out OUTPUT] [--confirm]  historical v2 -> v3 only
   slug NAME
@@ -143,20 +145,19 @@ async function main(argv) {
   if(!args[0])throw Error('verify-sources requires DOC');validateOptions(args,1);
   const report=checkup(readJson(args[0]),{verifySources:true,artifactPath:args[0]});console.log(JSON.stringify(report,null,2));if(report.stats.fail)process.exitCode=1;return;
  }
- if(['migrate-v3','migrate-v4'].includes(cmd)){
+ if(['migrate-v3','migrate-v4','migrate-v5'].includes(cmd)){
   if(!args[0]||args[0].startsWith('--'))throw Error(cmd+' requires INPUT');
-  validateOptions(args,1,['--out'],['--confirm']);
-  const output=flag(args,'--out'),result=(cmd==='migrate-v4'?migrateFileV4:migrateFile)(args[0],output,{confirm:args.includes('--confirm')});
+  validateOptions(args,1,cmd==='migrate-v5'?['--out','--project']:['--out'],['--confirm']);
+  const output=flag(args,'--out'),result=(cmd==='migrate-v5'?migrateFileV5:cmd==='migrate-v4'?migrateFileV4:migrateFile)(args[0],output,{confirm:args.includes('--confirm'),projectRoot:flag(args,'--project')});
   console.log(JSON.stringify(result,null,2));if(output&&!result.written)process.exitCode=1;return;
  }
- if(!['validate','checkup','render','assets'].includes(cmd))throw Error('Unknown command '+cmd+'\n'+USAGE);
+ if(!['validate','checkup','render'].includes(cmd))throw Error('Unknown command '+cmd+'\n'+USAGE);
  if(!args[0]||args[0].startsWith('--'))throw Error(cmd+' requires DOC');
  validateOptions(args,1,['--stage','--production',...(cmd==='render'?['--lang']:[])],cmd==='render'?['--html','--md','--verify-sources']:cmd==='checkup'?['--json','--downstream','--verify-sources']:['--verify-sources']);
  if(args.includes('--html')&&args.includes('--md'))throw Error('Choose --html or --md, not both');
  const file=args[0],doc=readJson(file),stage=flag(args,'--stage','full');
  if(!STAGES.includes(stage))throw Error('Unknown stage '+stage);
  const context={...loadProduction(file,flag(args,'--production')),stage,artifactPath:resolve(file),verifySources:args.includes('--verify-sources')};
- if(cmd==='assets'){const result=checkup(doc,context);console.log(JSON.stringify(computeAssets(doc),null,2));if(result.stats.fail)process.exitCode=1;return;}
  if(cmd==='render'){
   const lang=flag(args,'--lang',doc?.lang??context.production?.lang??'zh');
   process.stdout.write((args.includes('--html')?renderHtml(doc,lang,context):renderMarkdown(doc,lang,context))+'\n');

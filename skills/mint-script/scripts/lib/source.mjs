@@ -64,7 +64,7 @@ export function evidenceErrors(doc, { outline = false } = {}) {
   };
   if (outline) {
     check(doc?.story,'story',true);
-    for (const key of ['characters','scenes','props','beats']) for (const item of arr(doc?.[key])) check(item,`${key}.${item?.id}`,true);
+    for (const key of ['beats']) for (const item of arr(doc?.[key])) check(item,`${key}.${item?.id}`,true);
   }
   for (const ep of arr(doc?.episodes)) {
     check(ep,`E${ep?.ep}`,outline);

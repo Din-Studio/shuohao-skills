@@ -3,12 +3,14 @@
 // Zero dependencies on purpose: the skill must work in any directory
 // without an npm install. Node 18+ (stdlib only).
 
-import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertOutline, assetProductionProblems, creativeBackground, check, blocking, mark } from './lib/contracts.mjs';
 import { verifyOutlineSources, sourceFactsOf } from './lib/source-facts.mjs';
 export { creativeBackground } from './lib/contracts.mjs';
+import { ART_VERSION, assetsOf, digest, fileDigest, sourceIdentity, identityDigest, identityCoreDigest, syncLifecycleStamps, seedFromSource, registerAsset, stageErrors, lifecycleErrors, budgetChecks, verifySources, assertStoryOutline, assertCharacters, upstreamCheck, migrateArt, migrateOutline } from './lib/stage.mjs';
+export { seedFromSource, registerAsset, identityDigest } from './lib/stage.mjs';
 import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
 
 /* ------------------------------------------------------------------ */
@@ -160,15 +162,10 @@ export function slug(name) {
 }
 
 /* ------------------------------------------------------------------ */
-/* seed — 从 outline.json 确定性预填骨架                                 */
+/* 显式旧 outline 迁移投影（不是正式身份识别）                                 */
 /* ------------------------------------------------------------------ */
-/*
- * 场景清单、主场景标记、出现集、关联剧情节点、复用方案在 outline.json 里
- * 都是现成的——这些不该让模型重新想一遍。seed 把它们搬进骨架，
- * 模型只填设计字段（设计意图 / 锚点 / 光照 / 提示词）。
- */
-
-export function seedFromOutline(outline, { outlinePath } = {}) {
+// Historical projection is reachable only through explicit migration. Never a formal seed.
+export function seedFromLegacyOutline(outline, { outlinePath } = {}) {
   assertOutline(outline);
   if (outlinePath) verifyOutlineSources(outline, outlinePath);
   const eps = Array.isArray(outline?.episodes) ? outline.episodes : [];
@@ -253,8 +250,8 @@ export const PROP_SCALES = {
 /** 道具参考图不许有手——拿着道具的手是最常见的污染。 */
 const HANDS_BAN = /hand|finger/i;
 
-export function gateReport(doc, castNames = null, production = null) {
-  const structural = validateArt(doc, castNames, production, false);
+function visualGateReport(doc, castNames = null, production = null) {
+  const structural = validateVisualArt(doc, castNames, production, false);
   const gates = [check('asset-contract', '资产字段、ID 与引用', structural.length ? 'fail' : 'pass', structural.join('；'))];
   const add = (id, label, passed, detail = '') => gates.push(check(id, label, passed ? 'pass' : 'fail', detail));
   const scenes = Array.isArray(doc?.scenes) ? doc.scenes : [];
@@ -411,6 +408,8 @@ export function gateReport(doc, castNames = null, production = null) {
     if (g.id === 'no-names' && !castNames) { g.status = 'skipped'; g.reason = 'missing-upstream'; }
     if (['style-match','sheet-aspect'].includes(g.id) && production === null) { g.status = 'skipped'; g.reason = 'missing-upstream'; }
     if (g.id === 'style-match' && production !== null && !preset) { g.status = 'fail'; g.detail = '提供的 production 缺少 style.scene 正文，回 mint-setup 填写'; }
+    if (g.id === 'lighting' && !scenes.length) { g.status = 'skipped'; g.reason = 'not-applicable'; g.detail = '没有场景设计，不适用'; }
+    if (['anchors','no-people','english'].includes(g.id) && !scenes.length && !props.length) { g.status = 'skipped'; g.reason = 'not-applicable'; g.detail = '仅登记身份，不要求设计或出图'; }
     if (g.id.startsWith('prop-') && !props.length) { g.status = 'skipped'; g.reason = 'not-applicable'; g.detail = '没有道具，不适用'; }
   }
   return gates;
@@ -420,7 +419,7 @@ export function gateReport(doc, castNames = null, production = null) {
 /* validate                                                            */
 /* ------------------------------------------------------------------ */
 
-export function validateArt(doc, castNames = null, production = null, includeGates = true) {
+function validateVisualArt(doc, castNames = null, production = null, includeGates = true) {
   const problems = [];
   const p = (msg) => problems.push(msg);
   if (!doc || typeof doc !== 'object') return ['art.json 不是对象'];
@@ -433,8 +432,8 @@ export function validateArt(doc, castNames = null, production = null, includeGat
   }
 
   const scenes = doc.scenes;
-  if (!Array.isArray(scenes) || scenes.length === 0) {
-    p('scenes 为空');
+  if (!Array.isArray(scenes)) {
+    p('scenes 必须是数组');
     return problems;
   }
 
@@ -520,11 +519,48 @@ export function validateArt(doc, castNames = null, production = null, includeGat
   }
 
   // 质量门失败并入违规列表
-  for (const g of includeGates ? gateReport(doc, castNames, production) : []) {
+  for (const g of includeGates ? visualGateReport(doc, castNames, production) : []) {
     if (g.id !== 'asset-contract' && blocking(g)) p(`质量门未过：${g.label}${g.detail ? `（${g.detail}）` : ''}`);
   }
 
   return problems;
+}
+
+// Formal stage contract wraps the existing independent visual design checks.
+function designDocument(doc) {
+  return {...doc,scenes:(Array.isArray(doc?.scenes)?doc.scenes:[]).filter(a=>a?.designStatus!=='none'),props:(Array.isArray(doc?.props)?doc.props:[]).filter(a=>a?.designStatus!=='none')};
+}
+export function seedFromOutline(outline) {
+  assertStoryOutline(outline);
+  throw Error('outline v5 仅为故事背景；请使用 seed --source path --title title [--outline outline.json]');
+}
+export function gateReport(doc, castNames=null, production=null) {
+  if (!doc || typeof doc !== 'object') return [check('asset-contract','资产字段、ID 与引用','fail','art.json 不是对象')];
+  const structural=[...stageErrors(doc),...validateVisualArt(designDocument(doc),castNames,production,false)];
+  // Cross-design references may legitimately point at an identity-only asset.
+  const cross=structural.filter(e=>!e.includes('relatedScenes 里的'));
+  for(const a of assetsOf(doc))for(const id of Array.isArray(a?.relatedScenes)?a.relatedScenes:[])if(!doc.scenes?.some(s=>s?.id===id))cross.push(`${a.id} relatedScenes 里的 ${id} 不存在`);
+  const visual=visualGateReport(designDocument(doc),castNames,production).filter(g=>g.id!=='asset-contract');
+  for(const g of visual)if(g.id==='variants'){const bad=stageErrors(doc).filter(e=>e.includes('变体'));g.status=bad.length?'fail':'pass';g.detail=bad.join('；');}
+  return [check('asset-contract','资产字段、ID 与引用',cross.length?'fail':'pass',cross.join('；')),...visual,...budgetChecks(doc)];
+}
+export function validateArt(doc, castNames=null, production=null, includeGates=true) {
+  if(!doc||typeof doc!=='object')return ['art.json 不是对象'];
+  if(includeGates)return gateReport(doc,castNames,production).filter(blocking).map(g=>`${g.label}：${g.detail}`);
+  return [...stageErrors(doc),...validateVisualArt(designDocument(doc),castNames,production,false)];
+}
+// Rendering tolerates identity-only records; defaults are display-only and never exported.
+function displayDocument(doc) {
+  const copy=structuredClone(doc);
+  for(const a of assetsOf(copy)) {a.anchors??=[];a.lighting??=[];a.states??=[];a.image??={prompt:'',negativePrompt:'',sheet:'',tags:[]};a.image.tags??=[];}
+  return copy;
+}
+const boundaryContexts = new WeakMap();
+function stageSummary(doc) {
+  return {schemaVersion:doc.schemaVersion,kind:doc.kind,mode:doc.mode,status:doc.status,
+    jointReconciliation:'skipped',contentReview:'not-performed',interfaceChecks:boundaryContexts.get(doc)??{outline:{status:'skipped'},characters:{status:'skipped'},originals:{status:'skipped',detail:'内存渲染未读取实际原件'}},provenance:doc.provenance,
+    sourceIdentity:sourceIdentity(doc),budgets:doc.budgets,registry:doc.registry,incremental:doc.incremental,
+    migration:doc.migration,identities:assetsOf(doc).map(a=>({id:a.id,identityKey:a.identityKey,decision:a.decision,sourceRefs:a.sourceRefs,facts:a.facts,identityReview:a.identityReview,designStatus:a.designStatus,carrierRefs:a.carrierRefs}))};
 }
 
 /** 从 cast.json 提取名字 + 别名，给「提示词不含角色名」那道门用。 */
@@ -533,7 +569,7 @@ export function castNamesOf(cast) {
   const names = [];
   for (const c of chars) {
     if (thText(c?.name)) names.push(c.name.trim());
-    for (const a of c?.aliases ?? []) if (thText(a)) names.push(a.trim());
+    for (const a of c?.aliases ?? []) if (thText(a)) names.push(a.trim()); else if (thText(a?.name)) names.push(a.name.trim());
   }
   return [...new Set(names)];
 }
@@ -714,12 +750,15 @@ const mdRow = (cells) => `| ${cells.map((c) => String(c ?? '').replace(/\|/g, '\
 const mdHead = (cols) => [mdRow(cols), mdRow(cols.map(() => '---'))].join('\n');
 
 export function renderMarkdown(doc, lang = null, production = null, castNames = null) {
+  const original = doc;
+  doc = displayDocument(doc);
   const t = tOf(langOf(doc, lang, production));
   const props = doc.props ?? [];
   const out = [`# ${t.docTitle(doc.source)}`, '', `> ${t.styleLine(production)}`, ''];
   const background = creativeBackground(production);
   if (background) out.push(`> ${t.langCode === 'en' ? 'Creative brief' : '创作要求'}: ${JSON.stringify(background)}`, '');
 
+  out.push('## Stage / 阶段身份与来源', '', '```json', JSON.stringify(stageSummary(original),null,2), '```', '');
   out.push(`## ${t.secList}`, '', mdHead(t.listCols));
   for (const s of doc.scenes) {
     const type = s.variantOf ? `${t.variantScene} ← ${s.variantOf}` : s.primary ? t.primaryScene : t.onceScene;
@@ -776,7 +815,7 @@ export function renderMarkdown(doc, lang = null, production = null, castNames = 
   }
 
   out.push('', `## ${t.secGates}`, '');
-  for (const g of gateReport(doc, castNames, production)) {
+  for (const g of gateReport(original, castNames, production)) {
     const shown = gateText(g, t.langCode);
     out.push(`- ${mark(g)} ${shown.label} [${g.status}; ${g.category}; ${g.level}]${g.reason ? ` (${g.reason})` : ''}${shown.detail ? ` — ${shown.detail}` : ''}`);
   }
@@ -797,10 +836,12 @@ function embedDoc(doc) {
 }
 
 export function renderHtml(doc, lang = null, production = null, castNames = null, originalInput = doc) {
+  const reportInput = doc;
+  doc = displayDocument(doc);
   const code = langOf(doc, lang, production);
   const t = tOf(code);
   const background = creativeBackground(production);
-  const gates = gateReport(doc, castNames, production);
+  const gates = gateReport(reportInput, castNames, production);
   const failed = gates.filter(blocking);
   const scenes = doc.scenes;
   const props = doc.props ?? [];
@@ -846,7 +887,7 @@ export function renderHtml(doc, lang = null, production = null, castNames = null
   </button>
   <figcaption>${esc(t.propSheetCaption)}</figcaption>
 </figure>`
-        : `<div class="plate plate-empty"><span>${esc(pr.name)} · ${esc(t.noImage)}<br><em>${esc(t.noImageHint)}</em></span></div>`;
+        : `<div class="plate plate-empty"><span>${esc(pr.name)} · ${esc(t.noImage)}<br><em>${esc(pr.designStatus==='none'?(code==='en'?'Identity only; no image required':'仅登记身份，不要求出图'):t.noImageHint)}</em></span></div>`;
       return `<article class="scene" id="pr-${slug(pr.id)}">
   <header class="sc-h">
     <span class="sc-id">${esc(pr.id)}</span>
@@ -885,7 +926,7 @@ export function renderHtml(doc, lang = null, production = null, castNames = null
   </button>
   <figcaption>${esc(t.sheetCaption)}</figcaption>
 </figure>`
-        : `<div class="plate plate-empty"><span>${esc(s.name)} · ${esc(t.noImage)}<br><em>${esc(t.noImageHint)}</em></span></div>`;
+        : `<div class="plate plate-empty"><span>${esc(s.name)} · ${esc(t.noImage)}<br><em>${esc(s.designStatus==='none'?(code==='en'?'Identity only; no image required':'仅登记身份，不要求出图'):t.noImageHint)}</em></span></div>`;
       return `<article class="scene" id="sc-${slug(s.id)}">
   <header class="sc-h">
     <span class="sc-id">${esc(s.id)}</span>
@@ -915,7 +956,7 @@ export function renderHtml(doc, lang = null, production = null, castNames = null
     })
     .join('\n');
 
-  const gateList = `<ul class="gate">
+  const gateList = `<details open><summary>Stage / 阶段身份与来源（身份登记不要求出图）</summary><pre>${esc(JSON.stringify(stageSummary(reportInput), null, 2))}</pre></details><ul class="gate">
   ${gates
     .map(
       (g) => `<li class="${g.status}"><span class="m">${mark(g)}</span><span>${esc(gateText(g, t.langCode).label)}${
@@ -1197,6 +1238,7 @@ document.querySelector('.expo').addEventListener('click', (e) => {
 export const sheetFile = (name) => `images/${slug(name)}-sheet.png`;
 export const cutoutFile = (name) => `images/${slug(name)}-sheet-cutout.png`;
 export function assetImageStem(item, doc) {
+  if (item.imageStem) return item.imageStem;
   const stem=slug(item.name), items=[...(doc.scenes ?? []),...(doc.props ?? [])];
   return items.filter(x=>slug(x.name)===stem).length>1 ? `${item.id}-${stem}` : stem;
 }
@@ -1223,24 +1265,25 @@ export function imageJobsFrom(doc, production = null) {
       key: item.id,
       kind,
       name: item.name,
-      file: sheetFile(assetImageStem(item,doc)),
+      file: item.sheetImage ?? sheetFile(assetImageStem(item,doc)),
+      inputDigest: digest({asset:item,identityInputDigest:identityDigest(doc,item),referenceAsset:item.variantOf?doc.scenes.find(s=>s.id===item.variantOf):undefined}),
       prompt: String(prompt),
       negativePrompt: String(item?.image?.negativePrompt ?? ''),
       refFrom: null,
     };
   };
 
-  for (const s of scenes) {
+  for (const s of scenes.filter(s=>s?.designStatus==='ready')) {
     const job = take(s, 'scene');
     if (!job) continue;
     // 变体拿母场景的成图当参考图；交接计划按依赖排序，执行方先完成母场景。
     if (thText(s?.variantOf)) {
-      if (sceneIds.has(s.variantOf)) job.refFrom = s.variantOf;
+      if (sceneIds.has(s.variantOf) && scenes.some(p=>p.id===s.variantOf && p.designStatus==='ready')) job.refFrom = s.variantOf;
       else problems.push(`场景 ${s.id} 的 variantOf 指向不存在的 ${s.variantOf}`);
     }
     jobs.push(job);
   }
-  for (const pr of props) {
+  for (const pr of props.filter(p=>p?.designStatus==='ready')) {
     const job = take(pr, 'prop');
     if (job) jobs.push({ ...job, cutoutFile: cutoutFile(assetImageStem(pr,doc)) });
   }
@@ -1261,7 +1304,15 @@ export function imageJobsFrom(doc, production = null) {
 
 const USAGE = `mint-art.mjs — mint-art skill 的确定性工具（场景 + 道具）
 
-  seed <outline.json>                    从 outline v4（兼容 v3）预填 art.json（打印到 stdout，设计字段留空）
+  seed --design --title title           独立设计空骨架（不伪造原件来源）
+  seed --source path --title title [--existing art.json] [--outline outline-v5.json] [--cast cast-v1.json]
+                                         只建 art v1 骨架，不识别地点或道具、不声明已读
+  migrate-art <legacy-art.json> [--out new.json]   显式保留历史设计和图片
+  migrate-outline <outline-v3-or-v4.json> [--out new.json]  导出待核验迁移材料
+  register <art.json> --kind scene|prop --key key --name name [--out new.json]
+  identity-inputs <art.json>             打印身份复核摘要，不自动确认
+  verify-sources <art.json>              回查实际原件、摘要、引用和范围
+  reconcile <art.json> --previous old.json [--out new.json] 核验既有 ID 增量变更
   validate <art.json> [--cast c.json]    校验；有违规逐条打印并 exit 1
                                          给了 cast.json 才查「提示词不含角色名」
   checkup <art.json> [--cast c.json]     只打印质量门 ✓/✗，有未过项 exit 1
@@ -1276,7 +1327,7 @@ const USAGE = `mint-art.mjs — mint-art skill 的确定性工具（场景 + 道
                                          画风没有内置预设，正文来自工作目录根的 production.json
   slug <name>                            场景名转安全文件名
 
-render 会自动去 images/<slug>-sheet.png 找图，找到就嵌进报告。
+render 按显式 sheetImage 或固定 imageStem 查找主图；历史默认路径仍可迁移保留。
 images 只导出计划，不执行生成。使用 ly-image 完成并核验图片后，放到计划 output 路径再 render。`;
 
 function readJson(path) {
@@ -1285,7 +1336,10 @@ function readJson(path) {
 
 function flag(rest, name, fallback = null) {
   const i = rest.indexOf(name);
-  return i >= 0 && rest[i + 1] ? rest[i + 1] : fallback;
+  if(i < 0) return fallback;
+  if(rest.indexOf(name,i+1)>=0)throw Error(name+' 只能提供一次');
+  if(!rest[i+1] || rest[i+1].startsWith('--')) throw Error(name+' 必须提供参数');
+  return rest[i+1];
 }
 
 /*
@@ -1329,11 +1383,38 @@ function loadCastNames(rest) {
     return null;
   }
   const cast = readJson(castPath);
-  if (!cast || !Array.isArray(cast.characters) || cast.characters.some(c =>
-    !c || typeof c.name !== 'string' || !c.name.trim() ||
-    (c.aliases !== undefined && (!Array.isArray(c.aliases) || c.aliases.some(a => typeof a !== 'string' || !a.trim())))
-  )) throw new Error('提供的 cast 上游结构损坏');
+  assertCharacters(cast);
   return castNamesOf(cast);
+}
+
+function rebaseAllSources(doc,path) {
+  for(const d of doc.provenance?.documents??[])d.path=resolve(dirname(resolve(path)),d.path);
+  for(const a of assetsOf(doc))for(const d of a.sourceFacts?.documents??[])d.path=resolve(dirname(resolve(path)),d.path);
+}
+function outputNew(doc,rest) {
+  const out=flag(rest,'--out');const bytes=JSON.stringify(doc,null,2)+'\n';
+  if(out)writeFileSync(resolve(out),bytes,{flag:'wx'});else process.stdout.write(bytes);
+}
+function validateUpstreams(doc,rest) {
+  const checks={};
+  for(const [kind,flagName] of [['outline','--outline'],['characters','--cast']]) {
+    const path=flag(rest,flagName);
+    if(!path){checks[kind]={status:'skipped',detail:'未提供可选上游'};console.error(`— ${kind} 对账 skipped；独立运行，不声明完整流程`);continue;}
+    const upstream=readJson(path),result=upstreamCheck(doc,upstream,kind),errors=result.errors;
+    errors.push(...verifySources(upstream,path).errors);
+    if(errors.length)throw Error(errors.join('；'));
+    checks[kind]=result;
+    if(result.status==='skipped')console.error(`— ${kind} 对账 skipped；${result.detail}`);
+    else console.error(`✓ ${kind} 来源与消费接口核验；语义内容未评审，未执行 script/creation 联合映射`);
+  }
+  return checks;
+}
+function verifyArtBoundary(doc,path,rest) {
+  if(doc?.schemaVersion!==ART_VERSION||doc?.kind!=='mint-art')throw Error('正式 art 需要 schemaVersion:1, kind:mint-art；旧文件使用 migrate-art');
+  const result=verifySources(doc,path);if(result.errors.length)throw Error(result.errors.join('；'));
+  boundaryContexts.set(doc,{...validateUpstreams(doc,rest),originals:result});
+  if(assetsOf(doc).some(a=>a.carrierRefs?.length)&&!flag(rest,'--cast'))throw Error('实际人物关联需要 --cast 身份权威；不得按名称猜测');
+  const prev=flag(rest,'--previous');if(prev){const errors=lifecycleErrors(doc,readJson(prev));if(errors.length)throw Error(errors.join('；'));}
 }
 
 async function main(argv) {
@@ -1344,17 +1425,62 @@ async function main(argv) {
     process.exit(cmd ? 0 : 1);
   }
 
+  if (['migrate-art','migrate-outline'].includes(cmd)) {
+    const path=rest[0];if(!path||path.startsWith('--'))throw Error(cmd+' 需要旧文件路径');
+    const input=readJson(path);
+    const doc=cmd==='migrate-art'?migrateArt(input,path):migrateOutline(input,path,seedFromLegacyOutline(input,{outlinePath:path}));
+    // Rebase all original references before relocation. Originals and media are never overwritten.
+    rebaseAllSources(doc,path);
+    if(cmd==='migrate-art')for(const a of assetsOf(doc)) { a.sheetImage=resolve(dirname(resolve(path)),a.sheetImage??sheetFile(assetImageStem(a,doc))); }
+    doc.migration.originalSha256=fileDigest(readFileSync(resolve(path)));
+    doc.migration.media=assetsOf(doc).filter(a=>a.sheetImage).map(a=>{try {const bytes=readFileSync(a.sheetImage);return {id:a.id,path:a.sheetImage,sha256:fileDigest(bytes),status:'pending'};}catch(e){if(e.code!=='ENOENT')throw e;return {id:a.id,path:a.sheetImage,status:'missing',note:'未找到旧图片，不等于已生成或审核通过'};}});
+    doc.migration.related=[];
+    for(let i=0;i<rest.length;i++)if(rest[i]==='--related'){const related=rest[i+1];if(!related||related.startsWith('--'))throw Error('--related 需要材料路径');const bytes=readFileSync(resolve(related));doc.migration.related.push({path:resolve(related),sha256:fileDigest(bytes),status:'pending'});}
+    doc.migration.unresolved.push({path:'/related',value:doc.migration.related,status:'pending',note:'核对已有 script、creation、图片路径及审核依赖；未提供材料不代表已核对'});
+    outputNew(doc,rest);return;
+  }
   if (cmd === 'seed') {
-    const [path] = rest;
-    if (!path) throw new Error('用法：seed <outline.json>');
-    console.log(JSON.stringify(seedFromOutline(readJson(path), { outlinePath: path }), null, 2));
-    return;
+    const path=flag(rest,'--source'),title=flag(rest,'--title');
+    if(rest.includes('--design')) {
+      if(path||!title||flag(rest,'--existing'))throw Error('seed --design 只接受 --title；历史设计使用 migrate-art');
+      const doc={schemaVersion:1,kind:'mint-art',mode:'design',source:title,status:'draft',scenes:[],props:[],registry:{entries:[],changes:[]},budgets:{},upstreams:{}};
+      validateUpstreams(doc,rest);outputNew(doc,rest);return;
+    }
+    if(!path||!title)throw Error('seed 需要 --source path --title title；outline 不是资产权威，旧数据使用 migrate-outline');
+    const existingPath=flag(rest,'--existing');let existing=existingPath?readJson(existingPath):null;const existingDigest=existing?digest(existing):null;
+    if(existing) {rebaseAllSources(existing,existingPath);const bad=stageErrors(existing);if(bad.length)throw Error('既有产物必须先核验：'+bad.join('；'));/* Updated originals are re-registered below; stale review is explicitly invalidated. */}
+    const doc=seedFromSource(path,title,{existing});
+    if(existingDigest)doc.incremental.previousDigest=existingDigest;
+    validateUpstreams(doc,rest);
+    outputNew(doc,rest);return;
+  }
+  if(['register','identity-inputs','verify-sources','reconcile'].includes(cmd)) {
+    const path=rest[0];if(!path||path.startsWith('--'))throw Error(cmd+' 需要 art.json');
+    const doc=readJson(path);if(doc.schemaVersion!==ART_VERSION||doc.kind!=='mint-art')throw Error('正式 art v1 才能登记和核验；旧版请显式迁移');
+    if(cmd==='identity-inputs') {console.log(JSON.stringify(assetsOf(doc).map(a=>({id:a.id,inputDigest:identityDigest(doc,a)})),null,2));return;}
+    if(cmd==='verify-sources') {const result=verifySources(doc,path);console.log(JSON.stringify(result,null,2));if(result.errors.length)process.exitCode=1;return;}
+    if(cmd==='register')registerAsset(doc,flag(rest,'--kind'),flag(rest,'--key'),flag(rest,'--name'));
+    if(cmd==='reconcile') {
+      const prevPath=flag(rest,'--previous');if(!prevPath)throw Error('reconcile 必须提供 --previous 既有产物，不能重置生命周期');
+      const previous=readJson(prevPath);
+      const priorBad=stageErrors(previous);if(priorBad.length)throw Error('既有基线尚未核验：'+priorBad.join('；'));
+      doc.incremental={previousDigest:digest(previous),previousRegistry:structuredClone(previous.registry),previousIdentities:assetsOf(previous).map(a=>({id:a.id,coreDigest:identityCoreDigest(a)})),previousBudgets:structuredClone(previous.budgets)};
+      syncLifecycleStamps(doc);
+      const bad=[...lifecycleErrors(doc,previous),...verifySources(doc,path).errors];
+      if(bad.length)throw Error(bad.join('；'));
+      const affected=new Set(doc.registry.changes.filter(c=>!previous.registry.changes.some(p=>p.id===c.id)).flatMap(c=>[...c.from,...c.to]));
+      for(const a of assetsOf(doc)) {const old=assetsOf(previous).find(p=>p.id===a.id);if(!old||identityDigest(doc,a)!==identityDigest(previous,old)){a.identityReview={status:'pending'};affected.add(a.id);}}
+      doc.incremental.recheckIds=[...affected].sort();
+      doc.status='draft';
+    }
+    rebaseAllSources(doc,path);outputNew(doc,rest);return;
   }
 
   if (cmd === 'validate' || cmd === 'checkup') {
     const [path] = rest;
     if (!path) throw new Error(`用法：${cmd} <art.json> [--cast cast.json]`);
     const doc = readJson(path);
+    verifyArtBoundary(doc,path,rest);
     const names = loadCastNames(rest);
     const prod = loadProduction(rest, resolve(path, '..'));
     announceProduction(prod, path);
@@ -1383,6 +1509,7 @@ async function main(argv) {
     const [path] = rest;
     if (!path) throw new Error('用法：images <art.json> [--only ids] [--dry-run] [--out plan.json]');
     const doc = readJson(path);
+    verifyArtBoundary(doc,path,rest);
     const outDir = resolve(path, '..');
     const prod = loadProduction(rest, outDir);
     announceProduction(prod, path);
@@ -1409,6 +1536,7 @@ async function main(argv) {
     const [path] = rest;
     if (!path) throw new Error('用法：render <art.json> [--html|--md] [--lang zh|en] [--cast cast.json]');
     const doc = readJson(path);
+    verifyArtBoundary(doc,path,rest);
     const originalInput = structuredClone(doc);
     const names = loadCastNames(rest);
     const lang = flag(rest, '--lang');
@@ -1416,7 +1544,7 @@ async function main(argv) {
     // 图存在才挂上去；没有就渲染成占位，不影响其余内容
     const outDir = resolve(path, '..');
     for (const item of [...doc.scenes, ...(doc.props ?? [])]) {
-      const rel = sheetFile(assetImageStem(item,doc));
+      const rel = item.sheetImage ?? sheetFile(assetImageStem(item,doc));
       if (existsSync(resolve(outDir, rel))) item.sheetImage = rel;
     }
     process.stdout.write((rest.includes('--html') ? renderHtml(doc, lang, prod.doc, names, originalInput) : renderMarkdown(doc, lang, prod.doc, names)) + '\n');

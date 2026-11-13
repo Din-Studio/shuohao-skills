@@ -9,7 +9,9 @@ import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {materializeStory,planShots,relocate,outlineFor} from './fixtures/fusion/story.mjs';
+import {identifyCast,identifyArt,mapAssets} from './fixtures/stage-identities.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),temp=mkdtempSync(join(tmpdir(),'mint-fusion-root-'));
+const castPath=join(temp,'characters','堤灯-cast.json'),artPath=join(temp,'art','堤灯-art.json');
 const scriptPath=join(temp,'script','堤灯-script.json'),creationPath=join(temp,'creation','堤灯-creation.json');
 const write=(p,d)=>{mkdirSync(dirname(p),{recursive:true});writeFileSync(p,typeof d==='string'?d:JSON.stringify(d,null,2)+'\n');};
 const clone=structuredClone;
@@ -22,7 +24,7 @@ const success=r=>{assert.equal(r.status,0,r.output);return r;};
 const rejected=(r,pattern)=>{assert.notEqual(r.status,0,r.output);if(pattern)assert.match(r.output,pattern);return r;};
 async function test(name,fn){try{await fn();passed++;console.log(`通过 ${name}`);}catch(e){failures.push(name+': '+e.message);console.error(`失败 ${name}\n${e.message}`);}}
 const scriptCLI=(...args)=>cli('script',...args,'--no-production');
-const creationCLI=(...args)=>cli('creation',...args,'--script',scriptPath,'--no-production');
+const creationCLI=(...args)=>cli('creation',...args,'--script',scriptPath,'--cast',castPath,'--art',artPath,'--no-production');
 const validate=()=>scriptCLI('validate',scriptPath,'--verify-sources');
 const withScript=(change,fn)=>{const before=readFileSync(scriptPath);try{const d=JSON.parse(before);change(d);write(scriptPath,d);return fn(d);}finally{writeFileSync(scriptPath,before);}};
 // These fixture-specific expectations compare executable meaning against actual source bytes.
@@ -54,9 +56,19 @@ const assertOwnerBody=(body,line)=>{
   assert.ok(body.includes('仅观众听见，C02 齐叔及场内人物均听不见，不张口说话'));
   assert.equal(body.split(line).length-1,1,'每个实际独白仅有一次完整文本');
 };
-let script,creation,W;
+let script,creation,W,cast,art;
 try{
-  script=materializeStory(temp,scriptPath);write(scriptPath,script);
+  script=materializeStory(temp,scriptPath);
+  const first=resolve(dirname(scriptPath),script.provenance.documents[0].path);
+  const castSeed=JSON.parse(success(cli('characters','seed','--source',first,'--title',script.source)).stdout);
+  const artSeed=JSON.parse(success(cli('art','seed','--source',first,'--title',script.source)).stdout);
+  castSeed.provenance=relocate(script,scriptPath,castPath).provenance;
+  artSeed.provenance=relocate(script,scriptPath,artPath).provenance;
+  const refs=(documentId,startLine)=>[{documentId,startLine,endLine:startLine}];
+  // Independently registered from the actual two screenplay documents, not outline.
+  cast=await identifyCast(root,castSeed,[{name:'程岚',speech:'speaking',sourceRefs:refs('D02',2)},{name:'齐叔',sourceRefs:refs('D01',2)}]);
+  art=await identifyArt(root,artSeed,[{name:'值班室',sourceRefs:refs('D01',2)},{name:'廊道',sourceRefs:script.episodes[0].scenes[1].flow[0].sourceRefs},{name:'堤岸',sourceRefs:refs('D02',2)}]);
+  write(castPath,cast);write(artPath,art);mapAssets(script,cast,art);write(scriptPath,script);
   await test('真实来源哈希、行号及重复文本的不同位置',()=>{
     for(const doc of script.provenance.documents)assert.ok(existsSync(resolve(dirname(scriptPath),doc.path)));
     const a=script.episodes[0].scenes[0].flow[1],b=script.episodes[0].scenes[2].flow[0];
@@ -109,7 +121,7 @@ try{
     withScript(d=>{const c=d.provenance.coverage[0];d.provenance.coverage.push(clone(c));},()=>success(validate()));
     withScript(d=>{const c=d.provenance.coverage[0];c.endLine--;d.provenance.coverage.push(clone(c));},()=>rejected(validate(),/coverage|覆盖|source/i));
     withScript(d=>d.provenance.scope='partial',()=>success(validate()));
-    const partial=clone(script);partial.provenance.scope='partial';delete partial.provenance.totalEpisodes;partial.episodes=partial.episodes.slice(1); // 实际原件从第二集开始，不改写原集号
+    const partial=clone(script);partial.provenance.scope='partial';delete partial.provenance.totalEpisodes;partial.episodes=partial.episodes.slice(1);mapAssets(partial,cast,art); // 实际原件从第二集开始，不改写原集号
     const file=join(temp,'detached','script','partial-script.json');write(file,relocate(partial,scriptPath,file));
     success(scriptCLI('validate',file,'--verify-sources'));
     withScript(d=>d.episodes.pop(),()=>rejected(validate(),/complete|totalEpisodes|完整|集/i));
@@ -265,19 +277,30 @@ try{
     });
     success(stale().r);
   });
-  await test('原文更新后重算哈希仍让实际依赖该文档的批准失效，其他集不连带',()=>{
+  await test('原文更新后重新核验映射仍让实际依赖该文档的批准失效，其他集不连带',async()=>{
     success(stale().r);
     const file=resolve(dirname(scriptPath),script.provenance.documents[0].path),before=readFileSync(file);
+    const castBefore=readFileSync(castPath),artBefore=readFileSync(artPath);
     try{
-      // Same line count, different bytes: old coordinates alone are not a version identity.
+      // Same line count, different bytes: coordinates do not identify the version.
       writeFileSync(file,before.toString('utf8').replace('第一集','第壹集'));
-      withScript(d=>d.provenance.documents[0].sha256=createHash('sha256').update(readFileSync(file)).digest('hex'),()=>{
+      const sha256=createHash('sha256').update(readFileSync(file)).digest('hex');
+      withScript(d=>d.provenance.documents[0].sha256=sha256,()=>rejected(validate(),/version|版本|source|来源/i));
+      const identity=await import(pathToFileURL(join(root,'skills/mint-characters/scripts/lib/identity.mjs')));
+      const stage=await import(pathToFileURL(join(root,'skills/mint-art/scripts/lib/stage.mjs')));
+      const candidate=clone(cast);candidate.provenance.documents[0].sha256=sha256;
+      const currentCast=identity.reconcile(candidate,cast);currentCast.status='identified';
+      currentCast.review={status:'confirmed',by:'root-fixture-author',note:'原文标题改字，复读身份及来源后明确确认。',inputHash:identity.reviewHash(currentCast)};
+      const currentArt=clone(art);currentArt.provenance.documents[0].sha256=sha256;
+      for(const a of [...currentArt.scenes,...currentArt.props])a.identityReview.inputDigest=stage.identityDigest(currentArt,a);
+      write(castPath,currentCast);write(artPath,currentArt);
+      withScript(d=>{d.provenance.documents[0].sha256=sha256;mapAssets(d,currentCast,currentArt);},()=>{
         success(validate());
         const result=stale();rejected(result.r);
         assert.deepEqual(result.ids,creation.episodes[0].segments.map(s=>s.id).sort());
         rejected(creationCLI('prompts','apply',creationPath));
       });
-    }finally{writeFileSync(file,before);}
+    }finally{writeFileSync(file,before);writeFileSync(castPath,castBefore);writeFileSync(artPath,artBefore);}
   });
   await test('根样例 outline → script seed → B 认领 → 制作材料 → 工作单批准协议 → 导出',async()=>{
     const base=join(temp,'outline-chain'),op=join(base,'outline','堤灯-outline.json'),sp=join(base,'script','堤灯-script.json'),cp=join(base,'creation','堤灯-creation.json');
@@ -290,15 +313,15 @@ try{
     seeded.episodes.forEach((ep,i)=>{
       assert.deepEqual(ep.beatClaims.map(c=>c.beatId),script.episodes[i].beatClaims.map(c=>c.beatId));
       Object.assign(ep,clone(script.episodes[i]));
-    });write(sp,seeded);
+    });mapAssets(seeded,cast,art);write(sp,seeded);
     success(scriptCLI('validate',sp,'--outline',op,'--verify-sources'));
     const missing=clone(seeded);missing.episodes[0].beatClaims.pop();write(sp,missing);
     try{rejected(scriptCLI('validate',sp,'--outline',op),/B02|beat|认领/i);}finally{write(sp,seeded);}
-    const cc=(...args)=>cli('creation',...args,'--script',sp,'--outline',op,'--no-production');
+    const cc=(...args)=>cli('creation',...args,'--script',sp,'--outline',op,'--cast',castPath,'--art',artPath,'--no-production');
     const planned=planShots(JSON.parse(success(cc('seed',sp)).stdout),seeded);write(cp,planned);
     success(cc('validate',cp));
     const m=await import(pathToFileURL(join(root,'skills/mint-creation/scripts/mint-creation.mjs')));
-    const context=m.reportContext(planned,{script:seeded,outline});
+    const context=m.reportContext(planned,{script:seeded,outline,cast,art});
     assert.deepEqual(context.episodes.flatMap(e=>e.nodes.map(n=>[n.id,n.startCuts,n.endCuts])),[
       ['B01',['E01-01#1'],['E01-02#1']],['B02',['E01-07#1'],['E01-08#1']],['B03',['E02-01#1'],['E02-02#1']]
     ]);
@@ -311,7 +334,7 @@ try{
         assert.ok(claim.sourceDocuments.every(d=>existsSync(d.path)));
       }
       const silent=brief.assets.characters.find(c=>c.id==='C02');assert.equal(silent.name,'齐叔');
-      assert.deepEqual(silent.sourceRefs,outline.characters[1].sourceRefs);
+      assert.deepEqual(silent.sourceRefs,cast.characters[1].sourceRefs);
     }
     success(cc('prompts','init',cp));success(cc('prompts','check',cp));
     rejected(cc('export',cp,'--out',join(base,'unapproved')));assert.ok(!existsSync(join(base,'unapproved')));

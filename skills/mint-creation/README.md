@@ -1,10 +1,10 @@
 # mint-creation
 
-当前交接使用 v4 script/outline；creation/production 仍为 v3。完整规则见 [来源、非发声说明与跨镜声音交接](references/source-audio-handoff.md)。场次 notes 不发声，audioRefs 只延续同一次台词，不跳过镜头、不改变台词顺序。解析来源 ID 必须与上游版本对齐。摘要绑定显式场次资产与局部开场／集尾意图；来源、声音方式或相关限制改变后，仅相关段重新审核。同名资产通过稳定 C/S/P ID 区分图片路径，不修改原始名称。结构／字节核验不是来源忠实性或成片验收。
+当前交接使用 script v4 / outline v5；creation/production 仍为 v3。完整规则见 [来源、非发声说明与跨镜声音交接](references/source-audio-handoff.md)。场次 notes 不发声，audioRefs 只延续同一次台词，不跳过镜头、不改变台词顺序。解析来源 ID 必须与上游版本对齐。摘要绑定显式场次资产与局部开场／集尾意图；来源、声音方式或相关限制改变后，仅相关段重新审核。script 的 C/S/P 是局部标记；仅以 script.assetMappings 显式连接 cast/art，名称或编号相同不代表确认。结构／字节核验不是来源忠实性或成片验收。
 
 从 v4 剧本制作参考图直出视频方案。**不生成分镜图，不改写上游故事。** 主会话只调度：分镜与提示词由编写方 subagent 完成，内容审核由审核方 subagent 完成，循环到全部批准后才回写、导出、交接生成。
 
-- JSON 保存段、镜头、真实节拍认领和资产关系。阶段目标与边界见[创作指南](references/创作指南.md)，派发与循环规则见[调度手册](references/dispatch.md)。
+- 提示词采用五部分散文格式，模型决定实际切镜；JSON cuts 保留内部节拍认领、估时与资产关系，不要求正文逐镜对应。阶段目标与边界见[创作指南](references/创作指南.md)，派发与循环规则见[调度手册](references/dispatch.md)。
 - 每段一份工作单 `<段号>/prompt.md`：状态头、分镜结构、审核意见、编写回应和提示词正文。批准同时绑定这一段的内容与它依据的输入（认领节拍的原文、参考图内容、模型与参数、项目要求），任何一样变化，这一段的批准失效，别的段不受影响；未批准的段不能导出，也不能进入生成计划。
 - 编写方与审核方各自在独立上下文的 subagent 里工作。已经安装 `mint-video-prompt` 与 `mint-video-prompt-review` 时加载它们；没有安装时读取本目录 `references/` 里逐字一致的指南副本，使用 `prompts new|submit|verdict`。
 - opening/ending 读取当前大纲或独立剧本；结束坐标从实际正文计算，不持久化。可选 openingBeat 只保留上游显式标注，缺省不伪造映射。
@@ -15,7 +15,7 @@
 
 ## 使用
 
-完整步骤、命令及七个自测入口见 [SKILL.md](SKILL.md)。数据接口见 [schema](references/schema.md)，旧数据见[迁移指南](references/migration.md)。Node 18+，只有标准库依赖；整个目录可以单独复制，不需要兄弟 skill。
+完整步骤、命令及全部自测入口见 [SKILL.md](SKILL.md)。数据接口见 [schema](references/schema.md)，旧数据见[迁移指南](references/migration.md)。Node 18+，只有标准库依赖；整个目录可以单独复制，不需要兄弟 skill。
 
 生产配置和唯一上游自动发现；多候选、损坏或不可读输入失败。缺少上游明确显示未检查，不计为通过。生成与外部媒体交接保持原协议，需要另行授权和费用告知；自测不调用模型。
 
@@ -24,3 +24,5 @@
 《收书人》先有故事，后有分镜。一集、四段、九个镜头、十个节拍；目标三十秒，镜头计划三十二秒。陈叙只获得妹妹的旧书线索，没有找到妹妹。本轮只迁移数据表达，没有重创故事、台词或分镜。沿用既有图片，不声称本轮生成。样例早于审核流程，没有附带工作单，不能直接导出；完整流程由自测在临时目录里覆盖。迁移决定及实际成片限制见 [MIGRATION.md](examples/MIGRATION.md)。
 
 HTML 是可重建报告，不进入版本控制。结构有效不代表内容质量或成片效果通过。
+
+[资产身份与显式映射交接](references/asset-identity-handoff.md)：工作单引用 script 局部标记，身份、规范、图片路径与证据消费 cast/art；无关资产变化不撤销本段审核。

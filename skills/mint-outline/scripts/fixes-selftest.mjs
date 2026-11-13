@@ -28,8 +28,7 @@ try {
  for(const label of ['constructor','__proto__','toString','hasOwnProperty']) {
   const d=clone();d.beats[0].setup=label;d.episodes[0].warnings=[label];json(file,d);
   eq(run('validate',file).status,0,'free labels remain valid');
-  const r=run('assets',file);eq(r.status,0);const assets=JSON.parse(r.stdout);
-  eq(assets.warnings[label],[1]);
+  eq(run('assets',file).status,1,'retired asset command');
   for(const format of ['--html','--md'])eq(run('render',file,format).status,0,'real render accepts dictionary keys');
  }
  const hostile=clone();hostile.source='<img src=x onerror="alert(1)">\r\n# injected [link](javascript:evil)\u2028next';json(file,hostile);
@@ -51,6 +50,7 @@ try {
   return {ep:ep.ep,targetSeconds:24,openingBeat:[1,1],scenes:[{flow:beats.map(b=>({action:b.outcome,sourceRefs:clone(b.sourceRefs)}))}],beatClaims:beats.map((b,i)=>({beatId:b.id,start:[1,i+1],end:[1,i+1]}))};
  })};
  const creation={schemaVersion:3,source:fixture.source,params:{tolerance:0.15},episodes:script.episodes.map(ep=>({ep:ep.ep,openingBeat:clone(ep.openingBeat),segments:[{sceneIndex:1,cuts:ep.scenes[0].flow.map((_,i)=>({beats:[i+1,i+1],seconds:ep.targetSeconds/ep.scenes[0].flow.length}))}]}))};
+ writeFileSync(join(scriptDir,'ignored.migration.json'),'{pending material, not authority');
  const reset=()=>{json(docFile,fixture);json(scriptFile,script);json(creationFile,creation);};
  const apply=()=>{
   const r=run('checkup',docFile,'--production',prodFile,'--downstream','--json');
@@ -148,7 +148,20 @@ try {
  const ac=clone(creation);ac.episodes[0].segments=[{sceneIndex:1,cuts:[{beats:[1,1],seconds:6}]},{sceneIndex:1,cuts:[{beats:[2,2],seconds:6,audioRefs:[[1,1]]}]},{sceneIndex:2,cuts:[{beats:[1,2],seconds:12,audioRefs:[[1,1]]}]}];
  json(scriptFile,audio);json(creationFile,ac);r=apply();eq(r.status,0,'cross-segment and cross-scene audio continuation: '+JSON.stringify(r.report.downstream.gates.filter(g=>g.status==='fail')));
  for(const mutate of [d=>d.episodes[0].segments[0].cuts[0].audioRefs=[[1,1]],d=>d.episodes[0].segments[0].cuts[0].audioRefs=[[1,2]],d=>d.episodes[0].segments[1].cuts[0].audioRefs=[[1,1],[1,1]],d=>d.episodes[0].segments[2].cuts[0].audioRefs=[[1,2]],d=>d.episodes[0].segments[2].cuts[0].audioRefs=[[99,1]],d=>d.episodes[0].segments[2].cuts[0].audioRefs='bad']){const c=clone(ac);mutate(c);json(creationFile,c);r=apply();eq(r.status,1);ok(r.report.downstream.gates.some(g=>g.id==='node-claims'&&g.status==='fail'));}
- json(creationFile,ac);for(const mutate of [d=>delete d.episodes[0].scenes[0].flow[0].sourceRefs,d=>d.episodes[0].scenes[0].flow[0].action='also action',d=>d.episodes[0].scenes[0].flow[0].speaker='',d=>d.episodes[0].scenes[0].flow[0].speaker='C99',d=>d.episodes[0].scenes[0].flow[0].transformation={reason:'x'},d=>d.episodes[0].scenes[0].flow[0].candidate='pending',d=>d.episodes[0].scenes[0].flow[1].audio={mode:'inner'},d=>d.episodes[0].scenes[1].flow[0].seconds=0,d=>d.episodes[0].scenes[0].notes=[{kind:'background',text:'秘密'}]]){const s=clone(audio);mutate(s);json(scriptFile,s);r=apply();eq(r.status,1);ok(r.report.downstream.gates.some(g=>g.id==='source-evidence'&&g.status==='fail'));}
+ json(creationFile,ac);for(const mutate of [d=>delete d.episodes[0].scenes[0].flow[0].sourceRefs,d=>d.episodes[0].scenes[0].flow[0].action='also action',d=>d.episodes[0].scenes[0].flow[0].speaker='',d=>d.episodes[0].scenes[0].flow[0].speaker='bad',d=>d.episodes[0].scenes[0].flow[0].transformation={reason:'x'},d=>d.episodes[0].scenes[0].flow[0].candidate='pending',d=>d.episodes[0].scenes[0].flow[1].audio={mode:'inner'},d=>d.episodes[0].scenes[1].flow[0].seconds=0,d=>d.episodes[0].scenes[0].notes=[{kind:'background',text:'秘密'}]]){const s=clone(audio);mutate(s);json(scriptFile,s);r=apply();eq(r.status,1);ok(r.report.downstream.gates.some(g=>g.id==='source-evidence'&&g.status==='fail'));}
+
+ // Outline no longer claims authority over character identities.
+ const unmapped=clone(audio);unmapped.episodes[0].scenes[0].flow[0].speaker='C99';
+ json(scriptFile,unmapped);json(creationFile,ac);r=apply();eq(r.status,0,'story-only interface does not invent asset membership');
+ ok(r.report.downstream.gates.some(g=>g.id==='asset-identity-reconciliation'&&g.status==='skipped'));
+ reset();rmSync(creationFile);json(join(scriptDir,'overlap.json'),script);r=apply();eq(r.status,1,'ambiguous script authority blocks even without creation');rmSync(join(scriptDir,'overlap.json'));
+ reset();const uncovered=clone(script);uncovered.provenance.scope='partial';uncovered.provenance.coverage=[{documentId:'D01',startLine:1,endLine:43}];
+ const outlineGap=clone(fixture);outlineGap.provenance.scope='partial';outlineGap.provenance.coverage=[{documentId:'D01',startLine:2,endLine:43}];outlineGap.story.sourceRefs=[{documentId:'D01',startLine:2,endLine:43}];
+ json(docFile,outlineGap);json(scriptFile,uncovered);r=apply();eq(r.status,1,'script responsible scope cannot exceed outline verified coverage');
+ ok(r.report.downstream.gates.some(g=>g.id==='source-evidence'&&g.status==='fail'));
+
+ reset();const wrongTotal=clone(script);wrongTotal.provenance.scope='partial';wrongTotal.provenance.totalEpisodes=99;json(scriptFile,wrongTotal);r=apply();eq(r.status,1,'known whole-work episode count must agree');
+ ok(r.report.downstream.gates.some(g=>g.id==='source-evidence'&&g.messages.some(m=>m.includes('totalEpisodes'))));
 
  // Execute the actual generated inline script against a small DOM adapter, not copied event logic.
  const html=renderHtml(fixture),js=html.match(/<script>([\s\S]*?)<\/script>/)[1];
@@ -173,5 +186,5 @@ try {
   d=dom();d.window.location.hash=`#ep-${ep}`;d.events.hashchange();ok(!d.clipped());eq(d.scrolls.at(-1),`ep-${ep}`,'history/hashchange locates');
  }
  for(const hash of ['#ep-999','#sec-story','#ep-6\"']){const d=dom(hash);ok(d.clipped());eq(d.scrolls,[]);}
- console.log(`✓ ${count} assertions passed: v4 actual CLI, downstream invalidation and generated report DOM.`);
+ console.log(`✓ ${count} assertions passed: v5 actual CLI, downstream invalidation and generated report DOM.`);
 } finally {rmSync(tmp,{recursive:true,force:true});}

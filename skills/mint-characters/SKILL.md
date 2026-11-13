@@ -1,23 +1,15 @@
 ---
 name: mint-characters
-version: 2.1.0
+version: 3.0.0
 description: |
-  从小说或短故事里拆出角色表、人物画像、形象提示词、音色提示词，
-  并给每个角色出角色设定图（左半身像 + 右全身三视图 + 细节条），产出 JSON + Markdown + 可交互的 report.html。
-  报告语言可指定（--lang），默认中文，任意语言都支持；
-  画风**不内置任何类型**——它由用户在 mint-setup 那一段填进 production.json 顶层的 style.character，
-  本 skill 整块抄过来用（真人实拍、吉卜力、水墨、黏土定格都行，不用改代码）。
-  零依赖、零 npm；本地不执行生成，实际生图可交给独立安装的 ly-image。
-  上传、提交、任务恢复和下载归外部生成工具，本 skill 可独立交付创作与计划。
-  跑过 mint-setup 的项目会自动读工作目录根的 production.json：画风与设定图画幅两条硬检查，出图模型与尺寸也从那里取；
-  顶层 autopilot 为 true 时全程不打断——报告语言、选角人数、归并复核全自己定，做过的决定写进汇报。
-  Use when asked to 拆小说角色、分析人物、生成角色卡、character sheets from a novel。
-# 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
+  独立阅读原剧本，建立稳定 C ID、别名、同名人物、无台词人物、匿名声音、非人主体与提及人物的来源身份。
+  人物角色整理完成后立即制作图片提示词并生成参考图；人物画像与音色按需制作，用户明确仅登记或仅要提示词时不生图。
+  支持已有 cast 增量核验、显式历史迁移、预算阻断、来源摘要与覆盖核验。
+  outline v5 仅为可选故事背景，不是人物权威。零 npm 依赖，Node 18+。
 allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
 triggers:
   - mint-characters
   - 拆角色
-  - 拆书角色
   - 小说角色
   - 人物画像
   - 角色卡
@@ -27,304 +19,109 @@ metadata:
   license: Apache-2.0
   requires:
     bins:
-      - node          # >= 18，只用标准库，无 npm 依赖
-    # 可选外部执行工具：ly-image；不影响本 skill 独立产出
-  runtimes:
-    - pi            # 没有子代理：并发步骤在当前会话串行做，产出一致
-    - claude-code
-    - codex
+      - node
 ---
 
-## 上游契约与迁移
+# mint-characters
 
-seed 接受已有剧本解析的 `outline.schemaVersion: 4`，兼容显式 v3 历史资产投影；production 仍要求 `schemaVersion: 3`。v4 CLI seed 回查来源文件、SHA256、行号和已读范围；缺失或改版不能静默继续。原文事实与限制写入资产的 `sourceFacts`，与制作设计分开，报告可查看。结构核验不等于来源语义审核。
+`{baseDir}` 为本目录。仅依赖本目录脚本、指南、样例及用户输入。先阅读 [正式契约](references/schema.md)、[来源规则](references/source-facts.md)、[生命周期与迁移](references/migration.md)。
 
-开工先阅读 [来源事实与制作补定](references/source-facts.md)。角色 tier 与场景 primary 原样消费，不以默认值替代。仅被提及、只出声、无台词、非人主体和群演都先保留来源身份，再按实际制作需要决定是否出图。读取可选非空 `production.creativeBrief`，不解释策略配置。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
+## 职责与运行范围
 
-检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-background.md) 和 [迁移说明](references/migration.md)。
+本阶段独立判断人物身份。outline 的自然语言称呼不构成人物 ID、别名或分档结论。script 的局部 C 标记也不自动等于本阶段 C ID。
 
-## mint-characters
+完整流程固定为 outline → characters → art → script → creation。完整流程由项目流程状态确认前序完成和当前交接范围；本 CLI 不推进项目状态，不声称完整流程或联合对账通过。独立运行时可缺少 outline，背景检查为 skipped。提供损坏、错误版本或来源不一致的 outline 必须失败。
 
-输入一篇小说/短故事，输出每个角色的：人物画像、形象提示词、音色提示词、角色设定图。
+所有交付写入 `<工作目录>/characters/`。原件路径相对记录它的 JSON；seed 生成绝对路径，reconcile 将来源路径转换为绝对路径，允许在其他目录执行。原件缺失、摘要或行数变化必须阻断，不回退到名称猜测。
 
-`{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/mint-characters.mjs`，零依赖，`node` 直接跑。
+正式交付固定包含 `cast.json`、`cast-report.md`、`cast-report.html` 三个文件。两份报告由 `cast.json` 渲染，三个文件均放在 `<工作目录>/characters/` 下。草稿和增量核验中间文件可使用其他名称，最终交付使用上述固定名称。
 
-**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。实际生成交给独立安装的 ly-image——见 `references/media-handoff.md`。
-
----
-
-### Step 0 — 读生产参数（有就必须遵循）
-
-`production.json`（`mint-setup` 的产出）住在工作目录根。**不用挂载，脚本自己找**：`validate` / `images` 会从 cast.json 所在目录**向上最多 5 层**去找它，找到就打印路径，找不到也打印一句「2 条检查跳过」——不静默。
-
-找到了这三样以它为准：
-
-| 字段 | 管什么 |
-| --- | --- |
-| `style.character` | **画风正文本身**。角色卡没把它整块用上直接报错——画风漂了，角色和场景合成时不像同一部片 |
-| `image.asset.aspectRatio` | 设定图版面画幅，必须出现在每个角色的 `image.sheet` 里 |
-| `image.model` + `image.asset.resolution` | 第 8 步出图用的模型与分辨率档位（档位对应模型的 `resolution` 枚举值，原样填） |
-
-`lang` 也可以从它继承（优先级 `--lang` > cast.json 顶层 > production.json > 中文）。历史报告没有这份文件时可以独立读取；`--no-production` 只跳过上游对账，不提供出图默认值。出图前必须补齐视觉正文与制作参数。
-
-### Step 0.1 — 确定报告语言
-
-用户可以指定语言，比如「用英文」「--lang en」「日本語で」。**没说就是中文（`zh`）。**
-
-这个 `lang` 会一路传下去：第二趟生成角色卡时决定人类可读字段用什么语言，`validate` 和 `render` 也都要带上。
-
-**界面文案分两种情况：**
-
-- `zh` / `en` / `ja` —— 内置，不用管
-- **其他任何语言** —— 你要现场翻一份。跑
-
-  ```bash
-  node {baseDir}/scripts/mint-characters.mjs ui-template <lang>
-  ```
-
-  它打印一份英文骨架，把每个值翻译成目标语言，整块放进 `cast.json` 顶层的 `ui` 字段。渲染时会合并进内置表。
-
-  **不给 `ui` 的话 `validate` 会直接报错**——否则报告会是「角色内容是法语、界面标签是英文」的半吊子状态。
-
-支持的语言不受内置表限制，法语韩语西班牙语都能出完整报告。
-
-### Step 0.5 — 取画风 ⛔ 不要自己编
-
-**本 skill 不内置任何画风，也不问用户画风。**画风是 `mint-setup` 那一段定的，住在工作目录根的 `production.json` 顶层。这一步只是把它取出来：
+## 第一步：建立来源骨架
 
 ```bash
-node {baseDir}/scripts/mint-characters.mjs style
+node {baseDir}/scripts/mint-characters.mjs seed \
+  --source <原剧本.txt> --title <标题> --budget 30 \
+  --out <characters/draft.json>
 ```
 
-打印这部剧的 `style.character` 那一块：`render` / `surface` / `lighting` / `negative` / `tags` 五段英文正文。**它们要原样抄进角色卡**——`render` 进 `image.sheet` 与 `image.prompt`，`negative` 的每一条进 `image.negativePrompt`。
+`--budget` 可选。它是明确角色身份数量上限，超额在本阶段阻断。不是出图人数，也不是提醒阈值；不得通过删除无台词或提及身份绕开预算。
 
-命令找不到 `production.json`、或那一块没填，会直接报错。**那时回 `/mint-setup` 定画风，不要自己编一档顶上去**——编出来的那一档只活在这一段，场景与分镜是另一档，合成时对不上。
+可选 `--outline <outline-v5.json>` 只核验和绑定故事背景。正式入口拒绝 outline v3/v4。缺省时不要求安装其他 skill。seed **不理解剧本、不抽人物、不标记已读**；它只写文件身份、原始字节 SHA256、行数与空数组。不要把骨架当成正式交接完成。
 
-**换风格是整套换**：五块整块取用，不要混搭。详见 `{baseDir}/references/style.md`。
+## 第二步：阅读和语义识别
 
-版面规则（三区、比例、细节让位）**不随画风变**，变的只有渲染质感。画幅读取 `production.image.asset.aspectRatio`，允许合法横向或方形比例——**成片拍竖屏也不改**，三区版面靠横向铺开，竖过来三视图会被压扁。
+阅读原剧本，按 [扫描指南](references/roster-pass.md) 登记所有本次范围内的人物。长文本可先运行 `chunk <原剧本.txt> <characters/.work>`；块边界是阅读辅助，不是身份边界。根据实际阅读填写 `provenance.coverage`，不是根据 seed 或 chunk 生成成功填写。
 
-### Step 0.8 — 自动驾驶（autopilot）
+每个身份填写永久 `identityKey`，例如 `night-operator`。首次可以省略 `id`，由 reconcile 分配 C01 等。既有身份必须沿用其 identityKey 与 C ID；不按出现次序重编号。
 
-Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时本 skill 的全部流程**一口气跑完**：不提问、不等拍板、不把选择题抛回去。`validate` 与 `images` 找到生产参数也会打印一句 `↳ 自动驾驶：开启`（`render` 只做语言继承，不打印）——但 Step 0.1 跑在第一条命令之前，所以开工前要自己看一眼。
+- 同名不同人分别登记。别名必须有来源，不按名称或姓氏自动合并。
+- 无台词人物、仅出声主体、仅被提及人物均保留身份及出现方式。
+- 匿名人物以原文可支持的描述命名。未知说话者保留未知，不猜测为已知人物。
+- 非人主体单独登记。多处声音尚不能证实同一身份时分别登记。
+- 未知项写入 `unknowns`。制作补定写入设计字段，不冒充来源事实。
+- partial 只代表已读范围。complete 必须逐文档覆盖全文，不要求虚构分集数量。
 
-没有 `production.json`、字段写着 `false` 或者整个没写，就是各步原来的样子。
+不要运行旧 `merge` 对正式身份归并。它是历史无 ID 角色卡辅助工具，会拒绝稳定 ID、identityKey 和结构化别名输入。
 
-| 原本 | 自动驾驶下 |
-| --- | --- |
-| Step 0.1 问报告语言 | 按继承取（`--lang` > cast.json 顶层 > `production.json` > 中文），不问；非内置语言的 `ui` 骨架自己翻 |
-| Step 4 `mergeCandidates` 逐条复核 | **自己判**：证据够才合，拿不准就**不合并**——合错了两个人并成一个，比没合更难修。逐条判定结果写进汇报 |
-| Step 5 选角取前 N 位 | 用户没说就取默认 30，不问 |
-| Step 8 出图 | 完成离线计划；已授权时通过 ly-image 生成并检查，不自动重投。没有生成工具则明确未生成 |
-
-**转移的是审批权，不是取消检查点**：Step 7 的校验照样要过、出图前照样打印要出多少张、拿到图照样要核对——只是不再等人点头。**替用户做的每一个决定都要写进 Step 10 的汇报**，归并判定与选角人数一条不漏。
-
-### Step 1 — 定位输入
-
-用户给文件路径就直接用。直接粘正文的，**先落到一个临时 .txt**——后面校验「引文是否逐字」要拿原文比对，没有原文文件这步就没法做。
-
-**产物落点 ⛔ 只有一格**：本 skill 的全部产出写进 `<工作目录>/characters/`——`<书名>-cast.json`、`<书名>-cast.md`、`report.html`、`images/` 都在这一格里。工作目录根只住 `production.json`（`mint-setup` 的产出），别的 skill 各占自己的一格（`outline/`、`art/`、`script/`、`creation/`）。用户没指定工作目录就用原书同级目录，**但段目录这一层不省**——合并报告的 `--from` 自动发现就是按段目录名找 JSON 的，平铺在根目录它找不到。下文的 `<段目录>` 就指 `<工作目录>/characters/`。
-
-分块、roster、角色卡这些中间件写进 `<段目录>/.work/`，跑完可以整个删掉，不影响任何交付物。下文的 `<workdir>` 就指 `<段目录>/.work/`。
-
-跑过 `mint-setup` 的项目这条是查的：`validate` 找到 `production.json` 就顺带核对落点，放错了会点名该去哪；没找到那份文件就无从判断工作目录根在哪，明说跳过。
-
-**有 `outline.json`（mint-outline 的产出）就一起要过来，走 seed**——大纲是角色设定的上游，它的 `characters` 块已经定死了角色清单：
+## 第三步：登记及增量核验
 
 ```bash
-mkdir -p <workdir>
-node {baseDir}/scripts/mint-characters.mjs seed <outline.json> > <workdir>/seed.json
+# 首次登记；不覆盖已有文件
+node {baseDir}/scripts/mint-characters.mjs reconcile draft.json --out cast.json
+
+# 已有产物作为不可覆盖的基线
+node {baseDir}/scripts/mint-characters.mjs reconcile candidate.json \
+  --previous cast.json --changes changes.json --out cast-next.json
+node {baseDir}/scripts/mint-characters.mjs validate cast-next.json --previous cast.json
 ```
 
-搬过来的是大纲已经拍板的事实，留空的是这一层才该做的设计：
+`changes.json` 为数组。没有合拆删纠正时可以省略。身份重排不改变 ID。新身份省略 ID，分配历史最大编号之后的 ID。退役 ID 和 identityKey 均不复用。合并、拆分、删除、身份事实纠正必须有 from/to 映射及来源或用户决定。详情见迁移文档。
 
-| outline 的字段 | seed 之后 |
-| --- | --- |
-| `id` | 原样保留成角色码——下游 script / creation 用它引用角色 |
-| `name` | 角色表就照这份，**不再自己判断谁该进** |
-| `tier` | 映射成 `importance`：`lead` → `protagonist`、`support` → `supporting`、`functional` → `minor` |
-| `arc` | 直接落进 `persona.arc` |
-| `role` / `from` | 进 `seedNote`——定位（女主 / 反派）与「由原著的谁合并而来」，扫原文时知道该收哪几条线的戏 |
+新增剧集后重新阅读相关原件，更新摘要、引用与覆盖。来源改版保留身份 ID，但把实际依赖该来源的身份加入 `lifecycle.recheckIds`。此列表不是失败日志或统计；它只记录受影响引用须重新核验的身份。
 
-v4 已有证据的 `aliases` 原样带入，`sourceFacts` 保存别名出处、presence 和必要限制。留空待填：尚无依据的别名、`oneLiner`、`persona` 其余各项、`image`、`voice`。**seed 出来的是骨架不是成品**，直接跑 `validate` 会报一堆字段缺失，那是预期的——后面 Step 2–6 就是来填它的。
+reconcile 对新增或变化的身份及范围将语义审核恢复为 pending，纯重排仅沿用摘要仍有效的既有审核，不自动确认人物判定。完成语义复核后，可记录 `review.status: confirmed`、`by`、`note` 及 `inputHash`（validate 输出的 `reviewInputHash`），再将 status 设置为 identified。摘要失效必须重新复核。结构检查不能代替人工或模型语义审核。
 
-两处口径要守住：
+## 第四步：整理完成后立即生图
 
-- **大纲定的分档不要推翻**。谁重要是改编阶段拍板的事，这一层只负责把定下来的人做深。真觉得分档不对，回去改大纲，别在这里悄悄改一个不一样的
-- **主角组内部可以细分**。outline 的 `lead` 是「男女主 + 主反派」一整组，对应 `protagonist` 与 `major` 两档，seed 一律给 `protagonist`；照 `seedNote` 里的定位把主角之外的改成 `major`，这不算推翻分档
+人物角色整理完成并通过身份与来源核验后，立即为本次范围内需要视觉呈现的角色补齐 image 设计，导出计划并调用外部生成工具完成参考图，不停在角色清单、提示词或离线计划，也不等待用户再次发出生图指令。沿用会话中已确定的工具、制作参数与生成授权；缺少必要参数、工具或授权时，明确阻断项及“未生成”，补齐后继续。
 
-**已有 v4 解析时跳过 Step 2–4 的名字归并。** 对照来源补齐 seed 中每个稳定 ID，按 `card-<C ID>.json` 保存角色卡；同名不同 ID 分别保留。来源遗漏返回 outline，不运行旧名字归并把两个人重新合在一起。关系指向同名人物时填写 `persona.relationships[].id`，名字只负责展示。只有无歧义的历史名字关系才自动连线。
+persona、voice 仍按需制作，不强制三项设计同时存在。用户明确要求仅身份登记、仅提示词或暂不生图时，按其限定范围交付；身份契约仍允许没有设计字段。登记所有身份之后，再决定哪些身份需要视觉呈现，不能只留下画像选角。
 
-**没有 `outline.json` 也照常运行**，本 skill 不依赖它——跳过 seed，从 Step 2 开始独立提取角色。后面的名字归并仅属于无稳定 ID 的历史独立输入，不用于 v4 解析结果。
+- 画像与音色：阅读 [画像指南](references/profile-pass.md)、[设计字段](references/design-schema.md)。已有的独立创作角色卡、assemble、Markdown 和交互报告接口保留为历史创作入口，不冒充来源核验完成的 cast v1。
+- 图片：另读 [画风](references/style.md)、[真实感](references/realism.md)、[版面](references/sheet.md)。production 保持 v3，画风正文不设默认值。独立画像或身份登记不要求 production；已提供但损坏的 production 必须失败。
+- 生成：`images cast.json` 只产生离线计划。只为存在 image 设计的角色建立任务；`--only C01,C02` 选择稳定 ID。正式路径为 `images/C01-sheet.png`，不会因改名或新增同名人物而漂移。
+- 本地 CLI 保持离线；实际生图由 agent 接续外部生成工具。按 [媒体交接](references/media-handoff.md) 核验 schema、费用授权、回执及下载；已有授权覆盖本次生成时直接执行，不重复确认，不自动重复付费。下载并核验参考图后再生成最终报告。
 
-### Step 2 — 分块
+身份、来源或设计变化后，必须重新核验实际受影响的参考图、工作单、提示词与审核材料。不得把 ID 沿用当成审核沿用。消费者版本与图片路径支持见 [迁移接口矩阵](references/migration.md)。
+
+## 第五步：校验及报告
 
 ```bash
-node {baseDir}/scripts/mint-characters.mjs chunk <book.txt> <workdir>
+node {baseDir}/scripts/mint-characters.mjs validate cast.json
+node {baseDir}/scripts/mint-characters.mjs render cast.json --md > cast-report.md
+node {baseDir}/scripts/mint-characters.mjs render cast.json --html > cast-report.html
+node {baseDir}/scripts/mint-characters.mjs images cast.json --out image-plan.json
 ```
 
-打印 `{"chunks": N, ...}`。
+增量产物以上三个命令也必须带 `--previous`。可选 `--production path` 或自动从 cast 所在目录向上五层查找；`--no-production` 明确跳过配置对账，不提供生成默认值。`--lang` 仅覆盖报告界面语言；内容和提示词语言仍以 cast.lang 为准，机器提示词始终英文。
 
-- **N == 1**：跳过 Step 3，直接在当前会话读原文做第一趟，结果自己写成 `<workdir>/roster-00.json`
-- **N > 1**：进 Step 3
-- `truncated: true`：明确告诉用户尾部没扫到，别闷着
+检查输出固定 `status: pass/fail/skipped + category + level`。报告展示身份、来源、范围、预算、可选设计、生命周期及审核状态；JSON 导出保持原输入。HTML 每次 render 可重建，不加入版本控制。
 
-### Step 3 — 第一趟扫描（仅 N > 1）
-
-**有子代理就并发，没有就串行**：Claude Code 用 Task、codex 用 subagent，每块一个子代理，**所有调用放在同一条消息里**才是真并发；**pi 默认不带子代理**，就在当前会话里一块一块顺着读。两条路结果一样，串行只是慢。
-
-每个子代理的任务：
-1. 读 `{baseDir}/references/roster-pass.md`，照它执行
-2. 读 `<workdir>/chunk-NN.txt`
-3. 把 roster JSON 写到 `<workdir>/roster-NN.json`
-4. 只回一句「done NN，抽到 X 个角色」
-
-### Step 4 — 归并 + 复核
+## 历史迁移
 
 ```bash
-node {baseDir}/scripts/mint-characters.mjs merge <workdir> | tee <workdir>/merged.json
+node {baseDir}/scripts/mint-characters.mjs migrate-outline old-v4.json --out pending.json
+node {baseDir}/scripts/mint-characters.mjs migrate-cast old-cast.json --out pending-cast.json
 ```
 
-落到 `merged.json` 不只是留档：Step 6 的 assemble 靠它拿同档角色的戏份顺序。
+材料保留完整原值、逐字段路径和 pending 状态，不能作为正式 cast 验证或生成图片。原文件不覆盖。历史 `seed outline.json --legacy` 仅保留旧骨架投影能力，不是正式入口或审核结论。
 
-按名字+别名精确收敛（某块把「陆」列成「陆行远」的别名，两条就并成一个人），notes 累加、quotes 去重，按出现块数降序——出现的块越多戏份越重。
+## 样例与测试
 
-输出是 `{ "characters": [...], "mergeCandidates": [...] }`。**`mergeCandidates` 要逐条复核**：精确匹配只能收敛两块恰好写了相同称呼的情况，剩下的是语义判断，脚本做不了。候选来自名字包含关系（`「陆」⊂「陆行远」`）——是强信号不是判决，同姓的父子、兄弟就不能合。候选之外你自己看出来的同人（「陆先生」和「行远」没有包含关系，不会进候选）也要合。
-
-要合并就写一份 merges.json 再落地：
-
-```json
-{ "merges": [{ "keep": "陆行远", "absorb": ["陆", "陆先生"] }] }
-```
+`examples/回声台.txt` 先定义故事，再提供独立身份登记 `回声台-cast.json`；不含分镜或生成图片。历史《渡口》完整画像、声音和图片提示词样例仍保留。
 
 ```bash
-node {baseDir}/scripts/mint-characters.mjs merge <workdir> --apply merges.json | tee <workdir>/merged.json
+node {baseDir}/scripts/test-all.mjs
 ```
 
-`keep`/`absorb` 用名字或任一别名定位都行，找不到会直接报错。输出仍带 `mergeCandidates`，剩下的都确认是不同的人（或清空）再进下一步。没有要合的就直接往下走——但 `merged.json` 必须留着。
-
-### Step 5 — 选角
-
-取前 N 位。默认 30，用户说了就听用户的。剩下的角色在最后汇报里提一句「还识别出 X 位没做画像」。
-
-### Step 6 — 第二趟出卡
-
-每个角色一份，同样是有子代理就并发、没有（例如 pi）就在当前会话串行做。
-
-每份任务拿到：
-- `{baseDir}/references/profile-pass.md` 和 `{baseDir}/references/schema.md`（读它们，照着做）
-- `{baseDir}/references/realism.md`（真实感怎么落进提示词：姿态、神情、破绽、材质各进哪个字段。**非写实画风只取通用那半边**）
-- **报告语言 `lang`**（Step 0 定的）
-- 该角色归并后的 `name` / `aliases` / `notes` / `quotes`
-- **同批其他角色的名字**（避免长相声线撞车）
-
-角色卡 JSON 写到 `<workdir>/card-<slug>.json`。**断点续跑**：`card-<slug>.json` 已存在的角色不必重跑。
-
-**同时写一段故事摘要**：用 `lang` 指定的语言，3–5 句，交代时空背景、核心情境、这几个人聚在一起的由头。短篇直接从原文写；长篇从各块的 roster note 归纳。不剧透结局，不写成推荐语。写到 `<workdir>/summary.txt`。非内置语言的话，把 Step 0 翻好的 ui 整块存成 `<workdir>/ui.json`。
-
-然后合成 cast.json——**用 assemble，不要手拼**（手拼会丢字段、写错顶层键）：
-
-```bash
-node {baseDir}/scripts/mint-characters.mjs assemble <workdir> \
-  --source <书名> --lang <lang> \
-  --out <段目录>/<书名>-cast.json
-```
-
-坏卡会被逐个点名——哪份 `card-*.json` 坏了就只重跑那个角色，其他不用动。
-
-同档角色的先后是戏份顺序，来自 Step 4 留下的 `<workdir>/merged.json`（assemble 自动读，也可用 `--order` 指别的文件）。报告左栏「按戏份排序」的序号就靠它——看到「同档角色将按文件名序」的警告说明 merged.json 丢了，回 Step 4 重新生成。
-
-### Step 7 — 校验 ⛔ 不能跳
-
-```bash
-node {baseDir}/scripts/mint-characters.mjs validate <cast.json> <book.txt>
-```
-
-记得带上 `--lang`（Step 0.1 定的）。检查：结构、`importance` 枚举、**引文逐字**、**出图提示词不含人名**、**语言分工**（人类字段跟随 `lang`、出图/TTS 提示词永远英文）、**非内置语言必须带 `ui`**，以及生产参数的两条——**画风整块用上**（`render` 原句进了两条提示词、`negative` 一条不落地进了反向词）、**设定图版面画幅与 production.json 一致**（找不到那份文件就明说跳过）。
-
-**有违规就按报错逐条修，改完重跑，直到通过。** 这四类错模型真的会犯——这套检查就是被真实输出打出来的。
-
-### Step 8 — 出图（可选，每个角色都出）
-
-**每个角色一张**，用 `image.sheet`，落到 `./images/<slug>-sheet.png`。出图模型与档位由命令自己从 `production.json` 取（`image.model` / `image.asset.resolution` / `image.asset.aspectRatio` 进入离线计划 params；生成前核对实时 schema，**提示词里一个像素都不写**）。一张横向或方形画布内部左右分栏（画幅按 `production.image.asset.aspectRatio`）：
-
-```
-┌──────────┬────────────────────────────┐
-│  半身像   │   正视    侧视    背视       │
-│ （证件照） ├────────────────────────────┤
-│  面部基准  │  细节 · 细节 · 细节 · 细节   │
-│   ~34%   │        生产参数画幅        │
-└──────────┴────────────────────────────┘
-```
-
-左栏半身像是面部设计基准，右上三视图的脸照它画，右下是关键细节的小特写。**两条硬要求**：三视图的脸必须与半身像一致（否则一张图两个长相）；三个全身像的比例必须协调（模型会为了塞下细节把人压扁）。
-
-```bash
-cd <段目录>
-node {baseDir}/scripts/mint-characters.mjs images <cast.json>
-```
-
-本命令只输出离线计划，不会生成图片。可增加 `--out image-plan.json` 保存计划，`--only` 筛选任务，`--style-ref auto` 添加风格参考依赖。
-
-读取 [生成交接流程](references/media-handoff.md)，再读取已安装的 **ly-image**。由它发现实时模型/schema、构造请求、预览、在授权范围内提交，并使用原回执恢复查询与下载。计划按参考依赖排序；基准图核验完成后才能生成依赖图。外部下载名不同于本地报告路径，核验格式和内容后放到计划 output，再 render。
-
-没有 ly-image 或没有生成授权时，只交付提示词与计划，明确“未生成”。原 `--force`、`--cutout`、超时与并发选项已退役；质量重做和透明底由 ly-image 另行处理，不能自动重复付费。
-
-核对左右两栏是否同一人物、三个全身像是否等高。版面要求见 [sheet](references/sheet.md)。
-
-### Step 9 — 输出
-
-```bash
-cd <段目录>
-node {baseDir}/scripts/mint-characters.mjs render <cast.json> --md   > <书名>-cast.md
-node {baseDir}/scripts/mint-characters.mjs render <cast.json> --html > report.html
-```
-
-语言取 `cast.json` 里的 `lang`（没写就跟 `production.json`），要临时覆盖就加 `--lang <code>`。
-
-`render` 会自动去 `images/<slug>-sheet.png` 找图。所以**先出图再 render**。
-
-report.html 的样式约定见 `{baseDir}/references/report-style.md`——要改样式先读它，别把它改回通用卡片墙。
-
-最终落地：
-
-```
-<工作目录>/
-├── production.json                ← mint-setup 的产出，住在根目录
-└── characters/                    ← 本 skill 的全部产出，一格装满
-    ├── <书名>-cast.json
-    ├── <书名>-cast.md
-    ├── report.html                ← 双击就能开
-    ├── images/
-    │   ├── <slug>-sheet.png       ← 通过外部生成并核验后才有
-    │   └── jobs/                  ← 外部 skill 回执，保留用于恢复
-    └── .work/                     ← 分块、roster、角色卡，跑完可删
-```
-
-### Step 10 — 汇报
-
-一句话说清：角色数、出图数、报告路径。校验一次没过的话，说明修了什么。有角色出图失败、被截断、或因为没有生成工具或授权 而没出图，明确说清楚。
-
----
-
-## 边界
-
-- 单次上限 24 块（净覆盖约 93 万字符），超了会明确报 `truncated`，不静默截断
-- 人类可读字段跟随 `--lang`（默认中文）；出图和 TTS 提示词**永远英文**，那些引擎吃英文最稳
-- 设定图最容易出的两个问题：**一张图里两个长相**、**为了塞细节把人物压扁**。拿到图先扫一眼，见 `references/sheet.md`
-- `images` 只输出离线计划；实际生成只交给 ly-image，不内置第二套网关调用。
-- 想要能实时编辑、边跑边看的交互界面，那是另一个东西，不在这个 skill 里
-
-## 自测
-
-```bash
-node {baseDir}/scripts/selftest.mjs
-node {baseDir}/scripts/v3-selftest.mjs
-node {baseDir}/scripts/upstream-selftest.mjs
-```
-
-离线自测覆盖创作、契约、渲染与交接计划；检查依赖顺序、提示词原文、素材路径、退役参数与防覆盖。不调用模型、不读取凭据、不发网络请求。
-
-## 自带样例
-
-`{baseDir}/examples/渡口.txt` 是一篇短故事，4 个角色，其中货郎全程只有绰号、船夫只被叫过「老伯」——专门用来验别名归并。对应产出 `渡口-cast.json` / `渡口-cast.md` 可以当质量基准，也是校验的自检夹具。
+运行本阶段全部自测，均离线，不调用模型、不读取凭据、不执行付费生成。

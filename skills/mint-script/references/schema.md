@@ -1,6 +1,6 @@
 # script.json v4 数据契约
 
-正式入口只接受 schemaVersion:4，outline 消费边界同为 v4。production 与 creation 仍为 v3。旧剧本必须显式迁移，不双读旧规划字段。Node 18+，标准库，无兄弟代码依赖。
+正式入口只接受 schemaVersion:4，outline 消费边界只接受 v5。production 与 creation 仍为 v3。旧剧本必须显式迁移，不双读旧规划字段。Node 18+，标准库，无兄弟代码依赖。
 
 ## 独立创作与解析
 
@@ -50,9 +50,9 @@ sourceRefs 使用与 coverage 相同的 documentId/startLine/endLine 三字段�
 
 - flow 与 notes：每项都必须有非空 sourceRefs。
 - episodes 与 scenes：可选，提供时同样核验；完整 flow 引用不能替代非发声 notes 自己的依据。
-- outline 事实：故事、人物、地点、道具、事件、分集及已登记问题提供来源引用。
+- outline 事实：故事、事件、分集及已登记问题提供来源引用；不消费人物、地点或道具身份表。
 
-内存结构检查只检查形状、并集与坐标。`verify-sources` 或 `--verify-sources` 才读取实际文件并核对哈希、行数和边界。文件变化、缺失、无法读取、非法编码均失败，不能跳过。`--production-ready` 同时执行来源核验与目标检查。核验成功不代表读懂剧情或通过语义忠实度审核。
+内存结构检查只检查形状、并集与坐标。`verify-sources` 或 `--verify-sources` 才读取实际文件并核对哈希、行数和边界。文件变化、缺失、无法读取、非法编码均失败，不能跳过。`--production-ready` 同时执行来源核验与目标检查。提供 cast/art 且有相应映射时，还读取映射版本快照实际依赖的资产来源原件，路径相对各自资产 JSON（资产阶段已有绝对路径也可核验），不把路径改写回产物。缺少资产 JSON 路径或相关原件同样失败。没有映射时不假称已读取资产原件，也不把无关资产来源改版关联到当前引用。核验成功不代表读懂剧情或通过语义忠实度审核。
 
 公开本地 API：`lib/source.mjs` 的 evidenceErrors、provenanceErrors、sourceRefsErrors、verifySources(doc, artifactPath, {outline?})、unionRanges、sourceLineCount。verifySources 返回 status/errors/semanticReview；未提供解析来源为 not-applicable，语义审核永远 not-performed。rebaseProvenance(provenance, fromArtifactPath, toArtifactPath) 只改变相对路径，不改变版本或位置。
 
@@ -87,7 +87,7 @@ params 可省略。只保存用户明确覆盖：charsPerSecond 有限正数，�
 
 ## 场次、说明与执行正文
 
-sceneId 为 S 加至少两位数字。characters 是无重复 C ID 数组，可为空但不能缺省。包含无台词人物；画外人物若本场实际发声也明确登记。props 可选无重复 P ID 数组。lighting 可选非空文本。
+sceneId 为 S 加至少两位数字，是正文局部地点／出现标记，不是 art 地点身份，也不是场次顺序；场次由所在集及数组位置区分。characters 是无重复局部 C ID 数组，可为空但不能缺省。包含无台词人物；画外人物若本场实际发声也明确登记。props 可选无重复局部 P ID 数组。局部标记可区分同名人物、匿名声音、无台词人物或非人主体，不凭名字合并。身份未确定时保留区别和来源；只提及的人物或物品不强制建立制作资产。lighting 可选非空文本。
 
 flow 非空。每项必须且只能有一个非空文本字段：action、line、subtitle、sound。
 
@@ -110,13 +110,51 @@ scene.notes 为可选数组，每项有非空 text、kind（performance/backgrou
 
 transformation 为 `{reason,authorization}`，两个值都是非空文本，只保留这两个字段。授权必须来自真实任务或项目要求；工具只验证记录格式，不决定语义权限，也不自动批准改写。实际台词、明确 VO、关键字幕默认保留原句；改写须另有明确授权。
 
-## outline v4 消费边界
+## 局部引用与资产映射
 
-只接受已有剧本 provenance。删除 adaptation/arcs、params.adaptMode/minutesPerEpisode/episodes、beats.position/kind/weight/type、scenes.reusePlan。故事使用 summary，可选 focusCharacterIds/endingBeatId；endingBeatId 只能定位已识别的全剧终点，不因提供批次结束而填写。
+script.assetMappings 是唯一权威数组。不能在 scene、flow、outline 或独立映射文件建立第二份权威。缺省表示尚无映射，不表示相同 ID 自动映射。每项严格包含：
 
-分集保留 synopsis、引用，可选 opening 与 ending.event；ending.mode 可省略。问题保留 id/text/sourceRefs，可选 reason，禁止 resolution/dueByEp。原作未回答允许保持未知；resolves 仍为 B 上的 Q ID 数组，不能重复回答或早于问题提出。
+| 字段 | 契约 |
+| --- | --- |
+| kind | character / scene / prop |
+| localId | script 中实际存在的局部 C/S/P 标记；kind + localId 唯一 |
+| assetId | 明确目标资产 ID；来自 cast.characters / art.scenes / art.props，不按姓名查找 |
+| status | confirmed / pending / conflict；未知不能默认 confirmed |
+| sourceRefs | 非空一基包含端点范围；同时处于 script provenance.coverage、目标资产 sourceRefs 的位置并集、目标阶段 provenance.coverage |
+| basis | 非空文本；说明来源核对或用户明确身份决定及依据，不冒充原文事实 |
+| assetDigest | 完整目标资产 JSON 的 SHA256，小写 64 位；递归按对象 key 排序，保留数组顺序，无空白 JSON，UTF-8；不是 ID/name 或挑选字段的摘要 |
+| documentVersions | 非空数组 `{id,sha256,lineCount}`；无重复，至少包含映射及完整目标资产 sourceRefs 涉及的文档；每个提供的快照都核验；同时匹配 script 与目标阶段的文档身份、原件摘要、行数；目标资产更广的来源范围不要求冒充 script 已读取范围 |
 
-本地校验覆盖实际消费接口，不替代 outline 的完整资产、身份或故事审核。characters.tier 与 scenes.primary 的含义由原阶段保留，不能因工具缺省而重写。
+正式 cast/art 输入仅接受 schemaVersion 1，必须包含对应资产数组、唯一 ID、名称及匹配作品名。人物／美术生产端正式版本均为 v1；其他版本不能按形状相似隐式读取。无版本旧文件不隐式兼容，须在负责阶段显式版本化或迁移。映射引用的资产还须提供非空 sourceRefs 及有效 provenance 版本与覆盖；不能拿仅有设计提示词的旧资产冒充已核验来源。
+
+没有已知目标时不伪造摘要或来源，可暂不建立该映射并在 notes 记录必要歧义。有候选但身份待核对时填写 pending/conflict，保留候选和真实依据。这些状态不等于确认；不因同名、别名、字符相同、图片文件名相同或用户要求“继续”自动确认。
+
+自包含公开 API 位于 `scripts/lib/asset-mappings.mjs`：
+
+```js
+mappingErrors(script, ctx, {required: [{kind:'character',localId:'C01'}]});
+mappingErrors(script, ctx, {required: true}); // 当前正文全部局部引用
+mappedAssetId(script, 'character', 'C01'); // 唯一 confirmed 的 assetId，否则 null
+assetDigest(asset); // 完整目标资产规范 JSON 的 SHA256
+```
+
+required 缺省为 []，false 同样表示无制作依赖。所有已提供映射始终检查结构、script 证据和版本记录；提供对应资产阶段时对账目标摘要、来源版本和范围。缺少可选资产阶段时不伪装成已核验；仅在它是 required 依赖时阻断。required 是 true/false 或 `{kind,localId}` 数组；null、字符串、未知引用等明确失败。mappedAssetId 只解析记录，不替代 mappingErrors 或原件读取；消费前仍须验证。
+
+validateScript/checkup 接受 ctx.requiredMappings；--production-ready 同时确认目标、读取原件，并默认要求全部当前局部引用。--required-mappings FILE 可把范围显式限制为实际制作依赖；JSON 内容就是上述数组，不能将损坏文件伪装成空范围。选择的正确性仍需制作内容评审。
+
+只有 required 引用需要 confirmed。无关待确认不冒称已通过，也不阻断另一个已确认依赖。资产增删或重排不按数组位置改写映射。某一资产摘要变化仅在指向它的映射给出失效诊断；其他资产不自动失效。目标合并、拆分、删除或身份纠正后，原映射不能按名字跳到新身份，须回查依据后显式修改。来源版本、负责范围或资产 sourceRefs 变化同样重新核验受影响的引用，不通过仅更新摘要掩盖未复核。
+
+映射不改变正文顺序、场次边界、说话者当时称呼、声音主体、听者或来源。报告只在映射有效时于身份元数据显示目标名称和音色，正文台词说话者保留局部标记；正文中的实际台词不替换成资产姓名，也不提前揭晓身份。不同位置的相同台词仍是两次发生。无上游时名称保持局部标记，联合对账 skipped；即使提供全部阶段，没有请求制作身份依赖且无映射时也不宣称映射交接通过。
+
+## outline v5 消费边界
+
+正式入口只接受 schemaVersion:5；v4 及更早版本必须在原阶段显式迁移，不更改版本号冒充转换。不依赖 outline 的人物、地点、物品、分档、预算或资产调度；出现 characters/scenes/props、story.focusCharacterIds、分集 characterIds/sceneIds/propIds、params.thresholds 或 notes 的资产 ID/speakerId 即失败。
+
+只接受已有剧本 provenance。故事使用 summary，可选 endingBeatId；endingBeatId 只能定位已识别的全剧终点，不因提供批次结束而填写。继续拒绝 adaptation/arcs、params.adaptMode/minutesPerEpisode/episodes、beats.position/kind/weight/type 等退役字段。
+
+分集保留 synopsis、引用，可选 opening 与 ending.event；ending.mode 可省略。问题保留 id/text/sourceRefs，可选 reason，禁止 resolution/dueByEp。原作未回答允许未知；resolves 仍为 B 上的 Q ID 数组，不能重复回答或早于问题提出。故事、节点、分集、问题和 notes 的引用仍须处于 outline 已登记版本与负责范围。script 自身的来源文档身份、摘要与行数必须和 outline 对账。
+
+本地校验只覆盖消费接口，不替代原阶段的完整故事审核。人物身份以 cast、地点及物品以 art 为准，不能从 outline 自然语言称呼推断同一身份。
 
 seed API 只做结构投影，建立 source、provenance、集号、按序 B 认领与空 scenes，不复制目标、开场集尾、Q、项目要求、默认参数。选择部分集时将 scope 改为 partial。CLI seed 先实际核验 outline 来源；输出到不同目录时传 `--output-path OUTPUT.json` 重定位相对来源路径。该选项不写文件；stdout 仍由调用方保存。不提供选项时保持相对于原 outline 目录的路径。
 
@@ -126,7 +164,7 @@ skeleton 允许空 scenes 和认领 null 端点，估时为 stage-incomplete；f
 
 CLI 从产物目录向上最多五层寻找 production.json，从项目根 outline/art/characters 发现唯一 JSON。显式 --outline/--art/--cast 优先；多个候选必须明确指定。忽略 manifest、备份、临时及评审文件。损坏 JSON、非法 UTF-8、显式 null、错误版本、悬空链接不能当作缺少输入。--no-production 与 --production 互斥。
 
-checkup 返回 gates/stats/blockingFailures/warnings/contentReview/sourceVerification/scope。validateScript 返回阻断错误数组。ctx 可传 stage、outline/art/cast/production、docPath/outlinePath/productionPath、verifySources、requireTarget、root、lang。requireTarget 是内存目标检查；实际来源读取另传 verifySources。API 不隐式猜测来源基准目录。
+checkup 返回 gates/stats/blockingFailures/warnings/contentReview/sourceVerification/scope。validateScript 返回阻断错误数组。ctx 可传 stage、outline/art/cast/production、docPath/outlinePath/castPath/artPath/productionPath、verifySources、requireTarget、requiredMappings、fullWorkflow、root、lang。requireTarget 是内存目标检查；实际来源读取另传 verifySources。API 不隐式猜测来源基准目录。
 
 报告展示 sourceRefs、audio、notes 和 provenance。原始 JSON 导出不补默认值或目标。pass/fail/skipped 区分结构结果；未读取原件为 not-performed；语义审核始终另行完成。HTML 是派生产物，不进版本控制。
 

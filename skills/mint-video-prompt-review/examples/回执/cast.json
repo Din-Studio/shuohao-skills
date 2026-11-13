@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "source": "回执",
+  "provenance": {
+    "kind": "script",
+    "scope": "partial",
+    "documents": [
+      {
+        "id": "D01",
+        "path": "原剧本.txt",
+        "sha256": "f85e4e97ae2c9b2ea46dce201046a510693a248c769eecd2360a77913e3067f8",
+        "lineCount": 6
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 6
+      }
+    ]
+  },
+  "characters": [
+    {
+      "id": "C11",
+      "name": "何穗",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 6
+        }
+      ]
+    },
+    {
+      "id": "C12",
+      "name": "老冯",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 6
+        }
+      ]
+    }
+  ]
+}

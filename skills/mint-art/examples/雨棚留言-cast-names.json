@@ -1,15 +1,106 @@
 {
+  "schemaVersion": 1,
+  "kind": "mint-characters",
   "source": "雨棚留言",
+  "lang": "zh",
+  "status": "identified",
+  "provenance": {
+    "kind": "script",
+    "scope": "complete",
+    "totalEpisodes": 3,
+    "documents": [
+      {
+        "id": "D01",
+        "path": "雨棚留言-原剧本.txt",
+        "sha256": "30266f1b6930e6ae9ea6e8507ed118c9f98d27969c0d9fe22cd08257c70efaa5",
+        "lineCount": 9
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 9
+      }
+    ]
+  },
   "characters": [
     {
+      "id": "C01",
+      "identityKey": "test:0",
       "name": "许桂兰",
       "aliases": [
-        "许姨"
+        {
+          "name": "许姨",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 2,
+              "endLine": 2
+            }
+          ]
+        }
+      ],
+      "entityType": "human",
+      "presence": [
+        "visible"
+      ],
+      "speech": "unknown",
+      "unknowns": [],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 2,
+          "endLine": 9
+        }
       ]
     },
     {
+      "id": "C02",
+      "identityKey": "test:1",
       "name": "陶敏",
-      "aliases": []
+      "aliases": [],
+      "entityType": "human",
+      "presence": [
+        "visible"
+      ],
+      "speech": "unknown",
+      "unknowns": [],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 2,
+          "endLine": 9
+        }
+      ]
     }
-  ]
+  ],
+  "review": {
+    "status": "confirmed",
+    "by": "test fixture author",
+    "note": "自有测试材料的明确身份确认"
+  },
+  "budgets": {},
+  "lifecycle": {
+    "revision": 1,
+    "previousHash": null,
+    "changes": [],
+    "recheckIds": [],
+    "registry": [
+      {
+        "id": "C01",
+        "identityKey": "test:0",
+        "state": "active",
+        "allocatedRevision": 1,
+        "fingerprint": "5e2aaea6571ee44cc47725843093e754b783f433b4beed9e54b31c629e9bb85c"
+      },
+      {
+        "id": "C02",
+        "identityKey": "test:1",
+        "state": "active",
+        "allocatedRevision": 1,
+        "fingerprint": "1e2478a0985ae61acf338a53daea055d22469a0d203a998bb0ded68bf5048ad4"
+      }
+    ]
+  }
 }

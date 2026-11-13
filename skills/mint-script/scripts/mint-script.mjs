@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 // Self-contained script v4 consumer. No sibling imports.
 import { lstatSync, realpathSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_PARAMS, effectiveParams, parameterErrors, documentErrors, productionErrors } from './lib/document.mjs';
 import { migrateFile, migrateV4File, validateHistoricalV3, readJsonStrict } from './lib/migration.mjs';
 import { projectRoot, loadKnownUpstreams, checkKnownCreation } from './lib/downstream.mjs';
 
 import { sceneSemanticsErrors } from './lib/semantics.mjs';
+import { mappingErrors, mappedAssetId } from './lib/asset-mappings.mjs';
+export { mappingErrors, mappedAssetId, assetDigest } from './lib/asset-mappings.mjs';
 import { outlineInputErrors } from './lib/outline-input.mjs';
 import { evidenceErrors, verifySources, rebaseProvenance } from './lib/source.mjs';
 export { verifySources } from './lib/source.mjs';
@@ -138,13 +140,15 @@ function endingErrors(ending, path, script = true) {
   return errors;
 }
 export { outlineInputErrors } from './lib/outline-input.mjs';
-function artInputErrors(art) {
+function artInputErrors(art, source) {
   if (!obj(art) || !Array.isArray(art.scenes) || !Array.isArray(art.props)) return ['art: expected scenes and props arrays'];
   const errors = [];
-  if (own(art, 'schemaVersion') && art.schemaVersion !== 1) errors.push('art.schemaVersion: supported input is unversioned legacy art or version 1');
+  if (!text(art.source) || source !== undefined && art.source !== source) errors.push('art.source: expected matching work title');
+  if (art.schemaVersion !== 1) errors.push('art.schemaVersion: expected 1; explicitly migrate legacy art');
   for (const [key, prefix] of [['scenes', 'S'], ['props', 'P']]) {
     const seen = new Set();
     for (const item of art[key]) {
+      if (!obj(item) || !text(item.name)) errors.push(`art.${key}: expected named asset objects`);
       if (!idOK(item?.id, prefix) || seen.has(item?.id)) errors.push(`art.${key}: invalid or duplicate ID`);
       seen.add(item?.id);
       if (key === 'scenes' && own(item, 'lighting') && (!Array.isArray(item.lighting) || item.lighting.some(l => !text(l?.state)))) errors.push(`art ${item?.id}: malformed lighting`);
@@ -152,12 +156,14 @@ function artInputErrors(art) {
   }
   return errors;
 }
-function castInputErrors(cast) {
+function castInputErrors(cast, source) {
   if (!obj(cast) || !Array.isArray(cast.characters)) return ['cast: expected characters array'];
   const errors = [], seen = new Set();
-  if (own(cast, 'schemaVersion') && cast.schemaVersion !== 1) errors.push('cast.schemaVersion: supported input is unversioned legacy cast or version 1');
+  if (!text(cast.source) || source !== undefined && cast.source !== source) errors.push('cast.source: expected matching work title');
+  if (cast.schemaVersion !== 1) errors.push('cast.schemaVersion: expected 1; explicitly migrate legacy cast');
   for (const c of cast.characters) {
     if (!obj(c) || !text(c.name)) errors.push('cast.characters: expected named character objects');
+    if (!own(c, 'id')) errors.push('cast.characters: explicit identity required');
     if (own(c, 'id')) {
       if (!idOK(c.id, 'C') || seen.has(c.id)) errors.push('cast.characters: invalid or duplicate ID');
       seen.add(c.id);
@@ -223,13 +229,31 @@ const LABELS = {
   fields: ['基础字段与位置', 'Fields and positions'], 'duration-input': ['估时输入合法性', 'Timing input validity'], duration: ['估算时长提醒', 'Estimated duration notice'],
   'outline-input': ['大纲输入契约', 'Outline input contract'], 'upstream-projection': ['上游计划来源与作品对账', 'Upstream plans and source reconciliation'],
   'upstream-duration': ['上游目标时长', 'Upstream target duration'], 'beats-claimed': ['节点 ID 与顺序对账', 'Beat IDs and order'],
-  'refs-characters': ['人物引用', 'Character references'], 'art-input': ['美术输入契约', 'Art input contract'], 'cast-input': ['角色输入契约', 'Cast input contract'], 'refs-scenes': ['场景、光照与道具引用', 'Scene, lighting and prop references'],
+  'art-input': ['美术输入契约', 'Art input contract'], 'cast-input': ['角色输入契约', 'Cast input contract'], 'refs-scenes': ['已映射场景光照', 'Mapped scene lighting'],
   'production-input': ['项目契约与创作要求', 'Project contract and creative brief'], 'content-review': ['内容评审未执行', 'Content review not performed'],
   'question-plan': ['问题计划由大纲检查', 'Question plan checked by outline'], 'artifact-directory': ['产物目录', 'Artifact directory'],
   'source-verification': ['来源文件核验', 'Source file verification'], 'outline-source-verification': ['大纲来源文件核验', 'Outline source file verification'], 'production-target': ['制作目标确认', 'Production target confirmation'],
-  'downstream-creation': ['下游制作接口', 'Downstream creation interface']
+  'downstream-creation': ['下游制作接口', 'Downstream creation interface'],
+  'cast-source-verification': ['角色映射原件核验', 'Cast mapping source verification'], 'art-source-verification': ['美术映射原件核验', 'Art mapping source verification'],
+  'asset-mappings': ['局部引用与资产映射', 'Local references and asset mappings'], 'joint-reconciliation': ['已确认映射对账（不含待确认项）', 'Confirmed mapping reconciliation (pending records excluded)']
 };
 export const isBlocking = g => g.status === 'fail' && g.level === 'error' && g.category !== 'source';
+function verifyMappedSources(doc, ctx, stage) {
+  const rows = arr(doc?.assetMappings).filter(m => stage === 'cast' ? m?.kind === 'character' : ['scene','prop'].includes(m?.kind));
+  if (!rows.length) return {status:'not-applicable',errors:[]};
+  const ids = new Set(rows.flatMap(m => arr(m?.documentVersions).map(v => v?.id)));
+  const authority = ctx[stage], artifactPath = ctx[`${stage}Path`];
+  const documents = [...ids].map(id => {
+    const source = arr(authority?.provenance?.documents).find(d => d?.id === id);
+    if (!source) return null;
+    const d = {...source};
+    // The asset producers may retain absolute source paths. Only this temporary
+    // verification view rebases them; neither authority nor script is rewritten.
+    if (artifactPath && text(d.path) && isAbsolute(d.path)) d.path = relative(dirname(resolve(artifactPath)),d.path);
+    return d;
+  });
+  return verifySources({provenance:{kind:'script',scope:'partial',documents,coverage:arr(authority?.provenance?.coverage).filter(r => ids.has(r?.documentId))},episodes:[]},artifactPath);
+}
 export function gateReport(doc, ctx = {}) {
   const gates = [], stage = ctx.stage ?? 'full';
   const add = (id, errors = [], category = 'base', level = 'error', reason = null) => gates.push({ id, category, level, status: reason ? 'skipped' : errors.length ? 'fail' : 'pass', ...(reason ? { reason } : {}), label: LABELS[id]?.[0] ?? id, messages: errors });
@@ -250,9 +274,9 @@ export function gateReport(doc, ctx = {}) {
   const hasOutline = own(ctx, 'outline') && ctx.outline !== undefined;
   const oe = hasOutline ? outlineInputErrors(ctx.outline) : [];
   add('outline-input', oe, 'base', 'error', hasOutline ? null : 'missing-upstream');
-  const projection = [], claimErrors = [], characters = [];
+  const projection = [], claimErrors = [];
   if (hasOutline && !oe.length) {
-    const outline = ctx.outline, charIds = new Set(outline.characters.map(c => c.id));
+    const outline = ctx.outline;
     if (doc?.source !== outline.source) projection.push('source: must match outline; matching titles alone do not establish content synchronization');
     for (const source of arr(doc?.provenance?.documents)) {
       const upstream = arr(outline.provenance?.documents).find(d => d?.id === source?.id);
@@ -267,27 +291,32 @@ export function gateReport(doc, ctx = {}) {
       }
       const expected = outline.beats.filter(b => b.episode === ep?.ep).map(b => b.id), actual = arr(ep?.beatClaims).map(c => c?.beatId);
       if (JSON.stringify(actual) !== JSON.stringify(expected)) claimErrors.push(`E${ep?.ep}: expected ordered IDs ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}`);
-      for (const sc of arr(ep?.scenes)) {
-        for (const id of arr(sc?.characters)) if (!charIds.has(id)) characters.push(`E${ep?.ep}: unknown character ${id}`);
-        if (!arr(outline.scenes).some(s => s.id === sc?.sceneId)) projection.push(`E${ep?.ep}: scene ${sc?.sceneId} absent from outline`);
-        for (const id of arr(sc?.props)) if (!arr(outline.props).some(p => p.id === id)) projection.push(`E${ep?.ep}: prop ${id} absent from outline`);
-      }
     }
   }
-  for (const [id, errors] of [['upstream-projection', projection], ['beats-claimed', claimErrors], ['refs-characters', characters]]) {
+  for (const [id, errors] of [['upstream-projection', projection], ['beats-claimed', claimErrors]]) {
     add(id, hasOutline && oe.length ? ['Invalid supplied outline; reconciliation cannot run'] : errors, 'base', 'error', hasOutline ? null : 'missing-upstream');
   }
-  const hasArt = own(ctx, 'art') && ctx.art !== undefined, ae = hasArt ? artInputErrors(ctx.art) : [], refs = [];
+  const hasArt = own(ctx, 'art') && ctx.art !== undefined, ae = hasArt ? artInputErrors(ctx.art,doc?.source) : [], refs = [];
   add('art-input', ae, 'base', 'error', hasArt ? null : 'missing-upstream');
   if (hasArt && !ae.length) for (const ep of eps) for (const sc of arr(ep?.scenes)) {
-    const scene = ctx.art.scenes.find(s => s.id === sc?.sceneId);
-    if (!scene) refs.push(`E${ep?.ep}: unknown scene ${sc?.sceneId}`);
-    else if (own(sc, 'lighting') && !arr(scene.lighting).some(l => l.state === sc.lighting)) refs.push(`E${ep?.ep} ${sc.sceneId}: unregistered lighting ${sc.lighting}`);
-    for (const id of arr(sc?.props)) if (!ctx.art.props.some(prop => prop.id === id)) refs.push(`E${ep?.ep}: unknown prop ${id}`);
+    const id = mappedAssetId(doc,'scene',sc?.sceneId);
+    const scene = id && ctx.art.scenes.find(s => s.id === id);
+    if (scene && own(sc, 'lighting') && !arr(scene.lighting).some(l => l.state === sc.lighting)) refs.push(`E${ep?.ep} ${sc.sceneId}: unregistered lighting ${sc.lighting}`);
   }
   add('refs-scenes', ae.length ? ['Invalid supplied art; reconciliation cannot run'] : refs, 'base', 'error', hasArt ? null : 'missing-upstream');
   const hasCast = own(ctx, 'cast') && ctx.cast !== undefined;
-  add('cast-input', hasCast ? castInputErrors(ctx.cast) : [], 'base', 'error', hasCast ? null : 'missing-upstream');
+  add('cast-input', hasCast ? castInputErrors(ctx.cast,doc?.source) : [], 'base', 'error', hasCast ? null : 'missing-upstream');
+  add('asset-mappings', mappingErrors(doc,ctx,{required:own(ctx,'requiredMappings') ? ctx.requiredMappings : []}));
+  for (const key of ['cast','art']) if (ctx[key] !== undefined) {
+    const verification = ctx.verifySources ? verifyMappedSources(doc,ctx,key) : null;
+    add(`${key}-source-verification`, verification?.errors ?? [], 'base', 'error', ctx.verifySources ? (verification.status === 'not-applicable' ? 'not-applicable' : null) : 'not-performed');
+  }
+  const jointErrors = [];
+  if (ctx.fullWorkflow) for (const key of ['outline','cast','art']) if (ctx[key] === undefined) jointErrors.push(`full workflow requires completed ${key} handoff`);
+  const jointMissing = !hasOutline || !hasArt || !hasCast;
+  const noDependencies = ctx.requiredMappings !== true && !arr(ctx.requiredMappings).length && !arr(doc?.assetMappings).some(m=>m?.status==='confirmed');
+  const jointFailures = jointErrors.length ? jointErrors : gates.filter(g => g.status === 'fail' && g.level === 'error').flatMap(g => g.messages);
+  add('joint-reconciliation', jointFailures, 'base', 'error', jointFailures.length ? null : jointMissing ? 'missing-upstream' : noDependencies ? 'no-production-dependencies' : null);
   add('production-input', own(ctx, 'production') ? productionErrors(ctx.production, [['script', doc], ['outline', ctx.outline]]) : [], 'base', 'error', own(ctx, 'production') ? null : 'missing-upstream');
   if (ctx.docPath && ctx.productionPath) add('artifact-directory', stageDirNote(ctx.docPath, ctx.productionPath) ? [stageDirNote(ctx.docPath, ctx.productionPath)] : []);
   else add('artifact-directory', [], 'base', 'error', 'missing-upstream');
@@ -298,7 +327,7 @@ export function gateReport(doc, ctx = {}) {
 export function checkup(doc, ctx = {}) {
   const gates = gateReport(doc, ctx);
   if (ctx.root && (ctx.stage ?? 'full') === 'full') gates.push(...checkKnownCreation(doc, { root: ctx.root, production: ctx.production, outline: ctx.outline }));
-  return { schemaVersion: 4, sourceVerification: ctx.verifySources ? (gates.some(g => /source-verification/.test(g.id) && g.status === 'fail') ? 'fail' : doc?.provenance ? 'pass' : 'not-applicable') : 'not-performed', stage: ctx.stage ?? 'full', gates, stats: computeStats(doc), blockingFailures: gates.filter(isBlocking).length, warnings: gates.filter(g => g.status === 'fail' && g.level === 'warn').length, contentReview: 'not-performed', scope: { outlineProvided: own(ctx, 'outline'), artProvided: own(ctx, 'art'), productionProvided: own(ctx, 'production') } };
+  return { schemaVersion: 4, sourceVerification: ctx.verifySources ? (gates.some(g => /source-verification/.test(g.id) && g.status === 'fail') ? 'fail' : doc?.provenance ? 'pass' : 'not-applicable') : 'not-performed', stage: ctx.stage ?? 'full', gates, stats: computeStats(doc), blockingFailures: gates.filter(isBlocking).length, warnings: gates.filter(g => g.status === 'fail' && g.level === 'warn').length, contentReview: 'not-performed', scope: { outlineProvided: own(ctx, 'outline'), artProvided: own(ctx, 'art'), castProvided: own(ctx, 'cast'), productionProvided: own(ctx, 'production') } };
 }
 export function validateScript(doc, ctx = {}) {
   return checkup(doc, ctx).gates.filter(isBlocking).flatMap(g => g.messages.length ? g.messages.map(m => `${g.id}: ${m}`) : [`${g.id}: failed`]);
@@ -319,8 +348,8 @@ export function seedFromOutline(outline, epRange = null) {
 }
 
 const I18N = {
-  zh: { title: '剧本', effective: '估时有效参数', brief: '创作要求', script: '分集剧本', episode: '分集', scene: '场次', opening: '开场计划', ending: '集尾', unmarked: '未标注开场落点；未核验开场表达', final: '正文计算的结束位置', claims: '节点计划与内容落点', plan: '上游计划', actual: '实际核心段', setup: '承接', outcome: '结果', questions: '上游问题与回答落点', missing: '缺少上游，未核验', invalid: '无效范围／估时不可用', duration: '估算时长', target: '目标时长', timeline: '分集正文与估算时间轴', timingNote: '估算不是实际表演时间。所有位置共用未舍入累计轴，仅显示值四舍五入。超出估时范围属于提醒，不要求删除有效表演。', scenes: '场次总表', lines: '台词本', voice: '音色提示词', copy: '复制', export: '导出 JSON', checks: '结构检查与内容评审状态', content: '内容评审未执行。位置合法不证明意图已表达；创作要求变化后须重新阅读正文评审。', scope: '独立或批次校验不代表完整联合交付。问题计划完整性由大纲校验负责。', pass: '通过', fail: '失败', warn: '提醒', skipped: '跳过', base: '基础契约', contentCategory: '内容评审', copied: '已复制', copyFailed: '复制失败', blocking: '阻断失败', warnings: '提醒数量', chars: '字数', count: '台词句数', lighting: '光照', characters: '人物', props: '道具', reason: { 'missing-upstream': '缺少上游', 'stage-incomplete': '阶段未完成', 'not-applicable': '不适用' } },
-  en: { title: 'Script', effective: 'Effective estimation parameters', brief: 'Creative brief', script: 'Episode scripts', episode: 'Episode', scene: 'Scene', opening: 'Opening plan', ending: 'Ending', unmarked: 'Opening landing not marked; expression not verified', final: 'End position computed from text', claims: 'Beat plans and content locations', plan: 'Upstream plan', actual: 'Actual core range', setup: 'Setup', outcome: 'Outcome', questions: 'Upstream questions and answer locations', missing: 'Missing upstream; not verified', invalid: 'Invalid range / timing unavailable', duration: 'Estimated duration', target: 'Target duration', timeline: 'Episode text and estimated timeline', timingNote: 'Estimates are not performance timings. All positions share one unrounded clock. Duration differences are notices, not instructions to delete valid performances.', scenes: 'Scene table', lines: 'Line book', voice: 'Voice prompt', copy: 'Copy', export: 'Export JSON', checks: 'Structural checks and content review', content: 'Content review not performed. Valid coordinates do not prove intent. Review the actual text again when the creative brief changes.', scope: 'Standalone or batch validation is not full joint delivery. The outline validator owns question-plan completeness.', pass: 'Pass', fail: 'Fail', warn: 'Warning', skipped: 'Skipped', base: 'Base contract', contentCategory: 'Content review', copied: 'Copied', copyFailed: 'Copy failed', blocking: 'Blocking failures', warnings: 'Warnings', chars: 'Characters', count: 'Line count', lighting: 'Lighting', characters: 'Cast', props: 'Props', reason: { 'missing-upstream': 'Missing upstream', 'stage-incomplete': 'Stage incomplete', 'not-applicable': 'Not applicable' } }
+  zh: { title: '剧本', effective: '估时有效参数', brief: '创作要求', script: '分集剧本', episode: '分集', scene: '场次', opening: '开场计划', ending: '集尾', unmarked: '未标注开场落点；未核验开场表达', final: '正文计算的结束位置', claims: '节点计划与内容落点', plan: '上游计划', actual: '实际核心段', setup: '承接', outcome: '结果', questions: '上游问题与回答落点', missing: '缺少上游，未核验', invalid: '无效范围／估时不可用', duration: '估算时长', target: '目标时长', timeline: '分集正文与估算时间轴', timingNote: '估算不是实际表演时间。所有位置共用未舍入累计轴，仅显示值四舍五入。超出估时范围属于提醒，不要求删除有效表演。', scenes: '场次总表', lines: '台词本', voice: '音色提示词', copy: '复制', export: '导出 JSON', checks: '结构检查与内容评审状态', content: '内容评审未执行。位置合法不证明意图已表达；创作要求变化后须重新阅读正文评审。', scope: '独立或批次校验不代表完整联合交付。问题计划完整性由大纲校验负责。', pass: '通过', fail: '失败', warn: '提醒', skipped: '跳过', base: '基础契约', contentCategory: '内容评审', copied: '已复制', copyFailed: '复制失败', blocking: '阻断失败', warnings: '提醒数量', chars: '字数', count: '台词句数', lighting: '光照', characters: '人物', props: '道具', reason: { 'missing-upstream': '缺少上游', 'stage-incomplete': '阶段未完成', 'not-applicable': '不适用', 'no-production-dependencies': '未指定制作身份依赖' } },
+  en: { title: 'Script', effective: 'Effective estimation parameters', brief: 'Creative brief', script: 'Episode scripts', episode: 'Episode', scene: 'Scene', opening: 'Opening plan', ending: 'Ending', unmarked: 'Opening landing not marked; expression not verified', final: 'End position computed from text', claims: 'Beat plans and content locations', plan: 'Upstream plan', actual: 'Actual core range', setup: 'Setup', outcome: 'Outcome', questions: 'Upstream questions and answer locations', missing: 'Missing upstream; not verified', invalid: 'Invalid range / timing unavailable', duration: 'Estimated duration', target: 'Target duration', timeline: 'Episode text and estimated timeline', timingNote: 'Estimates are not performance timings. All positions share one unrounded clock. Duration differences are notices, not instructions to delete valid performances.', scenes: 'Scene table', lines: 'Line book', voice: 'Voice prompt', copy: 'Copy', export: 'Export JSON', checks: 'Structural checks and content review', content: 'Content review not performed. Valid coordinates do not prove intent. Review the actual text again when the creative brief changes.', scope: 'Standalone or batch validation is not full joint delivery. The outline validator owns question-plan completeness.', pass: 'Pass', fail: 'Fail', warn: 'Warning', skipped: 'Skipped', base: 'Base contract', contentCategory: 'Content review', copied: 'Copied', copyFailed: 'Copy failed', blocking: 'Blocking failures', warnings: 'Warnings', chars: 'Characters', count: 'Line count', lighting: 'Lighting', characters: 'Cast', props: 'Props', reason: { 'missing-upstream': 'Missing upstream', 'stage-incomplete': 'Stage incomplete', 'not-applicable': 'Not applicable', 'no-production-dependencies': 'No production identity dependencies requested' } }
 };
 export function tOf(lang = 'zh') { if (!Object.hasOwn(I18N, lang)) throw new Error('Report language must be zh/en'); return I18N[lang]; }
 const langOf = (doc, ctx) => ctx.lang ?? doc?.lang ?? ctx.production?.lang ?? 'zh';
@@ -328,12 +357,23 @@ const esc = x => String(x ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').re
 const embed = x => JSON.stringify(x).replace(/</g, '\\u003c');
 const format = x => Number.isFinite(x) ? String(r1(x)) : '—';
 const pretty = x => JSON.stringify(x ?? null, null, 2);
-function names(ctx) {
-  const name = (list, id) => arr(list).find(x => x?.id === id)?.name ?? id;
-  return { char: id => name(ctx.outline?.characters, id), scene: id => name(ctx.art?.scenes, id), prop: id => name(ctx.art?.props, id), voice: id => arr(ctx.cast?.characters).find(c => c?.id === id || c?.name === name(ctx.outline?.characters, id))?.voice?.prompt };
+function names(doc, ctx) {
+  // Even identical C/S/P IDs or names never create an implicit mapping.
+  const invalid = new Set(mappingErrors(doc,ctx).flatMap(e => { const m=e.match(/^script\.assetMappings\[(\d+)\]/); return m ? [Number(m[1])] : []; }));
+  const cache = new Map();
+  const asset = (kind,id) => {
+    const key = `${kind}:${id}`;
+    if (cache.has(key)) return cache.get(key);
+    const target = mappedAssetId(doc,kind,id), index = arr(doc?.assetMappings).findIndex(m => m?.kind === kind && m?.localId === id);
+    const result = !target || invalid.has(index) ? null : arr(kind === 'character' ? ctx.cast?.characters : kind === 'scene' ? ctx.art?.scenes : ctx.art?.props).find(a => a?.id === target) ?? null;
+    cache.set(key,result);
+    return result;
+  };
+  const label = (kind,id) => { const a = asset(kind,id); return a ? `${id} → ${a.id} · ${a.name ?? a.id}` : id; };
+  return { char: id => label('character',id), scene: id => label('scene',id), prop: id => label('prop',id), voice: id => asset('character',id)?.voice?.prompt };
 }
 const beatText = (b, n) => {
-  const body = own(b,'action') ? b.action : own(b,'subtitle') ? `[subtitle] ${b.subtitle}` : own(b,'sound') ? `[sound] ${b.sound}` : `${n.char(b?.speaker)}${b?.delivery ? ` (${b.delivery})` : ''}: ${b?.line ?? ''}`;
+  const body = own(b,'action') ? b.action : own(b,'subtitle') ? `[subtitle] ${b.subtitle}` : own(b,'sound') ? `[sound] ${b.sound}` : `${b?.speaker ?? ''}${b?.delivery ? ` (${b.delivery})` : ''}: ${b?.line ?? ''}`;
   return body + (b?.audio ? ` · audio: ${pretty(b.audio)}` : '') + (b?.sourceRefs ? ` · sourceRefs: ${pretty(b.sourceRefs)}` : '') + (b?.transformation ? ` · transformation: ${pretty(b.transformation)}` : '');
 };
 function landing(ep, coord, p, t, n) {
@@ -354,7 +394,7 @@ function statusText(g, t) { return g.status === 'fail' && (g.level === 'warn' ||
 function gateLabel(g, lang) { return LABELS[g.id]?.[lang === 'en' ? 1 : 0] ?? g.id; }
 export function renderMarkdown(doc, ctx = {}) {
   if (doc?.schemaVersion !== 4) throw new Error('schemaVersion must be 4; run migrate-v4');
-  const lang = langOf(doc, ctx), t = tOf(lang), n = names(ctx), report = checkup(doc, ctx), p = paramsOf(doc);
+  const lang = langOf(doc, ctx), t = tOf(lang), n = names(doc, ctx), report = checkup(doc, ctx), p = paramsOf(doc);
   const out = [`# ${esc(doc?.source)} · ${t.title}`, ...(doc?.provenance ? ['','## provenance',esc(pretty(doc.provenance))] : []), '', `## ${t.script}`];
   for (const [i, ep] of arr(doc?.episodes).entries()) {
     const plan = plansFor(ep, ctx);
@@ -384,13 +424,14 @@ export function renderMarkdown(doc, ctx = {}) {
   out.push('', `## ${t.lines}`);
   for (const c of report.stats.castLines) out.push(`### ${esc(n.char(c.id))}`, ...c.lines.map(l => `- E${esc(l.ep)} [${l.sceneIndex}] ${esc(`${l.delivery ? `(${l.delivery}) ` : ''}${l.line}`)}`));
   out.push('', `## ${t.duration}`, t.timingNote, `${t.effective}: ${esc(pretty(p))}`, ...[ctx.production?.creativeBrief, doc?.creativeBrief].filter(text).map(b => `${t.brief}: ${esc(b)}`), t.scope, t.content);
+  if (doc?.assetMappings) out.push('', '## assetMappings', esc(pretty(doc.assetMappings)));
   out.push('', `## ${t.checks}`, `${t.blocking}: ${report.blockingFailures} · ${t.warnings}: ${report.warnings}`);
   for (const g of report.gates) out.push(`- ${statusText(g, t)} · ${gateLabel(g, lang)} (${g.category}/${g.level})${g.reason ? ` · ${t.reason[g.reason] ?? g.reason}` : ''}${g.messages.length ? `: ${g.messages.map(esc).join('; ')}` : ''}`);
   return out.join('\n') + '\n';
 }
 export function renderHtml(doc, ctx = {}) {
   if (doc?.schemaVersion !== 4) throw new Error('schemaVersion must be 4; run migrate-v4');
-  const lang = langOf(doc, ctx), t = tOf(lang), n = names(ctx), report = checkup(doc, ctx), p = paramsOf(doc);
+  const lang = langOf(doc, ctx), t = tOf(lang), n = names(doc, ctx), report = checkup(doc, ctx), p = paramsOf(doc);
   const pre = value => `<pre>${esc(pretty(value))}</pre>`;
   const copy = value => `<button data-copy="${esc(value)}">${t.copy}</button>`;
   const eps = arr(doc?.episodes).map((ep, i) => {
@@ -412,7 +453,7 @@ ${doc?.provenance ? `<h2>provenance</h2>${pre(doc.provenance)}` : ''}<h2>${t.scr
 <h2>${t.scenes}</h2><div class="table-wrap"><table><thead><tr>${[t.episode, t.scene, t.lighting, t.characters, t.props, t.count, t.duration].map(x => `<th>${x}</th>`).join('')}</tr></thead><tbody>${report.stats.sceneTable.map(s => `<tr>${[s.ep, `${s.index} · ${n.scene(s.sceneId)}`, s.lighting ?? '—', s.characters.map(n.char).join(', '), s.props.map(n.prop).join(', '), s.lineCount, `${format(s.estSeconds)}s`].map(x => `<td>${esc(x)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
 <h2>${t.lines}</h2><div class="casts">${report.stats.castLines.map(c => `<article class="cast"><h3>${esc(n.char(c.id))}</h3><p>${t.count}: ${c.count} · ${t.chars}: ${c.chars}</p>${copy(c.lines.map(l => l.line).join('\n'))}${text(n.voice(c.id)) ? `<details><summary>${t.voice}</summary><pre>${esc(n.voice(c.id))}</pre>${copy(n.voice(c.id))}</details>` : ''}<ul>${c.lines.map(l => `<li>E${esc(l.ep)} [${l.sceneIndex}]: ${esc(`${l.delivery ? `(${l.delivery}) ` : ''}${l.line}`)}</li>`).join('')}</ul></article>`).join('')}</div>
 <h2>${t.duration}</h2><p>${t.timingNote}</p><h3>${t.effective}</h3>${pre(p)}${[ctx.production?.creativeBrief, doc?.creativeBrief].filter(text).map(b => `<h3>${t.brief}</h3><p>${esc(b)}</p>`).join('')}<p>${t.scope}</p>
-<h2>${t.checks}</h2><ul id="checks">${checks}</ul><p>${t.content}</p></main>
+${doc?.assetMappings ? `<h2>assetMappings</h2>${pre(doc.assetMappings)}` : ''}<h2>${t.checks}</h2><ul id="checks">${checks}</ul><p>${t.content}</p></main>
 <script id="script-data" type="application/json">${embed(doc)}</script><script>
 const labels=${embed({ copied: t.copied, failed: t.copyFailed })};
 async function copyText(value){
@@ -428,7 +469,7 @@ window.addEventListener('beforeprint',()=>document.querySelectorAll('details').f
 
 const USAGE = `mint-script v4 (Node 18+, no dependencies)
   seed OUTLINE [--eps 1-3] [--output-path OUTPUT.json]
-  validate SCRIPT [--outline FILE] [--art FILE] [--production FILE | --no-production] [--stage skeleton|full] [--verify-sources] [--production-ready]
+  validate SCRIPT [--outline FILE] [--art FILE] [--cast FILE] [--production FILE | --no-production] [--stage skeleton|full] [--verify-sources] [--production-ready] [--required-mappings FILE] [--full-workflow]
   checkup SCRIPT [same options] [--json]
   render SCRIPT [--html|--md] [--lang zh|en] [same options] [--cast FILE]
   verify-sources SCRIPT [--outline FILE] [--no-production]
@@ -444,7 +485,9 @@ function flag(args, key, fallback = undefined) {
   return args[i + 1];
 }
 function loadCtx(args, path) {
-  const ctx = { docPath: resolve(path), stage: flag(args, '--stage', 'full'), verifySources: args.includes('--verify-sources') || args.includes('--production-ready'), requireTarget: args.includes('--production-ready') };
+  const ctx = { docPath: resolve(path), stage: flag(args, '--stage', 'full'), verifySources: args.includes('--verify-sources') || args.includes('--production-ready'), requireTarget: args.includes('--production-ready'), requiredMappings: args.includes('--production-ready') ? true : [], fullWorkflow: args.includes('--full-workflow') };
+  const requiredFile = flag(args,'--required-mappings');
+  if (requiredFile !== undefined) ctx.requiredMappings = readJson(requiredFile);
   for (const key of ['outline', 'art', 'cast']) {
     const file = flag(args, `--${key}`);
     if (file !== undefined) { ctx[key] = readJson(file); ctx[`${key}Path`] = resolve(file); } // supplied damaged/unreadable inputs fail; never skipped

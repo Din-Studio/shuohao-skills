@@ -1,114 +1,80 @@
-# 角色卡结构
+# 正式人物身份契约：cast v1
 
-## v3 上游契约与迁移
-
-seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schemaVersion: 3`。读取可选非空 `production.creativeBrief`，不解释策略配置。人物来源、弧光、节点分类与位置可以省略。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
-
-检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](creative-background.md) 和 [迁移说明](migration.md)。
-
-`cast.json` 顶层：
+版本独立于 outline v5、production v3。以前无版本的角色卡不隐式升级。正式产物：`schemaVersion: 1, kind: mint-characters`。
 
 ```json
 {
-  "source": "渡口",
+  "schemaVersion": 1,
+  "kind": "mint-characters",
+  "status": "draft",
+  "source": "回声台",
   "lang": "zh",
-  "summary": "民国年间的清晨，一条河的渡口浓雾未散。摆渡四十年的老船夫照常开船，先后上船的是……",
-  "characters": [ /* 角色卡 */ ]
+  "summary": "停电中的交接。",
+  "provenance": {
+    "kind": "script",
+    "scope": "partial",
+    "documents": [{"id":"D01","path":"原剧本.txt","sha256":"64位小写十六进制摘要","lineCount":10}],
+    "coverage": [{"documentId":"D01","startLine":1,"endLine":3}]
+  },
+  "characters": [{
+    "id": "C01",
+    "identityKey": "night-operator",
+    "name": "许禾",
+    "aliases": [{"name":"小禾","sourceRefs":[{"documentId":"D01","startLine":2,"endLine":2}]}],
+    "entityType": "human",
+    "presence": ["visible"],
+    "speech": "speaking",
+    "unknowns": [],
+    "sourceRefs": [{"documentId":"D01","startLine":1,"endLine":2}]
+  }],
+  "budgets": {"characters": 30},
+  "lifecycle": {"revision":0,"previousHash":null,"registry":[],"changes":[],"recheckIds":[]},
+  "review": {"status":"pending","note":"尚未语义审核"}
 }
 ```
 
-| 顶层字段 | 必填 | 说明 |
-| --- | --- | --- |
-| `source` | 是 | 书名/篇名，报告标题用 |
-| `lang` | 是 | 内容语言及默认界面语言，默认 `zh`。`render --lang` 仅覆盖界面语言，不改变内容校验语言 |
-| `ui` | 视情况 | 界面文案翻译。`lang` 是 `zh`/`en`/`ja` 时**不需要**（内置）；其他任何语言**必填**，否则 `validate` 报错。用 `ui-template <lang>` 生成骨架后翻译。只覆盖部分键也可以，缺的用内置英文兜底 |
-| `summary` | 是 | **故事摘要**，中文 3–5 句。交代时空背景、核心情境、人物聚在一起的由头。报告顶部显示，让人不看原文也知道这几个角色是什么关系。不要剧透结局，也不要写成推荐语 |
-| `characters` | 是 | 角色卡数组 |
+以上为候选结构示意，摘要占位符不能提交；revision 0 仅为骨架。通过 reconcile 后才能进行正式结构核验。
 
-角色 `id`：新版 seed 保留稳定 ID，格式为 `C` 加至少两位数字（`^C\d{2,}$`），全表唯一。旧独立角色卡可以省略 `id`；已经提供时，空白、非法类型、非法格式与重复值始终失败，不依赖原文或 production。
+## 身份字段
 
-`image.sheet` 中的画幅占位符必须替换为生产参数实际值，不能直接提交占位符。
+- `id`：C 加至少两位数字，唯一。首次 reconcile 可以分配；后续永久沿用，不按数组或剧集顺序分配。
+- `identityKey`：作者定义的永久唯一键，不是名字，不是出场序号。ID 及该键退役后均不复用。
+- `name`：来源支持的展示称呼。匿名主体使用位置与描述；允许同名，不允许按名字自动认定同人。
+- `aliases`：对象数组，每个别名必须有 name 和 sourceRefs。不是搜索词，不把猜测称呼当作已确认别名。
+- `entityType`：human / nonhuman / unknown / group。
+- `presence`：非空去重数组，元素为 visible / voice-only / mentioned。无台词不是“没有身份”；同一身份可有多种出场方式。
+- `speech`：speaking / silent / unknown，指本次已核验范围，不为缺台词者编造声线事实。
+- `unknowns`：非空字符串组成的数组，允许空数组。匿名、身份未揭晓、声音可能为录音等写在这里。
+- `sourceRefs`：非空引用数组。documentId、startLine、endLine 必须在已读取范围内；可附 quote，核验该行范围内逐字连续文本。
+- `notes`：可选数组，每项非空 text 和 sourceRefs，保存必要的原文身份限制。
+- `persona`、`voice`、`image`：独立可选设计块。提供时检查其完整字段，详见 [设计契约](design-schema.md)。人物关系必须填已有稳定 `id`，name 仅展示；不能靠同名猜测。
+- `importance`、`oneLiner`：可选，提供时按既有枚举和文本规则检查。outline 不负责分档。
+- `tier`：可选 lead/support/functional，由人物阶段明确判定。存在分档预算时所有活动人物必须提供；不能从 importance 或原文提及次数机械推断。
 
-`summary` 缺失会被 `validate` 判为违规——报告顶部会空着。
+## 来源与覆盖
 
-**顶层没有 `style` 字段。**画风住在工作目录根的 `production.json`，`cast.json` 里再抄一份就是第二个来源，两个来源必然会漂。跑 `node scripts/mint-characters.mjs style` 取这部剧的那一块，详见 `style.md`。
+documents 的身份、路径、原始字节 SHA256、物理行数均需核验。路径相对产物 JSON，不相对进程目录。seed 和 reconcile 输出绝对原件路径。多文档均独立核验，不按文本相同合并出处。
 
-单张角色卡：
+coverage 为实际已读区间。重叠区间按位置合并核验，不能跨缺口引用。partial 不要求全集；complete 必须覆盖每份原件全文，人物阶段不引入分集权威。缺原件直接失败，不能标为 skipped。
 
-```json
-{
-  "name": "老周",
-  "aliases": ["老伯"],
-  "importance": "major",
-  "oneLiner": "在渡口摆渡四十年的老船夫，一只眼睛是白的。",
+`background` 为可选 outline v5 文件 path、sha256、role: story-only。提供则核验文件和共同原件版本；已绑定文件损坏或变化必须失败。没有背景时检查 skipped，不代表完整流程已完成。
 
-  "persona": {
-    "gender": "男",
-    "ageRange": "约七十岁（推断）",
-    "identity": "渡口船夫",
-    "appearance": "背驼得像一张拉满的弓。左眼被风沙磨得只剩一层白翳。……",
-    "personality": ["沉默", "耐性", "老练"],
-    "temperament": "开口时嗓子里像卡着半口江水，含混、发沉。……",
-    "motivation": "把船开过去。雾再厚也照常开船。",
-    "arc": "静止。他是这条河的一部分。",
-    "relationships": [{ "name": "沈知微", "relation": "向他问路的年轻渡客" }],
-    "evidence": ["雾一厚，连自己的手都看不清。"]
-  },
+## 生命周期与预算
 
-  "image": {
-    "style": "Flat vector cartoon with ink-wash colouring",
-    "prompt": "Character design sheet of an elderly Chinese ferryman ...",
-    "promptLocal": "角色设定图：约七十岁的中国老船夫……",
-    "negativePrompt": "photorealistic, 3d render, young face, ...",
-    "tags": ["flat vector", "character sheet", "ink wash palette"],
-    "sheet": "Single character model sheet on ONE <production.image.asset.aspectRatio> canvas ... LEFT ZONE ... about 34% ... one bust portrait ... RIGHT-TOP ZONE ... three FULL-BODY views ... PROPORTIONS ARE CRITICAL ... RIGHT-BOTTOM ZONE ... four to five small isolated close-up studies ..."
-  },
+`budgets.characters` 为可选非负整数，限制活动身份总数（不是画像、图片或声音任务数）。`maxLeads/maxSupport/maxFunctional` 为可选非负整数，分别限制 tier=lead/support/functional 的活动身份；旧 outline 同名明确阈值可逐项原值迁入，不得合并成总数而改变约束。明确预算超额，或分档预算尚缺 tier 判定，均阻断。
 
-  "voice": {
-    "timbre": "沙哑低沉的男中低音，喉音重",
-    "pitch": "低",
-    "pace": "缓慢，字与字之间拖着气口",
-    "accent": "南方水乡口音，尾音含混",
-    "emotion": "疲惫而平静",
-    "referenceHint": "像一个在同一个渡口喊了四十年「开船」的人",
-    "prompt": "An elderly male voice, around seventy-five. Low bass-baritone ..."
-  }
-}
-```
+`budgets.reference` 可保存相同键的参考值，仅提醒，不阻断。不设置则无明确预算。未知预算键报错，无法归属的旧预算仍须保留在迁移材料，不得丢弃或降级。
 
-## 语言分工
+增量产物保留 lifecycle.previousBudgets。明确预算的改值、删除或改成参考值必须记录唯一 `budgetChanges: [{key,from,to,basis}]`，basis 是用户的本次变更依据，删除时 to 为 null。reconcile 和 validate 都核对基线；不能通过重新登记悄悄放宽预算。
 
-「本地语言」= 顶层 `lang` 指定的语言，默认中文。
+lifecycle 由 reconcile 维护：revision、previousHash（既有产物规范化 JSON 摘要）、registry（包含退役身份）、累计显式 changes（来源依据附 sourceDocuments 版本快照）和 recheckIds。registry 保存 id、identityKey、active/retired、allocatedRevision、fingerprint；指纹包含身份事实和相关原件版本，不包含展示顺序、路径或设计。每个活动人物的 lifecycleStamp 绑定与该人物有关的合并、拆分、删除及纠正记录。即使合并后继续使用原 ID、姓名和来源文字，目标完整资产摘要也会变化，强制重新确认受影响映射；无关人物的摘要不变。
 
-| 字段 | 类型 | 语言 | 说明 |
-| --- | --- | --- | --- |
-| `name` | string | 原文 | 原文里用得最多的称呼 |
-| `aliases` | string[] | 原文 | 其他称谓；职业名词（如「货郎」）归 `identity`，不进这里 |
-| `importance` | enum | — | `protagonist` / `major` / `supporting` / `minor`，**只能这四个** |
-| `oneLiner` | string | **本地语言** | 一句话抓住这个人 |
-| `persona.*` | — | **本地语言** | `personality` 3–5 个词 |
-| `persona.evidence` | string[] | **原文语言** | **逐字引用**，永远不翻译——翻了就不是证据了。没有就空数组 |
-| `image.style` | string | 本地语言 | 画风一句话 |
-| `image.prompt` | string | **英文** | 单张卡通设定图；**禁止出现人名**；**必须写明族裔／年代／地域** |
-| `image.promptLocal` | string | 本地语言 | 上面那条的译文；`lang=en` 时省略；**同样禁止人名** |
-| `image.negativePrompt` | string | **英文** | 逗号分隔 |
-| `image.tags` | string[] | **英文** | 4–8 个风格标签 |
-| `image.sheet` | string | **英文** | **角色设定图**，画幅读取 `production.image.asset.aspectRatio`，三区版面：左约 34% 半身像（面部基准）／右上全身三视图／右下细节条，细线分隔；**禁止出现人名**；**必须写明族裔／年代／地域** |
-| `voice.timbre/pitch/pace/accent/emotion/referenceHint` | string | **本地语言** | 最容易写漂的地方，注意 |
-| `voice.prompt` | string | **英文** | 给 TTS 音色设计引擎。**没有 `promptLocal` 对照版，这是有意的**——上面六项已经是本地语言，再给一段中文散文只会让人复制错，把它喂进 TTS（生产里踩过） |
+revision 大于 1 的 validate/render/images 必须提供 `--previous`，按原基线重放本次变更，核对摘要、登记表和映射。不能只拿新文件自证历史正确。变化后的 ID 对实际消费的工作单、提示词、参考图及映射触发重新核验；本阶段不保存 script 的局部映射权威。
 
-**英文字段不跟随 `lang`。** 图像模型和 TTS 引擎吃英文最稳，跟报告用什么语言无关。
+## 审核与报告接口
 
-## 设定图的三区版面
+status 为 draft 或 identified。identified 要求 review.status=confirmed，填写 by、note、inputHash。inputHash 取 validate 输出 reviewInputHash，绑定当前身份、来源版本、范围和覆盖。审核确认由人工或模型完成，不由脚本生成。
 
-画幅读取 `production.image.asset.aspectRatio`，允许合法横向或方形比例，细线分成三块：
+validate 输出 `kind: mint-characters-checks, schemaVersion: 1, reviewInputHash, checks`。每项为 status/category/level/detail，未执行的语义审核及联合交接为 skipped。迁移材料 kind=mint-characters-migration，不能冒充正式 cast。
 
-- **左侧（约 34%）** 半身像当**面部设计基准**，尺寸大、五官画得细，可以直接拿去做表情设计
-- **右上** 三视图管剪影、比例、服装，脸照左栏画
-- **右下** 细节条，4–5 个关键细节的小特写（配饰、道具、疤痕、鞋履……）
-
-两个最容易崩的点：**一张图里出现两个长相**，以及**为了塞下细节把人物压扁**。提示词里都要写死——细节放不下就往右缘延伸，**永远是细节让位，不是人物让位**。
-
-## 校验
-
-`scripts/mint-characters.mjs validate <cast.json> <book.txt>` 会检查：结构完整性、`importance` 枚举、**引文逐字**、**出图提示词不含人名**、**语言分工**。违规逐条列出并 exit 1。
+正式离线图片计划保持 media-plan v1，任务 ID 使用 C ID，增加 identityFingerprint；路径为 `images/<C ID>-sheet.png`。计划不提交、不生成。正式报告导出原始 JSON，不将自动发现的图片路径写入原始身份数据。

@@ -1,6 +1,6 @@
 ---
 name: mint-creation
-version: 3.1.0
+version: 3.2.0
 description: |
   将 v4 剧本转换为参考图直出视频方案。主会话只负责调度：准备材料、运行结构检查、
   派发「视频提示词编写」与「视频提示词审核」两个 subagent 并循环到全部批准，再回写、导出、交接生成。
@@ -28,6 +28,8 @@ metadata:
 
 两种来源的状态规则出自同一份工作单解析库。主会话在任何情况下都不代替它们编写或审核。
 
+**提示词标准已更新**：按 `references/creation-prompt.md` 的五部分散文编写，按 `references/审核清单.md` 审核。cuts、schema v3、估时和投产链保持不变；内部 size/camera 不要求进入正文，不代表模型实际切镜。默认中文模板，模型文件只做技术适配。旧工作单正文必须重写、重新审核，不自动转换或继承批准。旧意见可读取，但新审核统一输出通过／需返修／待确认及返修、待确认条目。
+
 **主会话是调度方**：不写分镜，不写提示词，不做内容评审。它负责准备材料、运行确定性命令、派发 subagent、判断循环是否结束，以及向用户汇报。
 
 ```
@@ -40,7 +42,7 @@ seed ─→ 编写 subagent ─→ prompts check ─→ 审核 subagent ─→ �
 
 ## 1. 确认输入
 
-完整读取 `references/schema.md`、`references/dispatch.md` 和 `references/source-audio-handoff.md`。script/outline 要求 `schemaVersion:4`，creation/production 保持 `schemaVersion:3`。上游先在各自阶段显式迁移 v4，补齐真实来源证据；本工具保留 creation 的历史 `migrate-v3`，见 `references/migration.md`。正式读取不静默兼容旧契约。来源字节核验、来源忠实性审核与制作审核分别汇报。
+完整读取 `references/schema.md`、`references/dispatch.md` 和 `references/source-audio-handoff.md`。script 要求 `schemaVersion:4`，outline 要求 `schemaVersion:5`，creation/production 保持 `schemaVersion:3`。上游先在各自阶段显式迁移当前版本，补齐真实来源证据；本工具保留 creation 的历史 `migrate-v3`，见 `references/migration.md`。正式读取不静默兼容旧契约。来源字节核验、来源忠实性审核与制作审核分别汇报。
 
 项目的自然语言 `creativeBrief` 是唯一要求，不解释成枚举或生成规则。独立 creation 可以保存 creativeBrief；项目与阶段同时存在要求时停止，请人工合并到 production。
 
@@ -86,7 +88,7 @@ node {baseDir}/scripts/mint-creation.mjs prompts brief 作品-creation.json --ep
    node {baseDir}/scripts/mint-creation.mjs prompts check 作品-creation.json
    ```
 
-   它把工作单拼入内存中的 creation 并执行全部确定性检查（节拍覆盖、台词逐字、时长、模型限制、骨架短语、参考图），不要求已经批准，也不改写任何文件。失败时把输出原样交还编写 subagent，**不启动审核**——不让审核方把轮次花在工具能够判断的问题上。
+   它把工作单拼入内存中的 creation 并执行全部确定性检查（节拍覆盖、台词逐字、时长、模型限制、五部分格式、参考图），不要求已经批准，也不改写任何文件。失败时把输出原样交还编写 subagent，**不启动审核**——不让审核方把轮次花在工具能够判断的问题上。
 3. **派发审核 subagent**：有 `mint-video-prompt-reviewer` 定义时按名字派发；没有时派发通用 subagent，并在简报里给出审核方指南的绝对路径。传入与编写方相同的材料和工作单路径，**不转述编写方的回报或自我评价**。批准时审核方要带上这份输入材料，批准才会绑定它。
 4. **查看状态**：
 
@@ -94,7 +96,7 @@ node {baseDir}/scripts/mint-creation.mjs prompts brief 作品-creation.json --ep
    node {baseDir}/scripts/mint-creation.mjs prompts status 作品-creation.json
    ```
 
-   全部批准并且批准仍然有效（退出码为零）则结束循环。有 `changes_requested` 的段回到第 1 步，只派发被退回的那几集。有 `blocked` 的段先停下来：审核方发现了编写方无法单独解决的问题（缺少设定图、剧本台词有误、目标时长无法容纳），协调上游或请用户决定之后，重新生成输入材料，再派发编写方回应并提交。
+   全部批准并且批准仍然有效（退出码为零）则结束循环。有 `changes_requested` 的段先检查是否同时有待确认事项；有则先协调依据，没有则回到第 1 步，只派发被退回的那几集。有 `blocked` 的段先停下来：审核方发现了编写方无法单独解决的问题（缺少设定图、剧本台词有误、目标时长无法容纳），协调上游或请用户决定之后，重新生成输入材料，再派发编写方回应并提交。
 
 止损：同一段**提交三轮仍未批准**时，`prompts status` 会标出；停止这一段的循环，把审核意见与编写回应的分歧原样交给用户决定。`production.autopilot` 为 true 时同样止损，不无限重试。结构检查连续两次以同一原因失败，也停下来汇报。
 
@@ -152,6 +154,13 @@ node {baseDir}/scripts/discovery-selftest.mjs
 node {baseDir}/scripts/media-plan-selftest.mjs
 node {baseDir}/scripts/migration-selftest.mjs
 node {baseDir}/scripts/worksheet-selftest.mjs
+node {baseDir}/scripts/prompt-rules-selftest.mjs
+node {baseDir}/scripts/fusion-selftest.mjs
+node {baseDir}/scripts/asset-mapping-selftest.mjs
 ```
 
 全部为本地确定性检查，不调用模型，不访问网关。
+
+## 资产映射边界
+
+必须完整读取 `references/asset-identity-handoff.md`。资产权威是 cast/art；outline v5 只提供故事。script 的 C/S/P 仅是局部标记，制作实际依赖的 cuts/images 必须通过 `script.assetMappings` 显式确认，并核验目标完整资产规范摘要、来源版本与负责范围。缺少可选上游明确 skipped；提供但损坏或不匹配时阻断。只撤销受影响的审核，不要求全部资产确认或出图。独立入口不声明完整流程通过；项目级 pipeline 另行记录阶段状态。结构检查不能代替内容审核。

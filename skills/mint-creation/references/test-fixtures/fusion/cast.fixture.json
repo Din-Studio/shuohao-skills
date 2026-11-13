@@ -3,8 +3,68 @@
   "characters": [
     {
       "id": "C01",
-      "name": "值班员"
+      "name": "值班员",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 3,
+          "endLine": 4
+        }
+      ]
     }
   ],
-  "note": "值班员是实际可见的无台词人物；弟弟只是背景提及，不作为可见人物。仅用于 creation 身份交接测试。"
+  "note": "值班员是实际可见的无台词人物；弟弟只是背景提及，不作为可见人物。仅用于 creation 身份交接测试。",
+  "schemaVersion": 1,
+  "provenance": {
+    "kind": "script",
+    "scope": "partial",
+    "documents": [
+      {
+        "id": "D01",
+        "path": "D01.txt",
+        "sha256": "0d09209a9c4af93bccfd06ff43b6ed24dcf17ea2d75c7bbdffe6742569d6adcc",
+        "lineCount": 4
+      },
+      {
+        "id": "D02",
+        "path": "D02.txt",
+        "sha256": "d8352b7d100bf085e2ba204a702da40df5cb4b72e7a392ea9aad1c88ddc770f0",
+        "lineCount": 4
+      },
+      {
+        "id": "D03",
+        "path": "D03.txt",
+        "sha256": "c347e5b872a04cb7cfde7e0d2a7bb53f6f9b7284338d4fd125055e273cfaa190",
+        "lineCount": 4
+      },
+      {
+        "id": "D04",
+        "path": "D04.txt",
+        "sha256": "fa6cbdae110f5dd69916169f72f4347ab7a2dc0421a6661c6a70497a4b86aec0",
+        "lineCount": 2
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 4
+      },
+      {
+        "documentId": "D02",
+        "startLine": 1,
+        "endLine": 4
+      },
+      {
+        "documentId": "D03",
+        "startLine": 1,
+        "endLine": 4
+      },
+      {
+        "documentId": "D04",
+        "startLine": 1,
+        "endLine": 2
+      }
+    ]
+  }
 }

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "source": "回执",
+  "provenance": {
+    "kind": "script",
+    "scope": "partial",
+    "documents": [
+      {
+        "id": "D01",
+        "path": "原剧本.txt",
+        "sha256": "f85e4e97ae2c9b2ea46dce201046a510693a248c769eecd2360a77913e3067f8",
+        "lineCount": 6
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 6
+      }
+    ]
+  },
+  "scenes": [
+    {
+      "id": "S11",
+      "name": "快递站分拣区",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 6
+        }
+      ]
+    }
+  ],
+  "props": [
+    {
+      "id": "P11",
+      "name": "拒收回执",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 6
+        }
+      ]
+    }
+  ]
+}

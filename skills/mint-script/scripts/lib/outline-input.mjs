@@ -1,4 +1,4 @@
-// Self-contained outline v4 consumer boundary, not semantic fidelity review.
+// Self-contained outline v5 consumer boundary, not semantic fidelity review.
 import { documentErrors } from './document.mjs';
 import { evidenceErrors } from './source.mjs';
 const arr = x => Array.isArray(x) ? x : [];
@@ -7,22 +7,20 @@ const text = x => typeof x === 'string' && x.trim().length > 0;
 const id = (x,p) => typeof x === 'string' && new RegExp(`^${p}\\d{2,}$`).test(x);
 const own = (x,k) => obj(x) && Object.hasOwn(x,k);
 export function outlineInputErrors(outline) {
-  if (!obj(outline) || outline.schemaVersion !== 4) return ['outline.schemaVersion must be 4; run migrate-v4'];
+  if (!obj(outline) || outline.schemaVersion !== 5) return ['outline.schemaVersion must be 5; explicitly migrate legacy outline'];
   const errors = [...documentErrors(outline,'outline'), ...evidenceErrors(outline,{outline:true})];
   if (!text(outline.source)) errors.push('outline.source: expected work title');
-  for (const k of ['adaptation','arcs']) if (own(outline,k)) errors.push(`outline.${k}: retired planning field`);
+  for (const k of ['adaptation','arcs','characters','scenes','props','assetMappings']) if (own(outline,k)) errors.push(`outline.${k}: retired planning field`);
   if (own(outline,'params') && !obj(outline.params)) errors.push('outline.params: expected object');
-  for (const k of ['adaptMode','minutesPerEpisode','episodes']) if (own(outline.params,k)) errors.push(`outline.params.${k}: retired planning field`);
+  for (const k of ['adaptMode','minutesPerEpisode','episodes','thresholds']) if (own(outline.params,k)) errors.push(`outline.params.${k}: retired planning field`);
   if (!text(outline.story?.summary) || own(outline.story,'drive')) errors.push('outline.story.summary: required; story.drive retired');
   const sets = {};
-  for (const [key,prefix] of [['characters','C'],['scenes','S'],['props','P'],['beats','B']]) {
+  for (const [key,prefix] of [['beats','B']]) {
     sets[key] = new Set();
-    if (key === 'props' && !own(outline,key)) continue;
     if (!Array.isArray(outline[key])) errors.push(`outline.${key}: expected array`);
     for (const item of arr(outline[key])) {
       if (!id(item?.id,prefix) || sets[key].has(item?.id)) errors.push(`outline.${key}: invalid/duplicate ID`);
       sets[key].add(item?.id);
-      if (key === 'scenes' && own(item,'reusePlan')) errors.push('outline.scenes.reusePlan: retired');
     }
   }
   if (!Array.isArray(outline.episodes) || !outline.episodes.length) errors.push('outline.episodes: expected nonempty array');
@@ -31,6 +29,7 @@ export function outlineInputErrors(outline) {
     if (!Number.isSafeInteger(ep?.ep) || ep.ep <= last) errors.push('outline.episodes: ordered positive integers required');
     last = ep?.ep; eps.add(ep?.ep);
     if (!text(ep?.synopsis)) errors.push(`outline E${ep?.ep}.synopsis: required`);
+    for (const key of ['characterIds','sceneIds','propIds']) if (own(ep,key)) errors.push(`outline.episodes.${key}: asset references retired`);
     if (own(ep,'stateChange')) errors.push('outline.episodes.stateChange: retired');
     if (own(ep,'opening') && !text(ep.opening)) errors.push('outline.opening: expected nonempty text');
     if (own(ep,'ending')) {
@@ -56,6 +55,14 @@ export function outlineInputErrors(outline) {
     }
   }
   if (own(outline.story,'endingBeatId') && !sets.beats.has(outline.story.endingBeatId)) errors.push('outline.story.endingBeatId: unknown beat');
-  if (own(outline.story,'focusCharacterIds') && (!Array.isArray(outline.story.focusCharacterIds) || outline.story.focusCharacterIds.some(c => !sets.characters.has(c)))) errors.push('outline.story.focusCharacterIds: unknown characters');
+  if (own(outline.story,'focusCharacterIds')) errors.push('outline.story.focusCharacterIds: asset identities retired');
+  const checkNotes = value => {
+    if (Array.isArray(value)) value.forEach(checkNotes);
+    else if (obj(value)) for (const [key,item] of Object.entries(value)) {
+      if (['characterIds','sceneIds','propIds','speakerId','characterId','sceneId','propId'].includes(key)) errors.push(`outline.${key}: asset identities retired`);
+      checkNotes(item);
+    }
+  };
+  checkNotes(outline);
   return errors;
 }

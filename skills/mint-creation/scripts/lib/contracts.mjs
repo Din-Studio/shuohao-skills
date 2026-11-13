@@ -1,4 +1,5 @@
-// Creation-owned v4 upstream consumer contracts; creation stays v3. No sibling imports.
+import {mappingShapeErrors} from './asset-mapping.mjs';
+// Creation-owned script v4 / story-only outline v5 consumer contracts.
 import {sourceProblems, transformationProblems, audioProblems, continuationProblems} from './source.mjs';
 import { documentProblems, scriptParams, endPosition } from './document.mjs';
 const object = x => !!x && typeof x === 'object' && !Array.isArray(x);
@@ -72,7 +73,7 @@ export function shapeProblems(doc) {
 }
 export function scriptProblems(script) {
   if (!object(script) || script.schemaVersion !== 4) return ['script.schemaVersion 必须为 4；旧字段不能静默读取'];
-  const errors = [...documentProblems(script, 'script'), ...sourceProblems(script)];
+  const errors = [...documentProblems(script, 'script'), ...sourceProblems(script), ...mappingShapeErrors(script)];
   for (const k of ['candidates','context']) if (Object.hasOwn(script,k)) errors.push(`${k} 不得进入正式正文；使用 notes 或 .work`);
   if (!text(script.source)) errors.push('script.source 不能为空');
   const params = scriptParams(script);
@@ -126,28 +127,29 @@ export function scriptProblems(script) {
   return errors;
 }
 export function outlineProblems(outline) {
-  if (!object(outline) || outline.schemaVersion !== 4) return ['outline.schemaVersion 必须为 4'];
+  if (!object(outline) || outline.schemaVersion !== 5) return ['outline.schemaVersion 必须为 5；v4 需要显式迁移'];
   const errors = [...documentProblems(outline, 'outline'), ...sourceProblems(outline, {required:true})];
   if (!text(outline.source)) errors.push('outline.source 不能为空');
+  const forbidden = new Set(['characterIds','sceneIds','propIds','speakerId','characterId','sceneId','propId','focusCharacterIds']);
+  function storyOnly(x) {
+    if (!x || typeof x !== 'object') return;
+    for(const [key,value] of Object.entries(x)) { if(forbidden.has(key)) errors.push(`outline v5 不允许资产引用 ${key}`); else storyOnly(value); }
+  }
+  storyOnly(outline);
   for (const key of ['adaptation','arcs']) if (Object.hasOwn(outline,key)) errors.push(`outline.${key} 已移除`);
   for (const key of ['adaptMode','minutesPerEpisode','episodes']) if (Object.hasOwn(outline.params ?? {},key)) errors.push(`outline.params.${key} 已移除`);
   if (!object(outline.story) || !text(outline.story.summary)) errors.push('outline.story.summary 不能为空');
-  for (const k of ['characters','scenes','props','beats','episodes']) if (!(k === 'props' && outline[k] === undefined) && !Array.isArray(outline[k])) errors.push(`outline.${k} 必须为数组`);
+  for (const k of ['characters','scenes','props']) if (Object.hasOwn(outline,k)) errors.push(`outline v5 不允许资产表 ${k}`);
+  if (Object.hasOwn(outline.story ?? {},'focusCharacterIds') || Object.hasOwn(outline.params ?? {},'thresholds')) errors.push('outline v5 不允许资产身份或预算');
+  for (const k of ['beats','episodes']) if (!Array.isArray(outline[k])) errors.push(`outline.${k} 必须为数组`);
   if (errors.length) return errors;
-  for (const k of ['characters','scenes','props','beats']) {
-    const prefix = {characters:'C',scenes:'S',props:'P',beats:'B'}[k], seen = new Set();
-    for (const item of outline[k] ?? []) {
-      if (!object(item) || !new RegExp(`^${prefix}\\d{2,}$`).test(item.id) || seen.has(item.id)) errors.push(`outline.${k} ID 非法或重复`);
-      if (k !== 'beats' && !text(item?.name)) errors.push(`outline.${k} 名称不能为空`);
-      if (!Array.isArray(item?.sourceRefs) || !item.sourceRefs.length) errors.push(`outline.${k} 缺少 sourceRefs`);
-      if (k === 'characters' && !['lead','support','functional'].includes(item?.tier)) errors.push('outline tier 非法');
-      if (k === 'scenes' && typeof item?.primary !== 'boolean') errors.push('outline primary 非法');
-      if (k === 'scenes' && Object.hasOwn(item ?? {},'reusePlan')) errors.push('outline reusePlan 已移交美术');
-      seen.add(item?.id);
-    }
+  const seen = new Set();
+  for (const beat of outline.beats) {
+    if (!object(beat) || !/^B\d{2,}$/.test(beat.id) || seen.has(beat.id)) errors.push('outline beat ID 非法或重复');
+    if (!Array.isArray(beat?.sourceRefs) || !beat.sourceRefs.length) errors.push('outline beat 缺少 sourceRefs');
+    seen.add(beat?.id);
   }
-  const focus = outline.story?.focusCharacterIds;
-  if (focus !== undefined && (!Array.isArray(focus) || new Set(focus).size !== focus.length || focus.some(id => !outline.characters.some(c => c?.id === id)))) errors.push('outline focusCharacterIds 无效或重复');
+  for (const ep of outline.episodes) for (const k of ['characterIds','sceneIds','propIds']) if (Object.hasOwn(ep ?? {},k)) errors.push(`outline v5 不允许 ${k}`);
   const eps = new Set();
   for (const ep of outline.episodes) {
     if (!object(ep) || !Number.isInteger(ep.ep) || ep.ep < 1 || eps.has(ep.ep) || !text(ep.synopsis)) errors.push('outline 集号或 synopsis 非法');
@@ -162,12 +164,6 @@ export function outlineProblems(outline) {
     previousEpisode = beat?.episode;
     if (!object(beat) || !eps.has(beat.episode) || !text(beat.setup) || !text(beat.outcome)) errors.push('outline 节点所属集或内容非法');
     for (const k of ['position','kind','weight','type']) if (Object.hasOwn(beat ?? {},k)) errors.push(`outline beats.${k} 已移除`);
-  }
-  for (const prop of outline.props ?? []) if (prop?.beatIds !== undefined && (!Array.isArray(prop.beatIds) || prop.beatIds.some(id => !outline.beats.some(b => b?.id === id)))) errors.push('outline 道具 beatIds 引用无效');
-  for (const ep of outline.episodes) for (const [key, assets] of [['characterIds','characters'],['sceneIds','scenes'],['propIds','props']]) {
-    const ids = ep?.[key];
-    if (key === 'propIds' && ids === undefined) continue;
-    if (!Array.isArray(ids) || new Set(ids).size !== ids.length || ids.some(id => !(outline[assets] ?? []).some(a => a?.id === id))) errors.push(`outline E${ep?.ep} ${key} 引用无效`);
   }
   if (outline.story.endingBeatId !== undefined && !outline.beats.some(b => b?.id === outline.story.endingBeatId && b?.episode === outline.provenance.totalEpisodes)) errors.push('outline 终局节点需要已知最终集');
   return errors;
@@ -189,11 +185,6 @@ export function reconcile(doc, script, outline) {
     if (!outline.episodes.some(o => o.ep === ep.ep)) errors.push(`script E${ep.ep} 在大纲里不存在`);
     const ids = outline.beats.filter(b => b.episode === ep.ep).map(b => b.id);
     if (JSON.stringify(ids) !== JSON.stringify(ep.beatClaims?.map(c => c.beatId))) errors.push(`E${ep.ep} 节点认领与大纲顺序/身份不一致`);
-    for (const sc of ep.scenes) {
-      if (!outline.scenes.some(x => x.id === sc.sceneId)) errors.push(`未知场景 ${sc.sceneId}`);
-      for (const id of sc.characters) if (!outline.characters.some(x => x.id === id)) errors.push(`未知人物 ${id}`);
-      for (const id of sc.props ?? []) if (!(outline.props ?? []).some(x => x.id === id)) errors.push(`未知道具 ${id}`);
-    }
   }
   for (const ep of doc.episodes) {
     errors.push(...continuationProblems(ep, script?.episodes.find(s => s.ep === ep.ep)));

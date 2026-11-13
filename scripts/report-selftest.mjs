@@ -28,6 +28,9 @@ function eq(a, b, msg) { assert.strictEqual(a, b, `${msg} — 期望 ${b}，实�
 eq(PANES.length, 5, '五段流水线各一个面板');
 eq(PANES[0].id, 'outline', '大纲排第一——顺序照流程图');
 eq(PANES.at(-1).id, 'creation', '视频创作排最后');
+assert.deepEqual(PANES.map(p=>p.id), ['outline','characters','art','script','creation']); passed++;
+for (const id of ['script','creation']) for (const authority of ['--cast','--art']) ok(PANES.find(p=>p.id===id).needs.includes(authority), `${id} 接收独立身份权威 ${authority}`);
+eq(PANES.find(p=>p.id==='characters').needs.length, 0, '人物报告不从大纲资产 seed');
 ok(new Set(PANES.map((p) => p.id)).size === PANES.length, '面板 id 不重复');
 ok(new Set(PANES.map((p) => p.flag)).size === PANES.length, '参数名不重复');
 ok(PANES.find((p) => p.id === 'creation').needs.includes('--script'), '视频创作声明了它对剧本的硬依赖');

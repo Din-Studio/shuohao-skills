@@ -1,0 +1,227 @@
+{
+  "schemaVersion": 1,
+  "kind": "mint-art",
+  "source": "雨棚留言",
+  "mode": "script",
+  "status": "ready",
+  "scenes": [
+    {
+      "id": "S01",
+      "identityKey": "canopy",
+      "name": "菜摊雨棚",
+      "decision": "同一空间在第1、3集及入夜场次复现；清空是状态变化，不按场次新建地点",
+      "identityReview": {
+        "status": "confirmed",
+        "basis": "本 skill 自有样例的人工语义登记；不等于媒体审核",
+        "inputDigest": "f981618c2f3ec1e4cd28693f8464f1ad0c6c5e5a1ed327abb6296ae299f4fe31"
+      },
+      "designStatus": "none",
+      "imageStem": "S01",
+      "primary": true,
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 3
+        }
+      ],
+      "facts": {
+        "text": "同一空间在第1、3集及入夜场次复现；清空是状态变化，不按场次新建地点",
+        "sourceRefs": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 3
+          }
+        ]
+      }
+    },
+    {
+      "id": "S02",
+      "identityKey": "pool",
+      "name": "公共水池",
+      "decision": "核对便条发生在独立水池空间",
+      "identityReview": {
+        "status": "confirmed",
+        "basis": "本 skill 自有样例的人工语义登记；不等于媒体审核",
+        "inputDigest": "367c0639866932e5bee77e46843c8f40c80eae7868bc7eefb3fe45e884218033"
+      },
+      "designStatus": "none",
+      "imageStem": "S02",
+      "primary": false,
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 4,
+          "endLine": 5
+        }
+      ],
+      "facts": {
+        "text": "核对便条发生在独立水池空间",
+        "sourceRefs": [
+          {
+            "documentId": "D01",
+            "startLine": 4,
+            "endLine": 5
+          }
+        ]
+      }
+    }
+  ],
+  "props": [
+    {
+      "id": "P01",
+      "identityKey": "board",
+      "name": "旧留言板",
+      "decision": "同一实物由许桂兰代存后交还陶敏；交接不分配新 ID",
+      "identityReview": {
+        "status": "confirmed",
+        "basis": "本 skill 自有样例的人工语义登记；不等于媒体审核",
+        "inputDigest": "60eed18be5a60fd75aea21f977deb5748d340f59e5bb59855fb4404553ae2015"
+      },
+      "designStatus": "none",
+      "imageStem": "P01",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 2,
+          "endLine": 9
+        }
+      ],
+      "facts": {
+        "text": "同一实物由许桂兰代存后交还陶敏；交接不分配新 ID",
+        "sourceRefs": [
+          {
+            "documentId": "D01",
+            "startLine": 2,
+            "endLine": 9
+          }
+        ]
+      },
+      "carrierRefs": [
+        {
+          "characterId": "C02",
+          "basis": "原件第7行交还给陶敏；人物 ID 由本 skill 自有 characters 交接夹具提供",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 7,
+              "endLine": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "P02",
+      "identityKey": "box",
+      "name": "夹纸铁盒",
+      "decision": "核对与腾空状态需要连续性",
+      "identityReview": {
+        "status": "confirmed",
+        "basis": "本 skill 自有样例的人工语义登记；不等于媒体审核",
+        "inputDigest": "3f5bea9294c205225968b341d6bd99d409f886975e71721917af37be4cc9dc65"
+      },
+      "designStatus": "none",
+      "imageStem": "P02",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 5,
+          "endLine": 7
+        }
+      ],
+      "facts": {
+        "text": "核对与腾空状态需要连续性",
+        "sourceRefs": [
+          {
+            "documentId": "D01",
+            "startLine": 5,
+            "endLine": 7
+          }
+        ]
+      }
+    }
+  ],
+  "registry": {
+    "entries": [
+      {
+        "id": "S01",
+        "key": "canopy",
+        "status": "active"
+      },
+      {
+        "id": "S02",
+        "key": "pool",
+        "status": "active"
+      },
+      {
+        "id": "P01",
+        "key": "board",
+        "status": "active"
+      },
+      {
+        "id": "P02",
+        "key": "box",
+        "status": "active"
+      }
+    ],
+    "changes": []
+  },
+  "budgets": {
+    "primaryScenes": {
+      "kind": "explicit",
+      "max": 1
+    },
+    "props": {
+      "kind": "explicit",
+      "max": 2
+    }
+  },
+  "upstreams": {},
+  "provenance": {
+    "kind": "script",
+    "scope": "complete",
+    "totalEpisodes": 3,
+    "documents": [
+      {
+        "id": "D01",
+        "path": "雨棚留言-原剧本.txt",
+        "sha256": "30266f1b6930e6ae9ea6e8507ed118c9f98d27969c0d9fe22cd08257c70efaa5",
+        "lineCount": 9
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 9
+      }
+    ]
+  },
+  "observations": [
+    {
+      "text": "新雨伞仅被口头提及，当前任务不建立道具资产",
+      "disposition": "not-asset",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 3,
+          "endLine": 3
+        }
+      ]
+    },
+    {
+      "text": "清空后雨棚仍为同一地点；本次不另建变体设计资产",
+      "disposition": "same-location",
+      "sceneId": "S01",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 6,
+          "endLine": 9
+        }
+      ]
+    }
+  ]
+}

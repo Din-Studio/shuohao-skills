@@ -44,36 +44,172 @@
   "assets": {
     "characters": [
       {
-        "id": "C01",
+        "id": "C11",
         "name": "何穗",
         "sheet": "../characters/images/何穗-sheet.png",
         "sheetExists": false,
-        "sheetHash": null
+        "sheetHash": null,
+        "specification": {
+          "id": "C11",
+          "name": "何穗",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 1,
+              "endLine": 6
+            }
+          ]
+        },
+        "assetDigest": "04a2369a787f20857eca59a00e2f27734f959e7a51ae117b7db605c8581d9c41",
+        "sourceRefs": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 6
+          }
+        ],
+        "sourceDocuments": [
+          {
+            "id": "D01",
+            "path": "原剧本.txt",
+            "sha256": "f85e4e97ae2c9b2ea46dce201046a510693a248c769eecd2360a77913e3067f8",
+            "lineCount": 6
+          }
+        ],
+        "sourceCoverage": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 6
+          }
+        ]
       },
       {
-        "id": "C02",
+        "id": "C12",
         "name": "老冯",
         "sheet": "../characters/images/老冯-sheet.png",
         "sheetExists": false,
-        "sheetHash": null
+        "sheetHash": null,
+        "specification": {
+          "id": "C12",
+          "name": "老冯",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 1,
+              "endLine": 6
+            }
+          ]
+        },
+        "assetDigest": "d3c8acdb219abd5488ef327a557bf7de36aab9173527d17d47656d71d33ab692",
+        "sourceRefs": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 6
+          }
+        ],
+        "sourceDocuments": [
+          {
+            "id": "D01",
+            "path": "原剧本.txt",
+            "sha256": "f85e4e97ae2c9b2ea46dce201046a510693a248c769eecd2360a77913e3067f8",
+            "lineCount": 6
+          }
+        ],
+        "sourceCoverage": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 6
+          }
+        ]
       }
     ],
     "scenes": [
       {
-        "id": "S01",
+        "id": "S11",
         "name": "快递站分拣区",
         "sheet": "../art/images/快递站分拣区-sheet.png",
         "sheetExists": false,
-        "sheetHash": null
+        "sheetHash": null,
+        "specification": {
+          "id": "S11",
+          "name": "快递站分拣区",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 1,
+              "endLine": 6
+            }
+          ]
+        },
+        "assetDigest": "2ed2e3727d365bbfba836888078196c2fdd27a8da7411b78d144f9990a11092c",
+        "sourceRefs": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 6
+          }
+        ],
+        "sourceDocuments": [
+          {
+            "id": "D01",
+            "path": "原剧本.txt",
+            "sha256": "f85e4e97ae2c9b2ea46dce201046a510693a248c769eecd2360a77913e3067f8",
+            "lineCount": 6
+          }
+        ],
+        "sourceCoverage": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 6
+          }
+        ]
       }
     ],
     "props": [
       {
-        "id": "P01",
+        "id": "P11",
         "name": "拒收回执",
         "sheet": "../art/images/拒收回执-sheet.png",
         "sheetExists": false,
-        "sheetHash": null
+        "sheetHash": null,
+        "specification": {
+          "id": "P11",
+          "name": "拒收回执",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 1,
+              "endLine": 6
+            }
+          ]
+        },
+        "assetDigest": "8edfd838bc6155483865087b48f57935c413c6eeb67d95cb8709a26305710859",
+        "sourceRefs": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 6
+          }
+        ],
+        "sourceDocuments": [
+          {
+            "id": "D01",
+            "path": "原剧本.txt",
+            "sha256": "f85e4e97ae2c9b2ea46dce201046a510693a248c769eecd2360a77913e3067f8",
+            "lineCount": 6
+          }
+        ],
+        "sourceCoverage": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 6
+          }
+        ]
       }
     ]
   },
@@ -81,7 +217,19 @@
     {
       "sceneIndex": 1,
       "sceneId": "S01",
-      "notes": [{"kind":"restriction","text":"收下回执不等于原谅母亲；禁止通过微笑、拥抱或声音宣布和解。","sourceRefs":[{"documentId":"D01","startLine":2,"endLine":2}]}],
+      "notes": [
+        {
+          "kind": "restriction",
+          "text": "收下回执不等于原谅母亲；禁止通过微笑、拥抱或声音宣布和解。",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 2,
+              "endLine": 2
+            }
+          ]
+        }
+      ],
       "lighting": "夜班，日光灯",
       "characters": [
         "C01",
@@ -93,22 +241,47 @@
       "beats": [
         {
           "n": 1,
-          "sourceRefs": [{"documentId":"D01","startLine":3,"endLine":3}],
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 3,
+              "endLine": 3
+            }
+          ],
           "kind": "action",
           "seconds": 2.5,
           "text": "夜班快递站，何穗挪开分拣台上的电子秤，秤下压着一张发黄的回执。"
         },
         {
           "n": 2,
-          "sourceRefs": [{"documentId":"D01","startLine":4,"endLine":4}],
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 4,
+              "endLine": 4
+            }
+          ],
           "kind": "action",
           "seconds": 2.5,
           "text": "她认出收件人一栏是母亲的名字，手指停在「拒收」印章上。"
         },
         {
           "n": 3,
-          "sourceRefs": [{"documentId":"D01","startLine":5,"endLine":5}],
-          "audio": {"mode":"onscreen","audibleTo":["C01","C02"],"subjective":false},
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 5,
+              "endLine": 5
+            }
+          ],
+          "audio": {
+            "mode": "onscreen",
+            "audibleTo": [
+              "C01",
+              "C02"
+            ],
+            "subjective": false
+          },
           "kind": "line",
           "seconds": 3.1,
           "speaker": "C02",
@@ -117,12 +290,124 @@
         },
         {
           "n": 4,
-          "sourceRefs": [{"documentId":"D01","startLine":6,"endLine":6}],
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 6,
+              "endLine": 6
+            }
+          ],
           "kind": "action",
           "seconds": 2.5,
           "text": "何穗把回执对折，放进工牌套里。"
         }
       ]
     }
-  ]
+  ],
+  "assetMappings": [
+    {
+      "kind": "character",
+      "localId": "C01",
+      "assetId": "C11",
+      "status": "confirmed",
+      "basis": "本样例作者独立核对故事原文和 cast/art 后显式确认；不根据相同编号或名称推断。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 6
+        }
+      ],
+      "assetDigest": "04a2369a787f20857eca59a00e2f27734f959e7a51ae117b7db605c8581d9c41",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "f85e4e97ae2c9b2ea46dce201046a510693a248c769eecd2360a77913e3067f8",
+          "lineCount": 6
+        }
+      ],
+      "mappingErrors": []
+    },
+    {
+      "kind": "character",
+      "localId": "C02",
+      "assetId": "C12",
+      "status": "confirmed",
+      "basis": "本样例作者独立核对故事原文和 cast/art 后显式确认；不根据相同编号或名称推断。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 6
+        }
+      ],
+      "assetDigest": "d3c8acdb219abd5488ef327a557bf7de36aab9173527d17d47656d71d33ab692",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "f85e4e97ae2c9b2ea46dce201046a510693a248c769eecd2360a77913e3067f8",
+          "lineCount": 6
+        }
+      ],
+      "mappingErrors": []
+    },
+    {
+      "kind": "scene",
+      "localId": "S01",
+      "assetId": "S11",
+      "status": "confirmed",
+      "basis": "本样例作者独立核对故事原文和 cast/art 后显式确认；不根据相同编号或名称推断。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 6
+        }
+      ],
+      "assetDigest": "2ed2e3727d365bbfba836888078196c2fdd27a8da7411b78d144f9990a11092c",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "f85e4e97ae2c9b2ea46dce201046a510693a248c769eecd2360a77913e3067f8",
+          "lineCount": 6
+        }
+      ],
+      "mappingErrors": []
+    },
+    {
+      "kind": "prop",
+      "localId": "P01",
+      "assetId": "P11",
+      "status": "confirmed",
+      "basis": "本样例作者独立核对故事原文和 cast/art 后显式确认；不根据相同编号或名称推断。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 6
+        }
+      ],
+      "assetDigest": "8edfd838bc6155483865087b48f57935c413c6eeb67d95cb8709a26305710859",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "f85e4e97ae2c9b2ea46dce201046a510693a248c769eecd2360a77913e3067f8",
+          "lineCount": 6
+        }
+      ],
+      "mappingErrors": []
+    }
+  ],
+  "upstream": {
+    "outline": {
+      "status": "skipped",
+      "reason": "missing-upstream"
+    },
+    "cast": {
+      "status": "provided"
+    },
+    "art": {
+      "status": "provided"
+    }
+  }
 }

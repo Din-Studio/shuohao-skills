@@ -1,10 +1,11 @@
+import {makeCast} from './test-fixtures.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { seedFromOutline, gateReport, creativeBackground, imageJobsFrom, renderHtml, slug } from './mint-art.mjs';
+import { seedFromLegacyOutline as seedFromOutline, gateReport, creativeBackground, imageJobsFrom, renderHtml, slug } from './mint-art.mjs';
 import { assertOutlineV3, assetProductionProblems } from './lib/contracts.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const outline = JSON.parse(readFileSync(join(here, '../examples/雨棚留言-outline-v3.json'), 'utf8'));
@@ -88,14 +89,14 @@ const dir = mkdtempSync(join(tmpdir(), 'art-contract-'));
 const cli = (...args) => spawnSync(process.execPath, [join(here, 'mint-art.mjs'), ...args], { encoding: 'utf8' });
 try {
   const upstream = join(dir, 'outline.json');
-  writeFileSync(upstream, JSON.stringify(outline)); assert.equal(cli('seed', upstream).status, 0);
+  writeFileSync(upstream, JSON.stringify(outline)); assert.equal(cli('migrate-outline', upstream).status, 0);
   for (const text of ['{', 'null', JSON.stringify({ ...outline, schemaVersion: 1 })]) {
-    writeFileSync(upstream, text); assert.equal(cli('seed', upstream).status, 1);
+    writeFileSync(upstream, text); assert.equal(cli('migrate-outline', upstream).status, 1);
   }
-  assert.equal(cli('seed', join(dir, 'absent.json')).status, 1);
+  assert.equal(cli('migrate-outline', join(dir, 'absent.json')).status, 1);
   for (const field of ['characters','scenes']) {
     const bad = structuredClone(outline); bad[field][0].id = [bad[field][0].id];
-    writeFileSync(upstream, JSON.stringify(bad)); assert.equal(cli('seed', upstream).status, 1, 'array ID must fail the real seed CLI');
+    writeFileSync(upstream, JSON.stringify(bad)); assert.equal(cli('migrate-outline', upstream).status, 1, 'array ID must fail the real seed CLI');
   }
   const asset = join(dir, 'art.json'); writeFileSync(asset, JSON.stringify(doc));
   const prod = join(dir, 'production.json'); writeFileSync(prod, JSON.stringify(production));
@@ -127,7 +128,7 @@ try {
   }
   const name = 'Sherlock Holmes';
   for (const names of [[], [name]]) {
-    writeFileSync(cast, JSON.stringify({ characters: names.map(name => ({ name, aliases: ['Detective Alias'] })) }));
+    writeFileSync(cast, JSON.stringify(makeCast(names)));
     for (const banned of ['', name, 'Detective Alias']) {
       const input = structuredClone(doc); input.scenes[0].image.prompt += ` ${banned}`;
       writeFileSync(asset, JSON.stringify(input));
@@ -150,7 +151,7 @@ try {
   }
   writeFileSync(asset, JSON.stringify(doc));
   for (const format of ['--html', '--md']) assert.ok(cli('render', asset, format, '--production', prod).stdout.includes(format === '--md' ? 'missing-upstream' : '未提供 cast.json，本门跳过'));
-  writeFileSync(cast, JSON.stringify({ characters: [] }));
+  writeFileSync(cast, JSON.stringify(makeCast()));
   const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jJesAAAAASUVORK5CYII=', 'base64');
   for (const withImage of [false, true]) for (const existingImage of [false, true]) {
     const input = { ...structuredClone(doc), reviewNote: '</script><img src=x onerror=1>' };
@@ -164,7 +165,7 @@ try {
     for (const lang of ['zh', 'en']) for (const format of ['--html', '--md']) {
       const r = cli('render', asset, format, '--lang', lang, '--cast', cast, '--production', prod);
       assert.equal(r.status, 0, r.stderr);
-      if (withImage) assert.ok(r.stdout.includes(`images/${slug(input.scenes[0].name)}-sheet.png`));
+      if (withImage && !existingImage) assert.ok(r.stdout.includes(`images/${slug(input.scenes[0].name)}-sheet.png`));
       if (format === '--html') {
         const raw = r.stdout.match(/<script type="application\/json" id="art-data">([\s\S]*?)<\/script>/)[1];
         assert.deepEqual(JSON.parse(raw), input, 'display attachments must never alter export');
@@ -179,4 +180,4 @@ try {
   assert.equal(cli('validate', asset, '--production', join(dir, 'missing.json')).status, 1);
   assert.equal(cli('validate', asset, '--production', prod, '--no-production').status, 1);
 } finally { rmSync(dir, { recursive: true, force: true }); }
-console.log('✓ art v3 上游、创作背景及检查状态回归通过');
+console.log('✓ art v1 正式入口、历史 v3 显式迁移、创作背景及检查状态回归通过');

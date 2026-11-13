@@ -2,7 +2,7 @@
 
 ## 核验对象
 
-outline/script 使用 v4；creation 与 production 仍使用 v3。解析与独立创作是不同入口。独立 script 不强行补造来源；解析 script 的实际正文与 notes 必须有 sourceRefs。进入制作前，每集 targetSeconds 必须是已确认的有限正数，不能从 outline 复制分钟数或虚构目标。
+outline 使用 v5，script 使用 v4；creation 与 production 仍使用 v3。解析与独立创作是不同入口。独立 script 不强行补造来源；解析 script 的实际正文与 notes 必须有 sourceRefs。进入制作前，每集 targetSeconds 必须是已确认的有限正数，不能从 outline 复制分钟数或虚构目标。
 
 provenance 记录原剧本文档 ID、相对 JSON 的路径、原始文件字节 SHA256、行数与覆盖。sourceRefs 是一基、含两端的 documentId/startLine/endLine 坐标。相同文字发生在不同位置时是不同内容，不能按文本去重。重叠覆盖取并集；partial 可以缺集或不从第一集开始，complete 需要全部文档覆盖和已知 1..N 集。
 
@@ -28,7 +28,7 @@ prompt.includes 只要求拥有台词的段包含原句；延续段描述“继�
 
 ## 材料与批准
 
-seedScenes 保留完整 notes、sourceRefs、audio、transformation，以及当前集所有场次正文，供跨场 audioRefs 回查。材料中的 provenance 是 script 来源身份；调度方在核验边界将文档路径解析为规范绝对路径，使 .work 中的材料仍能定位原件。资产和事件携带各自 sourceRefs/sourceDocuments，保留可回查的来源证据。同名资产不合并，始终使用稳定 C/S/P ID；唯一名称仍使用 name-sheet.png，同目录名称 slug 碰撞时使用 ID-name-sheet.png。场景与道具共同检查碰撞。旧角色名称查找只接受无歧义的唯一匹配。
+seedScenes 保留完整 notes、sourceRefs、audio、transformation，以及当前集所有场次正文，供跨场 audioRefs 回查。材料中的 provenance 是 script 来源身份；调度方在核验边界将文档路径解析为规范绝对路径，使 .work 中的材料仍能定位原件。资产和事件携带各自 sourceRefs/sourceDocuments，保留可回查的来源证据。同名资产不合并；script C/S/P 为局部标记，通过 script.assetMappings 连接 cast/art 的目标资产 ID。唯一名称仍使用 name-sheet.png，同目录名称 slug 碰撞时使用 ID-name-sheet.png。场景与道具共同检查碰撞。禁止同名或同 ID 回退；详见 [资产身份与显式映射交接](asset-identity-handoff.md)。
 
 inputHashOf 只绑定相关依赖：拥有正文、选中场次说明与来源、延续引用的正文及来源场说明、实际引用文档版本、重叠事件认领、相关场次及声音来源场的显式 characters/props、挂载资产证据与图片路径及摘要、模型参数、语言、目标时长、同框与单段限制、项目要求。修改声音方式、揭晓限制或来源引用会使相关段批准失效；跨段依赖同样失效。开场意图只绑定实际开场坐标所在段（未标注时使用第一拍），集尾意图只绑定实际最后一拍所在段。仅修改其中一项，不使其他段失效。无关场次、未引用文档不会连带失效。
 

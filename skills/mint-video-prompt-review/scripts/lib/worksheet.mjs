@@ -2,6 +2,7 @@
 // 三个 skill（mint-creation、mint-video-prompt、mint-video-prompt-review）各持一份相同副本——
 // 小段确定性逻辑各自拷贝，是本仓库对「自包含」的既有解法。修改时三份一起改。
 import { createHash } from 'node:crypto';
+import {requiredMappings, materialMappingErrors, assetLists} from './asset-mapping.mjs';
 
 export const STATUSES = ['draft', 'in_review', 'changes_requested', 'blocked', 'approved'];
 export const VERDICTS = ['approved', 'changes_requested', 'blocked'];
@@ -61,21 +62,32 @@ export function inputHashOf(structure, material) {
     sourceRefs:scene?.sourceRefs ?? null, notes:scene?.notes ?? null, beats,
     characters:scene?.characters ?? [], props:scene?.props ?? [],
     continuation:[...continuation.entries()].sort(([a],[b]) => a.localeCompare(b)).map(([,v]) => v)};
-  const ids = new Set();
+  const ids = new Set(), sourceRanges = [];
   function refs(x) {
     if (!x || typeof x !== 'object') return;
-    if (Array.isArray(x.sourceRefs)) for (const r of x.sourceRefs) ids.add(r.documentId);
+    if (Array.isArray(x.sourceRefs)) for (const r of x.sourceRefs) { ids.add(r.documentId); sourceRanges.push(r); }
     for (const v of Object.values(x)) if (Array.isArray(v)) v.forEach(refs); else if (v && typeof v === 'object') refs(v);
   }
   refs(dependencies);
+  const sourceCoverage = (material?.provenance?.coverage ?? []).filter(c=>sourceRanges.some(r=>r.documentId===c.documentId && r.startLine<=c.endLine && c.startLine<=r.endLine));
   const documents = [...ids].sort().map(id => {
     const d = material?.provenance?.documents?.find(d => d?.id === id);
     return d ? {id:d.id,path:d.path,sha256:d.sha256,lineCount:d.lineCount} : {id,missing:true};
   });
+  const selected = requiredMappings(structure,scene,scenes);
+  // A continued voice carries the source scene's mapped identity evidence too.
+  for (const b of [...beats,...[...continuation.values()].map(v=>v.beat)]) {
+    if (/^C\d{2,}$/.test(b?.speaker)) selected.push({kind:'character',localId:b.speaker});
+  }
+  const mappings = material?.assetMappings === undefined ? null : [...new Map(selected.map(r=>[`${r.kind}:${r.localId}`,r])).values()].map(({kind,localId})=>{
+    const rows=(material.assetMappings??[]).filter(m=>m.kind===kind && m.localId===localId);
+    return {kind,localId,records:rows,assets:rows.map(m=>{const a=(material.assets?.[assetLists[kind]]??[]).find(a=>a.id===m.assetId); if(!a)return null; const {sheet,sheetHash,sheetExists,...identity}=a; return identity;})};
+  });
   const images = (structure?.images ?? []).map(img => {
-    const asset = (material?.assets?.[ASSET_LISTS[img?.kind]] ?? []).find(x => x?.id === img?.ref);
+    const mapping = (material?.assetMappings ?? []).find(m=>m.kind===img?.kind&&m.localId===img?.ref);
+    const asset = (material?.assets?.[ASSET_LISTS[img?.kind]] ?? []).find(x => x?.id === (mapping?.assetId ?? img?.ref));
     return {kind:img?.kind ?? null,ref:img?.ref ?? null,name:asset?.name ?? null,sheet:asset?.sheet ?? null,sheetHash:asset?.sheetHash ?? null,
-      sourceRefs:asset?.sourceRefs ?? null,sourceDocuments:asset?.sourceDocuments ?? null};
+      assetDigest:asset?.assetDigest ?? null,sourceRefs:asset?.sourceRefs ?? null,sourceDocuments:asset?.sourceDocuments ?? null,sourceCoverage:asset?.sourceCoverage??null};
   });
   const positions = [...claimed].map(n => [structure?.sceneIndex,n]).concat([...continuation.values()].map(v => v.position));
   const compare = (a,b) => a[0]-b[0] || a[1]-b[1];
@@ -95,7 +107,8 @@ export function inputHashOf(structure, material) {
     video:material?.video ?? null,promptLang:material?.promptLang ?? null,
     maxSegmentSeconds:material?.maxSegmentSeconds ?? null,maxOnScreen:material?.maxOnScreen ?? null,
     targetSeconds:material?.targetSeconds ?? null,creativeBrief:material?.creativeBrief ?? null,
-    ...dependencies,documents,images,beatClaims,
+    ...(material?.style ? {style:material.style} : {}),
+    ...dependencies,documents,sourceCoverage,sourceScope:material?.provenance?.scope??null,images,beatClaims,mappings,
   }));
 }
 
@@ -103,8 +116,8 @@ function section(head, heading) {
   const start = head.indexOf(`\n${heading}\n`);
   if (start < 0) return null;
   const from = start + heading.length + 2;
-  const next = head.indexOf('\n## ', from);
-  return head.slice(from, next < 0 ? undefined : next).trim();
+  const next = HEADINGS.map(h => head.indexOf(`\n${h}\n`, from)).filter(n => n >= 0);
+  return head.slice(from, next.length ? Math.min(...next) : undefined).trim();
 }
 
 /**
@@ -149,7 +162,12 @@ export function parseWorksheet(text) {
   // 区域按二级标题切分：意见或回应里多出一个二级标题，它之下的内容会在下一次改写时丢失
   const headings = head.split('\n').filter(line => line.startsWith('## ')).map(line => line.trim());
   for (const h of HEADINGS) if (headings.filter(x => x === h).length > 1) problems.push(`「${h}」只能出现一次`);
-  for (const h of headings) if (!HEADINGS.includes(h)) problems.push(`多余的二级标题「${h}」：审核意见与编写回应里需要小标题时使用三级标题或加粗`);
+  for (const h of headings) if (!HEADINGS.includes(h) && !['## 返修意见','## 待确认事项'].includes(h)) problems.push(`多余的二级标题「${h}」：只允许固定工作单标题和审核区的返修意见、待确认事项`);
+  const reviewStart = head.indexOf(REVIEW_HEADING), responseStart = head.indexOf(RESPONSE_HEADING);
+  for (const h of ['## 返修意见','## 待确认事项']) {
+    const positions = [...head.matchAll(new RegExp(`^${h}$`, 'gm'))].map(m => m.index);
+    if (positions.length > 1 || positions.some(p => p < reviewStart || p > responseStart)) problems.push(`「${h}」只允许在审核意见区域出现一次`);
+  }
 
   const structureText = section(head, STRUCTURE_HEADING);
   const fence = structureText?.match(/```json\n([\s\S]*?)\n```/);
@@ -219,7 +237,27 @@ const itemRe = tag => new RegExp(ITEM_PREFIX + escapeRe(tag));
  * 审核意见里的条目：以列表符号（- * + 或数字编号）加标签开头的行。
  * loose 收集提到了「必须修改」或「阻塞」标签却不是条目的行——批准时一并拒绝，不让换一种写法绕过。
  */
+export function structuredReview(review) {
+  const text = String(review ?? '').trim(), problems = [];
+  const conclusions = [...text.matchAll(/^- 审核结论：[ \t]*(.*)$/gm)];
+  const conclusion = conclusions[0]?.[1].trim();
+  if (!text.startsWith('# 视频提示词审核\n') || conclusions.length !== 1 || !['通过','需返修','待确认'].includes(conclusion)) problems.push('审核需要固定标题和唯一的审核结论：通过／需返修／待确认');
+  const a = text.indexOf('\n## 返修意见\n'), b = text.indexOf('\n## 待确认事项');
+  if (a < 0 || b < a || !/^\n## 待确认事项(?:\n|$)/.test(text.slice(b))) problems.push('审核必须依次包含返修意见与待确认事项');
+  if (a >= 0 && text.slice(0,a).trim() !== `# 视频提示词审核\n\n- 审核结论：${conclusion}`) problems.push('审核标题与结论之后只能进入返修意见，不夹带未归类意见');
+  const entries = value => value.split('\n').map(l => l.trim()).filter(Boolean);
+  const must = a < 0 || b < a ? [] : entries(text.slice(a + '\n## 返修意见\n'.length,b));
+  const block = b < 0 ? [] : entries(text.slice(b + '\n## 待确认事项'.length));
+  for (const line of must) {
+    const fields=line.replace(/^[-*+]\s*/, '').split('｜').map(x=>x.trim());
+    if (fields.length !== 4 || !fields.every(Boolean) || !['质量','格式'].includes(fields[0])) problems.push(`返修意见需填写质量或格式｜字段或事件｜问题｜修订要求：${line}`);
+  }
+  for (const line of block) if (line.replace(/^[-*+]\s*/, '').split('｜').filter(x=>x.trim()).length !== 3) problems.push(`待确认事项需填写位置｜缺少的依据｜影响的判断：${line}`);
+  return {conclusion,must,block,suggest:[],loose:[],problems};
+}
+
 export function reviewItems(review) {
+  if (/审核结论[：:]/.test(review)) return structuredReview(review);
   const lines = String(review ?? '').split('\n').map(l => l.trim()).filter(Boolean);
   const pick = tag => lines.filter(l => itemRe(tag).test(l));
   const must = pick(MUST_FIX), block = pick(BLOCKER), suggest = pick(SUGGEST);
@@ -237,6 +275,8 @@ export function approvalProblem(sheet) {
 
 /** 批准绑定的输入是否仍然是当前的输入材料。只对已批准且内容未改动的工作单有意义。 */
 export function inputProblem(sheet, material) {
+  const mappingProblems = materialMappingErrors(sheet.structure,material);
+  if (mappingProblems.length) return mappingProblems.join('；');
   if (!sheet.meta.inputHash) return '批准没有绑定输入材料，需要重新提交，并由审核方带着输入材料登记结论';
   if (sheet.meta.inputHash !== inputHashOf(sheet.structure, material)) return '批准之后这一段依据的输入发生变化（认领与声音延续正文、来源、场次说明、参考图、模型参数或项目要求），批准已失效，需要重新提交审核';
   return null;
@@ -271,21 +311,31 @@ export function recordVerdict(sheet, verdict, material = null) {
   if (sheet.meta.status !== 'in_review') problems.push(`只能审核 in_review 的工作单，当前为 ${sheet.meta.status}——由编写方提交后再审核`);
   if (!sheet.review || sheet.review === REVIEW_PLACEHOLDER) problems.push('「审核意见（仅本轮）」还没有填写');
   else {
-    if (!CONCLUSION_RE.test(sheet.review)) problems.push('审核意见需要一行「结论：……」，概括本轮判断与依据');
-    const { must, suggest, block, loose } = reviewItems(sheet.review);
-    if (verdict === 'approved') {
-      if (must.length) problems.push(`仍有 ${must.length} 条 ${MUST_FIX}，不能批准`);
-      if (block.length) problems.push(`仍有 ${block.length} 条 ${BLOCKER}，不能批准`);
-      for (const line of loose) problems.push(`意见提到了 ${MUST_FIX} 或 ${BLOCKER}，但不是清单条目，不能批准；改写成「- ${MUST_FIX} 位置：……」或删去标签：${line}`);
+    if (/审核结论[：:]/.test(sheet.review)) {
+      const r = structuredReview(sheet.review);
+      problems.push(...r.problems);
+      const expected = r.must.length ? 'changes_requested' : r.block.length ? 'blocked' : 'approved';
+      if (r.conclusion !== ({approved:'通过',changes_requested:'需返修',blocked:'待确认'})[expected]) problems.push('审核结论与返修意见、待确认事项不一致');
+      if (verdict !== expected) problems.push(`本轮审核应登记 ${expected}，不能登记 ${verdict}`);
+    } else {
+      // 旧工作单意见仍可读取；新写作与审核只使用 structuredReview 的格式。
+      if (!CONCLUSION_RE.test(sheet.review)) problems.push('审核意见需要一行「结论：……」，概括本轮判断与依据');
+      const { must, suggest, block, loose } = reviewItems(sheet.review);
+      if (verdict === 'approved') {
+        if (must.length) problems.push(`仍有 ${must.length} 条 ${MUST_FIX}，不能批准`);
+        if (block.length) problems.push(`仍有 ${block.length} 条 ${BLOCKER}，不能批准`);
+        for (const line of loose) problems.push(`意见提到了 ${MUST_FIX} 或 ${BLOCKER}，但不是清单条目，不能批准；改写成「- ${MUST_FIX} 位置：……」或删去标签：${line}`);
+      }
+      if (verdict === 'changes_requested') {
+        if (!must.length) problems.push(`要求修改时至少写一条「- ${MUST_FIX} ……」；只有「- ${SUGGEST}」不构成退回理由`);
+        if (block.length) problems.push(`存在 ${BLOCKER} 时登记 blocked：编写方无法单独解决，需要调度方先协调`);
+      }
+      if (verdict === 'blocked' && !block.length) problems.push(`登记阻塞时至少写一条「- ${BLOCKER} ……」，说明缺少什么材料或需要谁决定`);
+      for (const line of [...must, ...suggest, ...block]) if (!EVIDENCE_RE.test(line)) problems.push(`意见需要指明镜号或位置（镜头 k／整段／参考图／声景）：${line}`);
     }
-    if (verdict === 'changes_requested') {
-      if (!must.length) problems.push(`要求修改时至少写一条「- ${MUST_FIX} ……」；只有「- ${SUGGEST}」不构成退回理由`);
-      if (block.length) problems.push(`存在 ${BLOCKER} 时登记 blocked：编写方无法单独解决，需要调度方先协调`);
-    }
-    if (verdict === 'blocked' && !block.length) problems.push(`登记阻塞时至少写一条「- ${BLOCKER} ……」，说明缺少什么材料或需要谁决定`);
-    for (const line of [...must, ...suggest, ...block]) if (!EVIDENCE_RE.test(line)) problems.push(`意见需要指明镜号或位置（镜头 k／整段／参考图／声景）：${line}`);
   }
   if (!sheet.body) problems.push('提示词正文为空，无法审核');
+  if (verdict === 'approved' && material) problems.push(...materialMappingErrors(sheet.structure,material));
   if (verdict === 'approved' && !material) problems.push('批准需要输入材料：批准绑定这一段依据的节拍原文、参考图与模型参数');
   if (problems.length) return { problems };
   const approved = verdict === 'approved';

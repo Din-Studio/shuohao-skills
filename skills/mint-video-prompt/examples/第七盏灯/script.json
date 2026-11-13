@@ -1,0 +1,248 @@
+{
+  "schemaVersion": 4,
+  "source": "第七盏灯",
+  "provenance": {
+    "kind": "script",
+    "scope": "partial",
+    "documents": [
+      {
+        "id": "D01",
+        "path": "原剧本.txt",
+        "sha256": "0e3c93bb69be28f7dc5a63bca42ed8dced05e77421eeda296112fd2a58584264",
+        "lineCount": 8
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 8
+      }
+    ]
+  },
+  "assetMappings": [
+    {
+      "kind": "character",
+      "localId": "C01",
+      "assetId": "C11",
+      "status": "confirmed",
+      "basis": "本样例作者独立核对故事原文和 cast/art 后显式确认；不根据相同编号或名称推断。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 8
+        }
+      ],
+      "assetDigest": "75776c33b2f13a3a60ff70023e14ace40c41b79fc4da373e9685ff558af2925c",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "0e3c93bb69be28f7dc5a63bca42ed8dced05e77421eeda296112fd2a58584264",
+          "lineCount": 8
+        }
+      ]
+    },
+    {
+      "kind": "character",
+      "localId": "C02",
+      "assetId": "C12",
+      "status": "confirmed",
+      "basis": "本样例作者独立核对故事原文和 cast/art 后显式确认；不根据相同编号或名称推断。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 8
+        }
+      ],
+      "assetDigest": "0f2fd4aaf91de783ec4da176f05216cf09a1391b767edf3d74a0229f11984b3e",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "0e3c93bb69be28f7dc5a63bca42ed8dced05e77421eeda296112fd2a58584264",
+          "lineCount": 8
+        }
+      ]
+    },
+    {
+      "kind": "scene",
+      "localId": "S01",
+      "assetId": "S11",
+      "status": "confirmed",
+      "basis": "本样例作者独立核对故事原文和 cast/art 后显式确认；不根据相同编号或名称推断。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 8
+        }
+      ],
+      "assetDigest": "4e27c7399416186e759e5e7e34b0b76cbdd4fa0a67a435c3b26f099e1fe6319a",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "0e3c93bb69be28f7dc5a63bca42ed8dced05e77421eeda296112fd2a58584264",
+          "lineCount": 8
+        }
+      ]
+    },
+    {
+      "kind": "prop",
+      "localId": "P01",
+      "assetId": "P11",
+      "status": "confirmed",
+      "basis": "本样例作者独立核对故事原文和 cast/art 后显式确认；不根据相同编号或名称推断。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 8
+        }
+      ],
+      "assetDigest": "38eb2706600809da4e402b35b12c0905f29d30c922a7871239eecde6123281e3",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "0e3c93bb69be28f7dc5a63bca42ed8dced05e77421eeda296112fd2a58584264",
+          "lineCount": 8
+        }
+      ]
+    }
+  ],
+  "episodes": [
+    {
+      "ep": 1,
+      "targetSeconds": 20,
+      "opening": "停电夜，林栀躲在教室后排，看见阿禾来给第七盏灯添油。",
+      "ending": {
+        "mode": "closure",
+        "event": "林栀把自己的灯放到第七盏旁边，说再点一盏。"
+      },
+      "scenes": [
+        {
+          "sceneId": "S01",
+          "characters": [
+            "C01",
+            "C02"
+          ],
+          "props": [
+            "P01"
+          ],
+          "lighting": "停电夜，煤油灯",
+          "notes": [
+            {
+              "kind": "restriction",
+              "text": "林栀没有承诺留下；不得增加留下的台词或解释阿禾打架的原因。",
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 2,
+                  "endLine": 2
+                }
+              ]
+            }
+          ],
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 1,
+              "endLine": 8
+            }
+          ],
+          "flow": [
+            {
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 3,
+                  "endLine": 3
+                }
+              ],
+              "action": "深夜停电的教室，阿禾推门进来，踮脚走到窗台前，给第七盏煤油灯添油。"
+            },
+            {
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 4,
+                  "endLine": 4
+                }
+              ],
+              "audio": {
+                "mode": "onscreen",
+                "audibleTo": [
+                  "C01",
+                  "C02"
+                ],
+                "subjective": false
+              },
+              "speaker": "C01",
+              "delivery": "坐在后排暗处，声音很平",
+              "line": "原来是你。"
+            },
+            {
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 5,
+                  "endLine": 5
+                }
+              ],
+              "action": "阿禾的手一抖，油壶磕在窗台上。他没有逃，只把灯芯拨亮。"
+            },
+            {
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 6,
+                  "endLine": 6
+                }
+              ],
+              "audio": {
+                "mode": "onscreen",
+                "audibleTo": [
+                  "C01",
+                  "C02"
+                ],
+                "subjective": false
+              },
+              "speaker": "C02",
+              "delivery": "不回头，声音很小",
+              "line": "老师，灯亮着，你就不会走。"
+            },
+            {
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 7,
+                  "endLine": 7
+                }
+              ],
+              "action": "林栀起身，拿起自己桌上那盏没点的灯，走到窗台前，放在第七盏旁边。"
+            },
+            {
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 8,
+                  "endLine": 8
+                }
+              ],
+              "audio": {
+                "mode": "onscreen",
+                "audibleTo": [
+                  "C01",
+                  "C02"
+                ],
+                "subjective": false
+              },
+              "speaker": "C01",
+              "line": "那就再点一盏。"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

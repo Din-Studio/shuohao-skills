@@ -1,4 +1,5 @@
 // 原创隔离文本。故事先行依据：同目录《故事提案.md》。不读取任何正式样例。
+import {promptFixture} from '../../../skills/mint-creation/scripts/test-prompt.mjs';
 const selection = (genre, narrativeStyle, structure, pacing) => Object.fromEntries(
   Object.entries({genre, narrativeStyle, structure, pacing}).map(([k,id]) => [k,{id,version:'1.0.0'}]));
 export const stories = [
@@ -123,7 +124,7 @@ export function fillCreation(seed, script, story) {
       const images=[...characters.map(ref=>({kind:'character',ref,role:'人物身份参考'})),{kind:'scene',ref:'S01',role:'场景参考'},{kind:'prop',ref:'P01',role:'叙事道具参考'}];
       ep.segments.push({id:`E${String(i+1).padStart(2,'0')}-${String(ep.segments.length+1).padStart(2,'0')}`,sceneIndex:1,
         images,cuts:actions.map((_,j)=>({beats:[start+j+1,start+j+1],seconds:story.seconds,size:'medium',camera:'Static Shot',characters:[...characters],props:['P01']})),
-        prompt:images.map((img,k)=>`图 ${k+1} 是${img.kind==='character'?story.people[Number(img.ref.slice(1))-1][0]:img.kind==='scene'?story.scene:story.prop}的参考。`).join('\n')+'\n镜头描述：\n'+actions.map((a,j)=>`[镜头 ${j+1}] 中景，固定镜头。${a.action}`).join('\n')+'\n环境声与配乐：保留现场环境声，不添加配乐。'
+        prompt:promptFixture(actions.map(a=>a.action).join('\n'),images.map(img=>img.kind==='character'?story.people[Number(img.ref.slice(1))-1][0]:img.kind==='scene'?story.scene:story.prop))
       });
     }
   }

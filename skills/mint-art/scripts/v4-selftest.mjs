@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {seedFromOutline,renderMarkdown,renderHtml,imageJobsFrom} from './mint-art.mjs';
+import {seedFromLegacyOutline as seedFromOutline,renderMarkdown,renderHtml,imageJobsFrom} from './mint-art.mjs';
 import {assertOutline} from './lib/contracts.mjs';
 import {sourceProjectionErrors,verifyOutlineSources,sourceLineCount} from './lib/source-facts.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
@@ -49,7 +49,7 @@ assert.ok(safe.includes('&lt;script&gt;source-only &amp; restriction&lt;/script&
 assert.ok(!safe.includes('<script>source-only'));
 const collision=structuredClone(seed);
 collision.props[0].name=collision.scenes[0].name;
-for(const a of [...collision.scenes,...collision.props])a.image.sheet='Asset reference, no text.';
+for(const a of [...collision.scenes,...collision.props]){a.image.sheet='Asset reference, no text.';a.designStatus='ready';};
 const jobs=imageJobsFrom(collision).jobs;
 assert.notEqual(jobs[0].file,jobs[1].file);
 assert.ok(jobs[0].file.includes('S01-') && jobs[1].file.includes('P01-'));
@@ -57,7 +57,7 @@ const temp=realpathSync(mkdtempSync(join(tmpdir(),'mint-art-v4-')));
 try {
  const path=join(temp,'outline.json'), raw=join(temp,'桥下旗-来源.txt');
  writeFileSync(path,JSON.stringify(doc));copyFileSync(join(root,'examples/桥下旗-来源.txt'),raw);
- const run=()=>spawnSync(process.execPath,[join(root,'scripts/mint-art.mjs'),'seed',path],{cwd:temp,encoding:'utf8'});
+ const run=()=>spawnSync(process.execPath,[join(root,'scripts/mint-art.mjs'),'migrate-outline',path],{cwd:temp,encoding:'utf8'});
  assert.equal(run().status,0);
  writeFileSync(raw,readFileSync(raw,'utf8').replace('第','另'));
  assert.notEqual(run().status,0);

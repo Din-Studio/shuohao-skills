@@ -3,7 +3,7 @@ segment: E01-02
 status: in_review
 round: 1
 model: MiniMax H3
-promptLang: en
+promptLang: zh
 bodyHash:
 inputHash:
 ---
@@ -84,10 +84,28 @@ inputHash:
 
 ---
 
-Picture 1 is the boy of about eleven in a faded, oversized school jacket. Picture 2 is the young substitute teacher in a grey knitted cardigan. Picture 3 is the mountain village classroom at night during a power cut, rows of wooden desks and a windowsill lined with kerosene lamps. Picture 4 is the small tin kerosene lamp with a soot-darkened glass chimney.
+镜头参考：自由切分镜头，根据剧情需要自运镜（建议多使用子弹时间，升格，环绕运镜，荷兰角，移焦，摇臂升降，云台悬浮，穿越推进，侧跟，格莱美运镜，破窗转场，时间切片 ），禁止单个分镜超过3秒，禁止镜头固定，禁止对白正反打硬切。
+光源：窗台煤油灯由侧下方照亮人物，柔光，2200 K
+环境：夜间室内，窗外风声持续
+色调：低饱和暗色，重点物件保留原色
+质感：自然材质与柔和明暗过渡
+风格参照：写实叙事取向，保留现场细节
+氛围：安静而有所期待
 
-shots:
-[Shot 1] Close-up, Static Shot — the boy's face lit from below by the seventh lamp, <Picture 4>, in <Picture 3>. <Picture 1> keeps his eyes on the flame and does not turn around; in a small, stubborn voice he says: "老师，灯亮着，你就不会走。"
-[Shot 2] Medium shot, Pan Right — <Picture 2>, already standing beside her desk in the back row, picks up the unlit lamp from her desk, walks to the windowsill and sets it down next to the seventh lamp, beside the boy; the camera pans right with her. The young teacher, her voice still quiet and level, says: "那就再点一盏。"
+参考素材：阿禾
+@图片1，人物外观参考。
+基本信息：年龄约十一岁，身高未提供。全剧人设：山村学生，珍惜老师的陪伴。本段人设：倔强、克制。
+林栀
+@图片2，人物外观参考。
+基本信息：年龄、身高未提供。全剧人设：山村代课老师，关心学生。本段人设：安静、认真。
+山村教室@图片3：环境参考。
+第七盏煤油灯@图片4：道具参考。
 
-ambience: A chair scraping back, slow footsteps on a wooden floor, a glass chimney set down on wood, the steady hiss of the lamp flame; no music.
+山村教室@图片3的窗台旁，第七盏煤油灯@图片4已经点亮，阿禾@图片1面对灯焰，林栀@图片2在后排课桌旁。阿禾@图片1没有转身，当场低声说：“老师，灯亮着，你就不会走。”
+
+林栀@图片2从课桌旁起身，拿起桌上另一盏未点燃的煤油灯，椅脚与脚步声随动作响起。林栀@图片2走到窗台，把未点燃的煤油灯放在第七盏煤油灯@图片4旁，灯罩轻触木台。林栀@图片2在阿禾@图片1身旁当场轻声说：“那就再点一盏。”段尾两盏灯并排，新增的煤油灯仍未点燃。
+
+写实画风，弱光中保留人物面部与材质细节。无任何字幕、水印、logo 与额外图形符号；无配乐、无背景音乐，保留正文中的对白、原生环境音效与人物动作交互音效。环境反应和音效根据画面内容自行卡点。
+
+负面提示词：
+阿禾或林栀出现同款分身，未点燃的灯提前燃烧，添灯动作做错人，林栀台词由阿禾说出，阿禾发言时林栀同步动嘴，煤油灯或油壶穿模

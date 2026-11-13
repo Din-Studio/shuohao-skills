@@ -2,7 +2,7 @@
   "source": "修伞簿",
   "scenes": [
     {
-      "id": "S01",
+      "id": "S11",
       "name": "街角修伞铺",
       "lighting": [
         {
@@ -14,21 +14,70 @@
         {
           "state": "雨天自然光"
         }
+      ],
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 3,
+          "endLine": 3
+        }
       ]
     }
   ],
   "props": [
     {
-      "id": "P01",
-      "name": "蓝线旧伞"
+      "id": "P11",
+      "name": "蓝线旧伞",
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 3,
+          "endLine": 3
+        }
+      ]
     },
     {
-      "id": "P02",
-      "name": "修伞簿"
+      "id": "P12",
+      "name": "修伞簿",
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 3,
+          "endLine": 3
+        }
+      ]
     },
     {
-      "id": "P03",
-      "name": "联系纸条"
+      "id": "P13",
+      "name": "联系纸条",
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 3,
+          "endLine": 3
+        }
+      ]
     }
-  ]
+  ],
+  "schemaVersion": 1,
+  "provenance": {
+    "kind": "script",
+    "scope": "complete",
+    "totalEpisodes": 3,
+    "documents": [
+      {
+        "id": "umbrella",
+        "path": "修伞簿-source.txt",
+        "sha256": "4a5d698c524aa2a699d24469261bfd7798b5d5a345f43560c1252016edfc5345",
+        "lineCount": 66
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "umbrella",
+        "startLine": 1,
+        "endLine": 66
+      }
+    ]
+  }
 }

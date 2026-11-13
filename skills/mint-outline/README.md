@@ -1,11 +1,16 @@
-# mint-outline v4
+# mint-outline v5
 
-只解析已有剧本。拒绝小说、大纲与原创创作入口。保存来源版本、行范围、覆盖、对象身份、重要事件及必要连续性事实；不补写未知结局，不推定制作时长。
+正式交付固定包含 `xxx.json`、`xxx-report.md`、`xxx-report.html` 三个文件。`xxx` 是同一份 JSON 去掉 `.json` 后的完整文件名；两份报告由该 JSON 渲染，并与它放在同一阶段目录。
 
-- [流程与命令](SKILL.md) · [解析指南](references/创作指南.md)
-- [数据契约](references/schema.md) · [分块读取](references/volume-pass.md) · [显式迁移](references/migration.md)
-- 自有[剧本](examples/旧站时刻-script.txt)与[解析样例](examples/旧站时刻-outline.json)
+仅解析已有剧本的故事、剧情节点、分集、问题回答、来源与必要连续性。不建立人物／地点／道具身份，不管理资产、预算或调度。未知结局不补写。
 
-Node 18+，仅标准库，可单独复制。schemaVersion 4 支持部分来源与未解问题。--verify-sources 实际读取原件，默认校验仅检查结构。来源身份核验、语义忠实核验与制作审核分别报告，不互相替代。明确预算仍阻断，参考值仅提醒。
+- [流程与命令](SKILL.md) · [数据契约](references/schema.md)
+- [解析指南](references/创作指南.md) · [分块读取](references/volume-pass.md)
+- [显式迁移与材料形状](references/migration.md) · [版本及交接矩阵](references/handoff.md)
+- 自有[剧本](examples/旧站时刻-script.txt)与[v5 样例](examples/旧站时刻-outline.json)
 
-通过 node 执行 scripts/selftest.mjs（包含其他自测及独立复制），或分别执行 scripts/fixes-selftest.mjs、scripts/migration-selftest.mjs、scripts/fusion-selftest.mjs。不调用付费模型，不提交生成 HTML。
+Node 18+，仅标准库，可以单独复制。正式入口仅接受 v5。assets 命令及资产报告已移除。v4 必须显式 migrate-v5；保留原件与全部旧关系、明确预算，导出 .migration.json 待核验材料，不冒充已审核资产。
+
+--verify-sources 实际读取原件；默认来源核验为 skipped。来源版本核验、语义忠实审核与制作审核分别报告。
+
+执行 `node scripts/selftest.mjs` 运行全部本阶段测试及独立复制回归。测试不调用付费模型，不提交生成 HTML。

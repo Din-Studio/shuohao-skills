@@ -2,7 +2,7 @@
 // 每个 skill 物理拷贝后运行，隔离目录不包含兄弟 skill。零网络与生成调用。
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,6 +61,17 @@ try {
     assert.equal(copies[1], copies[0]); assert.equal(copies[2], copies[0]);
     assert.equal(readFileSync(join(root, 'skills/mint-video-prompt/references/worksheet.md'), 'utf8'), readFileSync(join(root, 'skills/mint-video-prompt-review/references/worksheet.md'), 'utf8'), '两份工作单格式说明一致');
   });
+  check('两份提示词格式检查库与三份写作规则一致', () => {
+    const read=(skill,path)=>readFileSync(join(root,'skills',skill,path),'utf8');
+    assert.equal(read('mint-creation','scripts/lib/prompt.mjs'),read('mint-video-prompt','scripts/lib/prompt.mjs'));
+    assert.equal(read('mint-video-prompt-review','references/creation-prompt.md'),read('mint-creation','references/creation-prompt.md'));
+  });
+  check('三份显式身份映射消费库一致', () => {
+    const copies=['mint-creation','mint-video-prompt','mint-video-prompt-review'].map(name=>readFileSync(join(root,'skills',name,'scripts/lib/asset-mapping.mjs'),'utf8'));
+    assert.equal(copies[1],copies[0]);assert.equal(copies[2],copies[0]);
+    const refs=['mint-creation','mint-video-prompt','mint-video-prompt-review'].map(name=>readFileSync(join(root,'skills',name,'references/asset-identity-handoff.md'),'utf8'));
+    assert.equal(refs[1],refs[0]);assert.equal(refs[2],refs[0]);
+  });
   // 调度方可以单独拷走：它保存编写方与审核方指南的副本，必须与两个角色 skill 逐字一致
   check('mint-creation 的指南副本与编写方、审核方一致', () => {
     const ref = (skill, file) => readFileSync(join(root, 'skills', skill, 'references', file), 'utf8');
@@ -84,15 +95,33 @@ try {
         const local = `source-${i + 1}.txt`;
         cpSync(source, join(work, local)); doc.path = local;
       }
-      const script = { schemaVersion: 4, source: input.source, ...(provenance ? {provenance} : {}), episodes: [{ ep: 1, targetSeconds: target, scenes: input.seedScenes.map(sc => ({
+      const script = { schemaVersion: 4, source: input.source, ...(input.assetMappings ? {assetMappings:input.assetMappings.map(({mappingErrors,...m})=>m)} : {}), ...(provenance ? {provenance} : {}), episodes: [{ ep: 1, targetSeconds: target, scenes: input.seedScenes.map(sc => ({
         sceneId: sc.sceneId, lighting: sc.lighting, characters: sc.characters, props: sc.props,
         ...(sc.notes ? {notes: sc.notes} : {}), ...(sc.sourceRefs ? {sourceRefs: sc.sourceRefs} : {}),
         // brief seconds on action/line are derived estimates, not editable script fields.
         flow: sc.beats.map(b => ({[b.kind]: b.text, ...(b.kind === 'line' ? {speaker: b.speaker, ...(b.delivery ? {delivery: b.delivery} : {})} : {}), ...(b.audio ? {audio: b.audio} : {}), ...(b.sourceRefs ? {sourceRefs: b.sourceRefs} : {}), ...(b.transformation ? {transformation: b.transformation} : {}), ...(['sound','subtitle'].includes(b.kind) && b.seconds ? {seconds: b.seconds} : {})})) })) }] };
       writeFileSync(join(work, 'script.json'), JSON.stringify(script));
+      assert.ok(input.assetMappings?.length, '样例需提供显式映射，不能以同 ID 推定');
+      for (const [key, lists] of [['cast', ['characters']], ['art', ['scenes', 'props']]]) {
+        const authority={schemaVersion:1,source:input.source,provenance};
+        for (const list of lists) authority[list]=input.assets[list].map(a=>structuredClone(a.specification));
+        writeFileSync(join(work, key+'.json'),JSON.stringify(authority));
+      }
       writeFileSync(join(work, 'c.json'), JSON.stringify({ schemaVersion: 3, source: input.source, promptLang: input.promptLang, video: input.video,
         params: { maxSegmentSeconds: input.maxSegmentSeconds, maxOnScreen: input.maxOnScreen, tolerance: 0.15 }, episodes: [{ ep: 1, segments: [] }] }));
-      const run = spawnSync(process.execPath, [cli, 'prompts', 'check', 'c.json', '--script', 'script.json', '--no-production'], { cwd: work, encoding: 'utf8' });
+      const checkArgs=[cli, 'prompts', 'check', 'c.json', '--script', 'script.json', '--cast', 'cast.json', '--art', 'art.json', '--no-production'];
+      const missing=spawnSync(process.execPath,checkArgs,{cwd:work,encoding:'utf8'});
+      assert.notEqual(missing.status,0,'显式挂载的参考图缺失不能因为是样例而 skipped');
+      assert.match(missing.stdout+'\n'+missing.stderr,/设定图|reference|image/i);
+      // Root-owned one-pixel PNG markers test file/path consumption only. They are
+      // not generated reference sheets, semantic evidence, or production approval.
+      const marker=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8WQAAAAASUVORK5CYII=','base64');
+      for(const a of Object.values(input.assets).flat()) {
+        const path=resolve(work,a.sheet);
+        assert.ok(path.startsWith(temp+'/'),'媒体路径仍在隔离目录中');
+        mkdirSync(dirname(path),{recursive:true});writeFileSync(path,marker);
+      }
+      const run = spawnSync(process.execPath,checkArgs,{cwd:work,encoding:'utf8'});
       assert.equal(run.status, 0, `${skill}/${dir}\n${run.stdout}\n${run.stderr}`);
     }
   });

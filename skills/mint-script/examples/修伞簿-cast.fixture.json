@@ -2,25 +2,67 @@
   "source": "修伞簿",
   "characters": [
     {
-      "id": "C01",
+      "id": "C11",
       "name": "林禾",
       "voice": {
         "prompt": "林禾，自然音量，平实说话，允许犹豫与停顿。"
-      }
+      },
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 2,
+          "endLine": 2
+        }
+      ]
     },
     {
-      "id": "C02",
+      "id": "C12",
       "name": "陈岚",
       "voice": {
         "prompt": "陈岚，自然音量，平实说话，允许犹豫与停顿。"
-      }
+      },
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 2,
+          "endLine": 2
+        }
+      ]
     },
     {
-      "id": "C03",
+      "id": "C13",
       "name": "许秋",
       "voice": {
         "prompt": "许秋，自然音量，平实说话，允许犹豫与停顿。"
-      }
+      },
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 2,
+          "endLine": 2
+        }
+      ]
     }
-  ]
+  ],
+  "schemaVersion": 1,
+  "provenance": {
+    "kind": "script",
+    "scope": "complete",
+    "totalEpisodes": 3,
+    "documents": [
+      {
+        "id": "umbrella",
+        "path": "修伞簿-source.txt",
+        "sha256": "4a5d698c524aa2a699d24469261bfd7798b5d5a345f43560c1252016edfc5345",
+        "lineCount": 66
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "umbrella",
+        "startLine": 1,
+        "endLine": 66
+      }
+    ]
+  }
 }

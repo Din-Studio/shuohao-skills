@@ -1,6 +1,7 @@
 // Portable project-JSON interface checks only. Never import or execute sibling skills.
 import {readFileSync,readdirSync,lstatSync} from 'node:fs';
 import {join} from 'node:path';
+import {validateOutline} from './outline-core.mjs';
 import {documentErrors} from './document.mjs';
 import {provenanceErrors,sourceRefsErrors,verifySources} from './source.mjs';
 const object=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
@@ -19,10 +20,12 @@ const position=(keys,p)=>coord(p)?keys.indexOf(p.join(':')):-1;
 export function checkKnownDownstream(outline,root,options={}) {
  const gates=[], files=[], records=[];
  const add=(file,stage,id,messages=[],extra={})=>gates.push({file,stage,id,category:'base',level:'error',status:messages.length?'fail':'pass',messages,...extra});
+ const outlineErrors=validateOutline(outline);
+ if(outlineErrors.length){add(null,'outline','outline-contract',outlineErrors);return finish();}
  for(const stage of ['script','creation']) {
   const dir=join(root,stage);
   let names;
-  try {names=readdirSync(dir).filter(n=>n.endsWith('.json')).sort();}
+  try {names=readdirSync(dir).filter(n=>n.endsWith('.json')&&!n.endsWith('.migration.json')).sort();}
   catch(error) {
    // A dangling stage directory must not be mistaken for an absent one.
    let absent=false;
@@ -54,9 +57,13 @@ export function checkKnownDownstream(outline,root,options={}) {
   add(file,stage,'episodes',errors);
  }
  const scripts=records.filter(r=>r.stage==='script');
+ const owners=new Map();
+ for(const r of scripts)for(const e of arr(r.doc.episodes)){const prior=owners.get(e?.ep);if(prior)add(r.file,'script','episode-authority',[`ambiguous script episode ${e?.ep} also provided by ${prior}`]);else owners.set(e?.ep,r.file);}
  for(const {file,stage,doc} of scripts) {
   const duration=[], claims=[], projection=[], seen=new Set(),source=provenanceErrors(doc.provenance,{episodes:doc.episodes});
+  if(integer(doc.provenance?.totalEpisodes)&&integer(outline.provenance?.totalEpisodes)&&doc.provenance.totalEpisodes!==outline.provenance.totalEpisodes)source.push('known totalEpisodes differs from outline');
   for(const d of arr(doc.provenance?.documents))if(!object(d)||!arr(outline?.provenance?.documents).some(o=>object(o)&&o.id===d.id&&o.sha256===d.sha256&&o.lineCount===d.lineCount))source.push(`source identity differs from outline: ${d?.id}`);
+  source.push(...sourceRefsErrors(doc.provenance?.coverage,outline.provenance,'script.coverage against outline'));
   if(options.verifySources)source.push(...verifySources(doc,{artifactPath:file}).errors);
   for(const ep of arr(doc.episodes))for(const [si,sc] of arr(ep?.scenes).entries()){
    source.push(...sourceRefsErrors(sc?.sourceRefs,doc.provenance,`ep${ep?.ep}.scene${si+1}.sourceRefs`,{required:false}));
@@ -73,13 +80,12 @@ export function checkKnownDownstream(outline,root,options={}) {
     const kinds=['action','line','subtitle','sound'].filter(k=>b?.[k]!==undefined);
     if(kinds.length!==1||typeof b?.[kinds[0]]!=='string'||!b[kinds[0]].trim())source.push('flow requires exactly one non-empty action/line/subtitle/sound');
     if(b?.line!==undefined&&(typeof b.speaker!=='string'||!(/^(?:C\d{2,}|VO)$/.test(b.speaker))))source.push('line requires speaker');
-    if(b?.line!==undefined&&b.speaker!=='VO'&&!arr(outline.characters).some(c=>c?.id===b.speaker))source.push('line references unknown character');
     if(b?.line===undefined&&(b?.speaker!==undefined||b?.delivery!==undefined))source.push('speaker/delivery only allowed on line');
     if(b?.audio!==undefined){
      if(b.line===undefined&&b.sound===undefined)source.push('audio only allowed on line/sound');
      if(!object(b.audio)||!['onscreen','offscreen','voiceover','inner'].includes(b.audio.mode))source.push('invalid audio mode');
      if(b.audio?.subjective!==undefined&&typeof b.audio.subjective!=='boolean')source.push('invalid audio.subjective');
-     if(b.audio?.audibleTo!==undefined&&(!Array.isArray(b.audio.audibleTo)||new Set(b.audio.audibleTo).size!==b.audio.audibleTo.length||b.audio.audibleTo.some(id=>!arr(outline.characters).some(c=>c?.id===id))))source.push('invalid audio.audibleTo');
+     if(b.audio?.audibleTo!==undefined&&(!Array.isArray(b.audio.audibleTo)||new Set(b.audio.audibleTo).size!==b.audio.audibleTo.length||b.audio.audibleTo.some(id=>typeof id!=='string'||!/^C\d{2,}$/.test(id))))source.push('invalid audio.audibleTo');
     }
     if(b?.seconds!==undefined&&(!positive(b.seconds)||(b.subtitle===undefined&&b.sound===undefined)))source.push('seconds only allowed positive on subtitle/sound');
    }
@@ -171,7 +177,11 @@ export function checkKnownDownstream(outline,root,options={}) {
   add(file,stage,'target-duration',duration);add(file,stage,'projection',projection);add(file,stage,'node-claims',claims);
   if(missing.length)add(file,stage,'script-coverage',missing,{status:'skipped',reason:'missing-upstream'});
  }
- return {scope:'local-project-json-interfaces-only',files,gates,stats:{pass:gates.filter(g=>g.status==='pass').length,fail:gates.filter(g=>g.status==='fail').length,skipped:gates.filter(g=>g.status==='skipped').length},fullDownstreamValidation:'not-performed',applicationWorkflow:'incomplete',contentReview:'not-performed'};
+ for(const stage of ['script','creation'])if(!files.some(f=>f.startsWith(join(root,stage)+'/'))&&!gates.some(g=>g.stage===stage&&g.status==='fail'))add(null,stage,'upstream',[],{status:'skipped',reason:'missing-upstream'});
+ add(null,'joint','asset-identity-reconciliation',[],{status:'skipped',reason:'outside-outline-authority; characters/art mapping not checked'});
+ return finish();
+ function finish(){return {scope:'local-project-json-interfaces-only',files,gates,stats:{pass:gates.filter(g=>g.status==='pass').length,fail:gates.filter(g=>g.status==='fail').length,skipped:gates.filter(g=>g.status==='skipped').length},fullDownstreamValidation:'not-performed',applicationWorkflow:'incomplete',contentReview:'not-performed'};}
+
 }
 function checkProjection(ep,upstream,label,errors) {
  if(!upstream){errors.push(`${label}: no valid outline episode for projection reconciliation`);return;}

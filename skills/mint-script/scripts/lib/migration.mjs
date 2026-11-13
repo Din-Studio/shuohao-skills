@@ -88,27 +88,10 @@ export function migrateFile(input, { out, confirm = false, ctx = {}, validate } 
 export function validateHistoricalV3(doc, ctx = {}, validateV4 = () => []) {
   if (doc?.schemaVersion !== 3) return ['Historical validator expects script v3'];
   const projected = structuredClone(doc); projected.schemaVersion = 4;
-  const { outline, ...rest } = ctx;
-  const errors = validateV4(projected, { ...rest, root:undefined, verifySources:false });
+  const errors = validateV4(projected, { ...ctx, root:undefined, verifySources:false });
   for (const ep of doc.episodes ?? []) {
     if (typeof ep?.targetSeconds !== 'number' || !Number.isFinite(ep.targetSeconds) || ep.targetSeconds <= 0) errors.push('v3 targetSeconds required');
     for (const sc of ep?.scenes ?? []) for (const b of sc?.flow ?? []) if (!own(b,'action') && !own(b,'line')) errors.push('v3 only accepts action/line');
-  }
-  if (outline !== undefined) {
-    if (outline?.schemaVersion !== 3 || !Number.isFinite(outline?.params?.minutesPerEpisode) || outline.params.minutesPerEpisode <= 0) errors.push('Historical outline v3 and positive minutesPerEpisode required');
-    if (outline?.source !== doc.source) errors.push('source differs from historical outline');
-    for (const ep of doc.episodes ?? []) {
-      const up = outline?.episodes?.find(e => e.ep === ep?.ep);
-      if (!up || ep.targetSeconds !== outline.params?.minutesPerEpisode * 60) errors.push('Historical upstream episode/target mismatch');
-      if (own(ep,'opening') || own(ep,'ending')) errors.push('Historical duplicate upstream plan');
-      const ids = (outline?.beats ?? []).filter(b => b.episode === ep?.ep).map(b => b.id);
-      if (JSON.stringify(ids) !== JSON.stringify((ep?.beatClaims ?? []).map(b => b.beatId))) errors.push('Historical claims mismatch');
-      for (const sc of ep?.scenes ?? []) {
-        if (!(outline?.scenes ?? []).some(s => s.id === sc.sceneId)) errors.push('Historical unknown scene');
-        for (const c of sc.characters ?? []) if (!(outline?.characters ?? []).some(x => x.id === c)) errors.push('Historical unknown character');
-        for (const p of sc.props ?? []) if (!(outline?.props ?? []).some(x => x.id === p)) errors.push('Historical unknown prop');
-      }
-    }
   }
   return errors;
 }
@@ -151,10 +134,8 @@ export function migrateV4(input, { ctx = {}, independent = false, validate = () 
     }
     if (!own(ep,'targetSeconds')) pending.push({path:`episodes.${ep?.ep}.targetSeconds`,reason:'Not inferred; confirm before production.'});
   }
-  // Legacy outlines cannot be fed to a v4 validator, but an explicitly supplied
-  // current outline and every production/cast/art boundary must remain checked.
+  // Every explicitly supplied upstream remains checked, including wrong versions.
   const validationCtx={...ctx,stage:'full',root:undefined,verifySources:false};
-  if (ctx.outline?.schemaVersion === 3) delete validationCtx.outline;
   errors.push(...validate(document,validationCtx));
   if (!independent) {
     document.provenance=null;

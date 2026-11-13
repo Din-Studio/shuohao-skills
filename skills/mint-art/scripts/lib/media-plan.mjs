@@ -40,6 +40,7 @@ export function mediaPlan(jobs, { kind, model, inputBase = {}, outDir, only = nu
       if (job.refFrom) references.push({ path: resolve(outDir, byId.get(job.refFrom).file), fromJob: job.refFrom });
       return {
         id: job.key, prompt: job.prompt,
+        ...(job.inputDigest ? { inputDigest: job.inputDigest } : {}),
         params: { ...inputBase, ...(job.negativePrompt ? { negative_prompt: job.negativePrompt } : {}),
           ...(job.duration !== undefined ? { duration: job.duration } : {}) },
         references, dependsOn: job.refFrom ? [job.refFrom] : [],

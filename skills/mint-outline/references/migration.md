@@ -1,27 +1,94 @@
-# 显式迁移与证据保存
+# 显式迁移与逐字段证据材料
 
-正式运行要求 v4；不能只改版本号。旧创作大纲不自动成为剧本解析，缺少来源证据时必须人工补全。
+正式运行仅接受 v5。历史 v4 文件必须保留，不能只改版本号或删除资产字段。旧创作大纲不会自动成为剧本证据。
 
-## v2／v3 → v4 待核验草稿
+## v4 → v5
 
 ```bash
-node scripts/mint-outline.mjs migrate-v4 INPUT
-node scripts/mint-outline.mjs migrate-v4 INPUT --out outline/.work/v4-draft.json --confirm
+node scripts/mint-outline.mjs migrate-v5 old-v4.json
+node scripts/mint-outline.mjs migrate-v5 old-v4.json --out outline/.work/story-draft.json --project PROJECT_ROOT --confirm
 ```
 
-默认只预览。指定 --out 但不 --confirm 不写入并退出 1。--confirm 只确认保存保守草稿，不代表证据完整或语义批准。成功写入仍标记 status=pending-evidence；正式 validate 会拒绝没有 provenance/sourceRefs 的草稿。
+默认预览，不写文件。指定 --out 但不 --confirm 时 written=false，CLI 退出 1。--confirm 只授权保存草稿，不审核故事、身份或预算，不自动推进完整流程。
 
-输出独占创建，禁止覆盖输入、目标或旁路文件，不跟随输入符号链接。创建 OUTPUT、OUTPUT.legacy-backup（原始字节）、OUTPUT.review（完整 original、preserved 原值及待办）。原件不变。写入失败只删除本次已成功创建的文件，不删除并发作者文件。三文件并非跨文件事务；中断后人工检查残留，再决定处理。
+写入三个文件：
+1. story-draft.json：只投影 v5 剧情字段。
+2. story-draft.json.v4-backup：输入原始字节，输入本身不变。
+3. **story-draft.migration.json**：供其他阶段读取的待核验材料，不是正式 outline/cast/art。
 
-- 删除的 adaptation（包括逐字 evidence、有效限制和历史取舍）、arcs、复用方案、规划参数、事件标签、Q 兑现规划全部保存在 review.original/preserved，不能直接丢弃。
-- story 现有 premise/throughline/ending 原句拼接为 summary；原始分栏和 audiencePromise 仍在报告中。不声称这些句子已有剧本证据。
-- 稳定 C/S/P/B/Q ID、分集、事件、用户预算、tier/primary 保持。endingBeatId 暂不迁入正式字段，需确认真实全剧末尾后恢复。
-- 不制造 provenance、行号、阅读覆盖、总集数或 targetSeconds。历史分钟数仍在报告中，不能自动充当 script 已确认执行目标。
-- 人工逐项对照原剧本，将有效限制迁入有出处 notes 或项目要求；历史改编决定不是源事实。本地 creativeBrief 接入项目时先人工合并至 production，再删除副本。
-- 补全范围与出处后执行 verify-sources、结构检查和独立来源／正文核验。没有可提供剧本时，保留历史文档，不把创作材料伪装成 v4 生产输入。
+输出必须是不同的 .json 路径，不能以 .migration.json 命名草稿。不覆盖目标或旁路文件，不跟随输入符号链接。独占创建，写入失败仅清理本次已创建文件，不删除并发作者文件。检测输入在备份前变化。三个文件不是跨文件事务；进程中断后人工检查残留。
 
-## 历史 v2 → v3
+v4 已知结构、身份及 B/Q 关系损坏必须先修复。明确预算即使超额、值非法、键未知或无法归属，也原值导出，不降级为参考提醒。旧来源文件缺失或改版会记录 sourceVerification=fail，不伪装 skipped；仍可保存待核验材料，但不能因此发布或交接。
 
-migrate-v3 INPUT [--out OUTPUT] [--confirm] 保留，用于历史数据修复，不是生产入口。它保守合并 drive/core/type/stateChange 和旧要求，保留原文 evidence 与明确 Q 承诺；输出原字节 .v2-backup 及 .review。历史校验隔离于 legacy-v3-core.mjs，只供迁移使用。v3 输出仍需迁入 v4 并人工建立真实剧本证据。
+## .migration.json 形状
 
-未知版本或损坏结构不能自动修饰。先处理项目要求，再迁移解析和正文，最后由各阶段执行本地完整检查。本 skill 不迁移兄弟产物，不调用模型。
+```json
+{
+  "migrationVersion": 1,
+  "kind": "outline-v4-to-v5",
+  "status": "pending-review",
+  "source": "作品标题",
+  "fromSchemaVersion": 4,
+  "toSchemaVersion": 5,
+  "input": {"path": "/absolute/old-v4.json", "sha256": "...", "schemaVersion": 4},
+  "pathBases": {
+    "originalArtifact": "/absolute/old-v4.json",
+    "draftArtifact": "/absolute/story-draft.json",
+    "migrationArtifact": "/absolute/story-draft.migration.json"
+  },
+  "original": {"schemaVersion": 4},
+  "fields": [{
+    "fieldId": "F00001",
+    "originalPath": "/characters/0/aliases/0/name",
+    "originalValue": "老许",
+    "targetStage": "characters",
+    "relatedStages": ["characters"],
+    "destinationPath": null,
+    "destinationValue": null,
+    "status": "pending-stage-review",
+    "handling": "preserve-evidence; no automatic identity approval",
+    "legacyAssetIds": [],
+    "sourceRefs": [{"documentId": "D01", "startLine": 3, "endLine": 7}]
+  }],
+  "stageMaterials": {
+    "characters": {"status": "pending-review", "fieldIds": ["F00001"], "identityMapping": "not-verified"}
+  },
+  "identityMapping": "not-verified",
+  "contentReview": "not-performed",
+  "fullDownstreamValidation": "not-performed"
+}
+```
+
+示意省略其他记录；真实 original 包含完整输入。fields 对**每一个字段／数组位置**登记，包含容器和空数组，原值不删减，fieldId 在本材料内唯一。originalPath 为 RFC6901 JSON Pointer（~ 转义为 ~0，/ 转义为 ~1），可以从 original 逐字段回查。
+
+- destinationPath：仅投影剧情字段才有，指向 v5 草稿；其他为 null。destinationValue 保存草稿实际值；容器只投影其中剧情字段，原容器完整值仍在 originalValue。版本升级及路径重定位也能逐值比较。
+- status：projected-pending-verification / pending-stage-review / unassigned-pending-review。
+- targetStage：outline/characters/art/unassigned/multiple；relatedStages 提供跨阶段关系涉及方，stageMaterials 的 fieldIds 可以重叠，不代表一条关系已经映射。
+- legacyAssetIds：原值中的 C/S/P 字符串候选，保持旧 ID，不按名字自动归并。
+- sourceRefs：就近继承旧对象出处，原始来源字段仍完整登记，不制造新证据。alias 的原出处、notes 的资产关系和 speakerId 分别可追踪。
+- handling：说明原字段的投影或待核验处理。
+- pathRewrites：逐条登记来源 path 的原值、投影值、原／目标字段路径和重定位状态。草稿来源路径相对草稿；original 的路径始终相对输入旧文件，不能相对材料文件猜测。
+- budgets：每个旧 thresholds 键的 originalPath/originalValue、targetStage、constraint=explicit-user-budget、severity=blocking-at-owning-stage、valueValidation 和待核验状态。maxLeads/maxSupport/maxFunctional 归 characters；maxPrimaryScenes/maxProps 归 art；未知键归 unassigned。非对象预算整体记录在 unclassifiedBudget，不能忽略。
+- legacyValidation、draftValidation：结构与原预算结果，仅供定位。
+- sourceVerification：实际打开旧原件核验的结果。纯 migrationDraftV5 API 没有文件上下文时明确 skipped。
+
+人物完整记录、别名、定位、人物变化、地点主次、道具功能、来源、资产 notes、分集引用、prop.beatIds、focusCharacterIds、speakerId、所有预算及未知扩展都保存在 original 和 fields。资产自身的 notes/arc 不机械拼入 story，必须回查原文决定哪些故事事实需要重述。原剧情 notes 保留 text/sourceRefs/epistemic，旧资产引用单独导出；不按 speakerId 猜出新自然语言说话者。
+
+## 既有消费者与失效检查
+
+--project 指定项目根。未指定时，仅当输入直接位于 outline/ 时推断项目根；其他位置明确 skipped。
+
+consumerInspection 只读递归检查 script、creation、characters、art、shots、images、reviews、review、audits、audit、prompts、work-orders。不导入脚本、不执行兄弟命令、不修改任何消费者。每个文件记录相对项目路径、字节摘要、大小、待核验状态；JSON 字符串／键中的旧 ID 有 fieldPath/value/key，文本命中有行号及原值，图片等二进制记录路径 ID，便于回查旧参考图。不通过名称匹配身份。
+
+损坏 JSON、不可读文件或非法项目根标记 fail；符号链接记录 pending-review，不跟随。已有 .migration.json 不当作权威产物。自定义路径和项目外材料不在自动扫描范围，必须人工补查。空目录或没有命中不能证明不存在外部依赖。
+
+后续阶段按 stageMaterials.fieldIds 和 original 读取证据、独立阅读剧本，建立自身身份／预算，并核对实际依赖的工作单、图片、输入摘要、提示词和审核。旧 ID 沿用不等于映射批准。来源版本变化、相关范围缺口或身份合并／拆分／纠正，仅使实际受影响的引用和审核待核验，不能宣称无关内容自动失效。
+
+## 历史 v2／v3
+
+migrate-v3 INPUT [--out OUTPUT] [--confirm] 仅用于 v2 → v3。
+migrate-v4 INPUT [--out OUTPUT] [--confirm] 仅用于 v2/v3 → v4 待补证据草稿。
+
+历史迁移仍保留原字节备份；旁路材料也以 **.migration.json** 结尾（OUTPUT.migration.json），不再输出 .review。它们的历史材料形状为 original/preserved 或 pending/review，不冒充 v5 migrationVersion:1。历史校验隔离在 legacy-v3-core.mjs/legacy-v4-core.mjs，仅用于显式迁移。
+
+先人工补齐 v4 的真实 provenance/sourceRefs，修复关系，再执行 migrate-v5。没有原剧本时保留历史文件，不把大纲伪装成生产输入。升级顺序与无上游行为见[交接矩阵](handoff.md)。

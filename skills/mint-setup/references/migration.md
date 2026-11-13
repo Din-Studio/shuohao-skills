@@ -22,7 +22,7 @@ node scripts/mint-setup.mjs validate production-v3.json
 
 ## 顺序与状态
 
-先迁移 production，再迁移 outline、script、creation，最后核对 characters/art 引用与全项目交接。独立阶段的本地要求与项目要求必须人工合并。中途版本可能不匹配，不可宣称项目可交付。
+先迁移 production 配置，再按 outline → characters → art → script → creation 顺序迁移与核对；outline 正式契约为 v5，仅保存剧情。人物身份由 characters 判定，美术身份由 art 判定，script 保存显式映射。独立阶段的本地要求与项目要求必须人工合并。中途版本可能不匹配，不可宣称项目可交付。
 
 --confirm 只确认本次预览的去向，不代表内容评审完成。工具仍检查模型参数和视觉正文，不修饰损坏旧输入，不执行图片或视频生成。
 

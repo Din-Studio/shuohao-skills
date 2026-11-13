@@ -16,7 +16,7 @@ import {
   negativeTerms,
   renderHtml,
   renderMarkdown,
-  seedFromOutline,
+  seedFromLegacyOutline as seedFromOutline,
   slug,
   PROP_SCALES,
   validateArt,
@@ -151,7 +151,7 @@ ok(castNamesOf({ characters: [] }).length === 0, '空 cast 不炸');
 
 eq(validateArt(FIXTURE, NAMES).length, 0, '自带样例通过校验（含角色名检查）');
 ok(gateReport(FIXTURE, NAMES).every((g) => g.status !== 'fail'), '样例无阻断失败，缺少上游检查独立跳过');
-eq(gateReport(FIXTURE).length, 13, '质量门共 12 道（场景 6 + 道具 4 + 生产参数 2）');
+eq(gateReport(FIXTURE).length, 14, '质量门共 12 道（场景 6 + 道具 4 + 生产参数 2）');
 
 /* ---------------- 生产参数（production.json） ---------------- */
 
@@ -456,7 +456,7 @@ ok(/e\.key === 'Escape'/.test(html), 'Esc 关闭弹层');
   ok(withImg.includes('class="zoom" data-src="images/x-sheet.png"'), '出图后图片可点，弹层拿到地址');
   ok(withImg.includes('cursor:zoom-in'), '鼠标提示可放大');
 }
-eq((html.match(/<li class="pass">/g) || []).length, 10, '只统计通过，不把三项缺上游计入通过');
+eq((html.match(/<li class="pass">/g) || []).length, 11, '只统计通过，不把三项缺上游计入通过');
 eq((html.match(/<li class="skipped">/g) || []).length, 3, '缺少 cast 和 production 的三项检查明确跳过');
 ok(html.includes('gatepill pass'), '页眉徽章通过态');
 ok(html.includes('未提供 cast.json'), '报告如实标注角色名检查被跳过');
@@ -582,8 +582,9 @@ eq(FIXTURE.props.length, 2, '样例带两件叙事道具');
 // 无道具的文档：道具门放行、报告不渲染道具区块
 {
   const d = clone();
-  delete d.props;
-  eq(validateArt(d, NAMES).length, 0, '没有道具块也合法——道具是可选层');
+  d.props = [];
+  d.registry.entries = d.registry.entries.filter(e=>!e.id.startsWith('P'));
+  eq(validateArt(d, NAMES).length, 0, '道具空数组合法——不必为了结构登记物品');
   ok(gateReport(d).filter((g) => g.id.startsWith('prop-')).every((g) => g.status !== 'fail'), '无道具时四道道具门放行');
   ok(!renderHtml(d).includes('>道具清单<'), '无道具时报告不渲染道具区块');
 }

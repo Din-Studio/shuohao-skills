@@ -1,103 +1,102 @@
-# art.json 结构
+# art v1 数据契约
 
-## v3 上游契约与迁移
+正式文档必须包含 `schemaVersion: 1, kind: "mint-art"`。未版本化旧 art、outline v3/v4 不隐式进入正式入口。production 保持 v3，故事背景仅 outline v5，人物身份仅 cast v1（kind: mint-characters）。版本数字不要求跨阶段相同。
 
-seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schemaVersion: 3`。读取可选非空 `production.creativeBrief`，不解释策略配置。人物来源、弧光、节点分类与位置可以省略。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
+## 顶层字段
 
-检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](creative-background.md) 和 [迁移说明](migration.md)。
-
-美术设定集（场景 + 叙事道具）的载体。**模型只填设计字段**，场景与道具的出现集、关联剧情节点都由 `seed` 从 outline.json 搬运；大纲没有 `props` 时道具表留空，由模型按 `prop-pass.md` 从原文提取。Markdown 和报告由 `render` 渲染。
+| 字段 | 规则 |
+| --- | --- |
+| schemaVersion / kind | 固定 1 / mint-art |
+| source | 非空作品标题，不是来源文件路径 |
+| mode | script：已有原剧本；design：独立原创设计，不伪造来源 |
+| status | draft / ready；draft 不能通过正式 validate |
+| provenance | script 必需；文档身份、版本、范围见来源文档 |
+| scenes / props | 必需数组，允许为空 |
+| registry | entries / changes 必需数组；稳定 ID 和退休历史 |
+| budgets | 必需对象，无预算时为空；不静默落盘参考默认值 |
+| observations | 可选；未建立资产或尚未确定的线索、依据和 sourceRefs |
+| incremental | 增量基线 previousDigest、previousRegistry、previousIdentities、previousBudgets，以及受影响 recheckIds |
+| migration | 显式迁移材料；pending 或未处理关系阻断正式交付 |
+| budgetChanges | 明确预算变更的 key/from/to/basis；不得无依据取消预算 |
+| lang | 可选 zh/en；只影响报告默认语言 |
 
 ```json
 {
-  "source": "雨棚留言",
-  "scenes": [{
-    "id": "S01", "name": "菜摊雨棚", "primary": true,
-    "summary": "设计意图：这个空间讲什么故事……",
-    "anchors": [{ "name": "棚沿水痕", "desc": "……" }],
-    "lighting": [{ "state": "晨雾", "prompt": "dense white morning fog ..." }],
-    "image": { "prompt": "…", "negativePrompt": "…", "sheet": "…", "tags": [] },
-    "usage": { "episodes": [1, 3], "beats": ["清理"] }
-  }],
-  "props": [{
-    "id": "P01", "name": "旧留言板", "scale": "手持级",
-    "summary": "戏剧功能：代存的私人物件归还……",
-    "anchors": [{ "name": "绿色边框", "desc": "……" }],
-    "states": [{ "state": "合上", "prompt": "the message board with paper slips ..." }],
-    "relatedScenes": ["S01"], "carriedBy": ["许桂兰"],
-    "image": { "prompt": "…", "negativePrompt": "…", "sheet": "…", "tags": [] },
-    "usage": { "episodes": [1, 3], "beats": ["清理"] }
-  }]
+  "schemaVersion": 1,
+  "kind": "mint-art",
+  "source": "原创空间",
+  "mode": "design",
+  "status": "draft",
+  "scenes": [],
+  "props": [],
+  "registry": {"entries": [], "changes": []},
+  "budgets": {}
 }
 ```
 
-## 顶层
+这是未识别骨架，不是已完成资产清单。原剧本骨架另含 provenance，coverage 初始为空，不能声称已经阅读。
 
-| 字段 | 必填 | 说明 |
-| --- | --- | --- |
-| `source` | 是 | 剧名/书名 |
-| `scenes` | 是 | 场景数组 |
-| `props` | 否 | **叙事道具**数组——只收有特写、跨集、承载剧情的（3–8 件为宜），场景陈设归场景锚点。选法见 `prop-pass.md` |
+## 资产身份与确认
 
-**顶层没有 `style` 字段。**画风住在工作目录根的 `production.json`，`art.json` 里再抄一份就是第二个来源，两个来源必然会漂。跑 `node scripts/mint-art.mjs style` 取这部剧的 `style.scene` 那一块。老产物里还留着这个字段的，`validate` 会点名让删掉。
+每个资产必需：`id`、永久 `identityKey`、`name`、`decision`、`identityReview`、`designStatus`。场景另需布尔 `primary`；script 模式另需非空 `sourceRefs`。
 
-## 单个场景（以校验器为准）
+- 地点 S 加至少两位数字，物件 P 加至少两位数字。ID、永久 key 唯一，退休后永不复用。
+- decision 说明为何需要美术资产，不是自动复制场次名称或正文中的名词。
+- facts 保存可定位的来源事实、状态和限制。事实的 notes/aliases 等嵌套 sourceRefs 同样检查。
+- identityReview 为 `{status:"pending"}` 或 `{status:"confirmed",basis:"非空复核依据",inputDigest:"64位小写SHA256"}`。摘要来自 identity-inputs；命令不替人填写确认。
+- 摘要包括标题、mode、身份字段、全部资产引用、实际涉及文档的 ID/摘要/行数，以及引用是否处于负责范围。图像提示词等设计文本不冒充身份事实。更改引用或相关原件版本后旧确认不能沿用。
+- lifecycleStamp 是该身份相关 registry.changes 的摘要，由 reconcile 更新。合并后继续使用的目标 ID 同样改变逐资产摘要，旧联合映射不能因 ID 沿用而跳过复核。
+- 资产数组重排、增加未关联集号不改变身份。引用重核、关系变化和设计变化分别影响对应审核，不能一概宣称无关资产失效。
+- designStatus 为 none / planned / ready。none 不要求 summary、锚点、光照、状态或 image；已存在 image 不得标成 none 隐藏设计。
+- register 为新资产设置固定 `imageStem: ID`。它不随名称变化；旧项目迁移固定原图片路径。手工产物可显式提供稳定 imageStem 或 sheetImage。
+- `relatedScenes` 只能引用本产物地点。人物关系使用 `carrierRefs: [{characterId,basis,sourceRefs}]` 并提供 cast；旧 carriedBy 自由名称仅保存在迁移材料，不作为确认映射。
+- `usage: {episodes,beats,beatIds?}` 可选。集号为无重复正整数；B ID 引用由已提供 outline 对账。共同出现于一集不能证明节点发生于某个地点。
+- `variantOf` 只能引用现有地点，不能自身引用或循环；必需 changes。是否新增视觉变体资产由制作需求决定，不按每个场次复制身份。
 
-| 字段 | 必填 | 语言 | 说明 |
-| --- | --- | --- | --- |
-| `id` | 是 | — | `S01` 格式，全局唯一。用 seed 时沿用 outline 的场景 id |
-| `name` | 是 | 中文 | 场景名 |
-| `primary` | 是 | — | 是不是主场景 |
-| `summary` | 是 | 中文 | **设计意图**：这个空间讲什么故事、要什么感觉，不是户型说明 |
-| `anchors` | 3–5 个 | 中文 | **一致性锚点** `{name, desc}`：每次生成都必须出现的可辨识特征。认场景靠它，QC 生成镜头也靠它 |
-| `lighting` | ≥1 个 | state 中文 / prompt 英文 | **光照状态**：AI 换时段是重新生成不是重新打灯，每个状态必须落成完整提示词 |
-| `image.prompt` | 是 | **英文** | 主视角单图提示词，**必须写明空景无人** |
-| `image.negativePrompt` | 是 | **英文** | **必须禁人**（people/figure/…），这是空景的硬保证 |
-| `image.sheet` | 是 | **英文** | 环境设定图完整版面指令（见 `sheet.md`），必须整段包含当前风格的渲染句 |
-| `image.tags` | 是 | 英文 | 风格标签数组 |
-| `variantOf` | 否 | — | 变体的母场景 id。AI 生成一个新景很便宜，但**变体复用母场景资产更一致**——outline 里带 reusePlan 的场景优先做成变体 |
-| `changes` | variantOf 时必填 | 中文 | 相对母场景改了什么（换时段/换天气/换前景/删道具） |
-| `usage` | 否 | — | `{episodes, beats, beatIds?}`（beatIds 保留稳定节点引用；beats 仅展示类型），seed 自动填，手写也行 |
+## 预算
 
-## 单件道具（以校验器为准）
-
-| 字段 | 必填 | 语言 | 说明 |
-| --- | --- | --- | --- |
-| `id` | 是 | — | `P01` 格式，全局唯一 |
-| `name` | 是 | 中文 | 道具名 |
-| `scale` | 是 | 枚举 | `手持级` / `桌面级` / `家具级`，对应英文短语必须出现在提示词里 |
-| `summary` | 是 | 中文 | **戏剧功能**：这件道具承载什么剧情 |
-| `anchors` | 3–5 个 | 中文 | 经得起特写的细节特征（铜扣的新划痕、墨池的月牙磨痕） |
-| `states` | ≥1 个 | state 中文 / prompt 英文 | **状态变体**：合上/打开、藏着/摊开——每个状态一张参考 |
-| `relatedScenes` | 否 | — | 主要出现的场景 id，必须存在 |
-| `carriedBy` | 否 | 中文 | 谁带着它，自由文本 |
-| `image.prompt` | 是 | **英文** | 白底主视角，**必须带尺度短语、无人无手** |
-| `image.negativePrompt` | 是 | **英文** | **必须禁人且禁手**（hands/fingers） |
-| `image.sheet` | 是 | **英文** | 设定图版面指令，**必须写明 pure white background** + 当前风格渲染句 |
-| `usage` | 否 | — | `{episodes, beats, beatIds?}`（beatIds 保留稳定节点引用；beats 仅展示类型） |
-
-## 硬规则（确定性检查，全是代码）
-
-1. 锚点 3–5 个——少了认不出，多了核对不过来
-2. 光照状态 ≥1 且都有英文提示词
-3. **空景**：反向提示词必须禁人。环境和角色是两层资产，混在一张图里一致性全毁
-4. 出图提示词（主图/反向/设定图/光照）全部英文
-5. 提示词不含角色名（`validate --cast cast.json` 才查，不给就明说跳过）
-6. 变体引用完整：`variantOf` 指向存在的场景且带 `changes`
-7. 画风整块用上：`production.json` 的 `style.scene` 里，`render` 那句原样进 `sheet` 与 `prompt`，`negative` 的每一条进 `negativePrompt`（**场景查全，道具不查**——道具是纯白背景，画风里「环境别太干净」那几条和白底自相矛盾）
-
-道具专属四道：
-
-8. 状态 ≥1 且都有英文提示词
-9. 尺度参照写进提示词（scale 枚举对应的英文短语）
-10. 反向提示词禁手——拿着道具的手是最常见污染
-11. 设定图纯白背景可抠
-
-## 校验
-
-```bash
-node scripts/mint-art.mjs validate art.json --cast cast.json
-node scripts/mint-art.mjs checkup art.json               # 只打印 检查状态 pass/fail/skipped
+```json
+{
+  "primaryScenes": {"kind":"explicit","max":3},
+  "props": {"kind":"explicit","max":5},
+  "scenes": {"kind":"reference","max":8}
+}
 ```
 
-正式样例先阅读 `examples/雨棚留言-故事提案.md`（schema 阅读者从 skill 根目录定位）。独立水池场景不要求 reusePlan；节点关联包含 event 和 turn，不伪造 payoff。当前资产不含真实生成图片。
+允许键 scenes、primaryScenes、props。max 为非负安全整数。explicit 超额是 error 阻断；reference 超额为 warn 提醒。计数为登记资产数，不是图片任务数。角色预算不属于本产物，旧值保留在迁移关系材料交给 characters。
+
+明确预算基线包括既有 art 和 migration.original 中的明确美术预算。迁移字段核对完成不等于预算变更已经批准。当前 budgets 删除、改值或降级必须提供与基线及当前值匹配的 budgetChanges；不能通过清空 budgets 或改为 reference 静默取消阻断。
+
+## 可选设计字段
+
+planned / ready 设计遵循以下视觉规则，none 不适用：
+
+| 场景字段 | 规则 |
+| --- | --- |
+| summary | 非空设计意图；结构、动线及主光方向由人工/模型复核 |
+| anchors | 3–5 个 {name,desc}；明确可画特征及方位 |
+| lighting | 至少一个 {state,prompt}，prompt 英文 |
+| image | prompt、negativePrompt、sheet 非空；tags 英文数组 |
+| 画风、画幅 | production 提供时按 style.scene 和 image.asset 核验 |
+
+| 道具字段 | 规则 |
+| --- | --- |
+| summary | 戏剧功能与设计意图，不是来源事实的替代品 |
+| anchors | 3–5 个 {name,desc} |
+| states | 至少一个 {state,prompt}，prompt 英文 |
+| scale | 手持级 / 桌面级 / 家具级；两条提示词含 handheld/tabletop/furniture scale |
+| image | 提示词英文，反向禁人禁手；sheet 明确 white background |
+
+空景反向词禁人，场景反向词完整带入 style.scene.negative；道具白底不强加与之矛盾的环境反向词。提示词不含角色名（提供 cast 时核验）。production 缺失为 skipped，不提供出图默认值。ready 设计不等于媒体生成或批准。
+
+## 检查与报告
+
+检查对象为 status: pass/fail/skipped、category、level、detail，可选 reason。只有 fail + error 阻断；跳过不算通过。v1 保留 Markdown/HTML 报告和原始 JSON 导出；报告显示来源、身份、预算和迁移状态。CLI 总是回查原件；内存 API 不假称已查文件。
+
+公开 API：
+- `mint-art.mjs`：seedFromSource、registerAsset、identityDigest、validateArt、gateReport、renderMarkdown、renderHtml、imageJobsFrom。
+- `lib/stage.mjs`：stageErrors、evidenceErrors、verifySources、lifecycleErrors、budgetChecks、identityCoreDigest、lifecycleStamp、syncLifecycleStamps、sourceIdentity、digest、assertStoryOutline、assertCharacters、upstreamErrors、upstreamCheck、migrateArt、migrateOutline。
+- `seedFromLegacyOutline` 仅供显式迁移和历史回归，不属于正式身份识别接口。
+- `seedFromOutline` 拒绝旧资产权威及故事背景当作资产 seed，指向原剧本入口。
+
+媒体计划保持 schemaVersion 1，新增逐任务 inputDigest，不上传、不生成。变体依赖按参考顺序排列；只有 ready 任务进入计划。报告渲染不写回默认值、来源状态或自动挂图。

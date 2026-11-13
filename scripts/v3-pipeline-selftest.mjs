@@ -1,16 +1,18 @@
 #!/usr/bin/env node
-// 三组合 v4 真实 CLI 联合测试（保留文件名，兼容已有测试入口）。仅 Node 标准库；不调用生成服务，不使用正式样例。
+// 三组合 outline v5 / script v4 真实 CLI 联合测试（保留文件名，兼容已有测试入口）。仅 Node 标准库；不调用生成服务，不使用正式样例。
 // node scripts/v3-pipeline-selftest.mjs [--keep /absolute/new-directory]
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {cpSync,existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {dirname,join,resolve} from 'node:path';
+import {dirname,join,resolve,relative} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {stories,style,buildOutline,fillCreation} from './fixtures/strategy-pipeline/stories.mjs';
 import {fillAssets} from './fixtures/strategy-pipeline/assets.mjs';
 
-import {writeStorySource,outlineV4,scriptV4,relocate} from './fixtures/strategy-pipeline/source-backed.mjs';
+import {writeStorySource,outlineV4,outlineV5,provenanceFor,scriptV4,relocate} from './fixtures/strategy-pipeline/source-backed.mjs';
+
+import {identifyCast,identifyArt,mapAssets} from './fixtures/stage-identities.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const args=process.argv.slice(2);
@@ -41,9 +43,9 @@ const clean=(gs,label)=>assert.deepEqual(blocking(gs),[],label);
 const gate=(gs,id)=>{const g=gs.find(x=>x.id===id);assert.ok(g,`缺少检查 ${id}`);return g;};
 const failed=(gs,id)=>{assert.equal(gate(gs,id).status,'fail',id);assert.ok(blocking(gs).some(g=>g.id===id),`${id} 应阻断`);};
 const mutate=(doc,fn)=>{const d=clone(doc);fn(d);return d;};
-const imagePaths=p=>new Set([...p.outline.characters.map(c=>`../characters/images/${c.name}-sheet.png`),...p.art.scenes.map(s=>`../art/images/${s.name}-sheet.png`),...p.art.props.map(s=>`../art/images/${s.name}-sheet.png`)]);
+const imagePaths=p=>p.imageOutputs ?? new Set([...p.cast.characters.map(c=>`../characters/images/${c.id}-sheet.png`),...p.art.scenes.map(s=>`../art/images/${s.imageStem ?? s.name}-sheet.png`),...p.art.props.map(s=>`../art/images/${s.imageStem ?? s.name}-sheet.png`)]);
 const ctxOf=p=>({outline:p.outline,script:p.script,art:p.art,cast:p.cast,production:p.production,imageExists:rel=>imagePaths(p).has(rel)});
-const flags=(p,stage)=>[...(stage==='creation'?[]:['--verify-sources']),'--production',p.files.production,...(stage!=='outline'?['--outline',p.files.outline,'--art',p.files.art]:[]),...(stage==='creation'?['--script',p.files.script,'--cast',p.files.cast]:[])];
+const flags=(p,stage)=>[...(stage==='creation'?[]:['--verify-sources']),'--production',p.files.production,...(stage!=='outline'?['--outline',p.files.outline,'--art',p.files.art]:[]),...(stage==='creation'?['--script',p.files.script]:[]),...(stage!=='outline'?['--cast',p.files.cast]:[])];
 const jsonResult=r=>{try{return JSON.parse(r.stdout);}catch{throw Error(`CLI 没有返回约定 JSON\n${r.output.slice(-10000)}`);}};
 function variant(p,stage,fn,options={}){
   const file=join(p.dir,stage,`.mutation-${stage}.json`);write(file,mutate(p[stage],fn));
@@ -57,7 +59,7 @@ function copySkill(stage,label){
   return {base,dir:dest};
 }
 function assertCurrent(d,stage) {
-  assert.equal(d.schemaVersion,['outline','script'].includes(stage)?4:3);
+  assert.equal(d.schemaVersion,stage==='outline'?5:stage==='script'?4:3);
   for(const key of ['creative','creativeContext'])assert.ok(!(key in d),key);
   for(const key of ['rules','defaults','preferences'])assert.ok(!(key in (d.params??{})),key);
   if(stage==='script'||stage==='creation')for(const ep of d.episodes)
@@ -71,10 +73,10 @@ try{
     for(const story of stories){assert.equal(story.episodes.length,3);assert.ok(story.episodes.every(e=>e.actions.length&&e.nodes.length));}
   });
   await test('加载当期本地接口（缺失即失败，不降级旧契约）',async()=>{
-    for(const stage of stages){modules[stage]=await import(pathToFileURL(join(skillRoot(stage),'scripts',`mint-${stage}.mjs`)));}
+    for(const stage of [...stages,'art']){modules[stage]=await import(pathToFileURL(join(skillRoot(stage),'scripts',`mint-${stage}.mjs`)));}
   });
   for(const story of stories){
-    await test(`${story.title}：真实 v4 init → seed → validate → render`,()=>{
+    await test(`${story.title}：真实 v5 故事与独立身份 seed → validate → render`,async()=>{
       const dir=join(projects,story.key);mkdirSync(dir,{recursive:true});
       for(const s of ['outline','script','creation','art','characters'])mkdirSync(join(dir,s));
       const files={production:join(dir,'production.json'),outline:join(dir,'outline',`${story.title}-outline.json`),script:join(dir,'script',`${story.title}-script.json`),creation:join(dir,'creation',`${story.title}-creation.json`),art:join(dir,'art',`${story.title}-art.json`),cast:join(dir,'characters',`${story.title}-cast.json`)};
@@ -84,17 +86,25 @@ try{
       assertCurrent(production,'production');assert.equal(production.creativeBrief,story.promise);
       write(join(dir,'production.md'),success(cli('setup',['show',files.production,'--md']),'setup show').stdout);
       const source=writeStorySource(story,join(dir,'source'));
-      const outline=outlineV4(story,source,files.outline);write(files.outline,outline);
+      const outline=outlineV5(story,source,files.outline);write(files.outline,outline);
       success(cli('outline',['validate',files.outline,'--verify-sources','--production',files.production]),'outline validate');
-      const cast=jsonResult(success(cli('characters',['seed',files.outline]),'characters seed'));
-      const art=jsonResult(success(cli('art',['seed',files.outline]),'art seed'));
-      assert.deepEqual(cast.characters.map(c=>c.id),outline.characters.map(c=>c.id));
-      assert.deepEqual(art.props[0].usage.beatIds,outline.props[0].beatIds,'道具关联包括非 payoff 节点');
-      assert.ok(!('creativeContext' in cast)&&!('creativeContext' in art),'不加载策略的阶段不能伪造来源摘要');
-      write(join(dir,'cast-seed.json'),cast);write(join(dir,'art-seed.json'),art);
-      write(files.cast,cast);write(files.art,art);
-      for(const stage of ['characters','art'])rejected(cli(stage,['validate',stage==='characters'?files.cast:files.art],{cwd:join(dir,stage)}),/缺|空|不足|empty|required|违规|问题/i,`${stage} 骨架仍不完整`);
+      const castSeed=jsonResult(success(cli('characters',['seed','--source',source.file,'--title',story.title]),'characters source seed'));
+      const artSeed=jsonResult(success(cli('art',['seed','--source',source.file,'--title',story.title]),'art source seed'));
+      assert.deepEqual(castSeed.characters,[]);assert.deepEqual(artSeed.scenes,[]);assert.deepEqual(artSeed.props,[]);
+      assert.ok(!('creativeContext' in castSeed)&&!('creativeContext' in artSeed),'独立身份阶段不伪造策略来源摘要');
+      assert.ok(outline.story.summary.includes(story.throughline)&&outline.story.summary.includes(story.ending),'剧情人物变化和终局事实仍然保留');
+      write(files.cast,castSeed);write(files.art,artSeed);
+      for(const stage of ['characters','art'])rejected(cli(stage,['validate',stage==='characters'?files.cast:files.art],{cwd:join(dir,stage)}),/缺|空|不足|empty|required|违规|问题|草稿|coverage|阶段|失败/i,`${stage} seed 未登记身份及已读范围`);
+      castSeed.provenance=provenanceFor(source,files.cast);artSeed.provenance=provenanceFor(source,files.art);
+      const refs=line=>[{documentId:'D01',startLine:line,endLine:line}];
+      const cast=await identifyCast(root,castSeed,story.people.map(([name],i)=>({name,sourceRefs:refs(source.characters[i])})));
+      const art=await identifyArt(root,artSeed,[{name:story.scene,primary:true,sourceRefs:refs(source.scene)}],[{name:story.prop,summary:story.propFunction,sourceRefs:refs(source.prop),usage:{episodes:[1,2,3],beats:outline.beats.map(b=>b.outcome),beatIds:outline.beats.map(b=>b.id)}}]);
+      assert.deepEqual(cast.characters.map(c=>c.id),story.people.map((_,i)=>`C0${i+1}`));
+      assert.deepEqual(art.props[0].usage.beatIds,outline.beats.map(b=>b.id),'非 payoff 节点仍为美术事实引用，不来自 outline 资产清单');
+      write(join(dir,'cast-seed.json'),castSeed);write(join(dir,'art-seed.json'),artSeed);
       fillAssets(cast,art,story,style);
+      delete art.props[0].carriedBy;art.scenes[0].designStatus='ready';art.props[0].designStatus='ready';
+      for(const a of [...art.scenes,...art.props])a.identityReview.inputDigest=modules.art.identityDigest(art,a);
       write(files.cast,cast);write(files.art,art);
       const sourceFile=source.file;
       success(cli('characters',['validate',files.cast,sourceFile,'--production',files.production],{cwd:join(dir,'characters')}),'characters 完整文本与原创引文校验');
@@ -107,8 +117,16 @@ try{
         assert.deepEqual(ep.beatClaims,outline.beats.filter(b=>b.episode===ep.ep).map(b=>({beatId:b.id,start:null,end:null})));
       }
       write(join(dir,'script-seed.json'),seed);
-      const script=scriptV4(seed,story,source,files.script);write(files.script,script);
+      const script=mapAssets(scriptV4(seed,story,source,files.script),cast,art);write(files.script,script);
       const p={story,source,dir,files,production,outline,script,cast,art};
+      // Compare the actual producer plan with the consumer path. An imageExists
+      // stub based on the consumer itself would hide a broken file contract.
+      const plans=['characters','art'].map(stage=>jsonResult(success(cli(stage,['images',stage==='characters'?files.cast:files.art,'--production',files.production]),stage+' offline image plan')));
+      p.imageOutputs=new Set(plans.flatMap(plan=>plan.jobs.map(job=>relative(join(dir,'creation'),job.output))));
+      for(const [kind,list] of [['character',cast.characters],['scene',art.scenes],['prop',art.props]]) for(const asset of list) {
+        const consumerPath=modules.creation.referenceImagePath(kind,asset.name,asset.id,{cast,art});
+        assert.ok(p.imageOutputs.has(consumerPath),`${kind} ${asset.id}: producer plan must equal creation reference path ${consumerPath}`);
+      }
       success(cli('script',['validate',files.script,...flags(p,'script')]),'script 联合 validate');
       const cseed=jsonResult(success(cli('creation',['seed',files.script,'--eps','1-3','--outline',files.outline]),'creation seed'));
       assertCurrent(cseed,'creation');for(const ep of cseed.episodes)assert.deepEqual(ep.segments,[]);
@@ -164,7 +182,7 @@ try{
       delete partial.story.endingBeatId;partial.episodes=partial.episodes.slice(1);partial.beats=partial.beats.filter(b=>b.episode>1);
       // Earlier questions are outside this supplied batch, so their resolution links are not claims in it.
       for(const b of partial.beats)delete b.resolves;
-      partial.props.forEach(x=>x.beatIds=partial.beats.map(b=>b.id));
+
       const file=join(temp,`partial-${p.story.key}`,'outline','partial-outline.json');
       write(file,relocate(partial,p.files.outline,file));
       success(cli('outline',['validate',file,'--verify-sources']),'从第二集开始的真实部分来源');
@@ -178,7 +196,7 @@ try{
       ['非剧本来源',d=>d.provenance.kind='novel'],
       ['完整范围缺集',d=>d.episodes.pop()],
       ['缺少事件依据',d=>delete d.beats[0].sourceRefs],
-      ['未知来源文档',d=>d.characters[0].sourceRefs[0].documentId='D99'],
+      ['未知来源文档',d=>d.story.sourceRefs[0].documentId='D99'],
       ['来源范围越界',d=>d.beats[0].sourceRefs[0].endLine=9999],
       ['来源文档重复身份',d=>d.provenance.documents.push(clone(d.provenance.documents[0]))],
       ['大纲重新携带时长',d=>d.params.minutesPerEpisode=0.4],
@@ -241,19 +259,26 @@ try{
       const d=clone(gradual.creation);
       for(const ep of d.episodes)for(const seg of ep.segments)for(const cut of seg.cuts)cut.seconds=total/4;
       assert.equal(gate(gates('creation',d,ctxOf(gradual)),'ep-duration').status,invalid?'fail':'pass');
-      // 真正缺少 art 的独立项目：图片检查明确跳过，不让缺图遮住时长边界。
+      // 身份已确认但不请求设计和参考图的项目：媒体不应遮住时长边界。
       const dir=join(temp,`duration-${total}`);
       const production=write(join(dir,'production.json'),gradual.production);
       const outline=join(dir,'outline','plan-outline.json');write(outline,relocate(gradual.outline,gradual.files.outline,outline));
       const script=join(dir,'script','text-script.json');write(script,relocate(gradual.script,gradual.files.script,script));
+      const cast=clone(gradual.cast),art=clone(gradual.art);
+      for(const c of cast.characters){delete c.image;delete c.persona;delete c.voice;}
+      for(const a of [...art.scenes,...art.props]){delete a.image;a.designStatus='none';}
+      const castFile=join(dir,'characters','cast.json'),artFile=join(dir,'art','art.json');
+      write(castFile,relocate(cast,gradual.files.cast,castFile));write(artFile,relocate(art,gradual.files.art,artFile));
+      write(script,mapAssets(json(script),cast,art));
+      for(const ep of d.episodes)for(const seg of ep.segments){seg.images=[];seg.prompt=seg.prompt.replace(/参考素材：[\s\S]*?\n\n/,'参考素材：无\n\n').replace(/@图片\d+/g,'');}
       const creation=write(join(dir,'creation','plan-creation.json'),d);
-      const r=cli('creation',['validate',creation,'--script',script,'--outline',outline,'--production',production],{cwd:dirname(creation)});
+      const r=cli('creation',['validate',creation,'--script',script,'--outline',outline,'--cast',castFile,'--art',artFile,'--production',production],{cwd:dirname(creation)});
       if(invalid)rejected(r,/duration|总秒数|目标/i,'实际镜头总长越界');else success(r,'合法闭区间端点');
     });
     await test('渐进故事无需兑现分类或关闭规则，最终开放仍成立',()=>{
       const d=mutate(gradual.outline,o=>{
         for(const b of o.beats){delete b.kind;delete b.weight;delete b.position;}
-        delete o.arcs;delete o.story.audiencePromise;for(const c of o.characters)delete c.arc;
+        delete o.arcs;delete o.story.audiencePromise;
       });
       clean(gates('outline',d,ctxOf(gradual)),'最小原创');
       assert.equal(d.episodes.at(-1).ending.mode,'open');
@@ -265,7 +290,7 @@ try{
       ['重复解决',d=>d.beats[5].resolves=['Q01']],['提前解决',d=>{d.beats[0].resolves=['Q01'];delete d.beats[4].resolves;}],
       ['移除的期限字段',d=>d.episodes[0].ending.question.dueByEp=2],['移除的兑现要求',d=>d.episodes[2].ending.question.resolution='required'],
       ['非法节点 ID',d=>d.beats[0].id='bad'],['重复节点 ID',d=>d.beats[1].id='B01'],['节点错误集号',d=>d.beats[0].episode=4],
-      ['无效节点位置',d=>d.beats[0].position='unknown'],['未知资产引用',d=>d.episodes[0].characterIds=['C99']],
+      ['无效节点位置',d=>d.beats[0].position='unknown'],['退役资产引用',d=>d.episodes[0].characterIds=['C99']],
       ['非 payoff 伪造 weight',d=>d.beats[0].weight='minor'],['旧规则字段',d=>d.params.rules={payoffCoverage:{level:'off'}}]
     ])await test(`渐进简化契约仍拒绝：${name}`,()=>rejected(variant(gradual,'outline',fn),null,name));
     await test('剧本独立 suspense 无 Q 合法；损坏上游与缺上游区分',()=>{
@@ -290,7 +315,8 @@ try{
   if(episodic)await test('参考图挂载：仅认可 fixture 路径；未知挂载 ID 不能被策略关闭',()=>{
     const seen=new Set(),ctx={...ctxOf(episodic),imageExists:rel=>{seen.add(rel);return imagePaths(episodic).has(rel);}};
     clean(gates('creation',episodic.creation,ctx),'已知映射的图片替身');assert.deepEqual(seen,imagePaths(episodic));
-    const absent={...ctxOf(episodic),imageExists:rel=>imagePaths(episodic).has(rel)&&!rel.includes(episodic.story.prop)};
+    const prop=episodic.art.props[0],propPath=modules.creation.referenceImagePath('prop',prop.name,prop.id,ctxOf(episodic));
+    const absent={...ctxOf(episodic),imageExists:rel=>imagePaths(episodic).has(rel)&&rel!==propPath};
     failed(gates('creation',episodic.creation,absent),'refimage-coverage');
     const bad=mutate(episodic.creation,c=>{c.episodes[0].segments[0].images[0].ref='C99';});
     assert.ok(blocking(gates('creation',bad,ctxOf(episodic))).length,'段级挂载 C99 未知引用必须阻断，不能只校验 cut 人物');
@@ -324,7 +350,7 @@ try{
   for(const p of ready.values())for(const stage of stages){
     await test(`${p.story.title}/${stage}：旧字段与双重创作要求明确拒绝`,()=>{
       for(const change of [d=>d.schemaVersion=2,d=>d.creativeContext={},d=>d.params.rules={},d=>d.params.defaults={},d=>d.creativeBrief='本地要求需要人工合并'])
-        rejected(variant(p,stage,change),/迁移|v[34]|schema|creative|rules|defaults|合并|brief/i,'拒绝旧契约或要求冲突');
+        rejected(variant(p,stage,change),/迁移|v[345]|schema|creative|rules|defaults|合并|brief/i,'拒绝旧契约或要求冲突');
     });
     await test(`${p.story.title}/${stage}：指南文字变更不使故事失效`,()=>{
       const installed=copySkill(stage,`guide-${p.story.key}-${stage}`);
@@ -340,18 +366,49 @@ try{
     });
   }
   if(gradual){
-    await test('工具参考预算只提醒；显式制作预算仍阻断',()=>{
-      const d=clone(gradual.outline);delete d.params.thresholds;
-      for(let i=2;i<=10;i++){
-        const id=`P${String(i).padStart(2,'0')}`;
-        d.props.push({id,name:`额外记录夹${i}`,function:'隔离预算边界测试',sourceRefs:clone(d.props[0].sourceRefs)}); // 仅结构预算注入，不声称来源语义成立
-        d.episodes[0].propIds.push(id);
+    await test('旧 v4 资产及预算显式迁移，正式 v5 不再登记预算',()=>{
+      const legacy=outlineV4(gradual.story,gradual.source,gradual.files.outline);
+      const legacyPath=join(gradual.dir,'legacy-outline-v4.json');
+      const path=write(legacyPath,relocate(legacy,gradual.files.outline,legacyPath)),bytes=readFileSync(path);
+      rejected(cli('outline',['validate',path]),/v5|5|migrate/,'旧 v4 不能正式消费');
+      for(const stage of ['characters','art']) {
+        rejected(cli(stage,['seed',path]),/source|迁移|migrate|v5|5|title/i,'不允许大纲资产正式 seed');
+        const material=jsonResult(success(cli(stage,['migrate-outline',path]),'显式迁移资产'));
+        assert.match(JSON.stringify(material),/pending/);assert.ok(JSON.stringify(material).includes('maxProps'),'旧预算原值完整保留');
+        assert.ok(JSON.stringify(material).includes('P01'),'旧 ID 可追踪');
       }
-      const gs=gates('outline',d,ctxOf(gradual));clean(gs,'参考预算不阻断');
-      const reference=gate(gs,'prop-cap');assert.equal(reference.status,'fail');assert.equal(reference.level,'warn');assert.equal(reference.budgetSource,'reference');
-      d.params.thresholds={maxProps:8};const explicit=gate(gates('outline',d,ctxOf(gradual)),'prop-cap');
-      assert.equal(explicit.status,'fail');assert.equal(explicit.level,'error');assert.equal(explicit.budgetSource,'user');
-      rejected(variant(gradual,'outline',o=>Object.assign(o,d)),/prop-cap|道具|预算|10 > 8/i,'显式预算 CLI');
+      assert.deepEqual(readFileSync(path),bytes);
+      const withRelations=clone(json(path)),refs=clone(withRelations.characters[0].sourceRefs);
+      withRelations.characters[0].aliases=[{name:'许记录员',sourceRefs:refs}];
+      withRelations.notes=[{kind:'continuity',text:'许苒的故障判断只是说法，不是已经核实的事实。',characterIds:['C01'],sceneIds:['S01'],propIds:['P01'],speakerId:'C01',epistemic:'claim',episode:1,sourceRefs:refs}];
+      const historical=write(join(gradual.dir,'v4-relations.json'),withRelations),historicalBytes=readFileSync(historical);
+      const out=join(gradual.dir,'outline','v5-migration-draft.json');
+      const migration=jsonResult(success(cli('outline',['migrate-v5',historical,'--out',out,'--confirm','--project',gradual.dir]),'显式 v4→v5 草稿及逐字段材料'));
+      assert.deepEqual(readFileSync(historical),historicalBytes);assert.deepEqual(readFileSync(migration.backup),historicalBytes);
+      const draft=json(out),material=json(migration.migrationFile);
+      assert.equal(draft.schemaVersion,5);assert.deepEqual(material.original,withRelations);
+      assert.equal(material.identityMapping,'not-verified');assert.equal(material.contentReview,'not-performed');
+      assert.equal(material.sourceVerification.status,'pass');
+      for(const key of ['characters','scenes','props'])assert.ok(!(key in draft));
+      assert.ok(!('thresholds' in draft.params)&&!('focusCharacterIds' in draft.story));
+      for(const ep of draft.episodes)for(const key of ['characterIds','sceneIds','propIds'])assert.ok(!(key in ep));
+      const paths=new Map(material.fields.map(f=>[f.originalPath,f]));
+      const visit=(value,path='')=>{for(const [key,v]of Object.entries(value??{})){const p=path+'/'+key.replace(/~/g,'~0').replace(/\//g,'~1');assert.deepEqual(paths.get(p)?.originalValue,v,p);if(v&&typeof v==='object')visit(v,p);}};visit(withRelations);
+      for(const p of ['/characters/0/aliases/0/name','/props/0/beatIds/0','/notes/0/speakerId','/notes/0/characterIds/0','/notes/0/sceneIds/0','/notes/0/propIds/0','/story/focusCharacterIds/0','/episodes/0/characterIds/0','/episodes/0/sceneIds/0','/episodes/0/propIds/0','/params/thresholds/maxProps'])assert.ok(paths.has(p),p);
+      for(const [k,v]of Object.entries(withRelations.params.thresholds))assert.equal(material.budgets.find(b=>b.originalPath.endsWith('/'+k)).originalValue,v);
+      rejected(cli('outline',['validate',migration.migrationFile]),/schema|migration|5|story/i,'迁移材料不是正式大纲');
+      success(cli('outline',['validate',out,'--verify-sources']),'投影故事结构仍可验证，不冒充身份审核');
+      rejected(cli('outline',['migrate-v5',historical,'--out',out,'--confirm']),/exist|存在|覆盖/i,'显式迁移不能覆盖草稿');
+      // Keep discovery deterministic: migration draft is not a second authoritative outline.
+      rmSync(out);rmSync(migration.backup);rmSync(migration.migrationFile);
+      const reference=clone(gradual.art);reference.budgets.props={kind:'reference',max:0};
+      const m=modules.art;assert.ok(m,'加载独立预算权威');
+      const gs=m.gateReport(reference,gradual.cast.characters.map(c=>c.name),gradual.production);
+      assert.ok(gs.some(g=>g.status==='fail'&&g.level==='warn'),'参考预算只提醒');
+      reference.budgets.props.kind='explicit';
+      const file=write(join(gradual.dir,'art','.budget.json'),reference);
+      rejected(cli('art',['validate',file,'--production',gradual.files.production]),/预算|budget|1 \/ 0/i,'明确美术预算仍阻断');
+      rejected(variant(gradual,'outline',d=>d.params.thresholds={maxProps:8}),/thresholds|资产|migrate/i,'预算不返回 outline');
     });
     await test('未分类节点仍完整认领，suspense 可以不登记问题',()=>{
       const d=clone(gradual.outline);
@@ -413,7 +470,7 @@ try{
     });
     await test('媒体导出保持参考图身份、顺序和提示词原文，真实 CLI 缺图不能投产',()=>{
       const p=gradual,segments=p.creation.episodes.flatMap(e=>e.segments);
-      const names=new Map([...p.outline.characters,...p.outline.scenes,...p.outline.props].map(x=>[x.id,x.name]));
+      const names=new Map([...p.cast.characters,...p.art.scenes,...p.art.props].map(x=>[x.id,x.name]));
       const resolveImage=(kind,ref)=>({name:names.get(ref),path:`${kind}/${ref}.png`,exists:true});
       const pack=modules.creation.exportPack(p.creation,p.script,{resolveImage,production:p.production,scriptPath:p.files.script});
       assert.equal(pack.missingTotal,0);
@@ -453,7 +510,7 @@ try{
     }else{
       old=clone(p[stage]);old.schemaVersion=2;
       if(stage==='script'){
-        delete old.provenance;for(const ep of old.episodes){delete ep.sourceRefs;for(const sc of ep.scenes){delete sc.sourceRefs;for(const b of sc.flow)delete b.sourceRefs;}}
+        delete old.provenance;delete old.assetMappings;for(const ep of old.episodes){delete ep.sourceRefs;for(const sc of ep.scenes){delete sc.sourceRefs;for(const b of sc.flow)delete b.sourceRefs;}}
       }
       old.params.rules=stage==='script'?{openingWindow:{level:'off'},lineLength:{level:'off'}}:{cutDuration:{level:'off'}};
       for(const [i,ep] of old.episodes.entries()){
@@ -471,7 +528,7 @@ try{
     for(const b of historicalOutline.beats){b.setup=b.type+'：'+b.setup;delete b.type;}
     for(const e of historicalOutline.episodes)delete e.stateChange;
     const historicalPath=write(join(dir,'historical-outline.json'),historicalOutline);
-    const migrationFlags=stage==='script'?['--outline',historicalPath,'--no-production']
+    const migrationFlags=stage==='script'?['--outline',p.files.outline,'--no-production']
       :stage==='creation'?['--script',p.files.script,'--outline',p.files.outline]:[];
     const migrate=(...args)=>cli(stage,['migrate-v3',...args,...migrationFlags]);
     const preview=migrate(input);
@@ -551,10 +608,10 @@ try{
     assert.match(JSON.stringify(preview),/pending|evidence|provenance|来源/i);
     const unconfirmed=jsonResult(rejected(migrate('--out',out),null,'未确认不得写入'));
     assert.equal(unconfirmed.written,false);assert.ok(!existsSync(out));
-    success(migrate('--out',out,'--confirm'),'确认写入待补证据草稿');
+    const written=jsonResult(success(migrate('--out',out,'--confirm'),'确认写入待补证据草稿'));
     const draft=json(out);assert.equal(draft.schemaVersion,4);
     assert.deepEqual(readFileSync(input),bytes);assert.ok(!draft.provenance);
-    const review=json(out+'.review');assert.deepEqual(review.original,old,'所有历史决定可恢复');
+    const review=json(stage==='outline'?written.reviewFile:written.record);assert.deepEqual(review.original,old,'所有历史决定可恢复');
     if(stage==='outline'){
       for(const key of ['adaptation','arcs'])assert.ok(!(key in draft));
       for(const key of ['episodes','minutesPerEpisode','adaptMode'])assert.ok(!(key in draft.params));
@@ -563,7 +620,7 @@ try{
       assert.deepEqual(draft.episodes.map(e=>e.scenes),old.episodes.map(e=>e.scenes));
       assert.ok(draft.episodes.every(e=>!('targetSeconds' in e)),'迁移不能推测目标时长');
     }
-    rejected(cli(stage,['validate',out,'--verify-sources']),/provenance|sourceRefs|来源|证据/i,'待补证据草稿不能冒充正式解析');
+    rejected(cli(stage,['validate',out,'--verify-sources']),/provenance|sourceRefs|来源|证据|schemaVersion|migrate-v5/i,'待补证据草稿不能冒充正式解析');
     rejected(migrate('--out',out,'--confirm'),/exist|存在|覆盖/i,'不覆盖已存在输出');
     rejected(migrate('--out',input,'--confirm'),null,'不覆盖原件');
     assert.deepEqual(readFileSync(input),bytes);

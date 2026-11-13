@@ -156,10 +156,10 @@ test('same type different IDs still required separately', () => {
 });
 test('retired upstream minutes cannot silently provide targets', () => { const o = clone(OUTLINE); o.params.minutesPerEpisode = 2; assert.equal(gate(DOC, 'outline-input', { outline: o }).status, 'fail'); });
 test('batch final does not become series final', () => { const d = clone(DOC); d.episodes = [d.episodes[0]]; assert.deepEqual(validateScript(d, CTX), []); });
-mutate('character refs', d => { d.episodes[0].scenes[0].characters.push('C99'); }, 'refs-characters', CTX);
-mutate('scene refs', d => { d.episodes[0].scenes[0].sceneId = 'S99'; }, 'refs-scenes', CTX);
-mutate('lighting refs', d => { d.episodes[0].scenes[0].lighting = '未登记'; }, 'refs-scenes', CTX);
-mutate('prop refs', d => { d.episodes[0].scenes[0].props.push('P99'); }, 'refs-scenes', CTX);
+mutate('character refs', d => { d.episodes[0].scenes[0].characters.push('C99'); }, 'asset-mappings', { ...CTX, requiredMappings:true });
+mutate('scene refs', d => { d.episodes[0].scenes[0].sceneId = 'S99'; }, 'asset-mappings', { ...CTX, requiredMappings:true });
+test('lighting refs use explicit mapped art identity', () => { const d=read('修伞簿-mapped-script.json');d.episodes[0].scenes[0].lighting='未登记';assert.equal(gate(d,'refs-scenes',CTX).status,'fail'); });
+mutate('prop refs', d => { d.episodes[0].scenes[0].props.push('P99'); }, 'asset-mappings', { ...CTX, requiredMappings:true });
 for (const [key, id] of [['outline', 'outline-input'], ['art', 'art-input'], ['cast', 'cast-input']]) {
   test(`missing ${key} is skipped, not pass`, () => { assert.equal(gate(DOC, id).status, 'skipped'); assert.equal(gate(DOC, id).reason, 'missing-upstream'); });
   for (const value of [null, {}, [], 'broken']) test(`supplied invalid ${key} fails`, () => { assert.equal(gate(DOC, id, { [key]: value }).status, 'fail'); assert(validateScript(DOC, { [key]: value }).length); });
@@ -230,8 +230,8 @@ test('upstream supplied weight is conditional, not required', () => {
   assert.deepEqual(validateScript(DOC,{outline:o}),[]);
   o.beats[0].weight='minor';assert(validateScript(DOC,{outline:o}).length);
 });
-test('outline alone checks scene and prop references', () => {
-  for(const key of ['sceneId','props']) {const d=clone(DOC);d.episodes[0].scenes[0][key]=key==='sceneId'?'S99':['P99'];assert(validateScript(d,{outline:OUTLINE}).length);}
+test('outline alone does not own scene or prop identities', () => {
+  for(const key of ['sceneId','props']) {const d=clone(DOC);d.episodes[0].scenes[0][key]=key==='sceneId'?'S99':['P99'];assert.deepEqual(validateScript(d,{outline:OUTLINE}),[]);}
 });
 test('overflowed clock is structural failure rather than duration notice', () => {
   const d=clone(DOC);d.params.actionSeconds=Number.MAX_VALUE;assert(validateScript(d).length);
@@ -250,7 +250,7 @@ for (const lang of ['zh', 'en']) test(`${lang} HTML and Markdown rendering`, () 
   assert(h.includes(lang === 'en' ? 'Content review not performed' : '内容评审未执行'));
   assert(!h.includes(lang === 'en' ? 'Policy disabled' : '策略关闭'));
   assert(m.includes(lang === 'en' ? 'Episode 1' : '分集 1'));
-  assert(h.includes('data-copy=')); assert(h.includes(CAST.characters[0].voice.prompt));
+  assert(h.includes('data-copy=')); assert(!h.includes(CAST.characters[0].voice.prompt)); assert(renderHtml(read('修伞簿-mapped-script.json'),CTX).includes(CAST.characters[0].voice.prompt));
   assert(!/src="https?:|href="https?:|@import|url\(https?:/.test(h));
   assert(h.includes('@media(max-width:750px)')); assert(h.includes('@media print')); assert(h.includes('beforeprint'));
   const raw = h.match(/<script id="script-data" type="application\/json">([\s\S]*?)<\/script>/)[1];

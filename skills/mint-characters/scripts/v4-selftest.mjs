@@ -74,7 +74,7 @@ const temp=realpathSync(mkdtempSync(join(tmpdir(),'mint-characters-v4-')));
 try {
  const path=join(temp,'outline.json'), raw=join(temp,'值班牌-来源.txt');
  writeFileSync(path,JSON.stringify(doc));copyFileSync(join(root,'examples/值班牌-来源.txt'),raw);
- const run=()=>spawnSync(process.execPath,[join(root,'scripts/mint-characters.mjs'),'seed',path],{cwd:temp,encoding:'utf8'});
+ const run=()=>spawnSync(process.execPath,[join(root,'scripts/mint-characters.mjs'),'seed',path,'--legacy'],{cwd:temp,encoding:'utf8'});
  assert.equal(run().status,0);
  for(const c of seed.characters)writeFileSync(join(temp,`card-${c.id}.json`),JSON.stringify(c));
  writeFileSync(join(temp,'summary.txt'),'同名的值班人交接，但没有和解。');

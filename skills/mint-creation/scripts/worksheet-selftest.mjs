@@ -23,7 +23,7 @@ try {
   // 审核方的动作：写好意见，再用本 skill 的本地等价命令登记结论（与审核方 skill 的 verdict 共用同一份规则）
   const review = (id, text) => { const s = W.parseWorksheet(readFileSync(sheetPath(id), 'utf8'));
     writeFileSync(sheetPath(id), W.serializeWorksheet({...s, meta: {...s.meta, status: 'in_review', round: Math.max(1, s.meta.round), bodyHash: '', inputHash: ''}, review: text})); };
-  const approve = id => { review(id, '结论：通过。'); const r = cli('prompts', 'verdict', file, 'approved', id); assert.equal(r.status, 0, r.stderr); };
+  const approve = id => { review(id, '# 视频提示词审核\n\n- 审核结论：通过\n\n## 返修意见\n\n## 待确认事项'); const r = cli('prompts', 'verdict', file, 'approved', id); assert.equal(r.status, 0, r.stderr); };
   const staleIds = () => cli('prompts', 'status', file).stdout.split('\n').filter(l => l.startsWith('✗')).map(l => l.split(/\s+/)[1]);
 
   test('parse and serialize round trip; body below the last separator only', () => {
@@ -41,7 +41,7 @@ try {
   test('brief prints dispatch material straight from upstream', () => {
     const r = cli('prompts', 'brief', file, '--ep', '1'); assert.equal(r.status, 0, r.stderr);
     const b = JSON.parse(r.stdout);
-    assert.equal(b.source, '收书人'); assert.equal(b.video.model, 'MiniMax H3'); assert.equal(b.promptLang, 'en'); assert.equal(b.maxSegmentSeconds, 15);
+    assert.equal(b.source, '收书人'); assert.equal(b.video.model, 'MiniMax H3'); assert.equal(b.promptLang, 'zh'); assert.equal(b.maxSegmentSeconds, 15);
     assert.equal(b.seedScenes[0].beats.length, 10); assert.equal(b.seedScenes[0].beats[1].text, '还开着吗？我想卖一本书。');
     assert.deepEqual(b.assets.characters.map(c => c.id), ['C01', 'C02']); assert.ok(b.assets.characters.every(c => c.sheetExists));
     assert.ok(b.assets.scenes.length && b.assets.props.length); assert.equal(b.intent.planSource, 'outline'); assert.deepEqual(b.intent.endBeat, [1, 10]);
@@ -83,23 +83,23 @@ try {
     for (const w of listWorksheets(cwd)) approve(w.id);
     assert.equal(cli('prompts', 'status', file).status, 0);
     // 审核通过的修改经 apply 进入 creation.json
-    rewrite('E01-01', md => md.replace('no music.', 'no music at all.'));
+    rewrite('E01-01', md => md.replace('安静、克制', '安静、克制、留白'));
     let r = cli('prompts', 'apply', file); assert.equal(r.status, 1); assert.match(r.stderr, /批准已失效/);
     approve('E01-01');
     r = cli('prompts', 'apply', file); assert.equal(r.status, 0, r.stderr);
     const applied = JSON.parse(readFileSync(join(cwd, file), 'utf8'));
-    assert.match(applied.episodes[0].segments[0].prompt, /no music at all\./);
+    assert.match(applied.episodes[0].segments[0].prompt, /安静、克制、留白/);
     assert.deepEqual(applied.episodes[0].segments.slice(1), original.episodes[0].segments.slice(1));
     const sheetBefore = readFileSync(sheetPath('E01-01'), 'utf8');
     r = cli('export', file, '--out', '.'); assert.equal(r.status, 0, r.stderr);
     assert.equal(readFileSync(sheetPath('E01-01'), 'utf8'), sheetBefore, '导出不改写工作单');
     r = cli('videos', 'manifest.json', '--dry-run'); assert.equal(r.status, 0, r.stderr);
     const plan = JSON.parse(r.stdout); assert.equal(plan.jobs.length, 4);
-    assert.match(plan.jobs[0].prompt, /^Picture 1 is/); assert.ok(!plan.jobs[0].prompt.includes('审核意见'));
+    assert.match(plan.jobs[0].prompt, /^镜头参考：/); assert.ok(!plan.jobs[0].prompt.includes('审核意见'));
   });
 
   test('edits after approval block export and videos', () => {
-    rewrite('E01-03', md => md.replace(/ambience:/, 'ambience: Rain.'));
+    rewrite('E01-03', md => md.replace('氛围：', '氛围：雨夜，'));
     assert.equal(cli('export', file, '--out', '.').status, 1);
     const r = cli('videos', 'manifest.json', '--dry-run'); assert.equal(r.status, 1); assert.match(r.stderr, /批准已失效/);
     approve('E01-03');
@@ -176,7 +176,7 @@ try {
   test('new creates a blank draft with the effective model and refuses to overwrite', () => {
     let r = cli('prompts', 'new', file, 'E01-05', '--scene', '1'); assert.equal(r.status, 0, r.stderr);
     const s = W.parseWorksheet(readFileSync(sheetPath('E01-05'), 'utf8'));
-    assert.deepEqual(s.problems, []); assert.equal(s.meta.status, 'draft'); assert.equal(s.meta.model, 'MiniMax H3'); assert.equal(s.meta.promptLang, 'en');
+    assert.deepEqual(s.problems, []); assert.equal(s.meta.status, 'draft'); assert.equal(s.meta.model, 'MiniMax H3'); assert.equal(s.meta.promptLang, 'zh');
     assert.equal(cli('prompts', 'new', file, 'E01-05').status, 1);
     assert.equal(cli('prompts', 'submit', file, 'E01-05').status, 1, '空白工作单过不了结构检查，不能提交');
     rmSync(join(cwd, 'E01-05'), {recursive: true});
@@ -190,7 +190,7 @@ try {
       return {id: seg.id, sheet: W.parseWorksheet(W.serializeWorksheet({meta: {segment: seg.id, status: 'in_review', round: 1, model: 'MiniMax H3', promptLang: 'en'}, structure, body: prompt}))}; });
     const {doc, problems} = assembleFromWorksheets({...seed, promptLang: 'en'}, sheets, {});
     assert.deepEqual(problems, []); assert.ok(!('seedScenes' in doc.episodes[0]));
-    assert.deepEqual(validateCreation(doc, {script, outline}), []);
+    assert.deepEqual(validateCreation(doc, {script, outline,cast:ex('characters/收书人-cast.json'),art:ex('art/收书人-art.json'),imageExists:()=>true}), []);
     assert.match(worksheetSyncProblem(doc.episodes[0].segments[0], sheets[0].sheet), /尚未批准/);
     const wrongModel = assembleFromWorksheets({...seed, video: {model: 'seedance2.0'}}, sheets, {});
     assert.ok(wrongModel.problems.some(p => /更换模型/.test(p)));

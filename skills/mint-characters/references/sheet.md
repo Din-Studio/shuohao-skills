@@ -1,6 +1,6 @@
 # 角色设定图 · 版面与提示词
 
-本 skill 只导出出图计划；实际生成使用独立安装的 **ly-image**。先阅读 [交接与恢复流程](media-handoff.md)。
+本地 CLI 只导出出图计划；人物角色整理完成后，agent 立即接续独立安装的 **ly-image** 完成实际生成，再渲染报告。用户明确仅登记、仅提示词或暂不生图时除外。先阅读 [交接与恢复流程](media-handoff.md)。
 
 ```bash
 node <baseDir>/scripts/mint-characters.mjs images <剧名>-cast.json --out image-plan.json
@@ -65,7 +65,7 @@ same expression`。拿到图先扫一眼两边是不是同一个人，不一致�
 
 产物路径由 `slug`（中文会保留）算出，`images` 与 `render` 用的是**同一个函数**——
 所以两边永远对得上。`render` 会自动去 `images/<slug>-sheet.png` 找图，找到就嵌进
-report.html，**先出图再 render**。
+cast-report.html，**先出图再 render**。
 
 ## 创作与制作参数分离
 

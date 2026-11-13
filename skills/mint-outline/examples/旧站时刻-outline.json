@@ -1,23 +1,12 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "source": "旧站时刻",
   "lang": "zh",
   "params": {
-    "genre": "生活悬疑，记录与责任",
-    "thresholds": {
-      "maxLeads": 3,
-      "maxSupport": 4,
-      "maxFunctional": 4,
-      "maxPrimaryScenes": 5,
-      "maxProps": 5
-    }
+    "genre": "生活悬疑，记录与责任"
   },
   "story": {
     "summary": "旧站撤并前最后一班接驳车未进入到站表，退休调度员许钟与年轻站务员林蔚需要核对它的去向。从当前漏报追查纸质交接制度，最终决定是否同时公开许钟二十年前的错误归责。更正说明与原始交接簿一起移交；事实得到澄清，受损关系是否修复仍留给当事人。",
-    "focusCharacterIds": [
-      "C01",
-      "C02"
-    ],
     "endingBeatId": "B08",
     "sourceRefs": [
       {
@@ -27,208 +16,6 @@
       }
     ]
   },
-  "characters": [
-    {
-      "id": "C01",
-      "name": "许钟",
-      "tier": "lead",
-      "role": "退休调度员，旧记录签署人",
-      "arc": "从要求只查当下漏报转为承认旧归责错误并共同签署更正",
-      "sourceRefs": [
-        {
-          "documentId": "D01",
-          "startLine": 3,
-          "endLine": 7
-        },
-        {
-          "documentId": "D01",
-          "startLine": 24,
-          "endLine": 34
-        }
-      ]
-    },
-    {
-      "id": "C02",
-      "name": "林蔚",
-      "tier": "lead",
-      "role": "年轻站务员，移交资料负责人",
-      "arc": "从核查当前漏报推进到要求旧归责也须独立证据，保留原件与更正说明",
-      "sourceRefs": [
-        {
-          "documentId": "D01",
-          "startLine": 3,
-          "endLine": 8
-        },
-        {
-          "documentId": "D01",
-          "startLine": 17,
-          "endLine": 22
-        },
-        {
-          "documentId": "D01",
-          "startLine": 28,
-          "endLine": 34
-        },
-        {
-          "documentId": "D01",
-          "startLine": 38,
-          "endLine": 42
-        }
-      ]
-    },
-    {
-      "id": "C03",
-      "name": "程安",
-      "tier": "support",
-      "role": "接驳车司机，旧归责将漏报记为他的迟报",
-      "arc": "从拒绝再作口头解释转为提交自己的留底，但不承诺原谅",
-      "sourceRefs": [
-        {
-          "documentId": "D01",
-          "startLine": 10,
-          "endLine": 14
-        },
-        {
-          "documentId": "D01",
-          "startLine": 24,
-          "endLine": 25
-        },
-        {
-          "documentId": "D01",
-          "startLine": 31,
-          "endLine": 36
-        },
-        {
-          "documentId": "D01",
-          "startLine": 41,
-          "endLine": 43
-        }
-      ]
-    },
-    {
-      "id": "C04",
-      "name": "档案接收员",
-      "tier": "functional",
-      "role": "无台词档案接收员，确认原件与更正说明同时入档",
-      "sourceRefs": [
-        {
-          "documentId": "D01",
-          "startLine": 38,
-          "endLine": 38
-        }
-      ],
-      "presence": "visible"
-    }
-  ],
-  "scenes": [
-    {
-      "id": "S01",
-      "name": "旧站值班室",
-      "primary": true,
-      "sourceRefs": [
-        {
-          "documentId": "D01",
-          "startLine": 2,
-          "endLine": 8
-        }
-      ]
-    },
-    {
-      "id": "S02",
-      "name": "接驳停车场",
-      "primary": true,
-      "sourceRefs": [
-        {
-          "documentId": "D01",
-          "startLine": 9,
-          "endLine": 15
-        }
-      ]
-    },
-    {
-      "id": "S03",
-      "name": "档案接收窗口",
-      "primary": false,
-      "sourceRefs": [
-        {
-          "documentId": "D01",
-          "startLine": 37,
-          "endLine": 43
-        }
-      ]
-    }
-  ],
-  "props": [
-    {
-      "id": "P01",
-      "name": "纸质交接簿",
-      "function": "保存旧制度的补记时间与签署责任",
-      "beatIds": [
-        "B02",
-        "B05",
-        "B08"
-      ],
-      "sourceRefs": [
-        {
-          "documentId": "D01",
-          "startLine": 6,
-          "endLine": 7
-        }
-      ]
-    },
-    {
-      "id": "P02",
-      "name": "当次接驳车回执留底",
-      "function": "独立核验车辆已到站，不能仅凭回忆定案",
-      "beatIds": [
-        "B03",
-        "B04"
-      ],
-      "sourceRefs": [
-        {
-          "documentId": "D01",
-          "startLine": 11,
-          "endLine": 12
-        },
-        {
-          "documentId": "D01",
-          "startLine": 17,
-          "endLine": 18
-        }
-      ]
-    },
-    {
-      "id": "P03",
-      "name": "更正说明",
-      "function": "将事实澄清与责任归属一起记录",
-      "beatIds": [
-        "B07",
-        "B08"
-      ],
-      "sourceRefs": [
-        {
-          "documentId": "D01",
-          "startLine": 32,
-          "endLine": 36
-        }
-      ]
-    },
-    {
-      "id": "P04",
-      "name": "二十年前的旧回执",
-      "function": "与旧归责原页核对，推翻历史迟报时间；不是当次车辆回执",
-      "beatIds": [
-        "B06"
-      ],
-      "sourceRefs": [
-        {
-          "documentId": "D01",
-          "startLine": 31,
-          "endLine": 32
-        }
-      ]
-    }
-  ],
   "beats": [
     {
       "id": "B01",
@@ -361,16 +148,6 @@
           ]
         }
       },
-      "sceneIds": [
-        "S01"
-      ],
-      "characterIds": [
-        "C01",
-        "C02"
-      ],
-      "propIds": [
-        "P01"
-      ],
       "warnings": [],
       "sourceRefs": [
         {
@@ -388,17 +165,6 @@
         "mode": "closure",
         "event": "林蔚将车辆去向标为已确认，转查记录为何缺失。"
       },
-      "sceneIds": [
-        "S02"
-      ],
-      "characterIds": [
-        "C01",
-        "C02",
-        "C03"
-      ],
-      "propIds": [
-        "P02"
-      ],
       "warnings": [],
       "sourceRefs": [
         {
@@ -427,17 +193,6 @@
           ]
         }
       },
-      "sceneIds": [
-        "S01"
-      ],
-      "characterIds": [
-        "C01",
-        "C02"
-      ],
-      "propIds": [
-        "P01",
-        "P02"
-      ],
       "warnings": [],
       "sourceRefs": [
         {
@@ -455,16 +210,6 @@
         "mode": "open",
         "event": "许钟留下原页，不再要求林蔚只处理新系统。"
       },
-      "sceneIds": [
-        "S01"
-      ],
-      "characterIds": [
-        "C01",
-        "C02"
-      ],
-      "propIds": [
-        "P01"
-      ],
       "warnings": [],
       "sourceRefs": [
         {
@@ -484,15 +229,11 @@
               "endLine": 26
             }
           ],
-          "characterIds": [
-            "C01",
-            "C02"
-          ],
           "epistemic": "fact"
         },
         {
           "kind": "continuity",
-          "text": "归责页回到同一本交接簿，许钟随后将原页交给林蔚；不是新建道具。",
+          "text": "归责页回到同一本交接簿，许钟随后将原页交给林蔚，原文没有另一本簿。",
           "sourceRefs": [
             {
               "documentId": "D01",
@@ -504,9 +245,6 @@
               "startLine": 29,
               "endLine": 29
             }
-          ],
-          "propIds": [
-            "P01"
           ]
         }
       ]
@@ -519,19 +257,6 @@
         "mode": "closure",
         "event": "更正说明签署完成，原件与说明分别编号待交。"
       },
-      "sceneIds": [
-        "S01"
-      ],
-      "characterIds": [
-        "C01",
-        "C02",
-        "C03"
-      ],
-      "propIds": [
-        "P01",
-        "P04",
-        "P03"
-      ],
       "warnings": [],
       "sourceRefs": [
         {
@@ -561,19 +286,6 @@
           ]
         }
       },
-      "sceneIds": [
-        "S03"
-      ],
-      "characterIds": [
-        "C01",
-        "C02",
-        "C03",
-        "C04"
-      ],
-      "propIds": [
-        "P01",
-        "P03"
-      ],
       "warnings": [],
       "sourceRefs": [
         {
@@ -592,9 +304,6 @@
               "startLine": 41,
               "endLine": 43
             }
-          ],
-          "characterIds": [
-            "C03"
           ]
         }
       ]

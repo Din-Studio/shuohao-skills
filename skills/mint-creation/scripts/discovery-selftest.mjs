@@ -9,6 +9,7 @@ import {spawnSync} from 'node:child_process';
 const here=dirname(fileURLToPath(import.meta.url)),ex=join(here,'../examples');
 const read=p=>JSON.parse(readFileSync(join(ex,p),'utf8'));
 const creation=read('creation/收书人-creation.json'),script=read('script/收书人-script.json'),production=read('production.json');
+script.provenance.documents.forEach(d=>d.path=join(ex,'收书人-原剧本.txt'));
 const root=mkdtempSync(join(tmpdir(),'creation-discovery-'));
 const write=(p,d)=>writeFileSync(p,JSON.stringify(d));
 let count=0;

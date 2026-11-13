@@ -75,7 +75,7 @@ try {
   test('independent script may omit plans, claims and opening position',()=>{
     const s=clone(script);delete s.episodes[0].beatClaims;delete s.episodes[0].openingBeat;delete s.params;
     const d=clone(doc);delete d.episodes[0].openingBeat;
-    assert.deepEqual(scriptProblems(s),[]);assert.deepEqual(validateCreation(d,{script:s}),[]);
+    assert.deepEqual(scriptProblems(s),[]);assert.deepEqual(validateCreation(d,{...ctx,outline:undefined,script:s}),[]);
     const info=reportContext(d,{script:s}).episodes[0];assert.equal(info.planSource,'missing-upstream');assert.equal(info.openingMapping,'not-marked');assert.ok(!('openingCuts' in info));
     assert.ok(renderMarkdown(d,{script:s}).includes('missing-upstream'));
   });
@@ -89,7 +89,7 @@ try {
   });
   test('end follows actual last flow, stale shot coverage fails',()=>{
     assert.deepEqual(expandScript(script).get(1).endBeat,[1,10]);
-    const s=clone(script);s.episodes[0].scenes[0].flow.push({action:'她关上灯。'});
+    const s=clone(script);s.episodes[0].scenes[0].flow.push({action:'她关上灯。',sourceRefs:script.provenance.coverage});
     assert.deepEqual(expandScript(s).get(1).endBeat,[1,11]);assert.equal(find(doc,'coverage',{...ctx,script:s}).status,'fail');
     assert.deepEqual(reportContext(doc,{...ctx,script:s}).episodes[0].endBeat,[1,11]);
   });
@@ -115,14 +115,13 @@ try {
     ['reverse',s=>s.episodes[0].beatClaims[1].start=[1,7]],['invalid position',s=>s.episodes[0].beatClaims[1].end=[9,1]],
     ['order',s=>s.episodes[0].beatClaims.reverse()],['wrong episode',s=>s.episodes[0].ep=2],
   ]) test(`claims remain checked ${label}`,()=>{const s=clone(script);mutate(s);assert.ok(validateCreation(doc,{...ctx,script:s}).length);});
-  test('deleted outline node invalidates both asset references and claims',()=>{
-    const o=clone(outline);o.beats.splice(1,1);assert.equal(find(doc,'outline-contract',{...ctx,outline:o}).status,'fail');
-    o.props.forEach(p=>p.beatIds=p.beatIds.filter(id=>id!=='B02'));
+  test('deleted story node invalidates claims, not asset authority',()=>{
+    const o=clone(outline);o.beats.splice(1,1);assert.deepEqual(outlineProblems(o),[]);
     assert.equal(find(doc,'upstream-intent',{...ctx,outline:o}).status,'fail');
   });
   test('unclassified optional fields accepted, explicit invalid fields rejected',()=>{
     const o=clone(outline);for(const b of o.beats){delete b.position;delete b.kind;}delete o.story.audiencePromise;delete o.adaptation;
-    for(const c of o.characters){delete c.from;delete c.arc;}assert.deepEqual(outlineProblems(o),[]);assert.deepEqual(validateCreation(doc,{...ctx,outline:o}),[]);
+    assert.deepEqual(outlineProblems(o),[]);assert.deepEqual(validateCreation(doc,{...ctx,outline:o}),[]);
     o.beats[0].weight='major';assert.ok(outlineProblems(o).length);delete o.beats[0].weight;o.beats[0].kind='wrong';assert.ok(outlineProblems(o).length);
   });
   test('brief must be nonempty and project/local conflict never chooses priority',()=>{
@@ -148,7 +147,7 @@ try {
     const d=clone(doc);d.episodes[0].segments[0].images[1].ref='S99';assert.equal(find(d,'refimage-coverage',{art:ctx.art}).status,'fail');
   });
   test('export effective model, original prompt and reference order retained',()=>{
-    const d=clone(doc);d.video={model:'seedance2.0'};const p=exportPack(d,script,{production});
+    const d=clone(doc);d.video={model:'seedance2.0'};const p=exportPack(d,script,{production,scriptPath:join(ex,'script/收书人-script.json')});
     const manifest=JSON.parse(p.files.find(f=>f.path==='manifest.json').content);assert.equal(manifest.video.model,'seedance2.0');assert.equal(manifest.video.aspectRatio,production.video.aspectRatio);
     assert.deepEqual(manifest.segments[0].images.map(i=>i.ref),doc.episodes[0].segments[0].images.map(i=>i.ref));assert.ok(p.files[0].content.includes(doc.episodes[0].segments[0].prompt));
   });
@@ -165,7 +164,7 @@ try {
   });
   test('optional tables omitted and special delivery retained in seed',()=>{
     const d=clone(doc);d.episodes[0].segments.forEach(s=>s.images=[]);
-    const s=clone(script);s.episodes[0].scenes[0].flow=s.episodes[0].scenes[0].flow.map(b=>({action:b.action??b.line}));
+    const s=clone(script);s.episodes[0].scenes[0].flow=s.episodes[0].scenes[0].flow.map(b=>({action:b.action??b.line,sourceRefs:b.sourceRefs}));
     assert.ok(!renderHtml(d,{script:s}).includes('id="sec-dialogue"'));
     assert.ok(!renderHtml(d,{script:s}).includes('id="sec-refs"'));
     assert.ok(!renderMarkdown(doc,ctx).includes('| 配方 |'));
@@ -175,12 +174,12 @@ try {
     for(const mutate of [s=>s.episodes[0].scenes[0].flow[0]=null,s=>s.episodes[0].scenes[0].characters=['bad'],s=>s.episodes[0].scenes[0].characters=['C01','C01']]){
       const s=clone(script);mutate(s);assert.equal(find(doc,'script-contract',{...ctx,script:s}).status,'fail');
     }
-    for(const mutate of [o=>o.episodes[0]=null,o=>o.characters[0]=null,o=>o.beats[0]=null]){
+    for(const mutate of [o=>o.episodes[0]=null,o=>o.episodes[0].characterIds=[],o=>o.beats[0]=null]){
       const o=clone(outline);mutate(o);assert.equal(find(doc,'outline-contract',{...ctx,outline:o}).status,'fail');
     }
   });
   test('CLI seed/render and invalid numeric boundary',()=>{
-    const s=file('script.json',script),p=file('creation.json',doc);assert.equal(cli(['seed',s]).status,0);assert.equal(cli(['render',p,'--script',s,'--no-production','--html']).status,0);
+    const local=clone(script);local.provenance.documents.forEach(d=>d.path=join(ex,'收书人-原剧本.txt'));const s=file('script.json',local),p=file('creation.json',doc);assert.equal(cli(['seed',s]).status,0);assert.equal(cli(['render',p,'--script',s,'--no-production','--html']).status,0);
     const d=clone(doc);d.episodes[0].segments[0].cuts[0].seconds='<img onerror=bad>';assert.throws(()=>renderHtml(d,ctx));
   });
   console.log(`✓ ${count} creation v3 integration tests passed; offline only`);

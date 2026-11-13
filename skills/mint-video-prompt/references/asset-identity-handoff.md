@@ -1,0 +1,68 @@
+# 资产身份与显式映射交接
+
+本规则内化自仓库《outline 剧情与资产拆分方案》，并根据 script 的显式映射契约实现。本目录持有自己的确定性实现，不导入兄弟 skill 的脚本或样例。
+
+## 权威与版本
+
+| 输入 | 接受版本 | 本阶段读取的内容 | 缺少时 |
+| --- | --- | --- | --- |
+| outline | 5 | 故事、B 节点、分集开场与集尾、故事来源 | skipped；独立 script 可以提供自己的计划 |
+| script | 4 | 正文、位置、声音、局部 C/S/P、assetMappings | 独立报告可 skipped；制作派发、导出要求实际剧本 |
+| cast | 显式 v1 | 人物完整资产规范、稳定身份、来源 | skipped；实际依赖人物身份时阻断交接 |
+| art | 显式 v1 | 地点与物品完整资产规范、稳定身份、来源 | skipped；实际依赖美术身份时阻断交接 |
+| creation / production | 3 | 制作结构、参数与项目要求 | production 可 skipped |
+
+cast/art v1 是身份阶段的正式版本；消费者仅接受该版本，不接受缺版本、未经声明的未来版本或按字段猜版本。人物设定图按稳定 C ID 解析；美术设定图优先沿用资产的 sheetImage 或 imageStem，不随改名重新猜测路径。这里检查消费端所需结构和来源，不替代资产阶段的身份语义审核、生命周期审核或预算检查。完整流程按 outline → characters → art → script → creation 推进，由项目级 pipeline 记录状态；本 skill 的独立命令不声明前序阶段已完成。
+
+提供但损坏、版本不支持、标题不匹配、来源字节摘要不匹配或来源不可读取的输入必须报错，不能改报 skipped。来源路径相对各自 JSON；规范化后的 dispatch 来源路径为绝对路径。不同阶段的路径字符串不必相同；文档 id、sha256、lineCount 与负责范围必须能够对账。
+
+## 唯一映射权威
+
+映射只保存在 `script.assetMappings`。工作单、creation 与派发材料不建立第二套可编辑映射。派发中的 assetMappings 是当前 script 的只读证据快照。
+
+```json
+{
+  "kind": "character",
+  "localId": "C01",
+  "assetId": "C17",
+  "status": "confirmed",
+  "sourceRefs": [{"documentId":"D01","startLine":3,"endLine":4}],
+  "basis": "已回查原文并明确确认这次正文引用指向 cast 的该身份。",
+  "assetDigest": "完整的64位小写SHA256摘要",
+  "documentVersions": [{"id":"D01","sha256":"原件完整SHA256摘要","lineCount":12}]
+}
+```
+
+kind 为 character/scene/prop。status 为 confirmed/pending/conflict。basis 必须是非空文本，记录原文判断或用户决定，不把制作补定冒称原文事实。每个 kind/localId 至多一条。局部 ID 与资产 ID 可以相同，也可以不同；同 ID、同名、别名相同均不能自动确认。匿名声音、未知说话者、非人主体和同名人物不能被名称回退合并。
+
+assetDigest 是目标**完整资产对象**的规范 JSON 的 SHA256：递归排序对象键，数组保持顺序，UTF-8 编码，不加空白或换行。它不是整个 cast/art 文件摘要，也不是只包含 name/id 的摘要。documentVersions 记录映射证据及目标资产全部嵌套证据涉及的原件身份、完整字节 SHA256 与行数。目标背景文档的版本快照不等于 script 已负责该文档全部内容。映射证据须在 script 和资产阶段的已读范围内，并在目标资产负责范围内。
+
+编写方与审核方不能擅自确认映射。缺少或冲突时协调 script 与资产负责阶段，在唯一权威中明确确认，再重新派发。
+
+## 实际制作依赖
+
+cuts.characters、cuts.props、段所属场次的 sceneId，以及 images.ref 都是 script **局部标记**。图片顺序仍由 images 数组决定。dispatch.assets 的 id 是 cast/art 的**资产 ID**，通过 assetMappings 连接，不能直接以 images.ref 查资产表。
+
+只要求实际镜头、声音与图片依赖的引用有有效 confirmed 映射。认领台词及 audioRefs 延续中的已知发声者、声音的明确听者也属于实际依赖，包括不出镜的画外声音和内心声音。匿名 VO 保持未知，不据此猜测人物。声音身份确认不强制挂载人物图片。不要求 script 中每个提及对象都确认，不要求所有角色、场景、物品生成图片。镜头依赖需要确认映射，但不强制生成图片；文件存在性只检查 images 中实际挂载的参考图；纯报告或 seed 不是联合制作交接通过。
+
+人物规范与证据只从 cast 读取，地点和物品只从 art 读取。outline 不参与资产命名、图片路径、资产证据或映射判断。正式人物图片使用**目标资产 ID**-sheet.png。美术优先沿用 sheetImage 或固定 imageStem，兼容消费夹具没有固定路径时才按名称及目录碰撞规则解析；不使用局部 ID 替代目标身份。
+
+## 选择性审核失效
+
+输入摘要绑定实际依赖的映射记录、目标完整资产规范摘要、相关来源文档及覆盖范围。身份合并、拆分、删除、重命名、规范变化、映射改判、映射依据或相关来源变化，都需要重新核验受影响的段。没有挂载的图片文件变化不影响只依赖该资产身份的镜头；挂载的图片摘要变化撤销对应工作单批准。生成计划还会逐项比对 manifest 中的素材顺序、局部引用、目标 ID、规范摘要、名称与路径，以及当前已审核镜头的秒数；重新审核之后仍须重新 export，不能让旧 manifest 指向旧素材。
+
+未参与本段的资产、映射和来源变化不撤销本段审核。无关资产的失效映射可以留待负责阶段处理，不应阻断未依赖它的段。已提供的原件损坏或字节不匹配仍属于输入错误，不能以选择性失效为理由忽略。
+
+正文与声音语义不变：notes 不朗读；audioRefs 按原文位置延续同一次播放，不新增台词、不重播、不提前揭晓。结构、来源与映射检查不是内容审核。approved 必须由审核方独立检查故事表达、声音、画面与参考素材之后登记；也不表示成片验收通过。
+
+## 消费端迁移检查表
+
+| 旧读取位置 | 当前权威与行为 |
+| --- | --- |
+| outline.characters、旧角色同名回退 | cast.characters；没有有效显式映射不解析身份 |
+| outline.scenes/props 与分集资产数组 | art.scenes/props；镜头依赖从 script 局部引用确定 |
+| outline 中的资产 sourceRefs | cast/art 的资产 sourceRefs、来源文档和覆盖范围 |
+| 工作单、报告、manifest 的素材路径 | 通过映射取得目标资产 ID 及负责阶段的稳定图片路径 |
+| 审核输入摘要只绑定挂载图片 | 同时绑定实际镜头身份、显式映射、完整资产规范与相关证据 |
+
+旧 outline v4 必须在上游显式迁移，不能在 creation 中隐式双读。旧工作单需要重新派发并审核；旧编号沿用不证明映射已确认。creation 的历史 migrate-v3 仍保留，但不替代 outline/资产/script 的迁移或确认。

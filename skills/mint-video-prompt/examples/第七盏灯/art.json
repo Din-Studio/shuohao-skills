@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "source": "第七盏灯",
+  "provenance": {
+    "kind": "script",
+    "scope": "partial",
+    "documents": [
+      {
+        "id": "D01",
+        "path": "原剧本.txt",
+        "sha256": "0e3c93bb69be28f7dc5a63bca42ed8dced05e77421eeda296112fd2a58584264",
+        "lineCount": 8
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 8
+      }
+    ]
+  },
+  "scenes": [
+    {
+      "id": "S11",
+      "name": "山村教室",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 8
+        }
+      ]
+    }
+  ],
+  "props": [
+    {
+      "id": "P11",
+      "name": "第七盏煤油灯",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 8
+        }
+      ]
+    }
+  ]
+}

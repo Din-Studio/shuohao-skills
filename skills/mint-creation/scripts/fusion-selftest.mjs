@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Own story, own fixtures, real CLI roundtrip. No sibling imports, models, or paid calls.
 import assert from 'node:assert/strict';
+import {promptFixture} from './test-prompt.mjs';
 import {cpSync,mkdtempSync,mkdirSync,readFileSync,writeFileSync,rmSync,chmodSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
@@ -12,13 +13,14 @@ import {scriptProblems,outlineProblems,reconcile,beatSeconds} from './lib/contra
 import {sourceProblems,verifySources,lineCountOf} from './lib/source.mjs';
 import {playbackProblems} from './lib/playback.mjs';
 import * as W from './lib/worksheet.mjs';
+import {assetDigest} from './lib/asset-mapping.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const temp=mkdtempSync(join(tmpdir(),'creation-fusion-'));
 const fixture=join(root,'references/test-fixtures/fusion');
 const json=p=>JSON.parse(readFileSync(p,'utf8')),clone=structuredClone;
 const script=json(join(fixture,'script.json')),doc=json(join(fixture,'creation.json'));
 const outline=json(join(fixture,'outline.json')),art=json(join(fixture,'art.fixture.json')),cast=json(join(fixture,'cast.fixture.json'));
-const ctx={script,scriptPath:join(fixture,'script.json'),outline,outlinePath:join(fixture,'outline.json'),art,cast,imageExists:()=>true};
+const ctx={script,scriptPath:join(fixture,'script.json'),outline,outlinePath:join(fixture,'outline.json'),art,cast,artPath:join(fixture,'art.fixture.json'),castPath:join(fixture,'cast.fixture.json'),imageExists:()=>true};
 // Only a technical file fixture. Not a generated image, visual reference or fidelity claim.
 const standIn=(id)=>Buffer.from('TEST-ONLY NON-EMPTY ASSET STAND-IN: '+id);
 function assetProject(project) {
@@ -27,8 +29,8 @@ function assetProject(project) {
   for(const stage of ['outline','art','characters'])mkdirSync(join(project,stage),{recursive:true});
   const o=clone(outline);for(const d of o.provenance.documents)d.path='../script/'+d.path;
   writeFileSync(join(project,'outline/outline.json'),JSON.stringify(o));
-  writeFileSync(join(project,'art/art.json'),JSON.stringify(art));
-  writeFileSync(join(project,'characters/cast.json'),JSON.stringify(cast));
+  writeFileSync(join(project,'art/art.json'),JSON.stringify({...art,provenance:o.provenance}));
+  writeFileSync(join(project,'characters/cast.json'),JSON.stringify({...cast,provenance:o.provenance}));
   for(const [kind,items] of [['character',cast.characters],['scene',art.scenes],['prop',art.props]])
     for(const item of items){const p=resolve(cd,referenceImagePath(kind,item.name,item.id,ctx));mkdirSync(dirname(p),{recursive:true});writeFileSync(p,standIn(item.id));}
   return {sd,cd,sp:join(sd,'script.json'),cp:join(cd,'creation.json'),op:join(project,'outline/outline.json')};
@@ -122,14 +124,11 @@ try {
     assert.ok(playbackProblems(ep,s,()=>6).length);
     ep.segments[0].cuts[2].seconds=10;assert.deepEqual(playbackProblems(ep,s,()=>6),[]);
   });
-  test('source-only outline arrays and functional tier match upstream; invalid IDs still fail',()=>{
+  test('outline v5 is story-only and refuses asset identity fields',()=>{
     assert.deepEqual(outlineProblems(outline),[]);
-    const o=clone(outline);o.characters=[];o.scenes=[];o.props=[];
-    o.episodes[0].characterIds=[];o.episodes[0].sceneIds=[];o.episodes[0].propIds=[];
-    assert.deepEqual(outlineProblems(o),[]);
-    o.episodes[0].characterIds=['C99'];assert.ok(outlineProblems(o).some(p=>p.includes('characterIds')));
-    o.episodes[0].characterIds=[];o.episodes[0].sceneIds=['S99'];assert.ok(outlineProblems(o).some(p=>p.includes('sceneIds')));
-    const old=clone(outline);old.characters[0].tier='minor';assert.ok(outlineProblems(old).some(p=>p.includes('tier')));
+    for (const field of ['characters','scenes','props']) {const o=clone(outline);o[field]=[];assert.ok(outlineProblems(o).length);}
+    const o=clone(outline);o.episodes[0].characterIds=[];assert.ok(outlineProblems(o).some(p=>p.includes('characterIds')));
+    assert.ok(outlineProblems({...outline,schemaVersion:4}).length);
   });
   test('parsed script document IDs require upstream version match, not matching paths',()=>{
     const o=clone(outline);o.provenance.documents[0].path='../other-stage/D01.txt';
@@ -230,8 +229,11 @@ try {
       beatClaims:[{beatId:'B01',start:[1,1],end:[1,1]},{beatId:'B02',start:[2,1],end:[2,1]}],
       scenes:[{sceneId:'S01',characters:['C01','C02'],props:['P01'],flow:[{action:'两位同名阿宁交接候车亭模型。',sourceRefs:ref(1)}]},
       {sceneId:'S02',characters:['C02'],props:['P01'],flow:[{action:'第二位阿宁携带模型到达南站候车亭。',sourceRefs:ref(2)}]}]}]};
-    const a={source:o.source,scenes:o.scenes,props:o.props},c={source:o.source,characters:o.characters};
-    const context={outline:o,art:a,cast:c},sp=join(sd,'script.json'),cp=join(cd,'creation.json');
+    const a={schemaVersion:1,source:o.source,provenance:clone(o.provenance),scenes:o.scenes,props:o.props},c={schemaVersion:1,source:o.source,provenance:clone(o.provenance),characters:o.characters};
+    s.assetMappings=[];
+    for(const [kind,list,authority] of [['character','characters',c],['scene','scenes',a],['prop','props',a]])for(const asset of authority[list])s.assetMappings.push({kind,localId:asset.id,assetId:asset.id,status:'confirmed',basis:'Fixture author explicitly verified distinct identities and original locations.',sourceRefs:clone(asset.sourceRefs),assetDigest:assetDigest(asset),documentVersions:provenance.documents.map(({id,sha256,lineCount})=>({id,sha256,lineCount}))});
+    o.schemaVersion=5;delete o.characters;delete o.scenes;delete o.props;for(const e of o.episodes){delete e.characterIds;delete e.sceneIds;delete e.propIds;}
+    const context={script:s,outline:o,art:a,cast:c},sp=join(sd,'script.json'),cp=join(cd,'creation.json');
     writeFileSync(sp,JSON.stringify(s));writeFileSync(join(od,'outline.json'),JSON.stringify(o));
     writeFileSync(join(project,'characters/cast.json'),JSON.stringify(c));writeFileSync(join(project,'art/art.json'),JSON.stringify(a));
     const paths=new Map();
@@ -244,19 +246,18 @@ try {
     const collision={art:{scenes:[{id:'S01',name:'北 站'}],props:[{id:'P01',name:'北-站'}]}};
     assert.equal(referenceImagePath('prop','北-站','P01',collision),'../art/images/P01-北-站-sheet.png');
     const renamed=clone(context);renamed.cast.characters[1].name='制作称呼';
-    assert.equal(namer(renamed).nameOf('character','C02'),'制作称呼','ID takes priority over names');
+    assert.equal(namer(renamed).nameOf('character','C02'),null,'asset digest change requires explicit reconfirmation');
     const wrongId=clone(context);wrongId.cast.characters=[{id:'C99',name:'阿宁'}];
     assert.equal(namer(wrongId).nameOf('character','C01'),null,'a different stable ID cannot match by name');
     const legacy=clone(context);legacy.cast.characters=[{name:'阿宁'}];
     assert.equal(namer(legacy).nameOf('character','C01'),null,'ambiguous legacy name cannot merge identities');
-    legacy.outline.characters=[legacy.outline.characters[0]];
-    assert.equal(namer(legacy).nameOf('character','C01'),'阿宁');
+    assert.equal(namer(legacy).nameOf('character','C01'),null,'no name fallback even for unique names');
     const segments=[{id:'E01-01',sceneIndex:1,images:[{kind:'character',ref:'C01'},{kind:'character',ref:'C02'},{kind:'scene',ref:'S01'},{kind:'prop',ref:'P01'}],
       cuts:[{beats:[1,1],seconds:5,size:'wide',camera:'Static Shot',characters:['C01','C02'],props:['P01']}],
-      prompt:'图 1 是交出者。图 2 是接收者。图 3 是北站空间。图 4 是模型。\n镜头描述：\n[镜头 1] 全景，固定，图1中的人物把图4中的模型交给图2中的人物。\n环境声与配乐：风声，无配乐。'},
+      prompt:promptFixture('图1中的人物把图4中的模型交给图2中的人物。',Array(4).fill(null))},
       {id:'E01-02',sceneIndex:2,images:[{kind:'character',ref:'C02'},{kind:'scene',ref:'S02'},{kind:'prop',ref:'P01'}],
       cuts:[{beats:[1,1],seconds:5,size:'wide',camera:'Static Shot',characters:['C02'],props:['P01']}],
-      prompt:'图 1 是携带者。图 2 是南站空间。图 3 是模型。\n镜头描述：\n[镜头 1] 全景，固定，图1中的人物携带图3中的模型到达图2中的空间。\n环境声与配乐：风声，无配乐。'}];
+      prompt:promptFixture('图1中的人物携带图3中的模型到达图2中的空间。',Array(3).fill(null))}];
     const cli=(...args)=>spawnSync(process.execPath,[join(root,'scripts/mint-creation.mjs'),...args,'--script',sp],{cwd:cd,encoding:'utf8'});
     const run=(...args)=>{const r=cli(...args);assert.equal(r.status,0,r.stderr+r.stdout);return r;};
     const seed=JSON.parse(run('seed',sp).stdout);seed.promptLang='zh';seed.video=doc.video;writeFileSync(cp,JSON.stringify(seed));

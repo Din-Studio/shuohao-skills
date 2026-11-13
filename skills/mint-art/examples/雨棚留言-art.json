@@ -48,6 +48,14 @@
           "核对",
           "归还"
         ]
+      },
+      "identityKey": "rain:S01",
+      "decision": "故事先行确认的独立美术资产",
+      "designStatus": "ready",
+      "identityReview": {
+        "status": "confirmed",
+        "basis": "本 skill 自有样例的人工语义登记；不等于媒体审核",
+        "inputDigest": "d05e44df018fb0356f1b4a5b4dbd4967c012a343efeeb68fae83bdca63d6964c"
       }
     },
     {
@@ -93,6 +101,14 @@
         "beats": [
           "核对"
         ]
+      },
+      "identityKey": "rain:S02",
+      "decision": "故事先行确认的独立美术资产",
+      "designStatus": "ready",
+      "identityReview": {
+        "status": "confirmed",
+        "basis": "本 skill 自有样例的人工语义登记；不等于媒体审核",
+        "inputDigest": "cd56385090fd08ca51552db3953aeb0701f57ce1a12cc58afd6873bffdfa0256"
       }
     },
     {
@@ -140,7 +156,15 @@
         ]
       },
       "variantOf": "S01",
-      "changes": "清走菜筐和临时帘布，保留立柱、挂钩和台面磨损。"
+      "changes": "清走菜筐和临时帘布，保留立柱、挂钩和台面磨损。",
+      "identityKey": "rain:S03",
+      "decision": "故事先行确认的独立美术资产",
+      "designStatus": "ready",
+      "identityReview": {
+        "status": "confirmed",
+        "basis": "本 skill 自有样例的人工语义登记；不等于媒体审核",
+        "inputDigest": "da374cb2a9687e096d604ddea020fdd22b66a464e5c1847b166a34d362e0c9fc"
+      }
     }
   ],
   "props": [
@@ -176,9 +200,6 @@
       "relatedScenes": [
         "S01"
       ],
-      "carriedBy": [
-        "许桂兰"
-      ],
       "image": {
         "prompt": "A small cork message board with a faded green wooden frame. The upper-left frame corner has missing paint exposing pale wood; two holes mark the top edge, with the right hole worn oval; three pale paper-shielded patches remain at the lower right. Paper slips are clipped to the board, without legible lettering, handheld scale, isolated on a pure white background, no people, no hands. Photorealistic live-action film environment, cinematic production design reference, real location realism with natural light and authentic materials, grounded architectural perspective, cinematic depth",
         "negativePrompt": "people, human figures, hands, fingers, plastic CG look, warped perspective, text, watermark, signature",
@@ -206,6 +227,14 @@
           "B02",
           "B03"
         ]
+      },
+      "identityKey": "rain:P01",
+      "decision": "故事先行确认的独立美术资产",
+      "designStatus": "ready",
+      "identityReview": {
+        "status": "confirmed",
+        "basis": "本 skill 自有样例的人工语义登记；不等于媒体审核",
+        "inputDigest": "ad61d6e59857314fba24647fbb8bf95b5b891496926c2ea1e1b5381aefb899df"
       }
     },
     {
@@ -240,9 +269,6 @@
       "relatedScenes": [
         "S01"
       ],
-      "carriedBy": [
-        "许桂兰"
-      ],
       "image": {
         "prompt": "A palm-sized rectangular tin box with a dull blue lid. The rear-right corner is dented inward, the lid centre is more faded than its edges, and a yellowed cardboard divider separates folded slips inside, handheld scale, isolated on a pure white background, no people, no hands. Photorealistic live-action film environment, cinematic production design reference, real location realism with natural light and authentic materials, grounded architectural perspective, cinematic depth",
         "negativePrompt": "people, human figures, hands, fingers, plastic CG look, warped perspective, text, watermark, signature",
@@ -266,7 +292,55 @@
         "beatIds": [
           "B02"
         ]
+      },
+      "identityKey": "rain:P02",
+      "decision": "故事先行确认的独立美术资产",
+      "designStatus": "ready",
+      "identityReview": {
+        "status": "confirmed",
+        "basis": "本 skill 自有样例的人工语义登记；不等于媒体审核",
+        "inputDigest": "0d41f5cc132cb8e8e8de6e47cbbb56d67f2614978fff0b948b0474129614c11a"
       }
     }
-  ]
+  ],
+  "schemaVersion": 1,
+  "kind": "mint-art",
+  "mode": "design",
+  "status": "ready",
+  "registry": {
+    "entries": [
+      {
+        "id": "S01",
+        "key": "rain:S01",
+        "status": "active"
+      },
+      {
+        "id": "S02",
+        "key": "rain:S02",
+        "status": "active"
+      },
+      {
+        "id": "S03",
+        "key": "rain:S03",
+        "status": "active"
+      },
+      {
+        "id": "P01",
+        "key": "rain:P01",
+        "status": "active"
+      },
+      {
+        "id": "P02",
+        "key": "rain:P02",
+        "status": "active"
+      }
+    ],
+    "changes": []
+  },
+  "budgets": {
+    "scenes": {
+      "max": 10,
+      "kind": "explicit"
+    }
+  }
 }

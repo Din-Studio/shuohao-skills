@@ -28,6 +28,11 @@ try {
     const help = spawnSync(process.execPath, [join(base, 'scripts', `${name}.mjs`), '--help'], { encoding: 'utf8' });
     eq(help.status, 0, help.stderr);
     ok(help.stdout.includes(name) && !help.stdout.includes('novel-'), `${name} 帮助使用新名称`);
+    if (name === 'mint-outline') {
+      ok(/mint-outline v5/.test(help.stdout) && /migrate-v5/.test(help.stdout), '正式 v5 与历史迁移入口区分');
+      ok(!/^\s+assets\b/m.test(help.stdout), '大纲资产命令不再作为正式接口发布');
+    }
+    if (['mint-characters','mint-art'].includes(name)) ok(/seed --source path --title title/.test(help.stdout) && /migrate-outline/.test(help.stdout), `${name} 独立原件 seed 与大纲迁移入口区分`);
   }
   for (const [flag, skillDir, agentDir, defs] of [
     ['--pi', '.pi/agent/skills', '.pi/agent/agents', 'agents/pi'],

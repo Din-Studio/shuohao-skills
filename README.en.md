@@ -11,17 +11,17 @@
 
 **Agent skills for AI short-drama production** — from an existing screenplay to production material: source coverage, structure and assets, one execution script, visual design, shot planning and optional generation. Built for AI coding agents, **runs in pi, Claude Code, and codex**.
 
-The pipeline: **outline parses an existing screenplay; script reconciles execution content with the original; character and art stages design assets; creation dispatches shot writing and independent review**. Project requirements and authorization constrain all stages. Confirm models and episode duration before production:
+The full pipeline has one fixed order: **outline → characters → art → script → creation**. Complete each stage and its handoff before starting the next. Do not skip, reverse or parallelize stages. Character identity belongs to characters; place and prop identity belongs to art. Each skill still works independently, without claiming a completed full pipeline.
 
 <img src="assets/pipeline-en.svg" alt="AI short-drama production pipeline" width="680">
 
 | Skill | What it does |
 | --- | --- |
 | [**mint-setup**](skills/mint-setup/README.en.md) | Locks asset-image and video models, resolution tiers and independent aspect ratios, plus art style, languages and autopilot. Writes `production.json` at the work-directory root for the five creative skills. Optional creative requirements are plain language and independent of aspect ratio |
-| [**mint-outline**](skills/mint-outline/README.en.md) | Accepts existing screenplays only. Tracks source versions and reading coverage, stable events and assets. Partial sources remain partial; missing episodes, endings and answers are not invented |
-| [**mint-characters**](skills/mint-characters/README.en.md) | Turns the cast the outline settled on into a character bible: profiles, design prompts, voice prompts, model sheets. Seeds the roster from outline.json; report language is configurable and the art style is copied whole from `production.json` |
-| [**mint-art**](skills/mint-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; base contracts and production parameters are checked |
-| [**mint-script**](skills/mint-script/README.en.md) | Forms one execution script from the original, retaining event claims and asset IDs. Separates action, speech, subtitles, sound and non-speaking notes. Per-episode targetSeconds is the sole execution target: optional for parsing, required before production. Independent authoring remains available |
+| [**mint-outline**](skills/mint-outline/README.en.md) | Accepts existing screenplays only. Tracks source versions and reading coverage, story structure, ordered events, episodes and pacing facts; no asset inventories or budgets. Partial sources remain partial; missing episodes, endings and answers are not invented |
+| [**mint-characters**](skills/mint-characters/README.en.md) | Reads the original independently and owns character identity, aliases, stable IDs, evidence and character budgets. Profiles, voice and sheets are optional production tasks. Visual style comes from `production.json` |
+| [**mint-art**](skills/mint-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Reads the original independently and owns stable place/prop identities, evidence and art budgets. Scene boundaries do not define place identities; mentioned objects need not become assets |
+| [**mint-script**](skills/mint-script/README.en.md) | Forms one execution script from the original, retaining event claims and script-local references. Explicit `script.assetMappings` link local references to cast/art identities; matching names or ID strings never establish identity. Separates action, speech, subtitles, sound and non-speaking notes. Per-episode targetSeconds is the sole execution target: optional for parsing, required before production. Independent authoring remains available |
 | [**mint-creation**](skills/mint-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` exports an offline plan; the separately installed ly-video skill generates and recovers tasks. Shot expression is reviewed against the guide; model limits remain deterministic checks |
 | [**mint-video-prompt**](skills/mint-video-prompt/README.en.md) | The prompt writer: splits an episode into segments and cuts, writes each segment's prompt into a worksheet (`<segment>/prompt.md`) and submits it for review; revises and resubmits when changes are requested. Invoked as a subagent by mint-creation, or used on its own |
 | [**mint-video-prompt-review**](skills/mint-video-prompt-review/README.en.md) | The prompt reviewer: independently checks worksheets against the script, assets, project brief and model conventions, records comments in the same worksheet and registers `approved`, `changes_requested` or `blocked`. It never rewrites the prompt |
@@ -36,11 +36,11 @@ Outline, script and creation each carry a self-contained `references/创作指�
 
 JSON stores source facts and necessary handoff relationships. Outline no longer holds adaptation planning, arcs, event categories or fixed episode minutes. Source preservation is not an instruction to speak every sentence. One utterance can continue across shots without replay or repeated timing; actual repeated lines remain separate occurrences. Model duration limits remain hard constraints.
 
-**Breaking data change:** outline and script use `schemaVersion: 4`; production and creation stay at v3. Back up old projects and preview `migrate-v4` following each skill's guide. Complete source evidence and semantic review before writing a new file. Changing only the number is not migration. Historical decisions stay in migration records. Asset stages retain explicit v3 projection compatibility, without claiming source verification.
+**Breaking data change:** outline now accepts **v5 (story only)**. Script stays at v4; production and creation stay at v3. See each asset stage's schema for its contract. Old projects can keep their original tool version. Explicit migration preserves originals and emits drafts and traceable pending material, including all asset relationships, IDs and budgets. Reusing an ID is not approval of a mapping or an old review.
 
 Notes, audio semantics, source relations and reveal restrictions reach writers and reviewers and bind affected worksheet approvals. Unrelated scenes do not invalidate them. Originals remain unchanged. Markdown/HTML displays are derived; `<segment>/prompt.md` remains an editable production worksheet. Report structural checks, source/script review and production-plan review separately. Prompt approval is not finished-video approval. This change adds no translation, rough-cut or finished-video review stage.
 
-See the [implementation and verification record](docs/剧本解析融合-实施验收.md) for migration boundaries and test evidence (Chinese).
+See [stage handoffs and version support](docs/阶段交接与版本支持.md) and the [implementation verification](docs/剧情与资产拆分-实施验收.md) (Chinese). `node scripts/pipeline.mjs` maintains project-level `pipeline.json`: ordered starts, stage validation and explicit handoffs, with no failure history. The earlier [implementation record](docs/剧本解析融合-实施验收.md) describes its historical version, not the current contract.
 
 ## One page for the whole pipeline
 
@@ -69,9 +69,9 @@ node scripts/pipeline-selftest.mjs # real rendering, interaction adapters, isola
 
 The following screenshots show historical interfaces. Render the local samples for the current report UI:
 
-**mint-outline · screenplay parsing**
+**mint-outline · story structure and evidence (v5)**
 
-![Adaptation outline report](skills/mint-outline/assets/report.webp)
+The old asset-report screenshot is retired. Render the stage's own sample with `render --html` for the current report.
 
 **mint-characters · character bible**
 
@@ -193,15 +193,16 @@ There is no CI. Run the local tests, including cross-stage integration, explicit
 
 ## Working-directory layout
 
-Running a novel through all five stages produces a pile of `*.json` / `*.md` / `*-report.html`. **Do not flatten them into the root.** Every skill except `mint-setup` writes into its own stage directory, one per pipeline stage:
+Running an existing screenplay through the five ordered stages produces a pile of `*.json` / `*.md` / `*-report.html`. **Do not flatten them into the root.** Every skill except `mint-setup` writes into its own stage directory, one per pipeline stage:
 
 ```
 <work-dir>/
 ├── production.json ← mint-setup's output: production parameters, **lives at the root**
-├── outline/       ← mint-outline:    <drama>-outline.json / .md / outline-report.html
-├── characters/    ← mint-characters: <drama>-cast.json / .md / report.html + images/
-├── art/           ← mint-art:        <drama>-art.json / .md / art-report.html + images/
-├── script/        ← mint-script:     <drama>-script.json / .md / script-report.html
+├── pipeline.json   ← full-flow status; not required by standalone skills
+├── outline/       ← mint-outline:    <drama>-outline.json / <drama>-outline-report.md / <drama>-outline-report.html
+├── characters/    ← mint-characters: <drama>-cast.json / <drama>-cast-report.md / <drama>-cast-report.html
+├── art/           ← mint-art:        <drama>-art.json / <drama>-art-report.md / <drama>-art-report.html
+├── script/        ← mint-script:     <drama>-script.json / <drama>-script-report.md / <drama>-script-report.html
 ├── creation/      ← mint-creation: <drama>-creation.json / .md / creation-report.html
 │   ├── manifest.json  ← from `export` (each segment's mounted reference list, no sheet files copied)
 │   └── E01-01/…       ← one folder per segment (prompt.md + video.mp4 once ordered, no frame images)
@@ -209,13 +210,15 @@ Running a novel through all five stages produces a pile of `*.json` / `*.md` / `
 └── scripts/       ← helper scripts for running the pipeline
 ```
 
+For the outline, characters, art, and script stages: Each formal delivery contains three files: `xxx.json`, `xxx-report.md`, and `xxx-report.html`. Use the complete JSON filename without `.json` as the same `xxx` in all three names. Render both reports from that JSON and save them alongside it in the stage directory.
+
 Key points:
 
 - **`production.json` stays at the root**, never inside a stage directory — the five downstream skills walk up to find it, and a subdirectory hides it from all but one of them.
 - **One directory per skill.** New characters or scenes go into the matching stage directory; the root stays clean.
 - **Video packs belong in `creation/`**: `manifest.json` sits beside `E01-0x/`. Reference sheets remain under `characters/images/` and `art/images/`, linked by relative paths rather than copied into frame images.
 - **Every skill checks its own landing spot.** When `validate` finds `production.json` it also compares where the artifact sits, and names the right directory if it is wrong. A misplaced file costs no re-rendering, so this is a notice rather than a gate — but staying silent would be worse, since `--from` discovery finds nothing when the files are flattened. With no `production.json` there is no way to tell where the work-directory root is, and the check says so instead of guessing.
-- **`mint-creation` is the video-creation stage after the screenplay.** It supports both the five-stage merged report and standalone `render --html`. Its renderer requires `--script`; supply `--outline`, `--art` and `--cast` for reference identities and richer display.
+- **`mint-creation` is the video-creation stage after the screenplay.** It supports both the five-stage merged report and standalone `render --html`. Its renderer requires `--script`; `--outline` supplies story facts only; reference identity comes from `--cast`, `--art` and explicit script mappings.
 - **Report HTML can always be re-rendered** and images re-generated from the prompts — commit `json` / `md` / `docs` / `scripts` and gitignore the report HTML plus the `png` / `mp4` inside the segment folders.
 
 

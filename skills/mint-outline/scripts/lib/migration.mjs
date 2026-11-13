@@ -100,7 +100,7 @@ export function migrateFile(input,output,{confirm=false}={}) {
  if(!lstatSync(from).isFile())throw Error('Migration input must be a regular file, not a symlink');
  const raw=readFileSync(from),result=migrationDraft(JSON.parse(new TextDecoder('utf-8', {fatal:true}).decode(raw)),{confirm});
  if(!output)return result;
- const to=resolve(output),backup=to+'.v2-backup',review=to+'.review';
+ const to=resolve(output),backup=to+'.v2-backup',review=to+'.migration.json';
  if(from===to)throw Error('Migration requires a different output path; original is never overwritten');
  for(const p of [to,backup,review]) {try{lstatSync(p);}catch(e){if(e.code==='ENOENT')continue;throw e;}throw Error('Migration destination already exists: '+p);}
  if(result.status!=='ready')return {...result,written:false};
@@ -112,5 +112,5 @@ export function migrateFile(input,output,{confirm=false}={}) {
   writeFileSync(review,JSON.stringify({pending:result.pending,...result.review},null,2)+'\n',{flag:'wx'});created.push(review);
   writeFileSync(to,JSON.stringify(result.document,null,2)+'\n',{flag:'wx'});created.push(to);
  } catch(error) {for(const p of created.reverse())unlinkSync(p);throw error;}
- return {...result,written:true,output:to,backup,reviewFile:review};
+ return {...result,written:true,output:to,backup,reviewFile:review,migrationFile:review};
 }

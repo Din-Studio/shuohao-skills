@@ -10,6 +10,9 @@ import { assertOutline, assetProductionProblems, creativeBackground, check, bloc
 import { verifyOutlineSources, sourceFactsOf } from './lib/source-facts.mjs';
 export { creativeBackground } from './lib/contracts.mjs';
 import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
+import { identityCommand } from './lib/identity-cli.mjs';
+import { hash } from './lib/identity.mjs';
+export { seedSource, reconcile, identityErrors, identityHash } from './lib/identity.mjs';
 
 /* ------------------------------------------------------------------ */
 /* chunk                                                               */
@@ -76,6 +79,7 @@ export function mergeRoster(batches) {
 
   for (const batch of batches) {
     for (const entry of batch ?? []) {
+      if (entry?.id !== undefined || entry?.identityKey !== undefined || entry?.aliases?.some?.(a => typeof a !== 'string')) throw Error('稳定身份不得按名字自动归并；使用正式 reconcile 与显式映射依据');
       if (!entry?.name) continue;
       const aliases = Array.isArray(entry.aliases) ? entry.aliases : [];
       const candidates = [entry.name, ...aliases].map(keyOf).filter(Boolean);
@@ -605,28 +609,12 @@ export function uiTemplate() {
 /* seed — 从大纲预填角色表骨架                                          */
 /* ------------------------------------------------------------------ */
 
-/**
- * outline 的 tier 映射成 cast 的 importance。
- *
- * 注意两边粒度不一样：outline 的 `lead` 是「主角组」，男女主与主反派都在里面，
- * 对应 cast 的 protagonist 与 major 两档。这里一律给 protagonist，由模型照
- * seedNote 里的 role（女主 / 男主 / 反派）把主角之外的改成 major——**分档本身
- * 不推翻，只在主角组内部细分**。
+/** Historical v3/v4 projection only. Never use it as the formal identity authority.
+ * CLI requires --legacy; migrate-outline retains the complete pending field ledger.
+ * New workflows use seedSource + semantic identification + reconcile.
  */
 export const TIER_TO_IMPORTANCE = { lead: 'protagonist', support: 'supporting', functional: 'minor' };
 
-/**
- * 从 outline.json 预填 cast.json 骨架。
- *
- * 大纲是角色设定的上游：谁进谁不进、谁是主角组，在改编阶段就拍板了，这一层
- * 不再判断一遍。搬过来的是**大纲已经定死的事实**（角色码、名字、分档、人物线、
- * 由原著的谁合并而来），留空的是**这一层才该做的设计**（别名、画像、形象提示词、
- * 音色提示词）——别名要读原文才知道，大纲里没有。
- *
- * 与 mint-art / mint-script 的 seedFromOutline 同一个形状：搬事实、留设计、
- * 附一条 seedNote 带上下文。产出是骨架不是成品，直接跑 validate 会报一堆
- * 字段缺失，那是预期的。
- */
 export function seedFromOutline(outline, { outlinePath } = {}) {
   assertOutline(outline);
   if (outlinePath) verifyOutlineSources(outline, outlinePath);
@@ -638,7 +626,7 @@ export function seedFromOutline(outline, { outlinePath } = {}) {
       (c?.from ?? []).length ? `合并自：${(c.from ?? []).join('、')}` : null,
     ].filter(Boolean).join('　');
     return {
-      // 从大纲搬来的事实，不用再想
+      // 历史待核对投影，不代表人物身份审核通过
       ...(c?.id ? { id: c.id } : {}),
       name: c?.name ?? '',
       importance: TIER_TO_IMPORTANCE[c.tier],
@@ -649,7 +637,7 @@ export function seedFromOutline(outline, { outlinePath } = {}) {
       persona: {
         gender: '', ageRange: '', identity: '', appearance: '',
         personality: [], temperament: '', motivation: '',
-        // 人物弧光大纲已经写了，直接用；觉得不对回去改大纲，别在这里改一个不一样的
+        // 历史弧光仅为背景提示，正式人物判定仍须回查原文
         arc: c?.arc ?? '',
         relationships: [], evidence: [],
       },
@@ -690,7 +678,7 @@ const normalise = (s) => String(s).replace(/\s+/g, '');
  * @param sourceText 原文；null 则跳过逐字引文校验
  * @param lang       内容语言，决定人类可读字段该是什么语言
  */
-export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
+export function validateCast(characters, sourceText, lang = DEFAULT_LANG, { optionalDesign = false } = {}) {
   const problems = [];
   const flatSource = sourceText === null ? null : normalise(sourceText);
   const at = (name, msg) => problems.push(`[${name}] ${msg}`);
@@ -777,14 +765,14 @@ export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
     // --- 结构 ---
     if (typeof c?.name !== 'string' || !c.name.trim()) at(name, '缺少 name');
     if (!Array.isArray(c?.aliases)) at(name, 'aliases 必须是数组');
-    if (!IMPORTANCE.includes(c?.importance)) {
+    if ((!optionalDesign || c?.importance !== undefined) && !IMPORTANCE.includes(c?.importance)) {
       at(name, `importance 必须是 ${IMPORTANCE.join('/')}，实际是 ${JSON.stringify(c?.importance)}`);
     }
-    if (typeof c?.oneLiner !== 'string' || !c.oneLiner.trim()) at(name, '缺少 oneLiner');
+    if ((!optionalDesign || c?.oneLiner !== undefined) && (typeof c?.oneLiner !== 'string' || !c.oneLiner.trim())) at(name, '缺少 oneLiner');
 
     const persona = c?.persona;
     if (!persona || typeof persona !== 'object') {
-      at(name, '缺少 persona');
+      if (!optionalDesign || persona !== undefined) at(name, '缺少 persona');
     } else {
       for (const f of PERSONA_STRINGS) {
         if (typeof persona[f] !== 'string' || !persona[f].trim()) at(name, `persona.${f} 缺失或为空`);
@@ -796,7 +784,7 @@ export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
 
     const image = c?.image;
     if (!image || typeof image !== 'object') {
-      at(name, '缺少 image');
+      if (!optionalDesign || image !== undefined) at(name, '缺少 image');
     } else {
       for (const f of ['style', 'prompt', 'negativePrompt']) {
         if (typeof image[f] !== 'string' || !image[f].trim()) at(name, `image.${f} 缺失或为空`);
@@ -809,7 +797,7 @@ export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
 
     const voice = c?.voice;
     if (!voice || typeof voice !== 'object') {
-      at(name, '缺少 voice');
+      if (!optionalDesign || voice !== undefined) at(name, '缺少 voice');
     } else {
       for (const f of [...HUMAN_VOICE_FIELDS, 'prompt']) {
         if (typeof voice[f] !== 'string' || !voice[f].trim()) at(name, `voice.${f} 缺失或为空`);
@@ -1942,7 +1930,11 @@ export function imageJobsFrom(characters, production = null, { imagesDir = 'imag
 
 const USAGE = `mint-characters.mjs — mint-characters skill 的确定性工具
 
-  seed <outline.json>              从大纲预填角色表骨架（打印到 stdout，画像与提示词留空待填）
+  seed --source path --title title [--budget N] [--outline v5.json] [--out draft.json]
+  reconcile candidate.json [--previous cast.json] [--changes changes.json] [--out cast.json]
+  migrate-outline old-v3-v4.json [--out pending.json]
+  migrate-cast old-unversioned.json [--out pending.json]
+  seed <outline.json> --legacy    仅历史骨架，不是正式身份产物
   chunk <book.txt> <workdir>       段落感知重叠切块，写 chunk-NN.txt，打印块数
   merge <workdir>                  归并 roster-*.json，打印 {characters, mergeCandidates}
         [--apply merges.json]      落地复核后的合并决定：{"merges":[{"keep":…,"absorb":[…]}]}
@@ -2032,15 +2024,49 @@ function loadCast(path) {
 
 async function main(argv) {
   const [cmd, ...rest] = argv;
+  if(rest.includes('--full-workflow')) throw Error('本 CLI 只核验 characters 独立阶段；完整流程必须由项目级状态按五阶段顺序交接，不能冒充全流程通过');
 
   if (!cmd || cmd === '-h' || cmd === '--help') {
     console.log(USAGE);
     process.exit(cmd ? 0 : 1);
   }
 
+  if (await identityCommand(cmd, rest, {
+    designProblems(doc, file, args) {
+      const source = doc.provenance.documents.map(d => readFileSync(resolve(dirname(resolve(file)), d.path), 'utf8')).join('\n');
+      const cards = doc.characters.map(c => ({...c, aliases:c.aliases.map(a=>a.name)}));
+      const bad = cards.length ? validateCast(cards, source, doc.lang, {optionalDesign:true}) : [];
+      const prod = loadProduction(args, dirname(resolve(file)));
+      if (cards.some(c=>c.image)) bad.push(...productionProblems(cards.filter(c=>c.image), prod.doc));
+      return bad;
+    },
+    async images(doc, file, args) {
+      checkPlanFlags(args);
+      const cards=doc.characters.filter(c=>c.image).map(c=>({...c,aliases:c.aliases.map(a=>a.name)}));
+      if(!cards.length) throw Error('没有选择图片设计的角色；身份登记不要求图片');
+      const prod=loadProduction(args,dirname(resolve(file)));
+      const result=imageJobsFrom(cards,prod.doc,{imagesDir:flag(args,'--images','images'),styleRef:flag(args,'--style-ref')});
+      if(result.problems.length)throw Error(result.problems.join('；'));
+      // Formal plans use stable IDs and paths, not mutable display names.
+      for (const job of result.jobs) {
+        const c=cards.find(c=>c.id===job.key||c.name===job.key);
+        const anchor=cards.find(c=>c.id===job.refFrom||c.name===job.refFrom);
+        job.key=c.id;job.file=`${flag(args,'--images','images')}/${c.id}-sheet.png`;job.cutoutFile=null;
+        if(anchor)job.refFrom=anchor.id;
+      }
+      const plan=mediaPlan(result.jobs,{kind:'image',model:result.model,inputBase:result.inputBase,outDir:dirname(resolve(file)),only:flag(args,'--only')});
+      for(const job of plan.jobs) {
+        job.identityFingerprint=doc.lifecycle.registry.find(r=>r.id===job.id).fingerprint;
+        job.designFingerprint=hash(doc.characters.find(c=>c.id===job.id).image);
+      }
+      plan.note+=' 身份、来源或设计变化后必须重新核验参考图、工作单与内容审核；ID 相同不代表审核有效。';
+      printPlan(plan,flag(args,'--out'));
+    }
+  })) return;
+
   if (cmd === 'seed') {
     const [path] = rest;
-    if (!path) throw new Error('用法：seed <outline.json>');
+    if (!path || !rest.includes('--legacy')) throw new Error('正式入口：seed --source path --title title；历史骨架仅可显式 seed <outline-v3-v4.json> --legacy（不是已审核产物），建议 migrate-outline');
     console.log(JSON.stringify(seedFromOutline(readJson(path), { outlinePath: path }), null, 2));
     return;
   }

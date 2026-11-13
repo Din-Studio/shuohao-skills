@@ -18,41 +18,118 @@
           ],
           "flow": [
             {
-              "action": "深夜，书店门铃轻响，周亦推门进来，怀里抱着一本卷边的旧诗集，脚步在堆积如山的书架间停下。"
+              "action": "深夜，书店门铃轻响，周亦推门进来，怀里抱着一本卷边的旧诗集，脚步在堆积如山的书架间停下。",
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 1,
+                  "endLine": 13
+                }
+              ]
             },
             {
               "speaker": "C02",
               "line": "还开着吗？我想卖一本书。",
-              "delivery": "声音压得很低，带着试探"
+              "delivery": "声音压得很低，带着试探",
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 1,
+                  "endLine": 13
+                }
+              ]
             },
             {
-              "action": "陈叙从堆积如山的旧书后抬起头，放下手里的钢笔，抬手示意他把书放上柜台。"
+              "action": "陈叙从堆积如山的旧书后抬起头，放下手里的钢笔，抬手示意他把书放上柜台。",
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 1,
+                  "endLine": 13
+                }
+              ]
             },
             {
-              "action": "陈叙翻开诗集，目光落在扉页一行钢笔字迹上，指尖停在那里，久久没有翻页。"
+              "action": "陈叙翻开诗集，目光落在扉页一行钢笔字迹上，指尖停在那里，久久没有翻页。",
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 1,
+                  "endLine": 13
+                }
+              ]
             },
             {
               "speaker": "C02",
-              "line": "老板？书有问题吗？"
+              "line": "老板？书有问题吗？",
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 1,
+                  "endLine": 13
+                }
+              ]
             },
             {
               "speaker": "C01",
               "line": "没有。这本我要了，给你双倍。",
-              "delivery": "声音很轻，却不容商量"
+              "delivery": "声音很轻，却不容商量",
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 1,
+                  "endLine": 13
+                }
+              ]
             },
             {
-              "action": "周亦接过钱，转身推门离开，门铃再次轻响。"
+              "action": "周亦接过钱，转身推门离开，门铃再次轻响。",
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 1,
+                  "endLine": 13
+                }
+              ]
             },
             {
-              "action": "陈叙独自留在灯下，再次翻开诗集，一张折叠的字条从书页间滑落，飘在她脚边。"
+              "action": "陈叙独自留在灯下，再次翻开诗集，一张折叠的字条从书页间滑落，飘在她脚边。",
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 1,
+                  "endLine": 13
+                }
+              ]
             },
             {
-              "action": "陈叙弯腰拾起字条，展开，纸上是三个字——「致晚晚」。"
+              "action": "陈叙弯腰拾起字条，展开，纸上是三个字——「致晚晚」。",
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 1,
+                  "endLine": 13
+                }
+              ]
             },
             {
               "speaker": "C01",
               "line": "晚晚，这是姐姐当年写给你的。",
-              "delivery": "低声自语，带着确认后的停顿"
+              "delivery": "低声自语，带着确认后的停顿",
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 1,
+                  "endLine": 13
+                }
+              ]
+            }
+          ],
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 1,
+              "endLine": 13
             }
           ]
         }
@@ -101,5 +178,115 @@
   "schemaVersion": 4,
   "params": {
     "tolerance": 0.3
-  }
+  },
+  "provenance": {
+    "kind": "script",
+    "scope": "complete",
+    "documents": [
+      {
+        "id": "D01",
+        "path": "../收书人-原剧本.txt",
+        "sha256": "32174eb1941dccf02dff6429b53e140d49aa544f8880dcb5acf6995f20c432f2",
+        "lineCount": 13
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 13
+      }
+    ],
+    "totalEpisodes": 1
+  },
+  "assetMappings": [
+    {
+      "kind": "character",
+      "localId": "C01",
+      "assetId": "C01",
+      "status": "confirmed",
+      "basis": "样例作者逐项核对原剧本及本样例资产身份后显式确认；相同编号不构成确认依据。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 13
+        }
+      ],
+      "assetDigest": "709aee2839f4f1c44c1a7207a6b5a91dd7d2da7983c801946257ad19e0523919",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "32174eb1941dccf02dff6429b53e140d49aa544f8880dcb5acf6995f20c432f2",
+          "lineCount": 13
+        }
+      ]
+    },
+    {
+      "kind": "character",
+      "localId": "C02",
+      "assetId": "C02",
+      "status": "confirmed",
+      "basis": "样例作者逐项核对原剧本及本样例资产身份后显式确认；相同编号不构成确认依据。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 13
+        }
+      ],
+      "assetDigest": "764ee7c6db8561838756b56878b8ecf54be2e0404d7212a05db6f65a4eddf200",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "32174eb1941dccf02dff6429b53e140d49aa544f8880dcb5acf6995f20c432f2",
+          "lineCount": 13
+        }
+      ]
+    },
+    {
+      "kind": "scene",
+      "localId": "S01",
+      "assetId": "S01",
+      "status": "confirmed",
+      "basis": "样例作者逐项核对原剧本及本样例资产身份后显式确认；相同编号不构成确认依据。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 13
+        }
+      ],
+      "assetDigest": "0913b2db94f6631c06080f261f6172e5d99eb6335d7a888d2f5370ba75293582",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "32174eb1941dccf02dff6429b53e140d49aa544f8880dcb5acf6995f20c432f2",
+          "lineCount": 13
+        }
+      ]
+    },
+    {
+      "kind": "prop",
+      "localId": "P01",
+      "assetId": "P01",
+      "status": "confirmed",
+      "basis": "样例作者逐项核对原剧本及本样例资产身份后显式确认；相同编号不构成确认依据。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 13
+        }
+      ],
+      "assetDigest": "1fe1912de32e9d60ff954656477b44337dbc2527bbdd136999c5373e3cdf0a6f",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "32174eb1941dccf02dff6429b53e140d49aa544f8880dcb5acf6995f20c432f2",
+          "lineCount": 13
+        }
+      ]
+    }
+  ]
 }

@@ -11,7 +11,8 @@ import { validateScript as validateV4 } from './mint-script.mjs';
 const validateScript = (doc,ctx) => validateHistoricalV3(doc,ctx,validateV4);
 const here=dirname(fileURLToPath(import.meta.url));
 const old=JSON.parse(readFileSync(join(here,'fixtures/legacy-script-v2.json'),'utf8'));
-const outline=JSON.parse(readFileSync(join(here,'fixtures/legacy-outline-v3.json'),'utf8'));
+const outline=JSON.parse(readFileSync(join(here,'../examples/修伞簿-outline.fixture.json'),'utf8'));
+const legacyOutline=JSON.parse(readFileSync(join(here,'fixtures/legacy-outline-v3.json'),'utf8'));
 const sample=JSON.parse(readFileSync(join(here,'fixtures/legacy-script-v3.json'),'utf8'));
 const clone=structuredClone, options={ctx:{outline},validate:validateScript};
 let count=0;
@@ -55,8 +56,13 @@ for(const mutation of [
   d=>d.episodes[0].opening='',d=>d.episodes[0].ending={mode:'invalid',event:'结束'},
   d=>delete d.episodes[0].beatClaims,d=>d.episodes[0].beatClaims[0].end=[1,1],
   d=>d.episodes[0].scenes[0].flow[0]={},d=>d.episodes[0].scenes[0].characters=['broken'],
-  d=>d.episodes[0].targetSeconds=61,d=>d.source='其他故事'
+  d=>d.episodes[0].targetSeconds=-1,d=>d.source='其他故事'
 ])test('invalid v2 is not repaired into passing v3',()=>{const d=clone(old);mutation(d);assert(migrateV3(d,options).errors.length);});
+test('historical script migration also consumes only outline v5 and no assets',()=>{
+  assert(migrateV3(old,{...options,ctx:{outline:legacyOutline}}).errors.length);
+  const d=clone(old);d.episodes[0].targetSeconds=61;
+  const r=migrateV3(d,options);assert.deepEqual(r.errors,[]);assert.equal(r.document.episodes[0].targetSeconds,61);
+});
 const dir=mkdtempSync(join(tmpdir(),'script-migration-'));
 try{
   const input=join(dir,'old.json'),out=join(dir,'new.json'),of=join(dir,'outline.json');

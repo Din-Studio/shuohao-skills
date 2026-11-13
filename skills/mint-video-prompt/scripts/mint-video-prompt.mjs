@@ -6,6 +6,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseWorksheet, serializeWorksheet, submitProblems, submittedText, RESPONSE_PLACEHOLDER, REVIEW_PLACEHOLDER } from './lib/worksheet.mjs';
 
+import { promptProblems, promptTimecode } from './lib/prompt.mjs';
+export { TIMECODE_RE } from './lib/prompt.mjs';
+
 export const DEFAULT_VIDEO_MODEL = 'MiniMax H3';
 export const promptFamilyOf = model => (/seedance/i.test(String(model ?? '')) ? 'seedance' : 'h3');
 /** 一个全新的模型不读取另一族的填法指南：解不出就返回 null，只照通用骨架写。 */
@@ -14,7 +17,7 @@ export function promptGuideOf(model) {
   if (promptFamilyOf(name) === 'seedance') return 'seedance2-prompt.md';
   return !name || /minimax|\bh3\b/i.test(name) ? 'h3-prompt.md' : null;
 }
-export const defaultLangOf = model => (promptFamilyOf(model) === 'seedance' ? 'zh' : 'en');
+export const defaultLangOf = () => 'zh';
 
 export const SHOT_SIZES = {
   'extreme-wide': { zh: '大远景', phrase: 'extreme wide shot' },
@@ -30,12 +33,6 @@ export const CAMERA_MOVES = {
   'Arc Shot': '环绕', 'Tracking Shot': '跟拍', 'Shake Slightly': '轻微晃动', 'Shake Strongly': '强烈晃动',
   'POV': '主观视角', 'Roll Clockwise': '顺旋', 'Roll Counterclockwise': '逆旋',
 };
-const TOKENS = {
-  en: { picture: k => `Picture ${k} is`, shot: k => `[Shot ${k}]`, fields: ['shots:', 'ambience:'] },
-  zh: { picture: k => `图 ${k} 是`, shot: k => `[镜头 ${k}]`, fields: ['镜头描述：', '环境声与配乐：'] },
-};
-/** seedance 官方口径：提示词里不出现数字秒数、秒数区间和时间码。 */
-export const TIMECODE_RE = /\b(?:at|after|before)\s+(?:the\s+)?(?:second|sec)\s+\d+(?:\.\d+)?|\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?|(?:第\s*)?\d+(?:\.\d+)?\s*(?:[-–—~～至到]\s*\d+(?:\.\d+)?\s*)?(?:秒|[- ]?(?:seconds?|secs?)\b|s\b)/i;
 const IMAGE_KINDS = ['character', 'scene', 'prop'];
 
 /**
@@ -47,8 +44,7 @@ export function lintWorksheet(sheet) {
   if (problems.length) return problems;
   const { structure: seg, body, meta } = sheet;
   const lang = meta.promptLang || defaultLangOf(meta.model);
-  if (!TOKENS[lang]) return [`promptLang 必须为 en 或 zh，当前为 ${lang}`];
-  const tk = TOKENS[lang];
+  if (!['en', 'zh'].includes(lang)) return [`promptLang 必须为 en 或 zh，当前为 ${lang}`];
 
   if (!Number.isInteger(seg.sceneIndex) || seg.sceneIndex < 1) problems.push('sceneIndex 必须为从 1 起的整数');
   const cuts = Array.isArray(seg.cuts) ? seg.cuts : [];
@@ -79,24 +75,8 @@ export function lintWorksheet(sheet) {
   });
 
   if (!body) return [...problems, '提示词正文为空'];
-  for (let k = 1; k <= images.length; k++) if (!body.includes(tk.picture(k))) problems.push(`缺少身份说明句「${tk.picture(k)}…」`);
-  if (body.includes(tk.picture(images.length + 1))) problems.push(`身份说明句多于参考图数量（${images.length} 张）`);
-  const start = body.indexOf(tk.fields[0]), end = body.indexOf(tk.fields[1]);
-  if (start < 0 || end < 0 || end < start) problems.push(`正文必须依次包含「${tk.fields[0]}」与「${tk.fields[1]}」两个字段`);
-  else {
-    const shots = body.slice(start, end);
-    cuts.forEach((cut, i) => {
-      const a = shots.indexOf(tk.shot(i + 1));
-      if (a < 0) { problems.push(`缺少 ${tk.shot(i + 1)} 行`); return; }
-      const b = shots.indexOf(tk.shot(i + 2));
-      const slice = shots.slice(a, b < 0 ? undefined : b).toLowerCase();
-      const size = SHOT_SIZES[cut?.size], camera = cut?.camera in CAMERA_MOVES ? (lang === 'en' ? cut.camera : CAMERA_MOVES[cut.camera]) : null;
-      if (size && !slice.includes((lang === 'en' ? size.phrase : size.zh).toLowerCase())) problems.push(`${tk.shot(i + 1)} 行缺少景别短语「${lang === 'en' ? size.phrase : size.zh}」`);
-      if (camera && !slice.includes(camera.toLowerCase())) problems.push(`${tk.shot(i + 1)} 行缺少运镜短语「${camera}」`);
-    });
-    if (shots.includes(tk.shot(cuts.length + 1))) problems.push(`镜头行多于分镜数量（${cuts.length} 个）`);
-  }
-  if (promptFamilyOf(meta.model) === 'seedance' && TIMECODE_RE.test(body)) problems.push('seedance 系列提示词不能出现数字秒数、秒数区间或时间码');
+  problems.push(...promptProblems(body, images));
+  if (promptFamilyOf(meta.model) === 'seedance' && promptTimecode(body)) problems.push('seedance 正文不能出现数字秒数、秒数区间或时间码；完整固定镜头参考首行除外');
   return problems;
 }
 
@@ -146,7 +126,7 @@ function main(argv) {
     if (!/^E\d{2,}-\d{2,}$/.test(id)) throw new Error('段号必须形如 E01-01');
     const model = flag(rest, '--model', DEFAULT_VIDEO_MODEL);
     const promptLang = flag(rest, '--lang', defaultLangOf(model));
-    if (!TOKENS[promptLang]) throw new Error('--lang 必须为 en 或 zh');
+    if (!['en', 'zh'].includes(promptLang)) throw new Error('--lang 必须为 en 或 zh');
     const sceneIndex = Number(flag(rest, '--scene', '1'));
     if (!Number.isInteger(sceneIndex) || sceneIndex < 1) throw new Error('--scene 必须为从 1 起的整数');
     const target = join(resolve(out), id, 'prompt.md');

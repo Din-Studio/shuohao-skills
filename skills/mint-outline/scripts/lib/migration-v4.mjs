@@ -3,7 +3,7 @@ import {readFileSync,writeFileSync,lstatSync,unlinkSync,copyFileSync,constants} 
 import {resolve,dirname,relative} from 'node:path';
 import {checkup as legacyCheckup} from './legacy-v3-core.mjs';
 import {migrationDraft as migrateV3} from './migration.mjs';
-import {checkup,object} from './outline-core.mjs';
+import {checkup,object} from './legacy-v4-core.mjs';
 export function migrationDraftV4(old){
  if(!object(old)||![2,3].includes(old.schemaVersion))throw Error('migrate-v4 requires a schemaVersion 2 or 3 object');
  const original=structuredClone(old),v3=old.schemaVersion===2?migrateV3(old,{confirm:true}).document:structuredClone(old);
@@ -29,7 +29,7 @@ export function migrateFileV4(input,output,{confirm=false}={}){
  const from=resolve(input);if(!lstatSync(from).isFile())throw Error('Migration input must be a regular file, not a symlink');
  const raw=readFileSync(from),result=migrationDraftV4(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw)));
  if(!output)return result;
- const to=resolve(output),backup=to+'.legacy-backup',review=to+'.review';
+ const to=resolve(output),backup=to+'.legacy-backup',review=to+'.migration.json';
  if(from===to)throw Error('Migration never overwrites input');
  for(const p of [to,backup,review]){try{lstatSync(p);}catch(e){if(e.code==='ENOENT')continue;throw e;}throw Error('Migration destination already exists: '+p);}
  if(!confirm)return {...result,written:false};
@@ -43,5 +43,5 @@ export function migrateFileV4(input,output,{confirm=false}={}){
   writeFileSync(review,JSON.stringify({status:result.status,pending:result.pending,preserved:result.preserved,...result.review},null,2)+'\n',{flag:'wx'});created.push(review);
   writeFileSync(to,JSON.stringify(result.document,null,2)+'\n',{flag:'wx'});created.push(to);
  }catch(e){for(const p of created.reverse())unlinkSync(p);throw e;}
- return {...result,written:true,output:to,backup,reviewFile:review};
+ return {...result,written:true,output:to,backup,reviewFile:review,migrationFile:review};
 }

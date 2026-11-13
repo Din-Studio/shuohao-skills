@@ -1,6 +1,6 @@
 {
   "source": "收书人",
-  "promptLang": "en",
+  "promptLang": "zh",
   "episodes": [
     {
       "ep": 1,
@@ -26,7 +26,7 @@
               "role": "prop reference"
             }
           ],
-          "prompt": "Picture 1 is the young man carrying the worn poetry book. Picture 2 is the night-only secondhand bookstore, shelves crowded with old books under a warm desk lamp. Picture 3 is the worn poetry book itself, its cloth cover softened with age.\n\nshots:\n[Shot 1] Wide shot, Tracking Shot — the camera follows <Picture 1> as he pushes open the door of <Picture 2>, a small bell chiming, his footsteps slowing among towering stacks of old books, <Picture 3> held close against his chest.\n[Shot 2] Medium shot, Push In — slowly moving closer on <Picture 1>'s face as he asks in a low, testing tone, <Picture 3> still cradled in one arm: \"还开着吗？我想卖一本书。\"\n\nambience: A faint bell chime fades under the low hum of the night, pages rustling somewhere in the stacks; no music.",
+          "prompt": "镜头参考：自由切分镜头，根据剧情需要自运镜（建议多使用子弹时间，升格，环绕运镜，荷兰角，移焦，摇臂升降，云台悬浮，穿越推进，侧跟，格莱美运镜，破窗转场，时间切片 ），禁止单个分镜超过3秒，禁止镜头固定，禁止对白正反打硬切。\n光源：柜台台灯由侧面照亮人物与书页，柔光，3000 K\n环境：深夜书铺，书架间维持安静\n色调：低饱和暖褐色，纸张保留旧黄色\n质感：自然皮肤与旧纸张的细腻质地\n风格参照：真人实拍取向，柔和明暗和真实材质\n氛围：安静、克制\n\n参考素材：周亦\n@图片1，人物身份与外观参考。\n基本信息：年龄、身高未提供。全剧人设：前来卖书的年轻人。本段人设：克制、专注。\n深夜书铺@图片2：环境参考。\n旧诗集@图片3：道具参考。\n\n深夜书铺@图片2里，周亦@图片1抱着旧诗集@图片3推门走入，门口铜铃轻响。周亦@图片1在书堆间放慢脚步，走到柜台前，仍把旧诗集@图片3抱在胸前。周亦@图片1当场压低声音问：“还开着吗？我想卖一本书。”\n\n真人实拍画风，整体呈现 cinematic film still 的自然材质与明暗。无任何字幕、水印、logo 与额外图形符号；无配乐、无背景音乐，保留正文中的对白、原生环境音效与人物动作交互音效。环境反应和音效根据画面内容自行卡点。\n\n负面提示词：\n周亦与陈叙身份互换，旧诗集或纸条穿模，回收书款后周亦仍抱着书，姐姐提前出场，错人说话，对白漏说或重念",
           "cuts": [
             {
               "beats": [
@@ -75,7 +75,7 @@
               "role": "prop reference"
             }
           ],
-          "prompt": "Picture 1 is the woman who owns the bookstore, composed, in her fifties. Picture 2 is the worn poetry book with a faded cloth cover and a handwritten inscription on its title page.\n\nshots:\n[Shot 1] Medium shot, Pan Left — the camera pans to <Picture 1> as she looks up from behind a stack of ledgers, sets down her pen, and lifts a hand toward the counter, wordlessly asking for <Picture 2>.\n[Shot 2] Close-up, Push In — pushing in on <Picture 1>'s fingers as they open <Picture 2> to its title page, stopping on a line of handwriting, held there without turning the page.\n\nambience: The lamp hums faintly, a page turns somewhere else in the stacks, then everything goes still around her held breath; no music.",
+          "prompt": "镜头参考：自由切分镜头，根据剧情需要自运镜（建议多使用子弹时间，升格，环绕运镜，荷兰角，移焦，摇臂升降，云台悬浮，穿越推进，侧跟，格莱美运镜，破窗转场，时间切片 ），禁止单个分镜超过3秒，禁止镜头固定，禁止对白正反打硬切。\n光源：柜台台灯由侧面照亮人物与书页，柔光，3000 K\n环境：深夜书铺，书架间维持安静\n色调：低饱和暖褐色，纸张保留旧黄色\n质感：自然皮肤与旧纸张的细腻质地\n风格参照：真人实拍取向，柔和明暗和真实材质\n氛围：安静、克制\n\n参考素材：陈叙\n@图片1，人物身份与外观参考。\n基本信息：年龄、身高未提供。全剧人设：深夜书铺经营者，收藏旧物。本段人设：克制、专注。\n旧诗集@图片2：道具参考。\n\n陈叙@图片1在柜台后的账本旁抬起头，放下笔，朝柜台伸出手。陈叙@图片1接过旧诗集@图片2，翻开扉页，翻页声响起。陈叙@图片1的手指停在扉页的一行字上，书页保持展开，让观众看见辨认的对象。\n\n真人实拍画风，整体呈现 cinematic film still 的自然材质与明暗。无任何字幕、水印、logo 与额外图形符号；无配乐、无背景音乐，保留正文中的对白、原生环境音效与人物动作交互音效。环境反应和音效根据画面内容自行卡点。\n\n负面提示词：\n周亦与陈叙身份互换，旧诗集或纸条穿模，回收书款后周亦仍抱着书，姐姐提前出场，错人说话，对白漏说或重念",
           "cuts": [
             {
               "beats": [
@@ -122,7 +122,7 @@
               "role": "identity reference"
             }
           ],
-          "prompt": "Picture 1 is the young man who has just sold the worn poetry book; the book remains on the counter. Picture 2 is the woman who owns the bookstore, composed, in her fifties.\n\nshots:\n[Shot 1] Medium shot, Static Shot — holding steady on <Picture 1> as he studies her stillness and asks, uncertain: \"老板？书有问题吗？\"\n[Shot 2] Close-up, Push In — pushing in on <Picture 2>'s face, carefully composed, as she answers without looking up: \"没有。这本我要了，给你双倍。\"\n\nambience: The shop stays quiet around her measured voice, only the faint hum of the lamp and the distant creak of an old floorboard; no music.",
+          "prompt": "镜头参考：自由切分镜头，根据剧情需要自运镜（建议多使用子弹时间，升格，环绕运镜，荷兰角，移焦，摇臂升降，云台悬浮，穿越推进，侧跟，格莱美运镜，破窗转场，时间切片 ），禁止单个分镜超过3秒，禁止镜头固定，禁止对白正反打硬切。\n光源：柜台台灯由侧面照亮人物与书页，柔光，3000 K\n环境：深夜书铺，书架间维持安静\n色调：低饱和暖褐色，纸张保留旧黄色\n质感：自然皮肤与旧纸张的细腻质地\n风格参照：真人实拍取向，柔和明暗和真实材质\n氛围：安静、克制\n\n参考素材：周亦\n@图片1，人物身份与外观参考。\n基本信息：年龄、身高未提供。全剧人设：前来卖书的年轻人。本段人设：克制、专注。\n陈叙\n@图片2，人物身份与外观参考。\n基本信息：年龄、身高未提供。全剧人设：深夜书铺经营者，收藏旧物。本段人设：克制、专注。\n\n周亦@图片1仍站在柜台前，已经交出的旧诗集留在柜台上。周亦@图片1看着陈叙@图片2的停顿，当场试探地问：“老板？书有问题吗？”陈叙@图片2没有抬头，当场平静地回答：“没有。这本我要了，给你双倍。”\n\n真人实拍画风，整体呈现 cinematic film still 的自然材质与明暗。无任何字幕、水印、logo 与额外图形符号；无配乐、无背景音乐，保留正文中的对白、原生环境音效与人物动作交互音效。环境反应和音效根据画面内容自行卡点。\n\n负面提示词：\n周亦与陈叙身份互换，旧诗集或纸条穿模，回收书款后周亦仍抱着书，姐姐提前出场，错人说话，对白漏说或重念",
           "cuts": [
             {
               "beats": [
@@ -172,7 +172,7 @@
               "role": "prop reference"
             }
           ],
-          "prompt": "Picture 1 is the young man who has just sold the worn poetry book. Picture 2 is the woman who owns the bookstore, composed, in her fifties. Picture 3 is the worn poetry book with a faded cloth cover.\n\nshots:\n[Shot 1] Wide shot, Pan Right — following <Picture 1> as he takes his payment and turns for the door empty-handed, leaving the book on the counter, the small bell chiming once as he steps out into the dark.\n[Shot 2] Close-up, Static Shot — a folded note slips from between the pages of <Picture 3> as <Picture 2> reopens it alone at the counter, drifting down to rest by her feet.\n[Shot 3] Close-up, Pull Out — <Picture 2> bends down to pick up the note and unfolds it, the handwritten inscription \"致晚晚\" catching the lamplight. She says quietly to herself: \"晚晚，这是姐姐当年写给你的。\" The frame pulls back to hold her alone in the quiet shop; the sister remains absent.\n\nambience: The bell's last chime fades into the hush of the empty shop, paper rustling once as the note unfolds; no music, just the held quiet of a room that has just recognized something.",
+          "prompt": "镜头参考：自由切分镜头，根据剧情需要自运镜（建议多使用子弹时间，升格，环绕运镜，荷兰角，移焦，摇臂升降，云台悬浮，穿越推进，侧跟，格莱美运镜，破窗转场，时间切片 ），禁止单个分镜超过3秒，禁止镜头固定，禁止对白正反打硬切。\n光源：柜台台灯由侧面照亮人物与书页，柔光，3000 K\n环境：深夜书铺，书架间维持安静\n色调：低饱和暖褐色，纸张保留旧黄色\n质感：自然皮肤与旧纸张的细腻质地\n风格参照：真人实拍取向，柔和明暗和真实材质\n氛围：安静、克制\n\n参考素材：周亦\n@图片1，人物身份与外观参考。\n基本信息：年龄、身高未提供。全剧人设：前来卖书的年轻人。本段人设：克制、专注。\n陈叙\n@图片2，人物身份与外观参考。\n基本信息：年龄、身高未提供。全剧人设：深夜书铺经营者，收藏旧物。本段人设：克制、专注。\n旧诗集@图片3：道具参考。\n\n柜台旁，周亦@图片1收下书款，空手转身走出书铺，门口铜铃随开门响起。陈叙@图片2独自留在柜台后，重新翻开旧诗集@图片3，夹在书页中的折叠纸条落到脚边。\n\n陈叙@图片2弯腰拾起纸条，展开后让纸条上的“致晚晚”清楚可见。陈叙@图片2当场轻声自语：“晚晚，这是姐姐当年写给你的。”纸张声落下，陈叙@图片2留在安静的书铺里，姐姐不出场。\n\n真人实拍画风，整体呈现 cinematic film still 的自然材质与明暗。无任何字幕、水印、logo 与额外图形符号；无配乐、无背景音乐，保留正文中的对白、原生环境音效与人物动作交互音效。环境反应和音效根据画面内容自行卡点。\n\n负面提示词：\n周亦与陈叙身份互换，旧诗集或纸条穿模，回收书款后周亦仍抱着书，姐姐提前出场，错人说话，对白漏说或重念",
           "cuts": [
             {
               "beats": [

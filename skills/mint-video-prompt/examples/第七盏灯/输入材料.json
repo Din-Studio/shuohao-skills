@@ -25,7 +25,7 @@
   "video": {
     "model": "MiniMax H3"
   },
-  "promptLang": "en",
+  "promptLang": "zh",
   "maxSegmentSeconds": 15,
   "maxOnScreen": 3,
   "creativeBrief": "克制。让观众先看见添油的人，再听见老师开口；不解释阿禾为什么这样做。",
@@ -44,36 +44,172 @@
   "assets": {
     "characters": [
       {
-        "id": "C01",
+        "id": "C11",
         "name": "林栀",
         "sheet": "../characters/images/林栀-sheet.png",
         "sheetExists": false,
-        "sheetHash": null
+        "sheetHash": null,
+        "specification": {
+          "id": "C11",
+          "name": "林栀",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 1,
+              "endLine": 8
+            }
+          ]
+        },
+        "assetDigest": "75776c33b2f13a3a60ff70023e14ace40c41b79fc4da373e9685ff558af2925c",
+        "sourceRefs": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 8
+          }
+        ],
+        "sourceDocuments": [
+          {
+            "id": "D01",
+            "path": "原剧本.txt",
+            "sha256": "0e3c93bb69be28f7dc5a63bca42ed8dced05e77421eeda296112fd2a58584264",
+            "lineCount": 8
+          }
+        ],
+        "sourceCoverage": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 8
+          }
+        ]
       },
       {
-        "id": "C02",
+        "id": "C12",
         "name": "阿禾",
         "sheet": "../characters/images/阿禾-sheet.png",
         "sheetExists": false,
-        "sheetHash": null
+        "sheetHash": null,
+        "specification": {
+          "id": "C12",
+          "name": "阿禾",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 1,
+              "endLine": 8
+            }
+          ]
+        },
+        "assetDigest": "0f2fd4aaf91de783ec4da176f05216cf09a1391b767edf3d74a0229f11984b3e",
+        "sourceRefs": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 8
+          }
+        ],
+        "sourceDocuments": [
+          {
+            "id": "D01",
+            "path": "原剧本.txt",
+            "sha256": "0e3c93bb69be28f7dc5a63bca42ed8dced05e77421eeda296112fd2a58584264",
+            "lineCount": 8
+          }
+        ],
+        "sourceCoverage": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 8
+          }
+        ]
       }
     ],
     "scenes": [
       {
-        "id": "S01",
+        "id": "S11",
         "name": "山村教室",
         "sheet": "../art/images/山村教室-sheet.png",
         "sheetExists": false,
-        "sheetHash": null
+        "sheetHash": null,
+        "specification": {
+          "id": "S11",
+          "name": "山村教室",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 1,
+              "endLine": 8
+            }
+          ]
+        },
+        "assetDigest": "4e27c7399416186e759e5e7e34b0b76cbdd4fa0a67a435c3b26f099e1fe6319a",
+        "sourceRefs": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 8
+          }
+        ],
+        "sourceDocuments": [
+          {
+            "id": "D01",
+            "path": "原剧本.txt",
+            "sha256": "0e3c93bb69be28f7dc5a63bca42ed8dced05e77421eeda296112fd2a58584264",
+            "lineCount": 8
+          }
+        ],
+        "sourceCoverage": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 8
+          }
+        ]
       }
     ],
     "props": [
       {
-        "id": "P01",
+        "id": "P11",
         "name": "第七盏煤油灯",
         "sheet": "../art/images/第七盏煤油灯-sheet.png",
         "sheetExists": false,
-        "sheetHash": null
+        "sheetHash": null,
+        "specification": {
+          "id": "P11",
+          "name": "第七盏煤油灯",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 1,
+              "endLine": 8
+            }
+          ]
+        },
+        "assetDigest": "38eb2706600809da4e402b35b12c0905f29d30c922a7871239eecde6123281e3",
+        "sourceRefs": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 8
+          }
+        ],
+        "sourceDocuments": [
+          {
+            "id": "D01",
+            "path": "原剧本.txt",
+            "sha256": "0e3c93bb69be28f7dc5a63bca42ed8dced05e77421eeda296112fd2a58584264",
+            "lineCount": 8
+          }
+        ],
+        "sourceCoverage": [
+          {
+            "documentId": "D01",
+            "startLine": 1,
+            "endLine": 8
+          }
+        ]
       }
     ]
   },
@@ -81,7 +217,19 @@
     {
       "sceneIndex": 1,
       "sceneId": "S01",
-      "notes": [{"kind":"restriction","text":"林栀没有承诺留下；不得增加留下的台词或解释阿禾打架的原因。","sourceRefs":[{"documentId":"D01","startLine":2,"endLine":2}]}],
+      "notes": [
+        {
+          "kind": "restriction",
+          "text": "林栀没有承诺留下；不得增加留下的台词或解释阿禾打架的原因。",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 2,
+              "endLine": 2
+            }
+          ]
+        }
+      ],
       "lighting": "停电夜，煤油灯",
       "characters": [
         "C01",
@@ -93,15 +241,34 @@
       "beats": [
         {
           "n": 1,
-          "sourceRefs": [{"documentId":"D01","startLine":3,"endLine":3}],
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 3,
+              "endLine": 3
+            }
+          ],
           "kind": "action",
           "seconds": 2.5,
           "text": "深夜停电的教室，阿禾推门进来，踮脚走到窗台前，给第七盏煤油灯添油。"
         },
         {
           "n": 2,
-          "sourceRefs": [{"documentId":"D01","startLine":4,"endLine":4}],
-          "audio": {"mode":"onscreen","audibleTo":["C01","C02"],"subjective":false},
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 4,
+              "endLine": 4
+            }
+          ],
+          "audio": {
+            "mode": "onscreen",
+            "audibleTo": [
+              "C01",
+              "C02"
+            ],
+            "subjective": false
+          },
           "kind": "line",
           "seconds": 1.1,
           "speaker": "C01",
@@ -110,15 +277,34 @@
         },
         {
           "n": 3,
-          "sourceRefs": [{"documentId":"D01","startLine":5,"endLine":5}],
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 5,
+              "endLine": 5
+            }
+          ],
           "kind": "action",
           "seconds": 2.5,
           "text": "阿禾的手一抖，油壶磕在窗台上。他没有逃，只把灯芯拨亮。"
         },
         {
           "n": 4,
-          "sourceRefs": [{"documentId":"D01","startLine":6,"endLine":6}],
-          "audio": {"mode":"onscreen","audibleTo":["C01","C02"],"subjective":false},
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 6,
+              "endLine": 6
+            }
+          ],
+          "audio": {
+            "mode": "onscreen",
+            "audibleTo": [
+              "C01",
+              "C02"
+            ],
+            "subjective": false
+          },
           "kind": "line",
           "seconds": 2.7,
           "speaker": "C02",
@@ -127,15 +313,34 @@
         },
         {
           "n": 5,
-          "sourceRefs": [{"documentId":"D01","startLine":7,"endLine":7}],
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 7,
+              "endLine": 7
+            }
+          ],
           "kind": "action",
           "seconds": 2.5,
           "text": "林栀起身，拿起自己桌上那盏没点的灯，走到窗台前，放在第七盏旁边。"
         },
         {
           "n": 6,
-          "sourceRefs": [{"documentId":"D01","startLine":8,"endLine":8}],
-          "audio": {"mode":"onscreen","audibleTo":["C01","C02"],"subjective":false},
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 8,
+              "endLine": 8
+            }
+          ],
+          "audio": {
+            "mode": "onscreen",
+            "audibleTo": [
+              "C01",
+              "C02"
+            ],
+            "subjective": false
+          },
           "kind": "line",
           "seconds": 1.6,
           "speaker": "C01",
@@ -143,5 +348,111 @@
         }
       ]
     }
-  ]
+  ],
+  "assetMappings": [
+    {
+      "kind": "character",
+      "localId": "C01",
+      "assetId": "C11",
+      "status": "confirmed",
+      "basis": "本样例作者独立核对故事原文和 cast/art 后显式确认；不根据相同编号或名称推断。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 8
+        }
+      ],
+      "assetDigest": "75776c33b2f13a3a60ff70023e14ace40c41b79fc4da373e9685ff558af2925c",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "0e3c93bb69be28f7dc5a63bca42ed8dced05e77421eeda296112fd2a58584264",
+          "lineCount": 8
+        }
+      ],
+      "mappingErrors": []
+    },
+    {
+      "kind": "character",
+      "localId": "C02",
+      "assetId": "C12",
+      "status": "confirmed",
+      "basis": "本样例作者独立核对故事原文和 cast/art 后显式确认；不根据相同编号或名称推断。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 8
+        }
+      ],
+      "assetDigest": "0f2fd4aaf91de783ec4da176f05216cf09a1391b767edf3d74a0229f11984b3e",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "0e3c93bb69be28f7dc5a63bca42ed8dced05e77421eeda296112fd2a58584264",
+          "lineCount": 8
+        }
+      ],
+      "mappingErrors": []
+    },
+    {
+      "kind": "scene",
+      "localId": "S01",
+      "assetId": "S11",
+      "status": "confirmed",
+      "basis": "本样例作者独立核对故事原文和 cast/art 后显式确认；不根据相同编号或名称推断。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 8
+        }
+      ],
+      "assetDigest": "4e27c7399416186e759e5e7e34b0b76cbdd4fa0a67a435c3b26f099e1fe6319a",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "0e3c93bb69be28f7dc5a63bca42ed8dced05e77421eeda296112fd2a58584264",
+          "lineCount": 8
+        }
+      ],
+      "mappingErrors": []
+    },
+    {
+      "kind": "prop",
+      "localId": "P01",
+      "assetId": "P11",
+      "status": "confirmed",
+      "basis": "本样例作者独立核对故事原文和 cast/art 后显式确认；不根据相同编号或名称推断。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 8
+        }
+      ],
+      "assetDigest": "38eb2706600809da4e402b35b12c0905f29d30c922a7871239eecde6123281e3",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "0e3c93bb69be28f7dc5a63bca42ed8dced05e77421eeda296112fd2a58584264",
+          "lineCount": 8
+        }
+      ],
+      "mappingErrors": []
+    }
+  ],
+  "upstream": {
+    "outline": {
+      "status": "skipped",
+      "reason": "missing-upstream"
+    },
+    "cast": {
+      "status": "provided"
+    },
+    "art": {
+      "status": "provided"
+    }
+  }
 }

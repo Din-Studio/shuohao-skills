@@ -24,6 +24,19 @@ const inputs = join(root, 'examples/回执/输入材料.json');
 const has = (result, re) => assert.ok(result.problems.some(p => re.test(p)), `${re} ← ${result.problems.join('；')}`);
 
 try {
+  test('own asset snapshots require explicit mappings, not matching IDs or names', () => {
+    const m=JSON.parse(readFileSync(join(root,'examples/回执/输入材料.json'),'utf8'));
+    const s=W.parseWorksheet(example('第二轮'));
+    assert.ok(m.assetMappings.length);assert.ok(m.assetMappings.every(r=>r.localId!==r.assetId),'own fixture proves local and target IDs differ');
+    const inputHash=W.inputHashOf(s.structure,m), changed=structuredClone(m);
+    changed.assetMappings[0].basis+='新的身份依据';assert.notEqual(W.inputHashOf(s.structure,changed),inputHash);
+    const pending=structuredClone(m);pending.assetMappings[0].status='pending';
+    const submitted={...s,meta:{...s.meta,status:'in_review'},review:'结论：仅测试显式映射阻断，不代表内容审核。'};
+    assert.ok(W.recordVerdict(submitted,'approved',pending).problems.length);
+    const absent=structuredClone(m);delete absent.assetMappings;assert.ok(W.recordVerdict(submitted,'approved',absent).problems.length);
+    const unrelated=structuredClone(m);unrelated.assets.props.push({id:'P99',name:'未使用的样例资产'});assert.equal(W.inputHashOf(s.structure,unrelated),inputHash);
+  });
+
   test('references exist', () => {
     for (const f of ['审核清单.md', 'worksheet.md']) assert.ok(existsSync(join(root, 'references', f)), f);
   });
@@ -32,7 +45,7 @@ try {
     const r1 = W.parseWorksheet(example('第一轮')), r2 = W.parseWorksheet(example('第二轮'));
     assert.deepEqual(r1.problems, []); assert.deepEqual(r2.problems, []);
     assert.equal(r1.meta.status, 'changes_requested'); assert.equal(r1.meta.round, 1); assert.equal(r1.meta.bodyHash, '');
-    assert.equal(W.reviewItems(r1.review).must.length, 2); assert.equal(W.reviewItems(r1.review).suggest.length, 1);
+    assert.equal(W.reviewItems(r1.review).must.length, 2); assert.equal(W.reviewItems(r1.review).suggest.length, 0);
     assert.equal(r2.meta.status, 'approved'); assert.equal(r2.meta.round, 2); assert.equal(W.approvalProblem(r2), null); assert.equal(W.inputProblem(r2, material), null, '样例的批准绑定样例自己的输入材料');
     assert.equal(W.reviewItems(r2.review).must.length, 0);
     assert.notEqual(r2.response, W.RESPONSE_PLACEHOLDER, '第二轮保留编写方的逐条回应');
@@ -85,7 +98,7 @@ try {
     const stale = m => assert.match(W.inputProblem(s, m) ?? '', /输入发生变化/), same = m => assert.equal(W.inputProblem(s, m), null);
     const claimed = s.structure.cuts[0].beats[0];
     stale(clone(m => { m.seedScenes[0].beats.find(b => b.n === claimed).text += '改'; }));
-    stale(clone(m => { m.assets[{character: 'characters', scene: 'scenes', prop: 'props'}[s.structure.images[0].kind]].find(a => a.id === s.structure.images[0].ref).sheetHash = 'abc'; }));
+    stale(clone(m => { m.assets[{character: 'characters', scene: 'scenes', prop: 'props'}[s.structure.images[0].kind]].find(a => a.id === m.assetMappings.find(r=>r.kind===s.structure.images[0].kind&&r.localId===s.structure.images[0].ref).assetId).sheetHash = 'abc'; }));
     stale(clone(m => { m.video.model = 'MiniMax H3'; })); stale(clone(m => { m.video.resolution = '2K'; }));
     stale(clone(m => { m.creativeBrief = '改了项目要求'; })); stale(clone(m => { m.maxSegmentSeconds = 10; }));
     // 无关场与资产不失效；本集目标时长是制作依赖，必须失效。
@@ -115,13 +128,13 @@ try {
     const changed = join(temp, 'changed.json'); writeFileSync(changed, JSON.stringify({ ...material, creativeBrief: '改了项目要求' }));
     assert.match(cli('show', p, '--inputs', changed).stdout, /批准已失效（批准之后这一段依据的输入发生变化/);
     assert.equal(cli('verdict', 'approved', '--inputs', inputs, p).status, 1, '已批准的工作单不能再次登记');
-    writeFileSync(p, readFileSync(p, 'utf8').replace('无配乐。', '无配乐，无人声。'));
+    writeFileSync(p, readFileSync(p, 'utf8').replace('冷白灯光', '蓝白灯光'));
     assert.match(cli('show', p).stdout, /批准已失效/);
     assert.ok(W.approvalProblem(W.parseWorksheet(readFileSync(p, 'utf8'))));
     const q = join(temp, 'ex/第一轮/E01-01/prompt.md');
     writeFileSync(q, W.serializeWorksheet({ ...W.parseWorksheet(readFileSync(q, 'utf8')), meta: { ...W.parseWorksheet(readFileSync(q, 'utf8')).meta, status: 'in_review' } }));
     let r = cli('verdict', 'approved', q); assert.equal(r.status, 1); assert.match(r.stderr, /批准需要输入材料/);
-    r = cli('verdict', 'approved', '--inputs', inputs, q); assert.equal(r.status, 1); assert.match(r.stderr, /不能批准/);
+    r = cli('verdict', 'approved', '--inputs', inputs, q); assert.equal(r.status, 1); assert.match(r.stderr, /不能登记 approved/);
     r = cli('verdict', 'changes_requested', q); assert.equal(r.status, 0, r.stderr);
     // 编写方回应并再次提交之后，带着输入材料批准
     const sent = W.parseWorksheet(readFileSync(q, 'utf8'));

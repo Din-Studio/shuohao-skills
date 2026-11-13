@@ -58,16 +58,60 @@
       "ep": 1,
       "targetSeconds": 28,
       "beatClaims": [
-        {"beatId":"B01","start":[1,1],"end":[1,2]},
-        {"beatId":"B02","start":[2,1],"end":[2,3]},
-        {"beatId":"B03","start":[3,1],"end":[3,2]},
-        {"beatId":"B04","start":[4,1],"end":[4,1]}
+        {
+          "beatId": "B01",
+          "start": [
+            1,
+            1
+          ],
+          "end": [
+            1,
+            2
+          ]
+        },
+        {
+          "beatId": "B02",
+          "start": [
+            2,
+            1
+          ],
+          "end": [
+            2,
+            3
+          ]
+        },
+        {
+          "beatId": "B03",
+          "start": [
+            3,
+            1
+          ],
+          "end": [
+            3,
+            2
+          ]
+        },
+        {
+          "beatId": "B04",
+          "start": [
+            4,
+            1
+          ],
+          "end": [
+            4,
+            1
+          ]
+        }
       ],
       "scenes": [
         {
           "sceneId": "S01",
-          "characters": ["C01"],
-          "props": ["P01"],
+          "characters": [
+            "C01"
+          ],
+          "props": [
+            "P01"
+          ],
           "notes": [
             {
               "kind": "restriction",
@@ -167,7 +211,9 @@
         {
           "sceneId": "S03",
           "characters": [],
-          "props": ["P02"],
+          "props": [
+            "P02"
+          ],
           "flow": [
             {
               "line": "封港通知：外海航道已经关闭，请所有船只等待下一次通知，不要擅自进入港口。",
@@ -198,8 +244,22 @@
         {
           "sceneId": "S04",
           "characters": [],
-          "props": ["P03"],
-          "notes": [{"kind":"restriction","text":"没有任何归航或获救结论。","sourceRefs":[{"documentId":"D04","startLine":2,"endLine":2}]}],
+          "props": [
+            "P03"
+          ],
+          "notes": [
+            {
+              "kind": "restriction",
+              "text": "没有任何归航或获救结论。",
+              "sourceRefs": [
+                {
+                  "documentId": "D04",
+                  "startLine": 2,
+                  "endLine": 2
+                }
+              ]
+            }
+          ],
           "flow": [
             {
               "action": "空码头，救生圈静止。",
@@ -212,6 +272,184 @@
               ]
             }
           ]
+        }
+      ]
+    }
+  ],
+  "assetMappings": [
+    {
+      "kind": "character",
+      "localId": "C01",
+      "assetId": "C01",
+      "status": "confirmed",
+      "basis": "样例作者逐项核对原剧本及本样例资产身份后显式确认；相同编号不构成确认依据。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 3,
+          "endLine": 4
+        }
+      ],
+      "assetDigest": "acb962aa7883fdf45143b53e7acf37ac22157c1a017191eafca0bd091b8cf252",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "0d09209a9c4af93bccfd06ff43b6ed24dcf17ea2d75c7bbdffe6742569d6adcc",
+          "lineCount": 4
+        }
+      ]
+    },
+    {
+      "kind": "scene",
+      "localId": "S01",
+      "assetId": "S01",
+      "status": "confirmed",
+      "basis": "样例作者逐项核对原剧本及本样例资产身份后显式确认；相同编号不构成确认依据。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 1
+        }
+      ],
+      "assetDigest": "6a6ba276ef1adc3afe9cdacaf7d8f6ef8654eff50d2e6587c568fff1217e5b9e",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "0d09209a9c4af93bccfd06ff43b6ed24dcf17ea2d75c7bbdffe6742569d6adcc",
+          "lineCount": 4
+        }
+      ]
+    },
+    {
+      "kind": "scene",
+      "localId": "S02",
+      "assetId": "S02",
+      "status": "confirmed",
+      "basis": "样例作者逐项核对原剧本及本样例资产身份后显式确认；相同编号不构成确认依据。",
+      "sourceRefs": [
+        {
+          "documentId": "D02",
+          "startLine": 1,
+          "endLine": 1
+        }
+      ],
+      "assetDigest": "d3d55718808ad91f7ed1edc75f9fbb7cc435881b4215577a19bf2a96c2a86279",
+      "documentVersions": [
+        {
+          "id": "D02",
+          "sha256": "d8352b7d100bf085e2ba204a702da40df5cb4b72e7a392ea9aad1c88ddc770f0",
+          "lineCount": 4
+        }
+      ]
+    },
+    {
+      "kind": "scene",
+      "localId": "S03",
+      "assetId": "S03",
+      "status": "confirmed",
+      "basis": "样例作者逐项核对原剧本及本样例资产身份后显式确认；相同编号不构成确认依据。",
+      "sourceRefs": [
+        {
+          "documentId": "D03",
+          "startLine": 1,
+          "endLine": 1
+        }
+      ],
+      "assetDigest": "fdc12072b07cc19bbb6158748a33768e17d220541ad6d30d1899a70785967373",
+      "documentVersions": [
+        {
+          "id": "D03",
+          "sha256": "c347e5b872a04cb7cfde7e0d2a7bb53f6f9b7284338d4fd125055e273cfaa190",
+          "lineCount": 4
+        }
+      ]
+    },
+    {
+      "kind": "scene",
+      "localId": "S04",
+      "assetId": "S04",
+      "status": "confirmed",
+      "basis": "样例作者逐项核对原剧本及本样例资产身份后显式确认；相同编号不构成确认依据。",
+      "sourceRefs": [
+        {
+          "documentId": "D04",
+          "startLine": 1,
+          "endLine": 1
+        }
+      ],
+      "assetDigest": "968400b917610b64b8422251224ad833c03f3dc25525bd4b80bfeb5035eeabcd",
+      "documentVersions": [
+        {
+          "id": "D04",
+          "sha256": "fa6cbdae110f5dd69916169f72f4347ab7a2dc0421a6661c6a70497a4b86aec0",
+          "lineCount": 2
+        }
+      ]
+    },
+    {
+      "kind": "prop",
+      "localId": "P01",
+      "assetId": "P01",
+      "status": "confirmed",
+      "basis": "样例作者逐项核对原剧本及本样例资产身份后显式确认；相同编号不构成确认依据。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 3,
+          "endLine": 3
+        }
+      ],
+      "assetDigest": "eaf02503338faae2b7535bb3877d94c5e1756f68c55045ddad77a6e54a6a11c8",
+      "documentVersions": [
+        {
+          "id": "D01",
+          "sha256": "0d09209a9c4af93bccfd06ff43b6ed24dcf17ea2d75c7bbdffe6742569d6adcc",
+          "lineCount": 4
+        }
+      ]
+    },
+    {
+      "kind": "prop",
+      "localId": "P02",
+      "assetId": "P02",
+      "status": "confirmed",
+      "basis": "样例作者逐项核对原剧本及本样例资产身份后显式确认；相同编号不构成确认依据。",
+      "sourceRefs": [
+        {
+          "documentId": "D03",
+          "startLine": 2,
+          "endLine": 4
+        }
+      ],
+      "assetDigest": "3b585d04418fe66e77ecbd7b5ca7fe7474ac9bca68b13eb492dec673cb8c103e",
+      "documentVersions": [
+        {
+          "id": "D03",
+          "sha256": "c347e5b872a04cb7cfde7e0d2a7bb53f6f9b7284338d4fd125055e273cfaa190",
+          "lineCount": 4
+        }
+      ]
+    },
+    {
+      "kind": "prop",
+      "localId": "P03",
+      "assetId": "P03",
+      "status": "confirmed",
+      "basis": "样例作者逐项核对原剧本及本样例资产身份后显式确认；相同编号不构成确认依据。",
+      "sourceRefs": [
+        {
+          "documentId": "D04",
+          "startLine": 2,
+          "endLine": 2
+        }
+      ],
+      "assetDigest": "e1c767e9254e776a97e83200dabceb9254ed66be16d3835b323ef66b8675f8e3",
+      "documentVersions": [
+        {
+          "id": "D04",
+          "sha256": "fa6cbdae110f5dd69916169f72f4347ab7a2dc0421a6661c6a70497a4b86aec0",
+          "lineCount": 2
         }
       ]
     }

@@ -71,3 +71,17 @@ export function relocate(doc,from,to) {
   for(const source of d.provenance?.documents??[])source.path=relative(dirname(to),join(dirname(from),source.path));
   return d;
 }
+// Formal story-only projection, authored directly from root screenplay facts.
+export function outlineV5(story,source,artifact) {
+  let number=0;
+  const beats=story.episodes.flatMap((ep,i)=>ep.nodes.map((node,j)=>({
+    id:`B${String(++number).padStart(2,'0')}`,episode:i+1,setup:node.type+'：'+node.setup,outcome:node.outcome,
+    ...(node.resolves?{resolves:structuredClone(node.resolves)}:{}),
+    sourceRefs:[...ref(source.episodes[i].actions[node.start-1],source.episodes[i].actions[node.end-1]),...ref(source.episodes[i].nodes[j])]
+  })));
+  return {schemaVersion:5,source:story.title,params:{},provenance:provenanceFor(source,artifact),
+    story:{summary:`${story.premise}${story.throughline}${story.ending}`,sourceRefs:ref(2,4),endingBeatId:beats.at(-1).id},beats,
+    episodes:story.episodes.map((ep,i)=>({ep:i+1,synopsis:ep.nodes.map(n=>n.outcome).join('；'),opening:ep.opening,
+      ending:{...structuredClone(ep.ending),...(ep.ending.question?{question:{id:ep.ending.question.id,text:ep.ending.question.text,sourceRefs:ref(source.episodes[i].question)}}:{})},
+      sourceRefs:ref(source.episodes[i].start,source.episodes[i].end)}))};
+}

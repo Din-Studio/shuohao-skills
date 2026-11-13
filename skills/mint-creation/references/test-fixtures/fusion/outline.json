@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "source": "潮汐电台",
   "provenance": {
     "kind": "script",
@@ -56,105 +56,6 @@
   "story": {
     "summary": "封港夜的广播跨过空走廊，备用机随后重播。码头没有归航或获救结论。"
   },
-  "characters": [
-    {
-      "id": "C01",
-      "name": "值班员",
-      "tier": "functional",
-      "sourceRefs": [
-        {
-          "documentId": "D01",
-          "startLine": 3,
-          "endLine": 4
-        }
-      ]
-    }
-  ],
-  "scenes": [
-    {
-      "id": "S01",
-      "name": "播音室",
-      "primary": true,
-      "sourceRefs": [
-        {
-          "documentId": "D01",
-          "startLine": 1,
-          "endLine": 1
-        }
-      ]
-    },
-    {
-      "id": "S02",
-      "name": "走廊",
-      "primary": false,
-      "sourceRefs": [
-        {
-          "documentId": "D02",
-          "startLine": 1,
-          "endLine": 1
-        }
-      ]
-    },
-    {
-      "id": "S03",
-      "name": "备用接收室",
-      "primary": false,
-      "sourceRefs": [
-        {
-          "documentId": "D03",
-          "startLine": 1,
-          "endLine": 1
-        }
-      ]
-    },
-    {
-      "id": "S04",
-      "name": "码头",
-      "primary": false,
-      "sourceRefs": [
-        {
-          "documentId": "D04",
-          "startLine": 1,
-          "endLine": 1
-        }
-      ]
-    }
-  ],
-  "props": [
-    {
-      "id": "P01",
-      "name": "旋钮",
-      "sourceRefs": [
-        {
-          "documentId": "D01",
-          "startLine": 3,
-          "endLine": 3
-        }
-      ]
-    },
-    {
-      "id": "P02",
-      "name": "备用接收机",
-      "sourceRefs": [
-        {
-          "documentId": "D03",
-          "startLine": 2,
-          "endLine": 4
-        }
-      ]
-    },
-    {
-      "id": "P03",
-      "name": "救生圈",
-      "sourceRefs": [
-        {
-          "documentId": "D04",
-          "startLine": 2,
-          "endLine": 2
-        }
-      ]
-    }
-  ],
   "beats": [
     {
       "id": "B01",
@@ -218,20 +119,6 @@
         "mode": "open",
         "event": "空码头没有归航或获救结论。"
       },
-      "characterIds": [
-        "C01"
-      ],
-      "sceneIds": [
-        "S01",
-        "S02",
-        "S03",
-        "S04"
-      ],
-      "propIds": [
-        "P01",
-        "P02",
-        "P03"
-      ],
       "sourceRefs": [
         {
           "documentId": "D01",

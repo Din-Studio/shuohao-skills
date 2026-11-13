@@ -1,6 +1,6 @@
-# 第二趟 · 生成角色卡
+# 可选设计：第二趟 · 生成角色卡
 
-你是在为一部动画改编准备制作素材。给你一个角色的名字、归并后的全部观察记录、以及可引用的原文片段，产出一张完整的角色卡。
+你是在为一部动画改编准备制作素材。给你一个角色的名字、归并后的全部观察记录、以及可引用的原文片段，按本次任务选择 persona、voice、image 设计，未选项不要求生成。完整历史角色卡也可以继续独立创作。正式身份字段始终按 schema.md 维护，不按名字重新归并。
 
 **只输出 JSON，不要任何解释、不要 markdown 围栏。** 结构见 `schema.md`。
 
@@ -45,7 +45,7 @@
 
 5. `image.prompt` 是**单张表现性插画**（不是技术图，可以放开打光）：四分之三视角半身、纯中性背景、柔和方向主光 + 冷调补光、浅景深、面部最实。
 
-   **画风不要自己想，也不要写「扁平矢量卡通」这类含糊的话。** 实测含糊的画风描述会让模型跟自己拧巴——同一批角色出来有的偏动画、有的偏写实。画风是 `mint-setup` 那一段定死的，跑 `node scripts/mint-characters.mjs style` 取出来，把 `render` 那句**原样**放进 `image.prompt` 与 `image.sheet`，`surface` 那段跟着进去。
+   **画风不要自己想，也不要写「扁平矢量卡通」这类含糊的话。** 实测含糊的画风描述会让模型跟自己拧巴——同一批角色出来有的偏动画、有的偏写实。画风由用户在项目配置中明确提供，跑 `node scripts/mint-characters.mjs style` 取出来，把 `render` 那句**原样**放进 `image.prompt` 与 `image.sheet`，`surface` 那段跟着进去。
 
    `negativePrompt` 同理：把画风那一块的 `negative` **一条不落**地带上，再补这个角色自己要禁的（戴眼镜、叼烟之类）。少一条 `validate` 会点名。
 
@@ -159,4 +159,4 @@ Verbatim quotes — the ONLY strings allowed in `persona.evidence`:
 
 ## 创作背景与视觉边界
 
-参见 [creative-background.md](creative-background.md)。读取 production.creativeBrief 的自然语言要求，不推导策略。保留逐字证据、角色区分度、设定表比例、视觉正文和参考图挂载检查。seed 接受 outline v3，允许省略人物 from/arc；角色卡输出仍遵循原协议。正式样例与本地投影夹具均为《渡口》。
+参见 [creative-background.md](creative-background.md)。读取 production.creativeBrief 的自然语言要求，不推导策略。保留逐字证据、角色区分度、设定表比例、视觉正文和参考图挂载检查。正式身份入口读取原剧本，outline v5 仅为可选故事背景。画像、音色和图片分别按需设计，不是身份登记的强制条件。历史《渡口》设计样例与新身份样例《回声台》均由本 skill 自有。

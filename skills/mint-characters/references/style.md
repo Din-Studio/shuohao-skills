@@ -1,16 +1,16 @@
 # 画风从哪来
 
 **本 skill 不内置任何画风。**画风住在工作目录根的 `production.json` 顶层，由用户在
-`mint-setup` 那一段填。本 skill 要的是其中的 `style.character` 那一块。
+项目配置中明确提供。本 skill 要的是其中的 `style.character` 那一块；无需安装配置生成 skill。
 
 ```bash
 node scripts/mint-characters.mjs style
 ```
 
-从当前目录向上最多 5 层找 `production.json`，把角色那一块原样打出来。**出角色卡之前先跑它**——
+从当前目录向上最多 5 层找 `production.json`，把角色那一块原样打出来。**制作图片设计之前先跑它**——
 那几段英文正文是要原样抄进 `image.sheet` / `image.prompt` / `image.negativePrompt` 的。
 
-找不到那份文件，或那一块没填，命令会直接报错并指路回 `/mint-setup`。不要自己编一档画风顶上去。
+找不到那份文件，或那一块没填，命令会直接报错。请用户提供明确的视觉正文与制作参数，不要自行编造画风。仅登记身份或制作画像、声音时无需运行本步骤。
 
 ## 为什么不内置
 
@@ -38,8 +38,7 @@ node scripts/mint-characters.mjs style
 从反向词里留出来，平涂动画那套恰恰要禁它；毛孔、皮下散射、顺表情肌的皱纹在写实里是加分项，
 在平涂动画里是反效果。
 
-矛盾本身由 `mint-setup` 的 `style-coherent` 门查（**同一个短语既写进 `render`/`surface`/`lighting`/`tags`
-又写进 `negative`，就是自相矛盾**）。走到这一段，画风本身已经是自洽的。
+人工或模型需检查画风自洽：同一个短语既写进 `render`/`surface`/`lighting`/`tags` 又写进 `negative`，就是自相矛盾。本阶段的结构检查不代替这项内容评审。
 
 ## 本段查什么
 
@@ -64,4 +63,20 @@ node scripts/mint-characters.mjs style
 
 ## 创作背景与视觉边界
 
-参见 [creative-background.md](creative-background.md)。读取 production.creativeBrief 的自然语言要求，不推导策略。保留逐字证据、角色区分度、设定表比例、视觉正文和参考图挂载检查。seed 接受 outline v3，允许省略人物 from/arc；角色卡输出仍遵循原协议。正式样例与本地投影夹具均为《渡口》。
+参见 [creative-background.md](creative-background.md)。读取 production.creativeBrief 的自然语言要求，不推导策略。保留逐字证据、角色区分度、设定表比例、视觉正文和参考图挂载检查。正式身份入口读取原剧本，outline v5 仅为可选故事背景。画像、音色和图片分别按需设计，不是身份登记的强制条件。历史《渡口》设计样例与新身份样例《回声台》均由本 skill 自有。
+
+## 独立配置示意
+
+配置由用户确认，以下仅展示结构，不是默认画风。
+
+```json
+{
+  "schemaVersion": 3,
+  "style": {
+    "label": {"zh":"用户明确选择的画风"},
+    "phrase":"user-confirmed visual phrase",
+    "character": {"render":"user-confirmed render text","surface":"user-confirmed surface text","lighting":"user-confirmed lighting text","negative":"user-confirmed exclusions","tags":["user-confirmed tag"]}
+  },
+  "image": {"model":"user-selected model","asset":{"resolution":"user-selected resolution","aspectRatio":"16:9"}}
+}
+```

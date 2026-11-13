@@ -15,7 +15,6 @@ import {
   DEFAULT_VIDEO_MODEL,
   TIMECODE_RE,
   CAMERA_MOVES,
-  CREATION_TOKENS,
   DEFAULT_PARAMS,
   SHOT_SIZES,
   VIDEO_DURATION_BOUNDS,
@@ -29,8 +28,6 @@ import {
   loadRecipes,
   parseCardFields,
   paramsOf,
-  promptCutSlices,
-  promptRemainder,
   recipeDrift,
   referenceImagePath,
   renderHtml,
@@ -98,7 +95,7 @@ eq(STAGE_DIR, 'creation', '段目录名与工作目录约定一致');
   ok(brief(Array.from({ length: 20 }, (_, i) => `x${i}`)).endsWith('……等 20 处'), '超了只列前几条 + 总数');
 }
 {
-  eq(promptLangOf({}), 'en', '默认英文——不是模型要求，是兼容面最广');
+  eq(promptLangOf({}), 'zh', '新模板默认中文');
   eq(promptLangOf({ promptLang: 'zh' }), 'zh', '自己写了就跟自己的');
   eq(promptLangOf({}, { promptLang: 'zh' }), 'zh', '自己没写就继承生产参数');
   eq(promptLangOf({ promptLang: 'en' }, { promptLang: 'zh' }), 'en', '自己写了优先于生产参数');
@@ -147,24 +144,7 @@ eq(VIDEO_DURATION_BOUNDS['MiniMax H3'].max, 15, 'H3 上限 15 秒');
 eq(clampDuration(4, 'seedance2.5').duration, 4, 'seedance2.5 下限 4 秒');
 eq(clampDuration(31, 'seedance2.5').duration, null, 'seedance2.5 超过上限拒绝');
 
-/* ---------------- 提示词骨架：切片与引号剥离 ---------------- */
-
-{
-  const p = 'Picture 1 is X.\n\nshots:\n[Shot 1] aa\n[Shot 2] bb\n\nambience: x';
-  const slices = promptCutSlices(p, 2);
-  ok(slices[0].includes('aa') && !slices[0].includes('bb'), '[Shot k] 切片互不越界');
-  ok(slices[1].includes('bb') && !slices[1].includes('x'), '切片不吃到 ambience 字段');
-  eq(promptCutSlices(p, 3)[2], null, '找不到的镜头返回 null，不是报错');
-  eq(promptCutSlices('没有 shots 字段', 1).length, 0, '没有骨架就是空数组');
-}
-{
-  const zh = promptCutSlices('图 1 是 X。\n\n镜头描述：\n[镜头 1] aa\n[镜头 2] bb\n\n环境声与配乐：x', 2, 'zh');
-  ok(zh[0].includes('aa') && zh[1].includes('bb'), 'zh 模式按 [镜头 k] 切片');
-}
-eq(promptRemainder('a "台词内容" b'), 'a   b', '引号内的文本被剥掉');
-eq(promptRemainder('no quotes here'), 'no quotes here', '没有引号就原样返回');
-eq(CREATION_TOKENS.en.pictureToken(2), 'Picture 2 is', '英文身份说明句式');
-eq(CREATION_TOKENS.zh.pictureToken(2), '图 2 是', '中文身份说明句式');
+/* 新提示词格式与审核回归见 prompt-rules-selftest.mjs。 */
 
 /* ---------------- 剧本节拍展开（台词按字数÷语速、动作按固定秒数） ---------------- */
 
@@ -234,7 +214,7 @@ eq(
   'MiniMax H3',
   'creation.json 自己写了就覆盖生产参数',
 );
-eq(promptLangOf({}, null, 'h3'), 'en', '非 seedance 默认英文——兼容面最广');
+eq(promptLangOf({}, null, 'h3'), 'zh', 'H3 同样默认中文五部分模板');
 eq(promptLangOf({}, null, 'seedance'), 'zh', 'seedance 默认中文——官方指南通篇中文术语与中文案例');
 eq(promptLangOf({ promptLang: 'en' }, null, 'seedance'), 'en', '自己写了 promptLang 就照写的来');
 ok(TIMECODE_RE.test('[Shot 2] At 00:03.000,'), '时刻正则认得 H3 骨架的切点写法');
@@ -277,7 +257,7 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   doc.video = { model: 'seedance2.0' };
   doc.promptLang = 'en';
   const seg = doc.episodes[0].segments[0];
-  seg.prompt = seg.prompt.replace('[Shot 2]', '[Shot 2] At 00:03.000,');
+  seg.prompt = seg.prompt.replace('光源：', '光源：At 00:03.000, ');
   const g = gateReport(doc, CTX_IMG_P).find((x) => x.id === 'prompt-model-fit');
   ok(g.status === 'fail', 'seedance 下提示词里写死时刻被拦');
   ok(g.detail.includes('00:03.000'), '点名是哪一处时刻');
@@ -310,7 +290,7 @@ eq(promptFamilyOf('kling2.1'), 'h3', '归族仍按既有默认走（只影响默
   ok(gates.find((g) => g.id === 'coverage').detail.includes('跳过'), 'script 缺失时 coverage 明说跳过');
   ok(gates.find((g) => g.id === 'dialogue-verbatim').detail.includes('跳过'), 'script 缺失时 dialogue-verbatim 明说跳过');
   ok(gates.find((g) => g.id === 'refimage-coverage').detail.includes('跳过'), '没给 outline/art 时 refimage-coverage 明说跳过');
-  ok(gates.find((g) => g.id === 'prompt-no-names').detail.includes('跳过'), '没有 outline/cast 时 prompt-no-names 明说跳过');
+  ok(gates.find((g) => g.id === 'prompt-no-names').status === 'skipped', '没有 outline/cast 时 prompt-no-names 明说跳过');
 }
 {
   // 有 script 但没有 imageExists 注入：refimage-coverage 默认全 false，必须点名缺哪张
@@ -405,30 +385,14 @@ for (const seconds of [1, 6]) {
   ok(gate(d, 'segment-id').status === 'fail', '段号格式不对被拦');
 }
 
-// size-phrase / camera-phrase：都是逐切核对这一切自己的 [Shot k] 行
-{
-  const d = clone(FIXTURE);
-  d.episodes[0].segments[0].prompt = d.episodes[0].segments[0].prompt.replace('Wide shot, Tracking Shot', 'Tracking Shot');
-  const g = gate(d, 'size-phrase');
-  ok(g.status === 'fail', '景别短语从 [Shot 1] 行里被删掉后拦');
-  ok(g.detail.includes('E01-01#1'), '点名到切');
-}
-{
-  const d = clone(FIXTURE);
-  d.episodes[0].segments[0].prompt = d.episodes[0].segments[0].prompt.replace('Wide shot, Tracking Shot', 'Wide shot');
-  const g = gate(d, 'camera-phrase');
-  ok(g.status === 'fail', '运镜词从 [Shot 1] 行里被删掉后拦');
-  ok(g.detail.includes('E01-01#1'), '点名到切');
-}
+// 内部枚举仍检查，但不再约束散文正文中的切镜。
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].cuts[0].camera = 'Not A Real Move';
-  ok(gate(d, 'camera-phrase').status === 'fail', '运镜不在词表里被拦');
-}
-{
-  const d = clone(FIXTURE);
+  ok(gate(d,'camera-phrase').status === 'fail','非法内部运镜仍被拦');
   d.episodes[0].segments[0].cuts[0].size = 'not-a-size';
-  ok(gate(d, 'size-phrase').status === 'fail', '景别不在枚举里被拦');
+  ok(gate(d,'size-phrase').status === 'fail','非法内部景别仍被拦');
+  ok(gate(FIXTURE,'camera-phrase').status === 'pass','散文无需镜头运镜短语');
 }
 
 // dialogue-verbatim：改一个字必被拦
@@ -440,30 +404,11 @@ for (const seconds of [1, 6]) {
   ok(g.detail.includes('E01-01'), '点名到段');
 }
 
-// prompt-lang：默认英文，正文混入中文（引号外）被拦；promptLang=zh 时正文仍是英文也被拦
+// 固定字段中文；不再以英文模型规则禁止全称。
 {
-  const d = clone(FIXTURE);
-  d.episodes[0].segments[0].prompt += ' 这是一句中文';
-  ok(gate(d, 'prompt-lang').status === 'fail', '英文提示词正文混入中文被拦');
-}
-{
-  const d = clone(FIXTURE);
-  d.promptLang = 'zh';
-  ok(gate(d, 'prompt-lang').status === 'fail', '设定中文却仍是英文正文被拦');
-}
-
-// prompt-no-names：正文（引号外）不许出现角色名
-{
-  const d = clone(FIXTURE);
-  d.episodes[0].segments[0].prompt = d.episodes[0].segments[0].prompt.replace('the young man', '周亦');
-  const g = gate(d, 'prompt-no-names');
-  ok(g.status === 'fail', '提示词正文出现角色名被拦');
-  ok(g.detail.includes('周亦'), '点名是谁');
-}
-{
-  // 引号内的台词本身不含人名，但换一句含别名的台词验证「只查引号外」逻辑仍然正确识别引号边界
-  const d = clone(FIXTURE);
-  ok(gate(d, 'prompt-no-names').status !== 'fail', '原样样例没有违规');
+  const d=clone(FIXTURE);d.promptLang='invalid';
+  ok(gate(d,'prompt-lang').status==='fail','非法语言仍被拦');
+  eq(gate(FIXTURE,'prompt-no-names').status,'skipped','旧禁人名检查退出');
 }
 
 // refs：cut 引用了剧本该场没有的人物
@@ -491,12 +436,13 @@ for (const seconds of [1, 6]) {
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[0].cuts[0].characters = ['C88'];
+  d.episodes[0].segments[0].images.push({kind:'character',ref:'C88'});
   d.episodes[0].segments[0].cuts[0].props = [];
   // 剧本该场没有 C88，refs 门会先拦；这里单独看 refimage-coverage 对「找不到名字」的措辞
-  const ctxNoRefsCheck = { ...CTX_IMG, script: undefined }; // 去掉 script 依赖，只看 refimage-coverage 本身
+  const ctxNoRefsCheck = { ...CTX_IMG }; // 只读取本项结果；同 ID 也不能绕过显式映射
   const g = gate(d, 'refimage-coverage', ctxNoRefsCheck);
   ok(g.status === 'fail', '编号在 outline/art 里找不到名字也要拦');
-  ok(g.detail.includes('C88') && g.detail.includes('找不到名字'), '措辞说明解不出路径的原因');
+  ok(g.detail.includes('C88') && g.detail.includes('映射'), '措辞说明解不出路径的原因');
 }
 
 // refimage-labeled：images 数组长度与提示词身份说明句数量必须一致
@@ -509,7 +455,7 @@ for (const seconds of [1, 6]) {
 }
 {
   const d = clone(FIXTURE);
-  d.episodes[0].segments[0].prompt = d.episodes[0].segments[0].prompt.replace('Picture 3 is', 'Picture 3 was');
+  d.episodes[0].segments[0].prompt = d.episodes[0].segments[0].prompt.replaceAll('@图片3', '@图片9');
   const g = gate(d, 'refimage-labeled');
   ok(g.status === 'fail', '身份说明句被改得不再匹配固定句式也被拦');
 }
@@ -529,10 +475,7 @@ for (const seconds of [1, 6]) {
 {
   const d = clone(FIXTURE);
   d.episodes[0].segments[3].cuts[1].recipe = 'insert-beat'; // close / Static Shot，卡片额外要求「insert」这个词
-  d.episodes[0].segments[3].prompt = d.episodes[0].segments[3].prompt.replace(
-    '[Shot 2] Close-up, Static Shot —',
-    '[Shot 2] Close-up, Static Shot — insert,',
-  );
+  d.episodes[0].segments[3].prompt = d.episodes[0].segments[3].prompt.replace('参考素材：','参考素材：').replace('柜台旁，','close-up static shot insert，柜台旁，');
   const shotsCtx = { ...CTX_IMG, recipes: CARDS };
   const g = gate(d, 'shot-recipe', shotsCtx);
   ok(g.status !== 'fail', '合规引用（必备短语都在对应 [Shot k] 行里）通过');
@@ -628,7 +571,7 @@ ok(validateCreation({ source: 'x', episodes: [] }).some((x) => x.includes('episo
 /* ---------------- exportPack ---------------- */
 
 {
-  const pack = exportPack(FIXTURE, SCRIPT, { resolveImage: () => ({ name: '', path: '', exists: false }) });
+  const pack = exportPack(FIXTURE, SCRIPT, {scriptPath:join(EX,'script/收书人-script.json'),  resolveImage: () => ({ name: '', path: '', exists: false }) });
   eq(pack.manifest.length, 4, '四段投产包');
   ok(pack.missingTotal > 0, '不注入真实解析时全部标记缺失');
   eq(pack.files.find((f) => f.path === 'manifest.json').content.includes('"video": null'), true, '没有生产参数时 video 字段是 null');
@@ -639,18 +582,18 @@ ok(validateCreation({ source: 'x', episodes: [] }).some((x) => x.includes('episo
     const name = kind === 'character' ? n.char(ref) : kind === 'scene' ? n.scene(ref) : n.prop(ref);
     return { name, path: referenceImagePath(kind, name), exists: true };
   };
-  const pack = exportPack(FIXTURE, SCRIPT, { resolveImage, dir: 'out', production: PRODUCTION });
+  const pack = exportPack(FIXTURE, SCRIPT, {scriptPath:join(EX,'script/收书人-script.json'),  resolveImage, dir: 'out', production: PRODUCTION });
   eq(pack.missingTotal, 0, '全部解析成功时缺失数为 0');
   eq(pack.files[0].path, 'out/E01-01/prompt.md', '带 --out 前缀落盘路径');
   ok(pack.files[0].content.includes('Picture 1 = 周亦'), 'prompt.md 头部列出参考图身份 + 相对路径');
-  ok(pack.files[0].content.includes('---\n\nPicture 1 is'), 'prompt.md 分隔线以下是 prompt 原文，一个字不改');
+  ok(pack.files[0].content.includes('---\n\n镜头参考：'), 'prompt.md 分隔线以下是 prompt 原文，一个字不改');
   const manifestContent = JSON.parse(pack.files.find((f) => f.path === 'out/manifest.json').content);
   eq(manifestContent.video.model, 'MiniMax H3', 'manifest 顶层带生产参数的视频字段');
   eq(manifestContent.segments[0].images[0].path, '../characters/images/周亦-sheet.png', 'manifest 每段记参考图相对路径');
 }
 {
   const resolveImage = (kind, ref) => ({ name: ref, path: `x/${ref}.png`, exists: false });
-  const pack = exportPack(FIXTURE, SCRIPT, { resolveImage });
+  const pack = exportPack(FIXTURE, SCRIPT, {scriptPath:join(EX,'script/收书人-script.json'),  resolveImage });
   const seg1 = pack.manifest.find((s) => s.segment === 'E01-01');
   eq(seg1.missing.length, 3, '缺失的参考图路径逐条列在 missing 里');
 }

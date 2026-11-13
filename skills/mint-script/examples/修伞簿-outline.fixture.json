@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "source": "修伞簿",
   "fixtureScope": "本 skill 自有大纲消费接口夹具；仅覆盖剧本所读取的接口，不声称通过大纲完整校验。",
   "params": {
@@ -7,9 +7,6 @@
   },
   "story": {
     "summary": "修伞人林禾从蓝线绕法猜测亲缘，逐步接受纹路不是身份证据。她留下联系方式，等待许秋自愿见面，双方只约定继续谈话，不确认亲缘。",
-    "focusCharacterIds": [
-      "C01"
-    ],
     "endingBeatId": "B06",
     "sourceRefs": [
       {
@@ -19,109 +16,6 @@
       }
     ]
   },
-  "characters": [
-    {
-      "id": "C01",
-      "name": "林禾",
-      "tier": "lead",
-      "role": "修伞人，寻找母亲但不以纹路认亲",
-      "sourceRefs": [
-        {
-          "documentId": "umbrella",
-          "startLine": 2,
-          "endLine": 2
-        }
-      ]
-    },
-    {
-      "id": "C02",
-      "name": "陈岚",
-      "tier": "support",
-      "role": "旧伞的主人，守护修伞师傅的隐私",
-      "sourceRefs": [
-        {
-          "documentId": "umbrella",
-          "startLine": 2,
-          "endLine": 2
-        }
-      ]
-    },
-    {
-      "id": "C03",
-      "name": "许秋",
-      "tier": "support",
-      "role": "曾传授绕线方法的修伞师傅，自愿前来谈话",
-      "sourceRefs": [
-        {
-          "documentId": "umbrella",
-          "startLine": 2,
-          "endLine": 2
-        }
-      ]
-    }
-  ],
-  "scenes": [
-    {
-      "id": "S01",
-      "name": "街角修伞铺",
-      "description": "临街工作台和存放修伞簿的抽屉。",
-      "primary": true,
-      "sourceRefs": [
-        {
-          "documentId": "umbrella",
-          "startLine": 3,
-          "endLine": 3
-        }
-      ]
-    }
-  ],
-  "props": [
-    {
-      "id": "P01",
-      "name": "蓝线旧伞",
-      "beatIds": [
-        "B01",
-        "B02"
-      ],
-      "sourceRefs": [
-        {
-          "documentId": "umbrella",
-          "startLine": 3,
-          "endLine": 3
-        }
-      ]
-    },
-    {
-      "id": "P02",
-      "name": "修伞簿",
-      "beatIds": [
-        "B03",
-        "B06"
-      ],
-      "sourceRefs": [
-        {
-          "documentId": "umbrella",
-          "startLine": 3,
-          "endLine": 3
-        }
-      ]
-    },
-    {
-      "id": "P03",
-      "name": "联系纸条",
-      "beatIds": [
-        "B04",
-        "B05"
-      ],
-      "sourceRefs": [
-        {
-          "documentId": "umbrella",
-          "startLine": 3,
-          "endLine": 3
-        }
-      ]
-    }
-  ],
   "beats": [
     {
       "id": "B01",
@@ -211,16 +105,6 @@
         "event": "林禾交还修好的伞，向陈岚预约下一次询问。"
       },
       "synopsis": "旧伞勾起记忆，林禾先修伞再征求询问机会。相信纹路可能是母亲的唯一标记。愿意先询问，不把相似当作证据。",
-      "characterIds": [
-        "C01",
-        "C02"
-      ],
-      "sceneIds": [
-        "S01"
-      ],
-      "propIds": [
-        "P01"
-      ],
       "sourceRefs": [
         {
           "documentId": "umbrella",
@@ -237,17 +121,6 @@
         "event": "陈岚带走林禾自愿留下的联系方式，没有交出许秋的地址。"
       },
       "synopsis": "旧簿不能确认身份，林禾尊重客户的隐私边界。想通过地址马上找到答案。愿意让对方决定是否见面。",
-      "characterIds": [
-        "C01",
-        "C02"
-      ],
-      "sceneIds": [
-        "S01"
-      ],
-      "propIds": [
-        "P02",
-        "P03"
-      ],
       "sourceRefs": [
         {
           "documentId": "umbrella",
@@ -276,17 +149,6 @@
         }
       },
       "synopsis": "许秋赴约，双方决定逐步谈起过去。担心不认亲就会错过机会。接受先谈话，暂不确定身份。",
-      "characterIds": [
-        "C01",
-        "C03"
-      ],
-      "sceneIds": [
-        "S01"
-      ],
-      "propIds": [
-        "P02",
-        "P03"
-      ],
       "sourceRefs": [
         {
           "documentId": "umbrella",

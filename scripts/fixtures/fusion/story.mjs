@@ -1,4 +1,5 @@
 // Story is authored in the two adjacent raw screenplay files, before any shots.
+import {promptFixture} from '../../../skills/mint-creation/scripts/test-prompt.mjs';
 import {createHash} from 'node:crypto';
 import {copyFileSync,mkdirSync,readFileSync} from 'node:fs';
 import {dirname,join,relative,resolve} from 'node:path';
@@ -48,18 +49,12 @@ export function materializeStory(dir,scriptPath) {
 }
 export function outlineFor(script,scriptPath,outlinePath) {
   const s=script.episodes,ref=(ep,sc,b)=>structuredClone(s[ep-1].scenes[sc-1].flow[b-1].sourceRefs);
-  return {schemaVersion:4,source:script.source,provenance:relocate(script,scriptPath,outlinePath).provenance,
+  return {schemaVersion:5,source:script.source,provenance:relocate(script,scriptPath,outlinePath).provenance,
     story:{summary:'程岚复核水位但拒绝未经核实的签名；完成检查不等于原谅齐叔。',sourceRefs:[...ref(1,1,2),...ref(2,1,1)]},
-    characters:[{id:'C01',name:'程岚',tier:'lead',role:'检查闸门并复核水位',sourceRefs:ref(1,1,1)},
-      {id:'C02',name:'齐叔',tier:'support',role:'在门外等待的无台词人物',presence:'visible',sourceRefs:ref(1,1,1)}],
-    scenes:[{id:'S01',name:'值班室',primary:true,sourceRefs:ref(1,1,1)},
-      {id:'S02',name:'廊道',primary:false,sourceRefs:ref(1,2,1)},
-      {id:'S03',name:'堤岸',primary:false,sourceRefs:refs('D02',2)}],props:[],
     beats:[{id:'B01',episode:1,setup:'程岚检查闸门，齐叔在门外等待',outcome:'程岚只答应复核，按住值班表而不签名',sourceRefs:[...ref(1,1,1),...ref(1,1,2),...ref(1,1,3)]},
       {id:'B02',episode:1,setup:'程岚再次想起同一句话',outcome:'她再次独白，将没有签名的值班表放回架上',sourceRefs:[...ref(1,3,1),...ref(1,3,2)]},
       {id:'B03',episode:2,setup:'程岚核对实际水位',outcome:'记录在自己的巡检本，继续检查',sourceRefs:[...ref(2,1,1),...ref(2,1,2)]}],
     episodes:s.map(ep=>({ep:ep.ep,synopsis:ep.ep===1?'程岚拒绝签名，齐叔在廊道等待。':'程岚复核水位并记录，继续检查。',
-      characterIds:ep.ep===1?['C01','C02']:['C01'],sceneIds:ep.ep===1?['S01','S02']:['S03'],
       sourceRefs:refs(`D0${ep.ep}`,1,script.provenance.documents[ep.ep-1].lineCount)}))};
 }
 export function planShots(seed,script) {
@@ -83,7 +78,7 @@ export function planShots(seed,script) {
           : `不发声的${n.kind==='continuity'?'连续性说明':'表演限制'}：${n.text}`).join('\n');
         ep.segments.push({id:`E0${ep.ep}-${String(ep.segments.length+1).padStart(2,'0')}`,sceneIndex:si+1,images:[],
           cuts:[{beats:[a,b],seconds:ep.ep===1&&si===2&&a===1?12:6,size:'medium',camera:'Static Shot',characters:sc.characters,...(audioRefs?{audioRefs}:{})}],
-          prompt:`镜头描述：\n[镜头 1] 中景，固定镜头。${body}${continuation?'C01 程岚此前的主观内心独白继续，同一次播放，不重新开始；仅观众听见，C02 齐叔及场内人物均听不见。':''}\n${notes}\n环境声与配乐：保留现场声，不添加配乐。`});
+          prompt:promptFixture(`${body}${continuation?'C01 程岚此前的主观内心独白继续，同一次播放，不重新开始；仅观众听见，C02 齐叔及场内人物均听不见。':''}\n${notes}`)});
       });
     });
   }

@@ -1,6 +1,6 @@
-# report.html 的设计约定
+# cast-report.html 的设计约定
 
-报告由 `scripts/mint-characters.mjs render --html` 生成，样式全部内联在 `renderHtml()` 里。**改样式只改那一处**，不要另起模板。
+报告由 `scripts/mint-characters.mjs render --html` 生成。无版本完整历史角色卡继续使用 `renderHtml()` 的交互设定集。正式 cast v1 使用 `lib/identity.mjs` 的 `renderIdentity()`：身份可以没有任何设计块，不能为了渲染而伪造空画像或音色。两个模式都内联样式、支持原始 JSON 导出及离线阅读。
 
 这份文档记录为什么长这样，免得后来的改动把它改回一个通用的卡片墙。
 
@@ -134,3 +134,9 @@
 ## 创作背景与检查状态
 
 仅在提供时展示 creativeBrief 原文，不生成策略应用记录。资产正文与交接关系优先，结构问题和内容评审状态随后。检查对象为 status/category/level；pass、fail、skipped 分开呈现，skipped 不计为通过。报告明确内容评审未执行，导出 JSON 不附加要求副本、统计或来源摘要。
+
+## 正式身份报告
+
+身份报告优先展示稳定 ID、来源事实、覆盖、预算和审核状态，再按需展示 persona、image、voice。侧栏按 ID 导航，字段分组展示并提供复制按钮。图片仅从 images/<C ID>-sheet.png 自动发现，路径只进入显示模型，不写入导出 JSON。重核身份在报告顶栏明确列出，不能把旧图显示等同为旧图审核仍有效。未提供图片不影响身份报告。
+
+正式报告界面支持中文及英文回退，--lang 只覆盖界面，不改变 cast.lang 的设计语言校验。旧完整设计报告原有多语言 ui 机制保持。打印模式展开全部已经展示的字段；所有动态值转义，不加载远程资源。来源、语义审核和联合交接状态分别显示，skipped 不计为通过。

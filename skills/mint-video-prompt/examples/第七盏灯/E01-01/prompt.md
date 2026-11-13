@@ -3,7 +3,7 @@ segment: E01-01
 status: in_review
 round: 1
 model: MiniMax H3
-promptLang: en
+promptLang: zh
 bodyHash:
 inputHash:
 ---
@@ -85,10 +85,28 @@ inputHash:
 
 ---
 
-Picture 1 is the boy of about eleven in a faded, oversized school jacket. Picture 2 is the young substitute teacher in a grey knitted cardigan. Picture 3 is the mountain village classroom at night during a power cut, rows of wooden desks and a windowsill lined with kerosene lamps. Picture 4 is the small tin kerosene lamp with a soot-darkened glass chimney.
+镜头参考：自由切分镜头，根据剧情需要自运镜（建议多使用子弹时间，升格，环绕运镜，荷兰角，移焦，摇臂升降，云台悬浮，穿越推进，侧跟，格莱美运镜，破窗转场，时间切片 ），禁止单个分镜超过3秒，禁止镜头固定，禁止对白正反打硬切。
+光源：窗台煤油灯由侧下方照亮人物，柔光，2200 K
+环境：夜间室内，窗外风声持续
+色调：低饱和暗色，重点物件保留原色
+质感：自然材质与柔和明暗过渡
+风格参照：写实叙事取向，保留现场细节
+氛围：安静而有所期待
 
-shots:
-[Shot 1] Wide shot, Static Shot — the dark classroom of <Picture 3>, six lamps already burning along the windowsill and the seventh, <Picture 4>, unlit. <Picture 1> pushes the door open, walks on tiptoe to the windowsill and tilts a small oil can over the seventh lamp. <Picture 2> sits at a desk in the back row, in shadow, watching without moving.
-[Shot 2] Medium shot, Push In — seen from behind the seated teacher's shoulder, the boy stands at the windowsill with his back to her. The young teacher, her voice quiet and level, says: "原来是你。" The boy's hand jerks and the oil can knocks against the windowsill; he does not run, he stays facing the lamp and turns the wick up until the flame brightens. A slow push in toward the boy and the lamp.
+参考素材：阿禾
+@图片1，人物外观参考。
+基本信息：年龄约十一岁，身高未提供。全剧人设：山村学生，珍惜老师的陪伴。本段人设：倔强、克制。
+林栀
+@图片2，人物外观参考。
+基本信息：年龄、身高未提供。全剧人设：山村代课老师，关心学生。本段人设：安静、认真。
+山村教室@图片3：环境参考。
+第七盏煤油灯@图片4：道具参考。
 
-ambience: A door hinge creaks, soft footsteps on a wooden floor, oil trickling into tin, the can knocking once against wood, wind outside the window; no music.
+停电的山村教室@图片3里，窗台上六盏煤油灯已亮，第七盏煤油灯@图片4尚未点燃。林栀@图片2坐在后排课桌旁的阴影里。阿禾@图片1推门进来，门轴轻响；阿禾@图片1踮脚走到窗台前，把小油壶倾向第七盏煤油灯@图片4，油落进灯身。
+
+林栀@图片2在后排当场轻声说：“原来是你。”阿禾@图片1手上一抖，小油壶碰响窗台。阿禾@图片1没有离开窗台，继续把第七盏煤油灯@图片4的灯芯挑高，灯焰亮起来。
+
+写实画风，弱光中保留人物面部与材质细节。无任何字幕、水印、logo 与额外图形符号；无配乐、无背景音乐，保留正文中的对白、原生环境音效与人物动作交互音效。环境反应和音效根据画面内容自行卡点。
+
+负面提示词：
+阿禾或林栀出现同款分身，未点燃的灯提前燃烧，添灯动作做错人，林栀台词由阿禾说出，阿禾发言时林栀同步动嘴，煤油灯或油壶穿模

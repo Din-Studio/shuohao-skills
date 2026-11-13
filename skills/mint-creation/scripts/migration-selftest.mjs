@@ -28,7 +28,7 @@ try {
     assert.ok(readFileSync(input).equals(original));assert.ok(existsSync(out+'.review'));
     const record=JSON.parse(readFileSync(out+'.review'));assert.deepEqual(record.archived.creativeContext,old.creativeContext);
     assert.deepEqual(record.archived['episodes.1.plan'].ending,old.episodes[0].ending);
-    assert.deepEqual(validateCreation(r.document,{script,outline,art:read('examples/art/收书人-art.json'),imageExists:()=>true}),[]);
+    assert.ok(validateCreation(r.document,{script,outline,cast:read('examples/characters/收书人-cast.json'),art:read('examples/art/收书人-art.json'),imageExists:()=>true}).some(p=>p.includes('五')||p.includes('镜头参考')),'版本迁移保留旧正文，不自动重写为新标准或冒充审核通过');
   });
   test('existing output and record never overwritten',()=>{
     const before=readFileSync(out);assert.throws(()=>migrateFile(input,{out,...ctx,confirm:true}));assert.ok(readFileSync(out).equals(before));

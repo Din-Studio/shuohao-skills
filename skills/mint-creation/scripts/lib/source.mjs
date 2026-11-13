@@ -36,7 +36,7 @@ export function sourceProblems(doc, {required = false} = {}) {
   for (const r of p.coverage) if (!range(r)) errors.push('provenance coverage 坐标越界或文档未知');
   if (p.totalEpisodes !== undefined && (!positive(p.totalEpisodes) || doc.episodes?.some(e => e?.ep > p.totalEpisodes))) errors.push('totalEpisodes 必须为正整数，实际集号不能超出已知总集数');
   if (p.scope === 'complete') {
-    if (!positive(p.totalEpisodes) || doc.episodes?.length !== p.totalEpisodes || Array.from({length:positive(p.totalEpisodes) ? Math.min(p.totalEpisodes,100000) : 0}, (_,i) => i+1).some(n => !doc.episodes?.some(e => e?.ep === n))) errors.push('complete 需要已知总集数及完整 1..N 集');
+    if (doc.episodes !== undefined && (!positive(p.totalEpisodes) || doc.episodes?.length !== p.totalEpisodes || Array.from({length:positive(p.totalEpisodes) ? Math.min(p.totalEpisodes,100000) : 0}, (_,i) => i+1).some(n => !doc.episodes?.some(e => e?.ep === n)))) errors.push('complete 需要已知总集数及完整 1..N 集');
     for (const d of p.documents) if (object(d) && !rangesCover(p.coverage.filter(r => range(r) && r.documentId === d.id),1,d.lineCount)) errors.push(`complete 来源覆盖不完整：${d.id}`);
   }
   function walk(x, path = '') {

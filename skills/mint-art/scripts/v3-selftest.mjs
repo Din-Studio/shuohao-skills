@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertOutlineV3, documentProblems, creativeBackground } from './lib/contracts.mjs';
-import { seedFromOutline, renderHtml, renderMarkdown } from './mint-art.mjs';
+import { seedFromLegacyOutline as seedFromOutline, renderHtml, renderMarkdown } from './mint-art.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const outline = JSON.parse(readFileSync(join(here, '../examples/雨棚留言-outline-v3.json'), 'utf8'));
 const minimal = structuredClone(outline);

@@ -20,10 +20,23 @@ const example = id => readFileSync(join(root, 'examples/第七盏灯', id, 'prom
 const mutate = (md, fn) => { const s = structuredClone(W.parseWorksheet(md)); fn(s); return W.parseWorksheet(W.serializeWorksheet(s)); };
 
 try {
+  test('own asset snapshots require explicit mappings, not matching IDs or names', () => {
+    const m=JSON.parse(readFileSync(join(root,'examples/第七盏灯/输入材料.json'),'utf8'));
+    const s=W.parseWorksheet(example('E01-01'));
+    assert.ok(m.assetMappings.length);assert.ok(m.assetMappings.every(r=>r.localId!==r.assetId),'own fixture proves local and target IDs differ');
+    const inputHash=W.inputHashOf(s.structure,m), changed=structuredClone(m);
+    changed.assetMappings[0].basis+='新的身份依据';assert.notEqual(W.inputHashOf(s.structure,changed),inputHash);
+    const pending=structuredClone(m);pending.assetMappings[0].status='pending';
+    const submitted={...s,meta:{...s.meta,status:'in_review'},review:'结论：仅测试显式映射阻断，不代表内容审核。'};
+    assert.ok(W.recordVerdict(submitted,'approved',pending).problems.length);
+    const absent=structuredClone(m);delete absent.assetMappings;assert.ok(W.recordVerdict(submitted,'approved',absent).problems.length);
+    const unrelated=structuredClone(m);unrelated.assets.props.push({id:'P99',name:'未使用的样例资产'});assert.equal(W.inputHashOf(s.structure,unrelated),inputHash);
+  });
+
   test('guides resolve by model family and every referenced guide exists', () => {
     assert.equal(promptGuideOf('MiniMax H3'), 'h3-prompt.md'); assert.equal(promptGuideOf(undefined), 'h3-prompt.md');
     assert.equal(promptGuideOf('seedance2.0 fast'), 'seedance2-prompt.md'); assert.equal(promptGuideOf('未知模型'), null);
-    assert.equal(defaultLangOf('seedance2.5'), 'zh'); assert.equal(defaultLangOf('MiniMax H3'), 'en');
+    assert.equal(defaultLangOf('seedance2.5'), 'zh'); assert.equal(defaultLangOf('MiniMax H3'), 'zh');
     for (const f of ['creation-prompt.md', 'h3-prompt.md', 'seedance2-prompt.md', 'worksheet.md', '分镜指南.md']) assert.ok(existsSync(join(root, 'references', f)), f);
     const r = cli('guide', '--model', 'seedance2.0'); assert.equal(r.status, 0); assert.match(r.stdout, /seedance2-prompt\.md/);
     assert.match(cli('guide', '--model', '未知模型').stdout, /能力未核实/);
@@ -46,7 +59,7 @@ try {
     claimed.slice(1).forEach((c, i) => assert.equal(c[0], claimed[i][1] + 1, '全场节拍连续认领'));
     const bodies = ['E01-01', 'E01-02'].map(id => W.parseWorksheet(example(id)).body).join('\n');
     for (const b of beats.filter(b => b.kind === 'line')) assert.ok(bodies.includes(b.text), `台词逐字：${b.text}`);
-    for (const c of input.assets.characters) assert.ok(!bodies.replace(/"[^"]*"/g, '').includes(c.name), '英文提示词正文不出现人名');
+    for (const c of input.assets.characters) assert.ok(bodies.includes(c.name), '新标准明确对象全称');
   });
 
   test('lint catches structure and skeleton problems', () => {
@@ -57,12 +70,13 @@ try {
     has(mutate(base, s => { s.structure.cuts[0].camera = 'Dolly'; }), /运镜词表/);
     has(mutate(base, s => { s.structure.cuts[0].seconds = 0; }), /有限正数/);
     has(mutate(base, s => { s.structure.cuts = []; }), /cuts 不能为空/);
-    has(mutate(base, s => { s.body = s.body.replace('Wide shot, ', ''); }), /景别短语/);
-    has(mutate(base, s => { s.body = s.body.replace('Medium shot, Push In', 'Medium shot'); s.body = s.body.replace('A slow push in', 'Moving closer'); }), /运镜短语/);
-    has(mutate(base, s => { s.body = s.body.replace('Picture 4 is', 'The lamp is'); }), /身份说明句/);
-    has(mutate(base, s => { s.structure.images.pop(); }), /身份说明句多于/);
-    has(mutate(base, s => { s.body = s.body.replace('ambience:', 'sound:'); }), /两个字段/);
-    has(mutate(base, s => { s.body = s.body.replace('[Shot 2]', '[Shot 3]'); }), /缺少 \[Shot 2\]/);
+    has(mutate(base, s => { s.body = s.body.replace('光源：', '灯光：'); }), /全局七栏/);
+    has(mutate(base, s => { s.body = s.body.replace('2200 K', '暖光'); }), /色温/);
+    has(mutate(base, s => { s.body = s.body.replaceAll('@图片4', '@图片9'); }), /未提供.*@图片9/);
+    has(mutate(base, s => { s.structure.images.pop(); }), /未提供.*@图片4/);
+    has(mutate(base, s => { s.body = s.body.replace('负面提示词：', '错误：'); }), /负面提示词/);
+    has(mutate(base, s => { s.body += '\n[Shot 1]'; }), /旧逐镜/);
+    assert.deepEqual(lintWorksheet(mutate(base, s => { s.meta.model='seedance2.0'; })), [], '固定首行的3秒不误拦');
     has(mutate(base, s => { s.body = ''; }), /正文为空/);
     has(mutate(base, s => { s.meta.model = 'seedance2.0'; s.body += '\n0–3 秒观察'; }), /seedance/);
     for (const audioRefs of [[[1,1]],[[1,0]],[[1,2],[1,2]],[[9,1]],'invalid']) has(mutate(base,s=>{s.structure.cuts[0].audioRefs=audioRefs;}),/audioRefs/);

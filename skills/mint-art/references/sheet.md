@@ -1,6 +1,6 @@
 # 设定图出图（场景 + 道具）· 版面与提示词
 
-本 skill 只导出出图计划；实际生成使用独立安装的 **ly-image**。先阅读 [交接与恢复流程](media-handoff.md)。
+身份登记不要求图片。只有 designStatus: ready 且任务需要生成时，本页才适用。本 skill 只导出出图计划；实际生成使用独立安装的 **ly-image**。先阅读 [交接与恢复流程](media-handoff.md)。
 
 ```bash
 node <baseDir>/scripts/mint-art.mjs images <剧名>-art.json --out image-plan.json
@@ -43,7 +43,7 @@ node <baseDir>/scripts/mint-art.mjs images <剧名>-art.json --out image-plan.js
 是最常见污染，出现就重生成。尺度短语（`handheld scale` 等）必须在提示词里，否则
 手持铁盒会被画成柜子。
 
-场景和道具的产物都落到 `./images/<slug>-sheet.png`（`slug` 命令生成安全文件名），
+新登记资产通过固定 imageStem（默认稳定 ID）落到 `./images/<imageStem>-sheet.png`；历史媒体优先保留显式 sheetImage 原路径，
 `render` 按同一个算法找图。
 
 ## 三条硬要求
@@ -55,7 +55,7 @@ node <baseDir>/scripts/mint-art.mjs images <剧名>-art.json --out image-plan.js
    `THE SPACE MUST BE IDENTICAL ACROSS ALL PANELS`。拿到图先核对锚点：每个锚点在
    主视角里找得到吗？
 3. **透视要稳。**环境图最常见的废图是几何融化、透视歪斜。反向提示词里
-   `warped perspective, melted geometry` 必须在（预设自带）。
+   `warped perspective, melted geometry` 必须在（从 production 的画风正文读取）。
 
 ## 变体场景的提示词
 
@@ -66,7 +66,7 @@ node <baseDir>/scripts/mint-art.mjs images <剧名>-art.json --out image-plan.js
 
 ## 道具的透明底
 
-白底出图之后，可另交 ly-image 执行透明底编辑；先查实时模型、参数和价格。核验后放到 optionalCutoutOutput，保留原白底主图；render 仍读取 `<slug>-sheet.png`。
+白底出图之后，可另交 ly-image 执行透明底编辑；先查实时模型、参数和价格。核验后放到 optionalCutoutOutput，保留原白底主图；render 仍读取 sheetImage 或固定 imageStem 对应的主图。
 
 ## 画风一致性
 

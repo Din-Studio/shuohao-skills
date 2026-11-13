@@ -113,7 +113,7 @@ test('HTML/Markdown deliver notes, audio, sound, subtitle and exact source relat
     for(const required of ['复核中。','远处报警器短鸣。','audibleTo','subjective','sourceRefs','暂不公开','钥匙仍由C01保管','闸室门外']) assert(output.includes(required));
   }
 });
-for(const mutate of [o=>delete o.provenance,o=>o.schemaVersion=3,o=>o.params.minutesPerEpisode=1,o=>o.adaptation={},o=>o.arcs=[],o=>o.beats[0].kind='event',o=>o.scenes[0].reusePlan='重复使用',o=>delete o.beats[0].sourceRefs,o=>o.episodes[2].ending.question.resolution='required',o=>o.episodes[2].ending.question.dueByEp=3]) test('retired/damaged outline contract cannot be dual-read',()=>{const o=clone(OUTLINE);mutate(o);assert(outlineInputErrors(o).length);});
+for(const mutate of [o=>delete o.provenance,o=>o.schemaVersion=3,o=>o.params.minutesPerEpisode=1,o=>o.adaptation={},o=>o.arcs=[],o=>o.beats[0].kind='event',o=>o.scenes=[{id:'S01'}],o=>delete o.beats[0].sourceRefs,o=>o.episodes[2].ending.question.resolution='required',o=>o.episodes[2].ending.question.dueByEp=3]) test('retired/damaged outline contract cannot be dual-read',()=>{const o=clone(OUTLINE);mutate(o);assert(outlineInputErrors(o).length);});
 const dir=mkdtempSync(join(tmpdir(),'script-fusion-'));
 const write=(file,doc)=>writeFileSync(file,JSON.stringify(doc,null,2)+'\n');
 const cli=(...args)=>spawnSync(process.execPath,[join(root,'scripts/mint-script.mjs'),...args],{encoding:'utf8'});

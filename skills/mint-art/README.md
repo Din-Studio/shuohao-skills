@@ -2,142 +2,72 @@
 
 # mint-art
 
-当前来源交接支持 outline v4 的剧本事实，兼容显式 v3 历史资产投影。CLI `seed` 核验原文 SHA256 与范围；`sourceFacts` 将证据和限制与设计补定分开。详见[来源事实](references/source-facts.md)。production 保持 v3。
+正式交付固定包含 `xxx.json`、`xxx-report.md`、`xxx-report.html` 三个文件。`xxx` 是同一份 JSON 去掉 `.json` 后的完整文件名；两份报告由该 JSON 渲染，并与它放在同一阶段目录。
 
-## 上游契约与迁移
+独立从原剧本识别地点与物品，维护稳定美术身份，按任务需要完成设计。**登记身份不要求出图。**
 
-seed 接受 `outline.schemaVersion: 4` 和显式 v3 历史资产投影；production 仍要求 `schemaVersion: 3`。读取可选非空 `production.creativeBrief`，不解释策略配置。人物来源、弧光、节点分类与位置可以省略。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
+正式版本：**art v1**（`kind: mint-art`）；可选故事输入 **outline v5**；人物身份输入 **cast v1**（`kind: mint-characters`）；视觉参数 **production v3**。旧版不隐式双读，详见 [迁移](references/migration.md)。
 
-检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-background.md) 和 [迁移说明](references/migration.md)。
-
-给 AI 短剧出**美术设定集**：场景 + 叙事道具。前提刻在骨子里：**这是 AI 生成，不是实拍**——没有堪景、搭景、置景采买，环境和道具都是要被生成几十次还得长一样的资产。交付物不是置景清单，是一致性方案。
-
-**场景层**：
-
-- **设计意图** — 这个空间为哪场戏存在，不是户型说明
-- **一致性锚点**（每景 3–5 个） — 每次生成必现的可辨识特征（补丁船篷、断裂的第七块桥板）。观众靠它认场景，QC 靠它核对生成镜头有没有漂
-- **光照时段变体** — AI 换时段是**重新生成不是重新打灯**，每个状态落成完整英文提示词
-- **变体机制** — `variantOf` + `changes` 把衍生场景挂在母场景上，出图拿母场景成图当参考
-
-**道具层**（只收**叙事道具**：有特写、跨集、承载剧情，通常 3–8 件）：
-
-- **戏剧功能** — 留言板是代存的私人物件、铁盒用于核对纸条归属——先说它在剧里干什么
-- **状态变体** — 合上/打开、藏着/摊开：道具有状态弧，每个状态一张参考图
-- **尺度参照** — 手持级/桌面级/家具级，英文短语写死进提示词——AI 把手持道具画成家具尺寸是高频事故
-- **白底无手** — 道具图要被贴进各种镜头，必须纯白可抠；拿着道具的手是最常见污染
-
-场景陈设归场景锚点、一次性手部道具镜头级提示词解决——都不单独建资产。
-
-产出 `art.json` + Markdown + 一个双击就能开的 `art-report.html`。报告界面默认中文；render 加 `--lang en` 输出全英文界面（或在 art.json 顶层写 `"lang": "en"`，`--lang` 优先）： 英文界面下质量门标签同样翻译（阈值原样），门的失败详情与数据内容保持原文。
-
-报告截图尚未更新；当前报告请从《雨棚留言》样例重新渲染。
-
-## 质量检查：代码执行，跳过单列
-
-与仓库里另外五个 skill 同一主张：**checklist 交给模型自觉是靠不住的**。
-
-| 检查项 | 规则 |
-| --- | --- |
-| 一致性锚点 | 3–5 个（场景与道具同规） |
-| 光照状态 | 每景 ≥1 且落成英文提示词 |
-| **无人** | 反向提示词禁人（场景与道具都查） |
-| 提示词语言 | 全部英文 |
-| 提示词不含角色名 | `validate --cast cast.json` 才查；不给就**明说跳过** |
-| 变体引用完整 | `variantOf` 指向存在的场景且带 `changes` |
-| **道具状态** | ≥1 且落成英文提示词 |
-| **道具尺度** | scale 枚举对应的英文短语必须出现在提示词里 |
-| **道具无手** | 反向提示词禁 hands/fingers |
-| **道具白底** | 设定图必须 pure white background |
-| **画风整块用上** | 工作目录根有 `production.json`（`mint-setup` 的产出）就查：`style.scene` 的渲染句原样进了 `sheet` 与 `prompt`、反向词一条不落地进了场景的反向词。找不到那份文件**明说跳过** |
-| **设定图画幅与生产参数一致** | `image.sheet` 里的版面画幅必须是 `image.asset.aspectRatio`。**资产图和成片画幅是两件事**——成片竖屏，设定图仍然横构图，L 形版面靠横向铺开 |
-
-自测里每道门都有**击穿用例**——证明它真的会拦。
-
-## 跟另外几个 skill 的接力
-
-```
-mint-setup      → production.json （拿什么拍：模型、画幅、分辨率、画风）
-mint-outline    → outline.json （什么：结构与分集）
-mint-characters → cast.json    （谁：角色资产）
-mint-art        → art.json     （哪里 + 手里拿的：美术资产）
-```
-
-- `seed <outline.json>` 确定性预填场景与道具两张清单，连出现集、关联剧情节点一起搬；大纲没有 `props` 时道具留空，模型按 `prop-pass.md` 从原文提取
-- `validate --cast <cast.json>` 用角色表查提示词里有没有混进角色名
-- 画风不内置：读 `production.json` 的 `style.scene`。它与 `style.character` 是同一个画风的两种落地——环境的真实感来自用旧的材质，不是皮肤毛孔
-
-## 命令行直接用
+## 入口
 
 ```bash
-node scripts/mint-art.mjs seed outline.json > art.json      # 从大纲预填场景骨架
-node scripts/mint-art.mjs validate art.json --cast cast.json
-node scripts/mint-art.mjs checkup art.json                  # 只跑质量门
-node scripts/mint-art.mjs render art.json --html            # 出报告（界面默认中文）
-node scripts/mint-art.mjs render art.json --html --lang en  # 英文界面报告
-node scripts/mint-art.mjs style                             # 看这部剧的画风（场景那一块）
+node scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 --out draft.json
+node scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 --existing old-art.json --out next.json
+node scripts/mint-art.mjs seed --design --title 原创空间 --out design.json
+node scripts/mint-art.mjs register draft.json --kind scene --key permanent-key --name 地点名称 --out registered.json
 ```
 
-`render` 支持与 `validate/checkup` 相同的 `--cast cast.json`：未提供时明确跳过禁名检查；提供损坏或不可读文件时失败。自动挂图仅影响显示，导出 JSON 保持输入原值。
+seed 只计算原件摘要与行数，资产数组和已读范围为空。模型或人工阅读原件后，填写事实、引用、资产取舍、负责范围及身份确认。场次不等于地点；物件被提及、交接或损坏不自动建立新资产。outline 不再提供资产身份。人物身份由 characters 判断。
 
-## 出图（可选）
+`identity-inputs FILE` 打印复核输入摘要，不自动确认；身份可以保持 `designStatus: none`。已有独立设计和图片历史通过 `migrate-art` 保留，不能只修改版本号。
+
+## 核验与交付
 
 ```bash
-node scripts/mint-art.mjs images art.json              # 仅导出离线计划
-node scripts/mint-art.mjs images art.json --dry-run    # 只看要提交什么
-node scripts/mint-art.mjs images art.json --out image-plan.json # 保存计划，不生成图片
+node scripts/mint-art.mjs validate art.json --outline outline-v5.json --cast cast-v1.json
+node scripts/mint-art.mjs checkup art.json
+node scripts/mint-art.mjs verify-sources art.json
+node scripts/mint-art.mjs reconcile candidate.json --previous old-art.json --out next.json
+node scripts/mint-art.mjs render art.json --md > art-report.md
+node scripts/mint-art.mjs render art.json --html > art-report.html
+node scripts/mint-art.mjs images art.json --production production.json --only S01 --out plan.json
 ```
 
-走 **ly-image**（灵影网关）。场景和道具各一张设定图，版面都是**主视角大图 + 底部和右侧的 L 形细节边框**：场景细节格放锚点特写，道具细节格放锚点特写 + 其他状态 + 侧面。场景**无人**；道具另加**无手、纯白背景**。没有 ly-image 就只交提示词，其余照常。
+- CLI 核验、渲染和图片计划都校验实际原件、文档身份、SHA256、物理行数、引用与范围。缺失或改版失败，不伪装 skipped。
+- 缺少可选 outline/cast/production 时相应对账 skipped。已经提供的损坏、版本错误或不匹配输入失败。
+- 增量读取既有 registry；重排不改 S/P ID。合并、拆分、纠正、删除必须追加显式映射和依据；退休 ID 永不复用。
+- `budgets` 在本产物保存。明确预算超额阻断；参考值仅提醒。增量变更明确预算需要保存原值和用户依据。
+- `designStatus: none` 不要求设计字段；planned/ready 执行锚点、空景、英文提示词、光照/状态、尺度、白底、禁手等检查。只有 ready 进入图片计划。
+- 图片计划只离线导出，未提交、未生成。production 画风唯一来自 `style.scene`；不依赖任何外部生成 skill 才能完成本阶段交付。
+- JSON 是唯一编辑源。报告保留输入导出值。报告 HTML 不进入版本控制。技术检查不等于内容或媒体审核。
 
-本地命令只导出计划。阅读 [生成交接](references/media-handoff.md)，再使用独立安装的 ly-image 完成模型发现、预览、生成与任务恢复。下载核验后放到计划 output 路径再 render。独立创作、校验和导出计划不依赖外部 skill。
+完整流程固定为 **outline → characters → art → script → creation**。项目级调用方负责顺序与交接；单独运行不证明上游完成，也不声称跨阶段映射已通过。正文局部标记与 S/P ID 字符相同不构成映射，联合映射权威仍在 script.assetMappings；见 [接口盘点](references/migration.md)。
 
-## 自动驾驶（autopilot）
-
-工作目录根的 `production.json`（`mint-setup` 的产出）顶层写着 `"autopilot": true` 时，本 skill 的全部流程**一口气跑完**：不问用哪份输入，道具清单自己定，场景与道具设定图一次出全，做过的决定全部写进最后的汇报。
-
-**转移的是审批权，不是取消检查点**：确定性检查照样要过、拿到图照样核对锚点（无人、无手、纯白背景）——只是不再等人点头。字段写着 `false`、整个没写、或者根本没有 `production.json`，就是原来的样子（该问就问）。跑 `validate` 时找到生产参数并且开着，会打印一句 `↳ 自动驾驶：开启`。
-
-## 文件
-
-```
-SKILL.md                 给 agent 读的工作流
-scripts/
-  mint-art.mjs          seed / validate / checkup / images / render / style / slug
-  lib/media-plan.mjs    离线交接计划，不调用网关
-  selftest.mjs           278 项原功能断言与新增契约回归，不调模型、不发请求
-references/
-  schema.md              art.json 结构 + 硬规则
-  scene-pass.md          怎么填场景设定（AI 短剧的思路）
-  prop-pass.md           怎么选、怎么填叙事道具
-  realism.md             真实感怎么落进提示词（写实档全套，其余画风只取通用那半边）
-  sheet.md               设定图的版面与提示词（生成交给 ly-image）
-  report-style.md        报告的设计约定
-examples/
-  雨棚留言-art.json           《雨棚留言》三场景 + 两件道具样例，全部质量门通过
-assets/
-  report.webp            报告截图
-```
-
-## 自测
+## 显式迁移
 
 ```bash
-node scripts/selftest.mjs
-node scripts/v3-selftest.mjs
-node scripts/upstream-selftest.mjs
+node scripts/mint-art.mjs migrate-art old-art.json --out new-draft.json --related old-workorder.json
+node scripts/mint-art.mjs migrate-outline outline-v4.json --out pending-art.json
 ```
 
-离线自测覆盖创作契约、渲染和交接计划，包括参考依赖、提示词原文、文件检查和退役选项。不调用网关或模型。
+保留原文件及媒体，不覆盖输出。逐字段保存原路径、原值、待处理状态；保留 C/S/P、别名、notes、分集引用、节点关系、焦点人物、说话者和预算的历史材料。v4 资产投影是待核验候选，不是已审核美术产物。
 
-**只在 macOS + Node 24 上实测过。** 代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但**没验过**。
+## 自有样例
 
-正式样例先阅读 `examples/雨棚留言-故事提案.md`（schema 阅读者从 skill 根目录定位）。独立水池场景不要求 reusePlan；节点关联包含 event 和 turn，不伪造 payoff。当前资产不含真实生成图片。
+先阅读 [故事提案](examples/雨棚留言-故事提案.md)。再阅读 `examples/雨棚留言-原剧本.txt`：
 
-## 独立样例运行
-
-以下输入全部属于《雨棚留言》。outline-v3 文件仅用于资产消费投影测试，不是完整大纲交付。
+- 四个场次标题只识别为两个地点；雨棚清空不新增地点身份。
+- 旧留言板转交不新增道具身份；口头提及雨伞不建立道具。
+- `雨棚留言-识别-art.json` 只登记两个地点、两件物品，无设计、无图片。
+- `雨棚留言-art.json` 保留独立原创设计样例，包括雨棚视觉变体；它不是从剧本自动提取的已审结论。
+- `雨棚留言-outline-v5.json` 仅为本阶段消费测试的故事投影，不冒充全功能 outline 校验样例。
+- 人物夹具属于本 skill，不从其他目录读取。所有图片均未实际生成。
 
 ```bash
+node scripts/mint-art.mjs validate examples/雨棚留言-识别-art.json --outline examples/雨棚留言-outline-v5.json --cast examples/雨棚留言-cast-names.json --no-production
 node scripts/mint-art.mjs validate examples/雨棚留言-art.json --production examples/雨棚留言-production.json --cast examples/雨棚留言-cast-names.json
-node scripts/mint-art.mjs render examples/雨棚留言-art.json --production examples/雨棚留言-production.json --cast examples/雨棚留言-cast-names.json --html
+node scripts/mint-art.mjs render examples/雨棚留言-识别-art.json --cast examples/雨棚留言-cast-names.json --html
+node scripts/run-selftests.mjs
 ```
-无需安装其他 skill，也不需要真实图片。生成的 HTML 不进入版本控制。
+
+Node 18+、标准库、无需安装依赖。当前实际测试环境以运行报告为准。详细工作流见 [SKILL.md](SKILL.md)，契约见 [schema](references/schema.md)。

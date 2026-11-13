@@ -27,9 +27,10 @@
 | `promptLang` | creation 或 production 的显式值，否则按模型默认 |
 | `maxSegmentSeconds`、`maxOnScreen` | creation.params 的有效值 |
 | `creativeBrief` | production 或独立 creation；没有就省略 |
+| `style` | production 的 label/phrase（提供时）；同一份材料交给两个角色，修改使相关批准失效 |
 | `intent` | 当前 outline（或独立 script）这一集的开场与集尾计划、显式标注的开场节拍、实际结束坐标 |
 | `video` | 有效视频模型，以及 production 与 creation 里的画幅、分辨率等参数 |
-| `assets` | 人物取 outline.characters，场景与道具取 art；附设定图相对路径、文件是否存在与内容摘要 `sheetHash` |
+| `assets` | 人物取 cast.characters，场景与道具取 art；附设定图相对路径、文件是否存在与内容摘要 `sheetHash` |
 
 剧本、设定图、项目要求、模型或视频参数发生变化后重新生成输入材料，再派发。审核方批准时带着这份文件登记结论，批准因此绑定它：之后调度方的 `status`、`apply`、`export`、`videos` 都按当前上游重新生成同样的材料来核对，这一段依据的部分有变化，批准就失效。
 
@@ -130,7 +131,7 @@ pi -p --no-session \
 结论登记命令：<审核方脚本的 verdict，或 prompts verdict>
 待审核工作单：<段号列表与路径>（状态为 in_review）
 有效视频模型：<模型>
-结构检查：已通过 prompts check（节拍覆盖、台词逐字、时长、骨架短语、参考图）。
+结构检查：已通过 prompts check（节拍覆盖、台词逐字、时长、五部分格式、参考图）。
 
 把意见写进各工作单的「审核意见（仅本轮）」，逐段登记结论（verdict），并回报：每段结论、
 必须修改的摘要、登记为阻塞的问题、跨段连续性风险、需要实际视频验证的事项。
@@ -147,7 +148,7 @@ pi -p --no-session \
 | --- | --- |
 | `prompts check` 失败 | 输出原样交还编写 subagent，不启动审核 |
 | `prompts check` 连续两次以同一原因失败 | 停止，向用户汇报 |
-| 审核后存在 `changes_requested` | 只对被退回的集再次派发编写 |
+| 审核后存在 `changes_requested` | 先检查待确认事项；需要上游依据时先协调，否则只对被退回的集再次派发编写 |
 | `prompts status` 提示某段已满三轮 | 停止这一段，把审核意见与编写回应原样交给用户决定 |
 | 已批准的段显示内容被修改 | 有人在批准后改动了分镜结构或正文；重新派发编写方提交，再审核 |
 | 已批准的段显示输入发生变化 | 这一段依据的节拍原文、参考图、模型参数或项目要求变了；重新生成输入材料，只对这些段重新派发编写方检查并提交，再审核 |
@@ -168,3 +169,7 @@ pi 不属于这种情况：没有子代理扩展时按上文通过 bash 启动�
 ## 向用户汇报
 
 循环结束后汇报：每段的审核状态与轮次、审核方留下的建议、需要实际视频验证的事项、因止损而交给用户的分歧。批准只表示提示词可以进入生成；成片效果需要实际视频验证。
+
+## 身份材料必读
+
+派发编写方与审核方时必须提供本地 `references/asset-identity-handoff.md` 的绝对路径。材料中的 assets 保持 cast/art 的资产 ID 与完整 specification、assetDigest、sourceRefs/sourceDocuments/sourceCoverage；assetMappings 是 script 的只读快照，附消费端 mappingErrors。upstream 中缺少的可选阶段标记 skipped。images.ref 和 cuts 的 C/S/P 仍是 script 局部标记，不能直接按资产表名称或相同编号认领。内容审核不能由 mappingErrors 为空或结构检查通过替代。
