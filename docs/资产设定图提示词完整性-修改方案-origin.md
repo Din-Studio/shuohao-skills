@@ -1,5 +1,7 @@
 # 资产设定图提示词完整性：修改方案
 
+> 来源：origin/feat/script-parsing-fusion（提交 `9d91514`），原冲突中的 `Updated upstream`。
+
 状态：**方案，尚未实施**。分析基线 `0da67bc`。
 
 ## 一、问题
