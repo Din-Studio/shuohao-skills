@@ -17,7 +17,7 @@ Locks asset-image and video models, resolution tiers, independent aspect ratios,
 ```bash
 node scripts/mint-setup.mjs caps
 node scripts/mint-setup.mjs init --aspect 9:16 \
-  --source Example --video-model "MiniMax H3" --video-resolution 768p \
+  --source Example --video-model "seedance2.0" --video-resolution 720p \
   > <work-dir>/production.json
 node scripts/mint-setup.mjs style-template
 # Fill production.json's style block before validating
@@ -26,7 +26,8 @@ node scripts/mint-setup.mjs show <work-dir>/production.json
 ```
 
 - The finished-video aspect has no default. `--aspect` sets only the video ratio.
-- Asset defaults: `nanobanana2`, `2K`, `16:9`. Override with `--image-model`, `--asset-resolution` and `--asset-aspect`.
+- Offer Seedance 2.5, Seedance 2.0, and Wan 3.0 for video; offer `image-2` and NanoBanana for images. Check live model IDs and capabilities; confirm the NanoBanana version if there are multiple versions.
+- Script asset defaults: `nanobanana2`, `2K`, `16:9`. Confirm the image model interactively and set `--image-model`, `--asset-resolution` and `--asset-aspect` as needed.
 - Art style has no default or built-in types. Fill the empty skeleton or load `--style <style.json>`.
 - Keep `style.phrase` as the English style summary used by the Seedance prompt guide. Write separate `style.character` and `style.scene` blocks. Replace the whole style together; positive and negative requirements must not contradict each other.
 - Set report language with `--lang`, prompt language with `--prompt-lang`. Video creation applies its model-specific prompt rules.

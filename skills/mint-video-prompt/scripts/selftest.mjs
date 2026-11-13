@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // mint-video-prompt 自测：工作单库、本地自查、提交流程与自有样例。离线，不调用模型。
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -64,6 +65,8 @@ try {
     has(mutate(base, s => { s.body = s.body.replace('[Shot 2]', '[Shot 3]'); }), /缺少 \[Shot 2\]/);
     has(mutate(base, s => { s.body = ''; }), /正文为空/);
     has(mutate(base, s => { s.meta.model = 'seedance2.0'; s.body += '\n0–3 秒观察'; }), /seedance/);
+    for (const audioRefs of [[[1,1]],[[1,0]],[[1,2],[1,2]],[[9,1]],'invalid']) has(mutate(base,s=>{s.structure.cuts[0].audioRefs=audioRefs;}),/audioRefs/);
+    assert.deepEqual(lintWorksheet(mutate(example('E01-02'),s=>{s.structure.cuts[1].audioRefs=[[1,4]];})),[]);
     assert.ok(TIMECODE_RE.test('at 3.5 seconds') && !TIMECODE_RE.test('随后缓慢观察'));
     assert.ok(lintWorksheet(W.parseWorksheet('# 旧格式\n\n---\nbody')).some(p => /状态头/.test(p)));
   });
@@ -104,6 +107,43 @@ try {
     assert.equal(W.parseWorksheet(submitWorksheet({ ...blocked, response: '- 参考图：设定图已补齐。' }).text).meta.status, 'in_review');
     // 回应里多出二级标题会让它之下的内容丢失，自查直接拒绝
     assert.ok(lintWorksheet(W.parseWorksheet(readFileSync(a, 'utf8').replace('## 编写回应（仅本轮）', '## 编写回应（仅本轮）\n\n## 补充说明'))).some(p => /多余的二级标题/.test(p)));
+  });
+
+
+  test('v4 own source, notes, audio and selective continuation hashes', () => {
+    const m=JSON.parse(readFileSync(join(root,'examples/第七盏灯/输入材料.json'),'utf8'));
+    const structure=W.parseWorksheet(readFileSync(join(root,'examples/第七盏灯/E01-02/prompt.md'),'utf8')).structure;
+    assert.ok(m.seedScenes[0].notes[0].sourceRefs.length);
+    assert.ok(m.seedScenes[0].beats.find(b=>b.n===4).audio);
+    const continuation={id:'E01-09',sceneIndex:9,images:[],cuts:[{beats:[1,1],audioRefs:[[1,4]]}]};
+    m.seedScenes.push({sceneIndex:9,sceneId:'S09',notes:[],beats:[{n:1,kind:'action',text:'仅用于声音延续结构测试'}]});
+    const baseline=W.inputHashOf(continuation,m);
+    const changed=fn=>{const x=structuredClone(m);fn(x);assert.notEqual(W.inputHashOf(continuation,x),baseline);};
+    changed(x=>x.seedScenes[0].notes[0].text+='禁止补写');
+    changed(x=>x.seedScenes[0].beats.find(b=>b.n===4).audio.mode='inner');
+    changed(x=>x.seedScenes[0].beats.find(b=>b.n===4).sourceRefs[0].startLine=1);
+    changed(x=>x.provenance.documents[0].sha256='f'.repeat(64));
+    const unrelated=structuredClone(m);unrelated.seedScenes.push({sceneIndex:10,sceneId:'S10',notes:[{text:'无关场次'}],beats:[]});
+    assert.equal(W.inputHashOf(continuation,unrelated),baseline);
+    const x=structuredClone(m);x.seedScenes[0].beats[0].text+='无关行动';
+    assert.equal(W.inputHashOf(continuation,x),baseline);
+    assert.notEqual(W.inputHashOf(structure,m),W.inputHashOf(structure,{...m,maxOnScreen:99}));
+  });
+
+  test('own source bytes match archived fixture identity', () => {
+    const m=JSON.parse(readFileSync(join(root,'examples/第七盏灯/输入材料.json'),'utf8'));
+    for(const d of m.provenance.documents){
+      const bytes=readFileSync(join(root,'examples/第七盏灯',d.path));
+      assert.equal(createHash('sha256').update(bytes).digest('hex'),d.sha256);
+      assert.equal(bytes.toString('utf8').trimEnd().split('\n').length,d.lineCount);
+    }
+  });
+
+  test('standalone copy runs own tools, fixtures and all tests without siblings', () => {
+    if(process.env.MINT_PROMPT_STANDALONE==='1')return;
+    const local=join(temp,'standalone');cpSync(root,local,{recursive:true});
+    const r=spawnSync(process.execPath,[join(local,'scripts/selftest.mjs')],{cwd:temp,encoding:'utf8',env:{...process.env,MINT_PROMPT_STANDALONE:'1'}});
+    assert.equal(r.status,0,r.stderr+r.stdout);
   });
 
   console.log(`✓ ${count} 项自测通过；离线`);

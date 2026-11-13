@@ -2,7 +2,7 @@
 name: mint-creation
 version: 3.1.0
 description: |
-  将 v3 剧本转换为参考图直出视频方案。主会话只负责调度：准备材料、运行结构检查、
+  将 v4 剧本转换为参考图直出视频方案。主会话只负责调度：准备材料、运行结构检查、
   派发「视频提示词编写」与「视频提示词审核」两个 subagent 并循环到全部批准，再回写、导出、交接生成。
   不生成分镜图。不保存上游计划副本或结束坐标。产出 creation.json、每段工作单、报告与投产包。
   视频生成是需要授权的可选步骤。
@@ -40,7 +40,7 @@ seed ─→ 编写 subagent ─→ prompts check ─→ 审核 subagent ─→ �
 
 ## 1. 确认输入
 
-读取 `references/schema.md` 和 `references/dispatch.md`。script、outline、creation 和 production 都要求 `schemaVersion:3`。旧数据通过 `migrate-v3` 显式迁移，方法见 `references/migration.md`。正式 validate/render 不读取旧格式。
+完整读取 `references/schema.md`、`references/dispatch.md` 和 `references/source-audio-handoff.md`。script/outline 要求 `schemaVersion:4`，creation/production 保持 `schemaVersion:3`。上游先在各自阶段显式迁移 v4，补齐真实来源证据；本工具保留 creation 的历史 `migrate-v3`，见 `references/migration.md`。正式读取不静默兼容旧契约。来源字节核验、来源忠实性审核与制作审核分别汇报。
 
 项目的自然语言 `creativeBrief` 是唯一要求，不解释成枚举或生成规则。独立 creation 可以保存 creativeBrief；项目与阶段同时存在要求时停止，请人工合并到 production。
 
@@ -98,7 +98,7 @@ node {baseDir}/scripts/mint-creation.mjs prompts brief 作品-creation.json --ep
 
 止损：同一段**提交三轮仍未批准**时，`prompts status` 会标出；停止这一段的循环，把审核意见与编写回应的分歧原样交给用户决定。`production.autopilot` 为 true 时同样止损，不无限重试。结构检查连续两次以同一原因失败，也停下来汇报。
 
-**批准绑定两样东西**：这一段的分镜结构与正文，以及这一段依据的输入——认领节拍的原文、挂载参考图的内容、视频模型与参数、提示词语言、单段上限和项目要求。任何一样变化，这一段的批准失效；别的段不受影响。`prompts status` 会指出哪些段因为哪一种变化失效：重新生成输入材料，只对这些段重新派发。
+**批准绑定两样东西**：分镜结构与正文，以及本段实际依赖的输入——拥有与延续正文、来源版本、场次 notes、事件认领、资产证据与图片、模型参数、语言、目标时长、同框与单段限制、项目要求。相关依赖变化使本段及引用同一次声音的段失效；无关集场不受影响。`prompts status` 会指出哪些段因为哪一种变化失效：重新生成输入材料，只对这些段重新派发。
 
 主会话不修改工作单的任何区域。状态头只由编写方与审核方的命令改写；发现状态与内容对不上时，按 `prompts status` 的提示重新派发，不手工修正。
 

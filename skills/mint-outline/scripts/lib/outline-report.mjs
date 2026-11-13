@@ -9,22 +9,25 @@ const TEXT={
 const GATES={
  fields:['版本与参数','Version and parameters'],story:['作品承诺','Story promise'],adaptation:['改编材料','Adaptation material'],assets:['资产字段','Asset fields'],beats:['节点契约','Beat contract'],'ending-beat':['终局引用','Final beat reference'],arcs:['阶段契约','Arc contract'],'prop-beats':['道具节点引用','Prop beat references'],episodes:['分集契约','Episode contract'],references:['资产引用','Asset references'],questions:['问题承诺','Question commitments'],'lead-cap':['主角组预算','Lead budget'],'support-cap':['重要配角预算','Support budget'],'functional-cap':['功能角色预算','Functional budget'],'scene-cap':['主场景预算','Primary scene budget'],'prop-cap':['道具预算','Prop budget'],'risk-scan':['制作风险提示','Production risk suggestions'],'content-review':['内容评审','Content review'],'source-evidence':['原文证据评审','Source evidence review']
 };
-Object.assign(GATES,{'document':['文档结构','Document structure'],'stage':['检查阶段','Validation stage'],'project-requirements':['项目要求对账','Project requirements'],'production-readable':['生产参数可读性','Production configuration readability']});
-const REASONS={zh:{'missing-upstream':'缺少上游','stage-incomplete':'阶段尚未完成','not-applicable':'不适用'},en:{'missing-upstream':'Missing upstream','stage-incomplete':'Stage incomplete','not-applicable':'Not applicable'}};
+Object.assign(GATES,{'provenance':['来源身份与覆盖','Source identity and coverage'],'source-files':['实际原件核验','Actual source-file verification'],'document':['文档结构','Document structure'],'stage':['检查阶段','Validation stage'],'project-requirements':['项目要求对账','Project requirements'],'production-readable':['生产参数可读性','Production configuration readability']});
+const REASONS={zh:{'not-requested':'尚未请求原件核验','not-performed':'尚未执行语义核验','missing-upstream':'缺少上游','stage-incomplete':'阶段尚未完成','not-applicable':'不适用'},en:{'not-requested':'File verification not requested','not-performed':'Semantic review not performed','missing-upstream':'Missing upstream','stage-incomplete':'Stage incomplete','not-applicable':'Not applicable'}};
 const getText=lang=>{if(!['zh','en'].includes(lang))throw Error('报告界面语言目前内置 zh / en');return TEXT[lang];};
 export function fmtEps(eps,lang='zh') {const a=[...arr(eps)].sort((a,b)=>a-b);if(!a.length)return '—';if(a.length===1)return String(a[0]);if(a.every((v,i)=>i===0||v===a[i-1]+1))return `${a[0]}–${a.at(-1)}`;return a.length<=4?a.join(' · '):`${a.length} ${lang==='en'?'episodes':'集'}`;}
 function view(doc,lang,options) {
- const t=getText(lang), report=checkup(doc,options), assets=computeAssets(doc), sections=[];
+ const t={...getText(lang),summary:lang==='en'?'Story summary':'故事摘要',sourceRefs:lang==='en'?'Source ranges':'来源范围'}, report=checkup(doc,options), assets=computeAssets(doc), sections=[];
  const section=(id,title,rows=[],cols=[],note='')=>{const s={id,title,rows,cols,note};sections.push(s);return s;};
  const values=x=>Array.isArray(x)?x.join(' · '):typeof x==='object'?pretty(x):x;
  section('story',t.story,Object.entries(doc?.story??{}).map(([k,v])=>{const label=k==='ending'?'storyEnding':k;return [Object.hasOwn(t,label)?t[label]:k,values(v)];}),[t.what,t.details]);
  section('episodes',t.episodes).episodes=arr(doc?.episodes);
  if(doc?.creativeBrief||options?.production?.creativeBrief) section('brief',lang==='en'?'Creative requirements':'创作要求',[[lang==='en'?'Requirements':'项目要求',options?.production?.creativeBrief??doc.creativeBrief]],[t.what,t.details]);
- section('beats',t.beats,arr(doc?.beats).map(b=>[b?.id,b?.episode,b?.position,b?.kind,b?.weight,b?.setup,b?.outcome,arr(b?.resolves).join(' · ')]),[t.id,t.ep,t.position,t.kind,t.weight,t.setup,t.outcome,t.resolves]);
- section('arcs',t.arcs,arr(doc?.arcs).map(a=>[a?.id,a?.startEp,a?.endEp,a?.goal,a?.endBeatId]),[t.id,t.startEp,t.endEp,t.goal,t.endBeatId]);
- section('characters',t.characters,assets.characters.map(c=>[c.id,c.name,c.tier,c.role,c.arc,arr(c.from).join(' · ')]),[t.id,t.name,t.tier,t.role,t.arc,t.from]);
- section('scenes',t.scenes,assets.scenes.map(s=>[s.id,s.name,s.primary?t.yes:t.no,fmtEps(s.episodes,lang),s.reusePlan,s.associatedBeatIds.join(' · ')]),[t.id,t.name,t.primary,t.ep,t.reusePlan,t.associated]);
- section('props',t.assets,assets.props.map(p=>[p.id,p.name,p.function,fmtEps(p.episodes,lang),p.uses,p.beatIds.join(' · ')]),[t.id,t.name,t.function,t.ep,t.uses,t.beats]);
+ section('beats',t.beats,arr(doc?.beats).map(b=>[b?.id,b?.episode,b?.setup,b?.outcome,arr(b?.resolves).join(' · '),pretty(b?.sourceRefs)]),[t.id,t.ep,t.setup,t.outcome,t.resolves,t.sourceRefs]);
+ section('provenance',lang==='en'?'Source identity and coverage':'来源身份与覆盖',[[lang==='en'?'Provenance':'来源登记',pretty(doc?.provenance)],[lang==='en'?'Coverage union':'合并覆盖',pretty(report.coverage)],[lang==='en'?'File verification':'原件核验',report.sourceVerification]],[t.what,t.details],lang==='en'?'Coordinates and hashes do not prove semantic fidelity.':'坐标与摘要核验不证明语义忠实。');
+ const noteRows=[];
+ const collect=(x,path)=>{if(Array.isArray(x))x.forEach((v,i)=>collect(v,`${path}[${i}]`));else if(x&&typeof x==='object')for(const [k,v] of Object.entries(x)){if(k==='notes')for(const n of arr(v))noteRows.push([path,n?.kind,n?.text,pretty(n?.sourceRefs),pretty(n)]);else collect(v,path+'.'+k);}};collect(doc,'outline');
+ section('notes',lang==='en'?'Continuity and restrictions':'连续性与限制',noteRows,[t.what,t.kind,t.details,t.sourceRefs,lang==='en'?'Full note':'完整说明']);
+ section('characters',t.characters,assets.characters.map(c=>[c.id,c.name,c.tier,c.role,c.arc,pretty(c.sourceRefs),pretty(c.aliases)]),[t.id,t.name,t.tier,t.role,t.arc,t.sourceRefs,lang==='en'?'Aliases with evidence':'别名与依据']);
+ section('scenes',t.scenes,assets.scenes.map(s=>[s.id,s.name,s.primary?t.yes:t.no,fmtEps(s.episodes,lang),s.associatedBeatIds.join(' · '),pretty(s.sourceRefs)]),[t.id,t.name,t.primary,t.ep,t.associated,t.sourceRefs]);
+ section('props',t.assets,assets.props.map(p=>[p.id,p.name,p.function,fmtEps(p.episodes,lang),p.uses,p.beatIds.join(' · '),pretty(p.sourceRefs)]),[t.id,t.name,t.function,t.ep,t.uses,t.beats,t.sourceRefs]);
  const all=[...assets.characters,...assets.scenes,...assets.props], epNums=[...new Set(arr(doc?.episodes).map(e=>e?.ep).filter(ep=>Number.isInteger(ep)&&ep>0))].sort((a,b)=>a-b);
  section('matrix',t.matrix,all.map(a=>[`${a.id} ${a.name}`,...epNums.map(ep=>a.episodes.includes(ep)?'●':'—'),a.uses]),[t.name,...epNums.map(String),t.uses]);
  const specs=lang==='en'?['Full character sheets and consistency checks','Bust references and key-scene checks','References or prompts per production requirements']:assets.castPlan.map(a=>a.spec);
@@ -34,20 +37,17 @@ function view(doc,lang,options) {
  [t.warnings,Object.values(assets.warnings).reduce((n,x)=>n+x.length,0),Object.keys(assets.warnings).join(' · '),lang==='en'?'Review production risks before generation':'生成前逐项评估制作难点']
  ],[t.tier,t.count,t.name,t.spec],t.estimated);
  section('warnings',t.warnings,Object.entries(assets.warnings).map(([w,eps])=>[w,eps.join(' · ')]),[t.what,t.ep]);
- const ad=doc?.adaptation??{};
- section('adaptation',t.adaptation,['sourceNote','cutNote','mergeNote','evidence'].filter(k=>ad[k]).map(k=>[t[k],ad[k]]),[t.what,t.details]);
- for(const key of ['keep','cut','merge','risks']) section(key,t[key],arr(ad[key]).map(r=>[r?.what,r?.why??r?.plan,r?.evidence]),[t.what,key==='risks'?t.riskPlan:t.why,t.evidence]);
- section('budget',lang==='en'?'Duration targets and budgets':'目标时长与制作预算',[
- [t.parameters,`${doc?.params?.episodes??''} × ${doc?.params?.minutesPerEpisode??''} min`,lang==='en'?'Planning target, not measured footage':'规划目标，不是实际成片时长'],
+ section('budget',lang==='en'?'Optional production budgets':'可选制作预算',[
+ [lang==='en'?'Provided episodes':'已提供集数',arr(doc?.episodes).length,lang==='en'?'Not proof of a complete work; no duration target inferred':'不代表全剧完整；不推定制作时长'],
  ...Object.entries(thresholdsOf(doc)).map(([k,v])=>[k,v,doc?.params?.thresholds?.[k]!==undefined?(lang==='en'?'User budget':'用户预算'):(lang==='en'?'Tool reference (non-blocking)':'工具参考值（仅提醒）')])
  ],[t.what,t.count,lang==='en'?'Constraint source':'约束来源']);
  section('checks',t.checks,report.gates.map(g=>[GATES[g.id]?.[lang==='en'?1:0]??g.id,t[g.category]??g.category,g.level,g.status==='skipped'?t.skipped:g.status==='pass'?t.pass:blocking(g)?t.fail:t.warn,REASONS[lang][g.reason]??g.reason??'—',arr(g.messages).join('\n')]),[t.check,t.category,t.level,t.status,t.reason,t.details]);
- section('review',t.review,[],[],`${t.reviewNote} ${t.remaining}`);
+ section('review',t.review,[],[],lang==='en'?'Source/content review must compare the original script with extracted facts. Production review checks execution and shots separately. Neither is performed by this report.':'来源／正文核验须对照原剧本与提取事实。制作审核另行核对执行与镜头。本报告不执行这两类语义审核。');
  // Hide absent optional sections and entirely empty optional columns.
  for(const s of sections)if(s.rows.length){const keep=s.cols.map((_,i)=>i).filter(i=>s.rows.some(r=>r[i]!==undefined&&r[i]!==null&&r[i]!==''));s.cols=keep.map(i=>s.cols[i]);s.rows=s.rows.map(r=>keep.map(i=>r[i]));}
  return {t,report,assets,sections:sections.filter(s=>s.rows.length||s.episodes?.length||s.note)};
 }
-function episodeRows(e,t) {return [[t.opening,e?.opening],[t.synopsis,e?.synopsis],[t.mode,e?.ending?.mode],[t.ending,e?.ending?.event],...(e?.ending?.question?[[t.question,pretty(e.ending.question)]]:[]),[t.ids,[...arr(e?.characterIds),...arr(e?.sceneIds),...arr(e?.propIds)].join(' · ')],...(arr(e?.warnings).length?[[t.warnings,e.warnings.join(' · ')]]:[])];}
+function episodeRows(e,t) {return [[t.sourceRefs,pretty(e?.sourceRefs)],[t.opening,e?.opening],[t.synopsis,e?.synopsis],[t.mode,e?.ending?.mode],[t.ending,e?.ending?.event],...(e?.ending?.question?[[t.question,pretty(e.ending.question)]]:[]),[t.ids,[...arr(e?.characterIds),...arr(e?.sceneIds),...arr(e?.propIds)].join(' · ')],...(arr(e?.warnings).length?[[t.warnings,e.warnings.join(' · ')]]:[])];}
 export function renderMarkdown(doc,lang=doc?.lang??'zh',options={}) {
  const {t,report,sections}=view(doc,lang,options), out=[`# ${esc(String(doc?.source??'').replace(/[\r\n\u2028\u2029]+/g,' ').replace(/[\\`*_{}\[\]()#!|]/g,'\\$&'))} · ${t.title}`,'',`${t[report.stage==='beats'?'beatsStage':report.stage]} · ${t.pass} ${report.stats.pass} · ${t.fail} ${report.stats.fail} · ${t.warn} ${report.stats.warn} · ${t.skipped} ${report.stats.skipped}`,''];
  const cell=x=>esc(x).replace(/\|/g,'\\|').replace(/\n/g,'<br>');

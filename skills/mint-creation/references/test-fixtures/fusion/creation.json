@@ -1,0 +1,195 @@
+{
+  "schemaVersion": 3,
+  "source": "潮汐电台",
+  "promptLang": "zh",
+  "video": {
+    "model": "MiniMax H3"
+  },
+  "params": {
+    "maxSegmentSeconds": 15,
+    "maxOnScreen": 3,
+    "tolerance": 0.15
+  },
+  "episodes": [
+    {
+      "ep": 1,
+      "segments": [
+        {
+          "id": "E01-01",
+          "sceneIndex": 1,
+          "images": [
+            {
+              "kind": "character",
+              "ref": "C01"
+            },
+            {
+              "kind": "scene",
+              "ref": "S01"
+            },
+            {
+              "kind": "prop",
+              "ref": "P01"
+            }
+          ],
+          "cuts": [
+            {
+              "beats": [
+                1,
+                1
+              ],
+              "seconds": 2,
+              "size": "wide",
+              "camera": "Static Shot",
+              "characters": [
+                "C01"
+              ],
+              "props": [
+                "P01"
+              ]
+            },
+            {
+              "beats": [
+                2,
+                2
+              ],
+              "seconds": 3,
+              "size": "wide",
+              "camera": "Static Shot",
+              "characters": [
+                "C01"
+              ],
+              "audioRefs": [
+                [
+                  1,
+                  1
+                ]
+              ],
+              "props": [
+                "P01"
+              ]
+            }
+          ],
+          "prompt": "图 1 是人物外观参考，图 2 是播音室空间参考，图 3 是旋钮参考。\n镜头描述：\n[镜头 1] 全景，固定，播音室广播开始：封港通知：外海航道已经关闭，请所有船只等待下一次通知，不要擅自进入港口。\n[镜头 2] 全景，固定，图1中的人物松开旋钮，广播继续，不重新播放。\n环境声与配乐：电流声，无配乐。"
+        },
+        {
+          "id": "E01-02",
+          "sceneIndex": 2,
+          "images": [
+            {
+              "kind": "scene",
+              "ref": "S02"
+            }
+          ],
+          "cuts": [
+            {
+              "beats": [
+                1,
+                1
+              ],
+              "seconds": 3,
+              "size": "wide",
+              "camera": "Static Shot",
+              "characters": [],
+              "audioRefs": [
+                [
+                  1,
+                  1
+                ]
+              ]
+            },
+            {
+              "beats": [
+                2,
+                3
+              ],
+              "seconds": 3,
+              "size": "wide",
+              "camera": "Static Shot",
+              "characters": [],
+              "audioRefs": [
+                [
+                  1,
+                  1
+                ]
+              ]
+            }
+          ],
+          "prompt": "图 1 是走廊空间参考。\n镜头描述：\n[镜头 1] 全景，固定，走廊空无一人，上一段广播继续同一次播放。\n[镜头 2] 全景，固定，广播结束，蜂鸣响起，字幕「封港，等待通知。」出现。\n环境声与配乐：蜂鸣，无配乐。"
+        },
+        {
+          "id": "E01-03",
+          "sceneIndex": 3,
+          "images": [
+            {
+              "kind": "scene",
+              "ref": "S03"
+            },
+            {
+              "kind": "prop",
+              "ref": "P02"
+            }
+          ],
+          "cuts": [
+            {
+              "beats": [
+                1,
+                1
+              ],
+              "seconds": 10,
+              "size": "wide",
+              "camera": "Static Shot",
+              "characters": [],
+              "props": [
+                "P02"
+              ]
+            },
+            {
+              "beats": [
+                2,
+                2
+              ],
+              "seconds": 2,
+              "size": "wide",
+              "camera": "Static Shot",
+              "characters": [],
+              "props": [
+                "P02"
+              ]
+            }
+          ],
+          "prompt": "图 1 是备用接收室空间参考，图 2 是备用接收机参考。\n镜头描述：\n[镜头 1] 全景，固定，备用接收机独立重新播放广播：封港通知：外海航道已经关闭，请所有船只等待下一次通知，不要擅自进入港口。\n[镜头 2] 全景，固定，接收机指针回落。\n环境声与配乐：电流声，无配乐。"
+        },
+        {
+          "id": "E01-04",
+          "sceneIndex": 4,
+          "images": [
+            {
+              "kind": "scene",
+              "ref": "S04"
+            },
+            {
+              "kind": "prop",
+              "ref": "P03"
+            }
+          ],
+          "cuts": [
+            {
+              "beats": [
+                1,
+                1
+              ],
+              "seconds": 5,
+              "size": "wide",
+              "camera": "Static Shot",
+              "characters": [],
+              "props": [
+                "P03"
+              ]
+            }
+          ],
+          "prompt": "图 1 是码头空间参考，图 2 是救生圈参考。\n镜头描述：\n[镜头 1] 全景，固定，空码头，救生圈静止，没有归航或获救结论。\n环境声与配乐：海风，无配乐。"
+        }
+      ]
+    }
+  ]
+}

@@ -1,11 +1,16 @@
 #!/usr/bin/env node
-// Self-contained script v3 consumer. No sibling imports.
+// Self-contained script v4 consumer. No sibling imports.
 import { lstatSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_PARAMS, effectiveParams, parameterErrors, documentErrors, productionErrors } from './lib/document.mjs';
-import { migrateFile, readJsonStrict } from './lib/migration.mjs';
+import { migrateFile, migrateV4File, validateHistoricalV3, readJsonStrict } from './lib/migration.mjs';
 import { projectRoot, loadKnownUpstreams, checkKnownCreation } from './lib/downstream.mjs';
+
+import { sceneSemanticsErrors } from './lib/semantics.mjs';
+import { outlineInputErrors } from './lib/outline-input.mjs';
+import { evidenceErrors, verifySources, rebaseProvenance } from './lib/source.mjs';
+export { verifySources } from './lib/source.mjs';
 
 export const SKILL_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export { DEFAULT_PARAMS };
@@ -57,8 +62,11 @@ export function slug(name) {
 // One unrounded clock for every scene, episode, position and inclusive claim.
 export function beatSeconds(beat, params = DEFAULT_PARAMS) {
   params = effectiveParams(params);
-  if (!obj(beat) || own(beat, 'action') === own(beat, 'line')) return null;
-  if (own(beat, 'action')) return text(beat.action) && positive(params.actionSeconds) ? params.actionSeconds : null;
+  if (!obj(beat) || ['action','line','subtitle','sound'].filter(k => own(beat,k)).length !== 1) return null;
+  for (const key of ['action','subtitle','sound']) if (own(beat,key)) {
+    const seconds = key !== 'action' && own(beat,'seconds') ? beat.seconds : params.actionSeconds;
+    return text(beat[key]) && positive(seconds) ? seconds : null;
+  }
   if (!text(beat.line) || !positive(params.charsPerSecond)) return null;
   const seconds = lineChars(beat.line) / params.charsPerSecond;
   return positive(seconds) ? seconds : null;
@@ -102,6 +110,8 @@ export function computeStats(doc) {
     const valid = timeline.every(r => r.seconds !== null && r.endSeconds !== null);
     const dialogueSeconds = valid ? timeline.filter(r => own(r.beat, 'line')).reduce((n, r) => n + r.seconds, 0) : null;
     const actionSeconds = valid ? timeline.filter(r => own(r.beat, 'action')).reduce((n, r) => n + r.seconds, 0) : null;
+    const soundSeconds = valid ? timeline.filter(r => own(r.beat,'sound')).reduce((n,r) => n+r.seconds,0) : null;
+    const subtitleSeconds = valid ? timeline.filter(r => own(r.beat,'subtitle')).reduce((n,r) => n+r.seconds,0) : null;
     arr(ep?.scenes).forEach((sc, i) => {
       const lines = arr(sc?.flow).filter(b => typeof b?.line === 'string');
       sceneTable.push({ ep: ep?.ep, index: i + 1, sceneId: sc?.sceneId, lighting: sc?.lighting, characters: arr(sc?.characters), props: arr(sc?.props), lineCount: lines.length, estSeconds: sceneSeconds(sc, params).total });
@@ -112,7 +122,7 @@ export function computeStats(doc) {
         byCharacter.set(b.speaker, entry);
       }
     });
-    return { ep: ep?.ep, target: ep?.targetSeconds, est: timeline.at(-1)?.endSeconds ?? (timeline.length ? null : 0), dialogueSeconds, actionSeconds, lines: timeline.filter(r => own(r.beat, 'line')).length, sceneCount: arr(ep?.scenes).length, timeline };
+    return { ep: ep?.ep, target: ep?.targetSeconds, est: timeline.at(-1)?.endSeconds ?? (timeline.length ? null : 0), dialogueSeconds, actionSeconds, soundSeconds, subtitleSeconds, lines: timeline.filter(r => own(r.beat, 'line')).length, sceneCount: arr(ep?.scenes).length, timeline };
   });
   const sum = key => episodes.some(e => !Number.isFinite(e[key])) ? null : episodes.reduce((n, e) => n + e[key], 0);
   return { params, episodes, sceneTable, castLines: [...byCharacter.values()].map(c => ({ ...c, count: c.lines.length })).sort((a, b) => b.count - a.count), totals: { episodes: episodes.length, scenes: sceneTable.length, lines: episodes.reduce((n, e) => n + e.lines, 0), estSeconds: sum('est'), targetSeconds: sum('target'), dialogueSeconds: sum('dialogueSeconds') } };
@@ -127,56 +137,7 @@ function endingErrors(ending, path, script = true) {
   if (script && Object.keys(ending).some(k => !['mode', 'event'].includes(k))) errors.push(`${path}: only mode/event allowed; Q plans belong to outline`);
   return errors;
 }
-// Consumer boundary validation, not a replacement for the outline's full story/Q validator.
-export function outlineInputErrors(outline) {
-  const errors = [];
-  if (!obj(outline) || outline.schemaVersion !== 3) return ['outline.schemaVersion must be 3; see references/migration.md'];
-  errors.push(...documentErrors(outline, 'outline'));
-  if (own(outline.story, 'drive') || own(outline.adaptation, 'core')) errors.push('outline: retired story.drive/adaptation.core; run migrate-v3');
-  for (const ep of arr(outline.episodes)) if (own(ep, 'stateChange')) errors.push('outline.episodes.stateChange: retired field; run migrate-v3');
-  for (const [key, prefix] of [['scenes', 'S'], ['props', 'P']]) {
-    if (key === 'props' && !own(outline, key)) continue;
-    if (!Array.isArray(outline[key])) { errors.push(`outline.${key}: expected array`); continue; }
-    const seen = new Set();
-    for (const item of outline[key]) {
-      if (!idOK(item?.id, prefix) || seen.has(item?.id)) errors.push(`outline.${key}: invalid/duplicate ID`);
-      seen.add(item?.id);
-    }
-  }
-  if (!text(outline.source)) errors.push('outline.source: expected nonempty text');
-  if (!positive(outline.params?.minutesPerEpisode) || !Number.isFinite(outline.params.minutesPerEpisode * 60)) errors.push('outline.params.minutesPerEpisode: expected finite positive number');
-  if (!Array.isArray(outline.episodes) || !outline.episodes.length) errors.push('outline.episodes: expected nonempty array');
-  const epIds = new Set();
-  let previousEp = 0;
-  for (const ep of arr(outline.episodes)) {
-    if (!integer(ep?.ep) || epIds.has(ep?.ep) || ep?.ep <= previousEp) errors.push('outline.episodes: invalid, duplicate or out-of-order ep');
-    epIds.add(ep?.ep); previousEp = ep?.ep;
-    if (!text(ep?.opening)) errors.push(`outline E${ep?.ep}.opening: expected nonempty text`);
-    errors.push(...endingErrors(ep?.ending, `outline E${ep?.ep}.ending`, false));
-  }
-  if (!Array.isArray(outline.beats)) errors.push('outline.beats: expected array');
-  const ids = new Set(), positions = ['opening', 'early', 'middle', 'late', 'ending'];
-  let lastEp = 0;
-  for (const beat of arr(outline.beats)) {
-    if (!idOK(beat?.id, 'B') || ids.has(beat?.id)) errors.push('outline.beats: invalid or duplicate ID');
-    ids.add(beat?.id);
-    if (!epIds.has(beat?.episode)) errors.push(`outline ${beat?.id}: unknown episode`);
-    const pos = positions.indexOf(beat?.position);
-    if ((own(beat, 'position') && pos < 0) || beat?.episode < lastEp) errors.push(`outline ${beat?.id}: invalid position/order`);
-    lastEp = beat?.episode;
-    if ((own(beat, 'kind') && !['event', 'pressure', 'turn', 'payoff'].includes(beat.kind)) || !text(beat?.setup) || !text(beat?.outcome)) errors.push(`outline ${beat?.id}: malformed beat`);
-    if (own(beat, 'type')) errors.push(`outline ${beat?.id}.type: retired field; run migrate-v3`);
-    if (own(beat, 'weight') && (beat?.kind !== 'payoff' || !['minor', 'major'].includes(beat.weight))) errors.push(`outline ${beat?.id}: invalid weight`);
-    if (own(beat, 'resolves') && (!Array.isArray(beat.resolves) || beat.resolves.some(q => !idOK(q, 'Q')) || new Set(beat.resolves).size !== beat.resolves.length)) errors.push(`outline ${beat?.id}: malformed resolves`);
-  }
-  if (!Array.isArray(outline.characters)) errors.push('outline.characters: expected array');
-  const chars = new Set();
-  for (const c of arr(outline.characters)) {
-    if (!idOK(c?.id, 'C') || chars.has(c?.id)) errors.push('outline.characters: invalid or duplicate ID');
-    chars.add(c?.id);
-  }
-  return errors;
-}
+export { outlineInputErrors } from './lib/outline-input.mjs';
 function artInputErrors(art) {
   if (!obj(art) || !Array.isArray(art.scenes) || !Array.isArray(art.props)) return ['art: expected scenes and props arrays'];
   const errors = [];
@@ -208,7 +169,9 @@ function castInputErrors(cast) {
 function localErrors(doc, stage) {
   const errors = [];
   if (!obj(doc)) return ['script: expected object'];
-  if (doc.schemaVersion !== 3) errors.push('schemaVersion must be 3; see references/migration.md');
+  if (doc.schemaVersion !== 4) errors.push('schemaVersion must be 4; run migrate-v4');
+  errors.push(...evidenceErrors(doc));
+  for (const key of ['candidates','context']) if (own(doc,key)) errors.push(`${key}: candidates belong in .work; context belongs in scene notes`);
   errors.push(...documentErrors(doc, 'script'));
   if (!text(doc.source)) errors.push('source: expected nonempty text');
   if (own(doc, 'lang') && !['zh', 'en'].includes(doc.lang)) errors.push('lang: expected zh/en');
@@ -221,7 +184,7 @@ function localErrors(doc, stage) {
     const path = `E${ep?.ep}`;
     if (!integer(ep?.ep) || eps.has(ep?.ep) || ep?.ep <= lastEp) errors.push(`${path}: invalid/duplicate/out-of-order ep`);
     eps.add(ep?.ep); lastEp = ep?.ep;
-    if (!positive(ep?.targetSeconds)) errors.push(`${path}.targetSeconds: expected finite positive number`);
+    if (own(ep, 'targetSeconds') && !positive(ep.targetSeconds)) errors.push(`${path}.targetSeconds: expected finite positive number`);
     if (own(ep, 'opening') && !text(ep.opening)) errors.push(`${path}.opening: expected nonempty text`);
     if (own(ep, 'ending')) errors.push(...endingErrors(ep.ending, `${path}.ending`));
     for (const key of ['endBeat', 'seedNote']) if (own(ep, key)) errors.push(`${path}.${key}: retired field; run migrate-v3`);
@@ -251,18 +214,7 @@ function localErrors(doc, stage) {
       }
       if (own(sc, 'lighting') && !text(sc.lighting)) errors.push(`${at}.lighting: expected nonempty text`);
       if (!Array.isArray(sc?.flow) || !sc.flow.length) errors.push(`${at}.flow: expected nonempty array`);
-      for (const [bi, b] of arr(sc?.flow).entries()) {
-        const bp = `${at} beat ${bi + 1}`;
-        if (!obj(b) || own(b, 'action') === own(b, 'line')) { errors.push(`${bp}: action/line are exclusive`); continue; }
-        if (own(b, 'action')) {
-          if (!text(b.action)) errors.push(`${bp}: empty action`);
-          if (own(b, 'speaker') || own(b, 'delivery')) errors.push(`${bp}: speaker/delivery require a line`);
-        } else {
-          if (!text(b.line)) errors.push(`${bp}: empty line`);
-          if (b.speaker !== 'VO' && (!idOK(b.speaker, 'C') || !arr(sc?.characters).includes(b.speaker))) errors.push(`${bp}: speaker must be in scene or VO`);
-          if (own(b, 'delivery') && !text(b.delivery)) errors.push(`${bp}.delivery: expected nonempty text`);
-        }
-      }
+      errors.push(...sceneSemanticsErrors(sc,at));
     }
   }
   return errors;
@@ -274,6 +226,7 @@ const LABELS = {
   'refs-characters': ['人物引用', 'Character references'], 'art-input': ['美术输入契约', 'Art input contract'], 'cast-input': ['角色输入契约', 'Cast input contract'], 'refs-scenes': ['场景、光照与道具引用', 'Scene, lighting and prop references'],
   'production-input': ['项目契约与创作要求', 'Project contract and creative brief'], 'content-review': ['内容评审未执行', 'Content review not performed'],
   'question-plan': ['问题计划由大纲检查', 'Question plan checked by outline'], 'artifact-directory': ['产物目录', 'Artifact directory'],
+  'source-verification': ['来源文件核验', 'Source file verification'], 'outline-source-verification': ['大纲来源文件核验', 'Outline source file verification'], 'production-target': ['制作目标确认', 'Production target confirmation'],
   'downstream-creation': ['下游制作接口', 'Downstream creation interface']
 };
 export const isBlocking = g => g.status === 'fail' && g.level === 'error' && g.category !== 'source';
@@ -281,9 +234,14 @@ export function gateReport(doc, ctx = {}) {
   const gates = [], stage = ctx.stage ?? 'full';
   const add = (id, errors = [], category = 'base', level = 'error', reason = null) => gates.push({ id, category, level, status: reason ? 'skipped' : errors.length ? 'fail' : 'pass', ...(reason ? { reason } : {}), label: LABELS[id]?.[0] ?? id, messages: errors });
   add('fields', localErrors(doc, stage));
+  if (ctx.requireTarget) add('production-target', arr(doc?.episodes).filter(e => !positive(e?.targetSeconds)).map(e => `E${e?.ep}.targetSeconds: required before production`));
+  const verification = ctx.verifySources ? verifySources(doc, ctx.docPath) : null;
+  add('source-verification', verification?.errors ?? [], 'base', 'error', ctx.verifySources ? (verification.status === 'not-applicable' ? 'not-applicable' : null) : 'not-performed');
+  if (ctx.verifySources && ctx.outline !== undefined) add('outline-source-verification', verifySources(ctx.outline, ctx.outlinePath, { outline:true }).errors);
   const eps = arr(doc?.episodes), p = paramsOf(doc), stats = computeStats(doc);
   const duration = [];
   stats.episodes.forEach(e => {
+    if (e.target === undefined) return;
     if (!Number.isFinite(e.est) || !positive(e.target) || !Number.isFinite(p.tolerance)) duration.push(`E${e.ep}: invalid timing inputs`);
     else if (e.est < e.target * (1 - p.tolerance) - Number.EPSILON*Math.max(1,e.target,e.est)*4 || e.est > e.target * (1 + p.tolerance) + Number.EPSILON*Math.max(1,e.target,e.est)*4) duration.push(`E${e.ep}: estimated ${r1(e.est)}s / target ${e.target}s / tolerance ${p.tolerance}`);
   });
@@ -292,16 +250,20 @@ export function gateReport(doc, ctx = {}) {
   const hasOutline = own(ctx, 'outline') && ctx.outline !== undefined;
   const oe = hasOutline ? outlineInputErrors(ctx.outline) : [];
   add('outline-input', oe, 'base', 'error', hasOutline ? null : 'missing-upstream');
-  const projection = [], targets = [], claimErrors = [], characters = [];
+  const projection = [], claimErrors = [], characters = [];
   if (hasOutline && !oe.length) {
     const outline = ctx.outline, charIds = new Set(outline.characters.map(c => c.id));
-    if (doc.source !== outline.source) projection.push('source: must match outline; matching titles alone do not establish content synchronization');
+    if (doc?.source !== outline.source) projection.push('source: must match outline; matching titles alone do not establish content synchronization');
+    for (const source of arr(doc?.provenance?.documents)) {
+      const upstream = arr(outline.provenance?.documents).find(d => d?.id === source?.id);
+      if (!upstream) projection.push(`provenance ${source?.id}: no matching outline source identity; reconcile sources before production`);
+      else if (upstream.sha256 !== source?.sha256 || upstream.lineCount !== source?.lineCount) projection.push(`provenance ${source?.id}: script and outline source versions differ; re-read and reconcile before production`);
+    }
     for (const ep of eps) {
       const upstream = outline.episodes.find(e => e.ep === ep?.ep);
-      if (!upstream) { projection.push(`E${ep?.ep}: episode absent from outline`); targets.push(`E${ep?.ep}: unknown upstream episode`); }
+      if (!upstream) { projection.push(`E${ep?.ep}: episode absent from outline`); }
       else {
         for (const key of ['opening', 'ending']) if (own(ep, key)) projection.push(`E${ep?.ep}.${key}: duplicate upstream plan; run migrate-v3`);
-        if (ep?.targetSeconds !== outline.params.minutesPerEpisode * 60) targets.push(`E${ep?.ep}.targetSeconds: must equal ${outline.params.minutesPerEpisode * 60}, independently of timing tolerance`);
       }
       const expected = outline.beats.filter(b => b.episode === ep?.ep).map(b => b.id), actual = arr(ep?.beatClaims).map(c => c?.beatId);
       if (JSON.stringify(actual) !== JSON.stringify(expected)) claimErrors.push(`E${ep?.ep}: expected ordered IDs ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}`);
@@ -312,7 +274,7 @@ export function gateReport(doc, ctx = {}) {
       }
     }
   }
-  for (const [id, errors] of [['upstream-projection', projection], ['upstream-duration', targets], ['beats-claimed', claimErrors], ['refs-characters', characters]]) {
+  for (const [id, errors] of [['upstream-projection', projection], ['beats-claimed', claimErrors], ['refs-characters', characters]]) {
     add(id, hasOutline && oe.length ? ['Invalid supplied outline; reconciliation cannot run'] : errors, 'base', 'error', hasOutline ? null : 'missing-upstream');
   }
   const hasArt = own(ctx, 'art') && ctx.art !== undefined, ae = hasArt ? artInputErrors(ctx.art) : [], refs = [];
@@ -336,7 +298,7 @@ export function gateReport(doc, ctx = {}) {
 export function checkup(doc, ctx = {}) {
   const gates = gateReport(doc, ctx);
   if (ctx.root && (ctx.stage ?? 'full') === 'full') gates.push(...checkKnownCreation(doc, { root: ctx.root, production: ctx.production, outline: ctx.outline }));
-  return { schemaVersion: 3, stage: ctx.stage ?? 'full', gates, stats: computeStats(doc), blockingFailures: gates.filter(isBlocking).length, warnings: gates.filter(g => g.status === 'fail' && g.level === 'warn').length, contentReview: 'not-performed', scope: { outlineProvided: own(ctx, 'outline'), artProvided: own(ctx, 'art'), productionProvided: own(ctx, 'production') } };
+  return { schemaVersion: 4, sourceVerification: ctx.verifySources ? (gates.some(g => /source-verification/.test(g.id) && g.status === 'fail') ? 'fail' : doc?.provenance ? 'pass' : 'not-applicable') : 'not-performed', stage: ctx.stage ?? 'full', gates, stats: computeStats(doc), blockingFailures: gates.filter(isBlocking).length, warnings: gates.filter(g => g.status === 'fail' && g.level === 'warn').length, contentReview: 'not-performed', scope: { outlineProvided: own(ctx, 'outline'), artProvided: own(ctx, 'art'), productionProvided: own(ctx, 'production') } };
 }
 export function validateScript(doc, ctx = {}) {
   return checkup(doc, ctx).gates.filter(isBlocking).flatMap(g => g.messages.length ? g.messages.map(m => `${g.id}: ${m}`) : [`${g.id}: failed`]);
@@ -346,12 +308,14 @@ export function seedFromOutline(outline, epRange = null) {
   if (errors.length) throw new Error(errors.join('\n'));
   if (epRange && (!Array.isArray(epRange) || epRange.length !== 2 || !epRange.every(integer) || epRange[0] > epRange[1])) throw new Error('Invalid episode range');
   const episodes = outline.episodes.filter(e => !epRange || e.ep >= epRange[0] && e.ep <= epRange[1]).map(e => ({
-    ep: e.ep, targetSeconds: outline.params.minutesPerEpisode * 60,
+    ep: e.ep,
     beatClaims: outline.beats.filter(b => b.episode === e.ep).map(b => ({ beatId: b.id, start: null, end: null })),
     scenes: []
   }));
   if (!episodes.length) throw new Error('No outline episodes in requested range');
-  return { schemaVersion: 3, source: outline.source, episodes };
+  const provenance = structuredClone(outline.provenance);
+  if (episodes.length !== outline.episodes.length) provenance.scope = 'partial';
+  return { schemaVersion: 4, source: outline.source, provenance, episodes };
 }
 
 const I18N = {
@@ -368,7 +332,10 @@ function names(ctx) {
   const name = (list, id) => arr(list).find(x => x?.id === id)?.name ?? id;
   return { char: id => name(ctx.outline?.characters, id), scene: id => name(ctx.art?.scenes, id), prop: id => name(ctx.art?.props, id), voice: id => arr(ctx.cast?.characters).find(c => c?.id === id || c?.name === name(ctx.outline?.characters, id))?.voice?.prompt };
 }
-const beatText = (b, n) => own(b, 'action') ? b.action : `${n.char(b?.speaker)}${b?.delivery ? ` (${b.delivery})` : ''}: ${b?.line ?? ''}`;
+const beatText = (b, n) => {
+  const body = own(b,'action') ? b.action : own(b,'subtitle') ? `[subtitle] ${b.subtitle}` : own(b,'sound') ? `[sound] ${b.sound}` : `${n.char(b?.speaker)}${b?.delivery ? ` (${b.delivery})` : ''}: ${b?.line ?? ''}`;
+  return body + (b?.audio ? ` · audio: ${pretty(b.audio)}` : '') + (b?.sourceRefs ? ` · sourceRefs: ${pretty(b.sourceRefs)}` : '') + (b?.transformation ? ` · transformation: ${pretty(b.transformation)}` : '');
+};
 function landing(ep, coord, p, t, n) {
   const index = coordinateIndex(ep, coord), row = index === null ? null : episodeTimeline(ep, p)[index];
   return row && row.startSeconds !== null && row.endSeconds !== null ? `[${coord}] ${format(row.startSeconds)}–${format(row.endSeconds)}s · ${beatText(row.beat, n)}` : t.invalid;
@@ -386,14 +353,16 @@ function resolutionLocations(q, doc, ctx, t, n) {
 function statusText(g, t) { return g.status === 'fail' && (g.level === 'warn' || g.category === 'source') ? t.warn : t[g.status] ?? g.status; }
 function gateLabel(g, lang) { return LABELS[g.id]?.[lang === 'en' ? 1 : 0] ?? g.id; }
 export function renderMarkdown(doc, ctx = {}) {
-  if (doc?.schemaVersion !== 3) throw new Error('schemaVersion must be 3; run migrate-v3');
+  if (doc?.schemaVersion !== 4) throw new Error('schemaVersion must be 4; run migrate-v4');
   const lang = langOf(doc, ctx), t = tOf(lang), n = names(ctx), report = checkup(doc, ctx), p = paramsOf(doc);
-  const out = [`# ${esc(doc?.source)} · ${t.title}`, '', `## ${t.script}`];
+  const out = [`# ${esc(doc?.source)} · ${t.title}`, ...(doc?.provenance ? ['','## provenance',esc(pretty(doc.provenance))] : []), '', `## ${t.script}`];
   for (const [i, ep] of arr(doc?.episodes).entries()) {
     const plan = plansFor(ep, ctx);
     out.push('', `### ${t.episode} ${esc(ep?.ep)}`);
     for (const [si, sc] of arr(ep?.scenes).entries()) {
       out.push('', `#### ${t.scene} ${si + 1} · ${esc(n.scene(sc?.sceneId))}`, [sc?.lighting ? `${t.lighting}: ${esc(sc.lighting)}` : '', `${t.characters}: ${esc(arr(sc?.characters).map(n.char).join(', '))}`, arr(sc?.props).length ? `${t.props}: ${esc(sc.props.map(n.prop).join(', '))}` : ''].filter(Boolean).join(' · '));
+      for (const note of arr(sc?.notes)) out.push(`- [${lang === 'en' ? 'Non-speaking note' : '非发声说明'}] ${esc(pretty(note))}`);
+      if (sc?.sourceRefs) out.push(`sourceRefs: ${esc(pretty(sc.sourceRefs))}`);
       for (const row of episodeTimeline(ep, p).filter(r => r.coord[0] === si + 1)) out.push(`- [${row.coord}] ${format(row.startSeconds)}–${format(row.endSeconds)}s · ${esc(beatText(row.beat, n))}`);
     }
     if (plan.opening) out.push(`${t.opening}: ${esc(plan.opening)}`);
@@ -408,7 +377,7 @@ export function renderMarkdown(doc, ctx = {}) {
     const questions = questionsFor(ep, ctx);
     if (questions.length) out.push(`#### ${t.questions}`);
     for (const q of questions) out.push(esc(pretty(q)), ...resolutionLocations(q, doc, ctx, t, n).map(esc));
-    out.push(`${t.duration}: ${format(report.stats.episodes[i].est)}s / ${t.target}: ${esc(ep?.targetSeconds)}s`);
+    out.push(`${t.duration}: ${format(report.stats.episodes[i].est)}s / ${t.target}: ${positive(ep?.targetSeconds) ? `${format(ep.targetSeconds)}s` : lang === 'en' ? 'Not confirmed' : '尚未确认'}`);
   }
   out.push('', `## ${t.scenes}`);
   for (const s of report.stats.sceneTable) out.push(`- E${esc(s.ep)} ${t.scene} ${s.index}: ${esc(n.scene(s.sceneId))} · ${format(s.estSeconds)}s · ${s.lineCount} ${t.count}`);
@@ -420,26 +389,26 @@ export function renderMarkdown(doc, ctx = {}) {
   return out.join('\n') + '\n';
 }
 export function renderHtml(doc, ctx = {}) {
-  if (doc?.schemaVersion !== 3) throw new Error('schemaVersion must be 3; run migrate-v3');
+  if (doc?.schemaVersion !== 4) throw new Error('schemaVersion must be 4; run migrate-v4');
   const lang = langOf(doc, ctx), t = tOf(lang), n = names(ctx), report = checkup(doc, ctx), p = paramsOf(doc);
   const pre = value => `<pre>${esc(pretty(value))}</pre>`;
   const copy = value => `<button data-copy="${esc(value)}">${t.copy}</button>`;
   const eps = arr(doc?.episodes).map((ep, i) => {
     const timeline = episodeTimeline(ep, p), est = report.stats.episodes[i].est, plan = plansFor(ep, ctx);
-    const scenes = arr(ep?.scenes).map((s, si) => `<section><h4>${t.scene} ${si + 1} · ${esc(n.scene(s?.sceneId))}</h4><p>${s?.lighting ? `${t.lighting}: ${esc(s.lighting)} · ` : ''}${t.characters}: ${esc(arr(s?.characters).map(n.char).join(', '))}${arr(s?.props).length ? ` · ${t.props}: ${esc(s.props.map(n.prop).join(', '))}` : ''}</p><ol>${timeline.filter(r => r.coord[0] === si + 1).map(r => `<li id="ep-${esc(ep?.ep)}-${r.coord.join('-')}"><small>[${r.coord}] ${format(r.startSeconds)}–${format(r.endSeconds)}s</small><p>${esc(beatText(r.beat, n))}</p>${own(r.beat, 'line') ? copy(r.beat.line) : ''}</li>`).join('')}</ol></section>`).join('');
+    const scenes = arr(ep?.scenes).map((s, si) => `<section><h4>${t.scene} ${si + 1} · ${esc(n.scene(s?.sceneId))}</h4><p>${s?.lighting ? `${t.lighting}: ${esc(s.lighting)} · ` : ''}${t.characters}: ${esc(arr(s?.characters).map(n.char).join(', '))}${arr(s?.props).length ? ` · ${t.props}: ${esc(s.props.map(n.prop).join(', '))}` : ''}</p>${s?.sourceRefs ? pre({sourceRefs:s.sourceRefs}) : ''}${arr(s?.notes).map(note => `<aside><strong>${lang === 'en' ? 'Non-speaking note' : '非发声说明'}</strong>${pre(note)}</aside>`).join('')}<ol>${timeline.filter(r => r.coord[0] === si + 1).map(r => `<li id="ep-${esc(ep?.ep)}-${r.coord.join('-')}"><small>[${r.coord}] ${format(r.startSeconds)}–${format(r.endSeconds)}s</small><p>${esc(beatText(r.beat, n))}</p>${own(r.beat, 'line') ? copy(r.beat.line) : ''}</li>`).join('')}</ol></section>`).join('');
     const claims = arr(ep?.beatClaims).map(c => {
       const b = arr(ctx.outline?.beats).find(b => b?.id === c?.beatId), range = claimRange(ep, c, p);
       return `<article class="claim"><div><h5>${esc(c?.beatId)}${b?.kind ? ` · ${esc(b.kind)}` : ''}</h5><strong>${t.plan}</strong><p>${b ? `${t.setup}: ${esc(b.setup)}<br>${t.outcome}: ${esc(b.outcome)}` : t.missing}</p>${arr(b?.resolves).length ? `<p>resolves: ${esc(arr(b.resolves).join(', '))}</p>` : ''}</div><div><strong>${t.actual}</strong>${range ? `<p>[${c.start}]–[${c.end}] · ${format(range.startSeconds)}–${format(range.endSeconds)}s</p>${range.rows.map(r => `<p><a href="#ep-${esc(ep.ep)}-${r.coord.join('-')}">[${r.coord}]</a> ${esc(beatText(r.beat, n))}</p>`).join('')}` : `<p>${t.invalid}</p>`}</div></article>`;
     }).join('');
     const q = questionsFor(ep, ctx).map(q => `${pre(q)}<pre>${esc(resolutionLocations(q, doc, ctx, t, n).join('\n') || '—')}</pre>`).join('');
-    return `<article class="episode"><h3>${t.episode} ${esc(ep?.ep)}</h3><details open><summary>${t.timeline}</summary>${scenes}</details>${plan.opening ? `<h4>${t.opening}</h4><p>${esc(plan.opening)}</p>` : ''}<p>${own(ep, 'openingBeat') ? esc(landing(ep, ep.openingBeat, p, t, n)) : t.unmarked}</p>${plan.ending ? `<h4>${t.ending} · ${esc(plan.ending.mode)}</h4><p>${esc(plan.ending.event)}</p>` : ''}<p>${t.final}: ${esc(landing(ep, endBeatOf(ep), p, t, n))}</p>${claims ? `<h4>${t.claims}</h4>${claims}` : ''}${q ? `<h4>${t.questions}</h4>${q}` : ''}<p>${t.duration}: ${format(est)}s / ${t.target}: ${esc(ep?.targetSeconds)}s</p></article>`;
+    return `<article class="episode"><h3>${t.episode} ${esc(ep?.ep)}</h3><details open><summary>${t.timeline}</summary>${scenes}</details>${plan.opening ? `<h4>${t.opening}</h4><p>${esc(plan.opening)}</p>` : ''}<p>${own(ep, 'openingBeat') ? esc(landing(ep, ep.openingBeat, p, t, n)) : t.unmarked}</p>${plan.ending ? `<h4>${t.ending} · ${esc(plan.ending.mode)}</h4><p>${esc(plan.ending.event)}</p>` : ''}<p>${t.final}: ${esc(landing(ep, endBeatOf(ep), p, t, n))}</p>${claims ? `<h4>${t.claims}</h4>${claims}` : ''}${q ? `<h4>${t.questions}</h4>${q}` : ''}<p>${t.duration}: ${format(est)}s / ${t.target}: ${positive(ep?.targetSeconds) ? `${format(ep.targetSeconds)}s` : lang === 'en' ? 'Not confirmed' : '尚未确认'}</p></article>`;
   }).join('');
   const checks = report.gates.map(g => `<li class="${g.status === 'fail' ? isBlocking(g) ? 'fail' : 'warn' : g.status}"><strong>${esc(statusText(g, t))} · ${esc(gateLabel(g, lang))}</strong> <small>${esc(t[g.category === 'content' ? 'contentCategory' : g.category] ?? g.category)} / ${esc(g.level)}</small>${g.reason ? `<p>${esc(t.reason[g.reason] ?? g.reason)}</p>` : ''}${g.messages.map(m => `<p>${esc(m)}</p>`).join('')}</li>`).join('');
   return `<!doctype html>
 <html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(doc?.source)} · ${t.title}</title><style>
 :root{--paper:#eceded;--panel:#f5f6f5;--seal:#8a3324;--ok:#3d6b4f}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:#252827;font:16px/1.65 system-ui,sans-serif}main{max-width:1500px;margin:auto;padding:28px}h1,h2,h3{font-family:Georgia,serif}h1{font-size:2.5rem}h2{border-top:2px solid var(--seal);padding-top:20px;margin-top:36px}h4,h5{margin:12px 0}a{color:var(--seal)}p,li,pre{overflow-wrap:anywhere}pre{white-space:pre-wrap;font-size:.85rem;max-width:100%;padding:12px;background:#e4e7e4}button,summary{cursor:pointer}button{padding:7px 12px;border:1px solid #999;background:var(--panel);border-radius:4px}small{color:#555}li{margin:10px 0}li p{margin:4px 0}.eps,.casts,.config{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.episode,.cast,.config>div{min-width:0;padding:20px;background:var(--panel);border:1px solid #ccc}.claim{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;border-top:1px solid #ccc;padding:12px 0}.claim>div{min-width:0}.claim h5{font-size:1rem}meter{width:100%;height:18px}.cast ul{max-height:260px;overflow:auto}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse}td,th{text-align:left;border-bottom:1px solid #ccc;padding:8px}.fail{border-left:4px solid var(--seal);padding-left:12px}.warn{border-left:4px solid #a66b18;padding-left:12px}.pass{color:var(--ok)}.notice{padding:16px;background:#fff4dc}.skipped{color:#666}#checks{list-style:none;padding:0}@media(max-width:750px){main{padding:14px}.eps,.casts,.config,.claim{grid-template-columns:minmax(0,1fr)}.episode{padding:14px}h1{font-size:1.8rem}}@media print{button{display:none}.eps,.casts,.config{display:block}.episode,.cast{break-inside:avoid}.cast ul{max-height:none;overflow:visible}body{background:white}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
 </style></head><body><main><header><h1>${esc(doc?.source)} · ${t.title}</h1><button id="export">${t.export}</button><p>${t.blocking}: ${report.blockingFailures} · ${t.warnings}: ${report.warnings}</p></header>
-<h2>${t.script}</h2><div class="eps">${eps}</div>
+${doc?.provenance ? `<h2>provenance</h2>${pre(doc.provenance)}` : ''}<h2>${t.script}</h2><div class="eps">${eps}</div>
 <h2>${t.scenes}</h2><div class="table-wrap"><table><thead><tr>${[t.episode, t.scene, t.lighting, t.characters, t.props, t.count, t.duration].map(x => `<th>${x}</th>`).join('')}</tr></thead><tbody>${report.stats.sceneTable.map(s => `<tr>${[s.ep, `${s.index} · ${n.scene(s.sceneId)}`, s.lighting ?? '—', s.characters.map(n.char).join(', '), s.props.map(n.prop).join(', '), s.lineCount, `${format(s.estSeconds)}s`].map(x => `<td>${esc(x)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
 <h2>${t.lines}</h2><div class="casts">${report.stats.castLines.map(c => `<article class="cast"><h3>${esc(n.char(c.id))}</h3><p>${t.count}: ${c.count} · ${t.chars}: ${c.chars}</p>${copy(c.lines.map(l => l.line).join('\n'))}${text(n.voice(c.id)) ? `<details><summary>${t.voice}</summary><pre>${esc(n.voice(c.id))}</pre>${copy(n.voice(c.id))}</details>` : ''}<ul>${c.lines.map(l => `<li>E${esc(l.ep)} [${l.sceneIndex}]: ${esc(`${l.delivery ? `(${l.delivery}) ` : ''}${l.line}`)}</li>`).join('')}</ul></article>`).join('')}</div>
 <h2>${t.duration}</h2><p>${t.timingNote}</p><h3>${t.effective}</h3>${pre(p)}${[ctx.production?.creativeBrief, doc?.creativeBrief].filter(text).map(b => `<h3>${t.brief}</h3><p>${esc(b)}</p>`).join('')}<p>${t.scope}</p>
@@ -457,14 +426,16 @@ window.addEventListener('beforeprint',()=>document.querySelectorAll('details').f
 </script></body></html>`;
 }
 
-const USAGE = `mint-script v3 (Node 18+, no dependencies)
-  seed OUTLINE [--eps 1-3]
-  validate SCRIPT [--outline FILE] [--art FILE] [--production FILE | --no-production] [--stage skeleton|full]
+const USAGE = `mint-script v4 (Node 18+, no dependencies)
+  seed OUTLINE [--eps 1-3] [--output-path OUTPUT.json]
+  validate SCRIPT [--outline FILE] [--art FILE] [--production FILE | --no-production] [--stage skeleton|full] [--verify-sources] [--production-ready]
   checkup SCRIPT [same options] [--json]
   render SCRIPT [--html|--md] [--lang zh|en] [same options] [--cast FILE]
+  verify-sources SCRIPT [--outline FILE] [--no-production]
+  migrate-v4 INPUT [--out DRAFT] [--confirm] [--independent] [--outline FILE]
   migrate-v3 INPUT [--out OUTPUT] [--confirm] [--outline FILE] [--production FILE | --no-production]
   slug NAME
-Full delivery requires upstream reconciliation and separate content review. See references/migration.md for explicit v2 migration.`;
+Full delivery requires upstream reconciliation and separate content review. See references/migration.md for explicit v3→v4 and historical v2→v3 migration.`;
 const readJson = path => readJsonStrict(resolve(path));
 function flag(args, key, fallback = undefined) {
   const i = args.indexOf(key);
@@ -473,10 +444,10 @@ function flag(args, key, fallback = undefined) {
   return args[i + 1];
 }
 function loadCtx(args, path) {
-  const ctx = { docPath: resolve(path), stage: flag(args, '--stage', 'full') };
+  const ctx = { docPath: resolve(path), stage: flag(args, '--stage', 'full'), verifySources: args.includes('--verify-sources') || args.includes('--production-ready'), requireTarget: args.includes('--production-ready') };
   for (const key of ['outline', 'art', 'cast']) {
     const file = flag(args, `--${key}`);
-    if (file !== undefined) ctx[key] = readJson(file); // supplied damaged/unreadable inputs fail; never skipped
+    if (file !== undefined) { ctx[key] = readJson(file); ctx[`${key}Path`] = resolve(file); } // supplied damaged/unreadable inputs fail; never skipped
   }
   if (args.includes('--production') && args.includes('--no-production')) throw new Error('--production and --no-production are mutually exclusive');
   const productionPath = args.includes('--no-production') ? undefined : flag(args, '--production') ?? findProduction(dirname(resolve(path)));
@@ -494,19 +465,31 @@ export async function main(argv) {
   if (command === 'seed') {
     const raw = flag(args, '--eps'), match = raw?.match(/^(\d+)(?:-(\d+))?$/);
     if (raw && !match) throw new Error('--eps: expected N or N-M');
-    console.log(pretty(seedFromOutline(readJson(path), match ? [+match[1], +(match[2] ?? match[1])] : null))); return;
+    const outline = readJson(path), verification = verifySources(outline,path,{outline:true});
+    if (verification.errors.length) throw new Error(verification.errors.join('\n'));
+    const seeded = seedFromOutline(outline, match ? [+match[1], +(match[2] ?? match[1])] : null);
+    const outputPath = flag(args,'--output-path');
+    if (outputPath) seeded.provenance = rebaseProvenance(seeded.provenance,path,outputPath);
+    console.log(pretty(seeded)); return;
   }
   if (command === 'migrate-v3') {
     const ctx = loadCtx(args, path);
-    const result = migrateFile(path, { out: flag(args, '--out'), confirm: args.includes('--confirm'), ctx, validate: validateScript });
+    const result = migrateFile(path, { out: flag(args, '--out'), confirm: args.includes('--confirm'), ctx, validate: (d,c) => validateHistoricalV3(d,c,validateScript) });
     console.log(pretty(result));
     if (result.errors.length || (result.pending.length && !args.includes('--confirm'))) process.exitCode = 1;
     return;
   }
+  if (command === 'migrate-v4') {
+    const result = migrateV4File(path, { out:flag(args,'--out'), confirm:args.includes('--confirm'), independent:args.includes('--independent'), ctx:loadCtx(args,path), validate:validateScript });
+    console.log(pretty(result));
+    if (result.errors.length || result.pending.length && !args.includes('--confirm')) process.exitCode = 1;
+    return;
+  }
   const doc = readJson(path), ctx = loadCtx(args, path);
+  if (command === 'verify-sources') { ctx.verifySources = true; const result = checkup(doc,ctx); console.log(pretty(result)); if(result.blockingFailures) process.exitCode=1; return; }
   if (autopilotOf(ctx.production)) console.error(AUTOPILOT_NOTE);
   if (command === 'render') {
-    if (doc?.schemaVersion !== 3) throw new Error('schemaVersion must be 3; see references/migration.md');
+    if (doc?.schemaVersion !== 4) throw new Error('schemaVersion must be 4; run migrate-v4');
     process.stdout.write((args.includes('--html') ? renderHtml(doc, ctx) : renderMarkdown(doc, ctx)) + '\n');
     if (checkup(doc, ctx).blockingFailures) process.exitCode = 1;
     return;

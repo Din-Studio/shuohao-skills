@@ -1,0 +1,292 @@
+{
+  "schemaVersion": 4,
+  "source": "夜班水尺",
+  "provenance": {
+    "kind": "script",
+    "scope": "partial",
+    "totalEpisodes": 10,
+    "documents": [
+      {
+        "id": "night",
+        "path": "夜班水尺-source.txt",
+        "sha256": "e036dfbfae4b8f45837ceb3f672d20801856d36cb6dff39e06c61f96c15e65df",
+        "lineCount": 19
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "night",
+        "startLine": 1,
+        "endLine": 12
+      },
+      {
+        "documentId": "night",
+        "startLine": 10,
+        "endLine": 19
+      }
+    ]
+  },
+  "episodes": [
+    {
+      "ep": 7,
+      "sourceRefs": [
+        {
+          "documentId": "night",
+          "startLine": 3,
+          "endLine": 13
+        }
+      ],
+      "scenes": [
+        {
+          "sceneId": "S01",
+          "characters": [
+            "C01",
+            "C02",
+            "C03"
+          ],
+          "props": [
+            "P01"
+          ],
+          "sourceRefs": [
+            {
+              "documentId": "night",
+              "startLine": 3,
+              "endLine": 9
+            }
+          ],
+          "notes": [
+            {"kind":"continuity","text":"C02 在闸室门外发声，不是闸室内未入画。","sourceRefs":[{"documentId":"night","startLine":6,"endLine":6}]},
+            {
+              "kind": "background",
+              "text": "沈汀曾因抢开闸门导致事故。这个事实暂不公开给搬运工，不能据此表演成已经被原谅。",
+              "sourceRefs": [
+                {
+                  "documentId": "night",
+                  "startLine": 4,
+                  "endLine": 4
+                }
+              ]
+            },
+            {
+              "kind": "performance",
+              "text": "沈汀担心再次犯错。她的迟疑不是已经确认安全，也不是拒绝值班。心理说明不发声。",
+              "sourceRefs": [
+                {
+                  "documentId": "night",
+                  "startLine": 5,
+                  "endLine": 5
+                }
+              ]
+            }
+          ],
+          "flow": [
+            {
+              "speaker": "C02",
+              "line": "等灯灭了再开门。",
+              "audio": {
+                "mode": "offscreen",
+                "audibleTo": [
+                  "C01",
+                  "C03"
+                ],
+                "subjective": false
+              },
+              "sourceRefs": [
+                {
+                  "documentId": "night",
+                  "startLine": 6,
+                  "endLine": 6
+                }
+              ]
+            },
+            {
+              "action": "C01的手停在开关前。",
+              "sourceRefs": [
+                {
+                  "documentId": "night",
+                  "startLine": 7,
+                  "endLine": 7
+                }
+              ]
+            },
+            {
+              "speaker": "C01",
+              "line": "那次我以为早一秒就能救下所有人。这次，我等复核信号，不替别人回答。",
+              "audio": {
+                "mode": "inner",
+                "audibleTo": [],
+                "subjective": true
+              },
+              "sourceRefs": [
+                {
+                  "documentId": "night",
+                  "startLine": 8,
+                  "endLine": 8
+                }
+              ]
+            },
+            {
+              "action": "C01把手从开关上移开。",
+              "sourceRefs": [
+                {
+                  "documentId": "night",
+                  "startLine": 9,
+                  "endLine": 9
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "sceneId": "S02",
+          "characters": [
+            "C02"
+          ],
+          "sourceRefs": [
+            {
+              "documentId": "night",
+              "startLine": 10,
+              "endLine": 13
+            }
+          ],
+          "flow": [
+            {
+              "action": "C02收起湿透的记录纸。",
+              "sourceRefs": [
+                {
+                  "documentId": "night",
+                  "startLine": 11,
+                  "endLine": 11
+                }
+              ]
+            },
+            {
+              "sound": "远处报警器短鸣。",
+              "seconds": 1,
+              "audio": {
+                "mode": "offscreen",
+                "audibleTo": [
+                  "C02"
+                ],
+                "subjective": false
+              },
+              "sourceRefs": [
+                {
+                  "documentId": "night",
+                  "startLine": 12,
+                  "endLine": 12
+                }
+              ]
+            },
+            {
+              "subtitle": "复核中。",
+              "seconds": 2,
+              "sourceRefs": [
+                {
+                  "documentId": "night",
+                  "startLine": 13,
+                  "endLine": 13
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ep": 9,
+      "sourceRefs": [
+        {
+          "documentId": "night",
+          "startLine": 14,
+          "endLine": 19
+        }
+      ],
+      "scenes": [
+        {
+          "sceneId": "S01",
+          "characters": [
+            "C01",
+            "C02",
+            "C03"
+          ],
+          "props": [
+            "P01"
+          ],
+          "sourceRefs": [
+            {
+              "documentId": "night",
+              "startLine": 14,
+              "endLine": 19
+            }
+          ],
+          "notes": [
+            {
+              "kind": "continuity",
+              "text": "钥匙仍由C01保管；第八集未提供，不说明中间经过。",
+              "sourceRefs": [
+                {
+                  "documentId": "night",
+                  "startLine": 15,
+                  "endLine": 15
+                }
+              ]
+            },
+            {
+              "kind": "restriction",
+              "text": "这次等待只是遵守复核程序，不能改成双方已经和解。结局未知。",
+              "sourceRefs": [
+                {
+                  "documentId": "night",
+                  "startLine": 19,
+                  "endLine": 19
+                }
+              ]
+            }
+          ],
+          "flow": [
+            {
+              "action": "C01把钥匙放进自己的口袋。",
+              "sourceRefs": [
+                {
+                  "documentId": "night",
+                  "startLine": 16,
+                  "endLine": 16
+                }
+              ]
+            },
+            {
+              "speaker": "C02",
+              "line": "等灯灭了再开门。",
+              "audio": {
+                "mode": "onscreen",
+                "audibleTo": [
+                  "C01",
+                  "C03"
+                ],
+                "subjective": false
+              },
+              "sourceRefs": [
+                {
+                  "documentId": "night",
+                  "startLine": 17,
+                  "endLine": 17
+                }
+              ]
+            },
+            {
+              "action": "C03把空箱放在墙边，没有回答。",
+              "sourceRefs": [
+                {
+                  "documentId": "night",
+                  "startLine": 18,
+                  "endLine": 18
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

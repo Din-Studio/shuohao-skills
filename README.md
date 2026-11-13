@@ -11,34 +11,38 @@
 
 # shuohao-skills
 
-**AI 短剧制作的 skill 集合**：从一本小说到直接喂生成管线的制作素材——定生产参数、拆角色、排大纲、出场景与道具设定、写剧本、切分镜、参考图直出视频。给 AI 编码 agent 用，**pi、Claude Code、codex 都能跑**。
+**AI 短剧制作的 skill 集合**：从已有剧本到制作素材——核对原文与覆盖、提取结构与资产、整理唯一执行正文、设计角色与美术、编写分镜与提示词，再按需生成。面向 AI 编码 agent，**pi、Claude Code、codex 都能运行**。
 
-整条管线长这样——**生产参数先定死画幅与模型，改编大纲收敛结构，剧本、场景、角色三者同步迭代，视频创作按剧本分段切镜，直接挂载已有设定图**：
+整条管线长这样——**outline 只解析已有剧本；script 对照原文整理执行正文；人物、美术落实资产；creation 调度分镜编写与独立审核**。项目要求和授权约束全流程，具体制作前确认模型与逐集时长：
 
 <img src="assets/pipeline.svg" alt="AI 短剧制作流程图" width="680">
 
 | Skill | 做什么 |
 | --- | --- |
 | [**mint-setup**](skills/mint-setup) | 确认制作参数、视觉正文和自然语言创作要求，写入工作目录根的 `production.json`。画幅不决定叙事节奏 |
-| [**mint-outline**](skills/mint-outline) | 建立作品承诺、稳定剧情节点、分集与集尾计划、可选阶段里程碑和资产清单。创作方法读取本地指南，不强制兑现频率、悬念或终局胜利 |
+| [**mint-outline**](skills/mint-outline) | 只接受已有剧本，记录来源版本与已读范围，提取稳定事件、人物、地点和道具。区分部分来源与全剧完整，不补写缺集、结局或问题答案 |
 | [**mint-characters**](skills/mint-characters) | 把大纲定下的角色做成角色设定集：人物画像、形象提示词、音色提示词、角色设定图。吃 outline.json 预填角色表，报告语言可选，画风整块取自 `production.json`。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
 | [**mint-art**](skills/mint-art) | 给 AI 短剧出美术设定集（场景 + 叙事道具）：一致性锚点、光照与状态变体、尺度参照、无人无手白底提示词。吃 outline.json 预填清单，基础契约与制作参数由脚本检查。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
-| [**mint-script**](skills/mint-script) | 编写场次与节拍流，按 ID 认领大纲节点，定位开场与集尾，严格对账上游目标时长。开场落点按需标记，结束坐标由正文计算；估算不等于真实表演时长 |
+| [**mint-script**](skills/mint-script) | 对照原文形成唯一执行正文，保留事件认领与资产引用，区分行动、发声、字幕、声音和非发声说明。逐集 targetSeconds 是执行目标的唯一编辑源；整理时可缺省，制作前必须确认。独立创作入口保留 |
 | [**mint-creation**](skills/mint-creation) | 参考图直出视频：按剧本分段、切镜，直接挂载已有的角色、场景与道具设定图，不生成中间分镜图。视频提示词按模型选择结构，`export` 输出投产包，`videos` 导出离线计划，独立安装的 ly-video 负责生成与恢复。镜头表达按指南评审，模型技术限制由工具检查 |
 | [**mint-video-prompt**](skills/mint-video-prompt) | 视频提示词编写方：按剧本节拍完成一集的分段、分镜与提示词，写入每段一份的工作单 `<段号>/prompt.md` 并提交审核；被退回后逐条修改再提交。由 mint-creation 以 subagent 方式调用，也可以单独使用 |
 | [**mint-video-prompt-review**](skills/mint-video-prompt-review) | 视频提示词审核方：独立对照剧本、资产、项目要求与模型口径审核工作单，把意见写进同一份工作单并登记 approved、changes_requested 或 blocked。只审核，不改写提示词 |
 
 **五个创作 skill 的报告都支持中英双语界面**：默认中文，`render --lang en` 切换为英文界面（故事内容与原始诊断保持原文）。界面语言也可以在 `production.json` 里一处定死。
 
-**要一路跑到底不被打断**，就在 `production.json` 里打开自动驾驶（`mint-setup init --autopilot`）：五个创作 skill 读到 `"autopilot": true` 就各自把自己那一段一口气跑完——不提问、不等拍板，该做的决定自己做，做过的决定全部写进汇报。**转移的是审批权，不是取消检查点**：质量门照样是门、花钱前照样先算账、失败的止损照样止损。默认是关的。
+**要一路跑到底不被打断**，就在 `production.json` 里打开自动驾驶（`mint-setup init --autopilot`）：五个创作 skill 读到 `"autopilot": true` 就各自把自己那一段一口气跑完——不提问、不等拍板，该做的决定自己做，做过的决定全部写进汇报。**自动驾驶不扩大转译或改写授权，也不取消检查点**：权限未确认时只整理来源、标明性质和表达缺口；候选不进入正式执行正文。付费生成仍需符合当前授权。默认关闭。
 
 ## 创作指南与数据版本
 
 创作方法集中在 outline、script、creation 各自的 `references/创作指南.md`。项目可在 `production.json.creativeBrief` 保存自然语言要求，不再选择四维 profile、维护指南版本或执行策略应用命令。视觉正文仍只来自 `production.json.style`。画幅不决定叙事节奏。
 
-JSON 保存故事内容和必要交接关系。原创不强制填写改编取舍；问题追踪、阶段规划和事件分类按需填写。重要节点认领、资产引用、明确的问题承诺和模型技术限制仍检查。时长估算是提醒，不等于真实表演时长。
+JSON 保存来源事实和必要交接关系。outline 不再保存改编取舍、阶段规划、事件分类或固定分钟数。来源位置不是发声指令；心理说明不会自动朗读。一次发声可跨镜延续，但正文只发生一次，重复台词按各自来源位置分别保留。模型时长上限仍是硬限制，估时不等于实际表演。
 
-**破坏性升级**：production、outline、script、creation 使用 `schemaVersion: 3`。旧项目先备份，按各 skill 的迁移说明执行 `migrate-v3` 预览，再审阅语义合并项并输出新文件；不能仅修改版本号。指南修改不会令既有产物失效。结构检查和内容评审分开报告，缺少上游时不得宣称联合交付通过。
+**破坏性升级**：outline 与 script 使用 `schemaVersion: 4`；production 与 creation 保持 v3。旧项目先备份，按各自迁移说明执行 `migrate-v4` 预览；补齐来源和必要语义后输出新文件，不能仅修改版本号。历史决定留在迁移材料，不继续作为解析规划字段。资产阶段兼容显式 v3 历史投影，不代表旧数据已核验原文。
+
+新增说明、声音方式、来源关系及揭晓限制实际进入编写与审核材料，并绑定相关工作单批准。无关场次不连带失效。原件不可覆盖；Markdown/HTML 正文展示与报告均派生，`<段号>/prompt.md` 仍是可编辑的制作工作单。结构检查、来源／正文核验和制作计划审核分别报告；提示词批准不代表成片通过。本次不新增翻译、粗剪或成片审核。
+
+实施范围、迁移边界与验证结果见[剧本解析融合实施验收](docs/剧本解析融合-实施验收.md)。
 
 ## 合成一张单页
 
@@ -65,11 +69,11 @@ node scripts/report-selftest.mjs   # 合并器单元测试
 node scripts/pipeline-selftest.mjs # 真实渲染、交互适配与隔离安装测试
 ```
 
-提供小说后，按阶段生成以下产物。下列截图为历史界面示意；当前界面以本地 `render` 为准：
+提供已有剧本后，按阶段生成以下产物。下列截图为历史界面示意；当前界面以本地 `render` 为准：
 
-**mint-outline · 短剧改编大纲**
+**mint-outline · 剧本解析结构**
 
-![短剧改编大纲报告](skills/mint-outline/assets/report.webp)
+![剧本解析报告历史界面](skills/mint-outline/assets/report.webp)
 
 **mint-characters · 角色设定集**
 

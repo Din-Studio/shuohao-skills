@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // mint-video-prompt-review 自测：工作单库、结论登记规则与自有样例。离线，不调用模型。
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -87,10 +88,14 @@ try {
     stale(clone(m => { m.assets[{character: 'characters', scene: 'scenes', prop: 'props'}[s.structure.images[0].kind]].find(a => a.id === s.structure.images[0].ref).sheetHash = 'abc'; }));
     stale(clone(m => { m.video.model = 'MiniMax H3'; })); stale(clone(m => { m.video.resolution = '2K'; }));
     stale(clone(m => { m.creativeBrief = '改了项目要求'; })); stale(clone(m => { m.maxSegmentSeconds = 10; }));
-    // 这一段没有依据的材料：别的场、没有挂载的资产、目标秒数、开场与集尾计划的措辞
+    // 无关场与资产不失效；本集目标时长是制作依赖，必须失效。
     same(clone(m => { m.seedScenes.push({ sceneIndex: 9, sceneId: 'S09', beats: [{ n: 1, kind: 'action', text: '别的场' }] }); }));
     same(clone(m => { m.assets.props.push({ id: 'P99', name: '没有挂载的道具', sheetHash: 'zzz' }); }));
-    same(clone(m => { m.targetSeconds = 99; m.intent.opening = '换一种说法'; }));
+    stale(clone(m => { m.targetSeconds = 99; }));
+    stale(clone(m => { m.intent.opening = '换一种说法'; }));
+    stale(clone(m => { m.intent.ending = {event:'不同的集尾意图'}; }));
+    stale(clone(m => { m.seedScenes[0].characters = ['C99']; }));
+    stale(clone(m => { m.seedScenes[0].props = ['P99']; }));
     assert.match(W.inputProblem(sheet('第二轮', { meta: { inputHash: '' } }), material), /没有绑定输入材料/);
   });
 
@@ -125,6 +130,43 @@ try {
     assert.match(cli('show', '--inputs', inputs, q).stdout, /批准有效$/m);
     assert.equal(cli('verdict', 'approved', '--inputs', join(temp, 'missing.json'), q).status, 1);
     assert.equal(cli('verdict').status, 1);
+  });
+
+
+  test('v4 own source, notes, audio and selective continuation hashes', () => {
+    const m=JSON.parse(readFileSync(join(root,'examples/回执/输入材料.json'),'utf8'));
+    const structure=W.parseWorksheet(readFileSync(join(root,'examples/回执/第二轮/E01-01/prompt.md'),'utf8')).structure;
+    assert.ok(m.seedScenes[0].notes[0].sourceRefs.length);
+    assert.ok(m.seedScenes[0].beats.find(b=>b.n===3).audio);
+    const continuation={id:'E01-09',sceneIndex:9,images:[],cuts:[{beats:[1,1],audioRefs:[[1,3]]}]};
+    m.seedScenes.push({sceneIndex:9,sceneId:'S09',notes:[],beats:[{n:1,kind:'action',text:'仅用于声音延续结构测试'}]});
+    const baseline=W.inputHashOf(continuation,m);
+    const changed=fn=>{const x=structuredClone(m);fn(x);assert.notEqual(W.inputHashOf(continuation,x),baseline);};
+    changed(x=>x.seedScenes[0].notes[0].text+='禁止补写');
+    changed(x=>x.seedScenes[0].beats.find(b=>b.n===3).audio.mode='inner');
+    changed(x=>x.seedScenes[0].beats.find(b=>b.n===3).sourceRefs[0].startLine=1);
+    changed(x=>x.provenance.documents[0].sha256='f'.repeat(64));
+    const unrelated=structuredClone(m);unrelated.seedScenes.push({sceneIndex:10,sceneId:'S10',notes:[{text:'无关场次'}],beats:[]});
+    assert.equal(W.inputHashOf(continuation,unrelated),baseline);
+    const x=structuredClone(m);x.seedScenes[0].beats[0].text+='无关行动';
+    assert.equal(W.inputHashOf(continuation,x),baseline);
+    assert.notEqual(W.inputHashOf(structure,m),W.inputHashOf(structure,{...m,maxOnScreen:99}));
+  });
+
+  test('own source bytes match archived fixture identity', () => {
+    const m=JSON.parse(readFileSync(join(root,'examples/回执/输入材料.json'),'utf8'));
+    for(const d of m.provenance.documents){
+      const bytes=readFileSync(join(root,'examples/回执',d.path));
+      assert.equal(createHash('sha256').update(bytes).digest('hex'),d.sha256);
+      assert.equal(bytes.toString('utf8').trimEnd().split('\n').length,d.lineCount);
+    }
+  });
+
+  test('standalone copy runs own tools, fixtures and all tests without siblings', () => {
+    if(process.env.MINT_PROMPT_STANDALONE==='1')return;
+    const local=join(temp,'standalone');cpSync(root,local,{recursive:true});
+    const r=spawnSync(process.execPath,[join(local,'scripts/selftest.mjs')],{cwd:temp,encoding:'utf8',env:{...process.env,MINT_PROMPT_STANDALONE:'1'}});
+    assert.equal(r.status,0,r.stderr+r.stdout);
   });
 
   console.log(`✓ ${count} 项自测通过；离线`);

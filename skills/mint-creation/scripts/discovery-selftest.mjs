@@ -22,7 +22,7 @@ try {
     r=run();assert.equal(r.status,1);assert.match(r.stderr,/ENOENT/);count++;
     if(name==='script') {
       mkdirSync(actual);const batch=join(actual,'batch.json');write(batch,script);
-      r=run();assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/script v3/);count++;
+      r=run();assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/script v4/);count++;
       write(join(actual,'another.json'),script);r=run();assert.equal(r.status,1);assert.match(r.stderr,/不唯一/);count++;
       r=run('--script',batch);assert.equal(r.status,0,r.stderr);count++;
       writeFileSync(batch,'{');r=run('--script',batch);assert.equal(r.status,1);count++;

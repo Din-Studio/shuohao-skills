@@ -6,9 +6,9 @@
 
 production 必须包含 `schemaVersion: 3`。拒绝旧 creative/creativeContext、selection/decisions/overrides、params.rules/defaults/preferences，并指向显式迁移。创作要求不是视觉正文：画风仍唯一来自 production.style，制作参数来自 production.image。要求变化后由 Agent 评审受影响设计，不自动改变技术参数。
 
-## outline v3 消费投影
+## outline v4 与历史 v3 消费投影
 
-seed 只接受显式 `outline.schemaVersion: 3`。检查自己消费的字段，不声称已验证完整大纲：
+seed 接受 `outline.schemaVersion: 4`，并兼容显式 v3 历史资产投影。v4 的 sourceRefs、notes 与来源文件版本必须核验，详见 [来源事实](source-facts.md)。检查自己消费的字段，不声称已验证完整大纲：
 
 - source 非空；characters/scenes 数组。
 - C/S/P/B ID 合法且唯一；角色 name/tier、场景 name/primary、道具 name/function。

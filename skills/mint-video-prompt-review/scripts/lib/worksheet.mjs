@@ -41,20 +41,61 @@ export function hashOf(structure, body) {
  * 发生变化，不影响这一段的批准。material 是调度方派发的输入材料（格式见各 skill 的样例）。
  */
 export function inputHashOf(structure, material) {
-  const scene = (material?.seedScenes ?? []).find(s => s?.sceneIndex === structure?.sceneIndex);
-  const claimed = new Set();
+  const scenes = material?.seedScenes ?? [];
+  const scene = scenes.find(s => s?.sceneIndex === structure?.sceneIndex);
+  const claimed = new Set(), continuation = new Map();
   for (const cut of structure?.cuts ?? []) {
-    const [a, b] = Array.isArray(cut?.beats) ? cut.beats : [];
-    if (Number.isInteger(a) && Number.isInteger(b)) for (let n = a; n <= b && n - a < 1000; n++) claimed.add(n);
+    const [a,b] = Array.isArray(cut?.beats) ? cut.beats : [];
+    if (Number.isInteger(a) && Number.isInteger(b)) for (let n=a;n<=b && n-a<100000;n++) claimed.add(n);
+    for (const pos of Array.isArray(cut?.audioRefs) ? cut.audioRefs : []) {
+      if (!Array.isArray(pos) || pos.length !== 2) continue;
+      const sc = scenes.find(s => s?.sceneIndex === pos[0]);
+      continuation.set(stable(pos), {position:pos, sceneId:sc?.sceneId ?? null,
+        sourceRefs:sc?.sourceRefs ?? null, notes:sc?.notes ?? null,
+        characters:sc?.characters ?? [], props:sc?.props ?? [],
+        beat:sc?.beats?.find(b => b?.n === pos[1]) ?? null});
+    }
   }
+  const beats = (scene?.beats ?? []).filter(b => claimed.has(b?.n));
+  const dependencies = {sceneId:scene?.sceneId ?? null, lighting:scene?.lighting ?? null,
+    sourceRefs:scene?.sourceRefs ?? null, notes:scene?.notes ?? null, beats,
+    characters:scene?.characters ?? [], props:scene?.props ?? [],
+    continuation:[...continuation.entries()].sort(([a],[b]) => a.localeCompare(b)).map(([,v]) => v)};
+  const ids = new Set();
+  function refs(x) {
+    if (!x || typeof x !== 'object') return;
+    if (Array.isArray(x.sourceRefs)) for (const r of x.sourceRefs) ids.add(r.documentId);
+    for (const v of Object.values(x)) if (Array.isArray(v)) v.forEach(refs); else if (v && typeof v === 'object') refs(v);
+  }
+  refs(dependencies);
+  const documents = [...ids].sort().map(id => {
+    const d = material?.provenance?.documents?.find(d => d?.id === id);
+    return d ? {id:d.id,path:d.path,sha256:d.sha256,lineCount:d.lineCount} : {id,missing:true};
+  });
   const images = (structure?.images ?? []).map(img => {
     const asset = (material?.assets?.[ASSET_LISTS[img?.kind]] ?? []).find(x => x?.id === img?.ref);
-    return { kind: img?.kind ?? null, ref: img?.ref ?? null, name: asset?.name ?? null, sheetHash: asset?.sheetHash ?? null };
+    return {kind:img?.kind ?? null,ref:img?.ref ?? null,name:asset?.name ?? null,sheet:asset?.sheet ?? null,sheetHash:asset?.sheetHash ?? null,
+      sourceRefs:asset?.sourceRefs ?? null,sourceDocuments:asset?.sourceDocuments ?? null};
   });
+  const positions = [...claimed].map(n => [structure?.sceneIndex,n]).concat([...continuation.values()].map(v => v.position));
+  const compare = (a,b) => a[0]-b[0] || a[1]-b[1];
+  const beatClaims = (material?.beatClaims ?? []).filter(c => Array.isArray(c?.start) && Array.isArray(c?.end) && positions.some(p => compare(c.start,p)<=0 && compare(p,c.end)<=0));
+  // The full episode is dispatched, but local intent belongs only to its owning segment.
+  const owned = [...claimed].map(n => [structure?.sceneIndex,n]);
+  const allPositions = scenes.flatMap(s => (s.beats ?? []).map(b => [s.sceneIndex,b.n])).sort(compare);
+  const opening = material?.intent?.openingBeat ?? allPositions[0];
+  const ending = material?.intent?.endBeat ?? allPositions.at(-1);
+  const owns = pos => Array.isArray(pos) && owned.some(p => compare(p,pos) === 0);
+  const intent = {
+    ...(owns(opening) ? {opening:material?.intent?.opening ?? null,openingBeat:opening} : {}),
+    ...(owns(ending) ? {ending:material?.intent?.ending ?? null,endBeat:ending} : {}),
+  };
   return digest(stable({
-    video: material?.video ?? null, promptLang: material?.promptLang ?? null,
-    maxSegmentSeconds: material?.maxSegmentSeconds ?? null, creativeBrief: material?.creativeBrief ?? null,
-    sceneId: scene?.sceneId ?? null, beats: (scene?.beats ?? []).filter(b => claimed.has(b?.n)), images,
+    intent,
+    video:material?.video ?? null,promptLang:material?.promptLang ?? null,
+    maxSegmentSeconds:material?.maxSegmentSeconds ?? null,maxOnScreen:material?.maxOnScreen ?? null,
+    targetSeconds:material?.targetSeconds ?? null,creativeBrief:material?.creativeBrief ?? null,
+    ...dependencies,documents,images,beatClaims,
   }));
 }
 
@@ -197,7 +238,7 @@ export function approvalProblem(sheet) {
 /** 批准绑定的输入是否仍然是当前的输入材料。只对已批准且内容未改动的工作单有意义。 */
 export function inputProblem(sheet, material) {
   if (!sheet.meta.inputHash) return '批准没有绑定输入材料，需要重新提交，并由审核方带着输入材料登记结论';
-  if (sheet.meta.inputHash !== inputHashOf(sheet.structure, material)) return '批准之后这一段依据的输入发生变化（认领节拍的原文、参考图内容、视频模型与参数、提示词语言、单段上限或项目要求），批准已失效，需要重新提交审核';
+  if (sheet.meta.inputHash !== inputHashOf(sheet.structure, material)) return '批准之后这一段依据的输入发生变化（认领与声音延续正文、来源、场次说明、参考图、模型参数或项目要求），批准已失效，需要重新提交审核';
   return null;
 }
 

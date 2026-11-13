@@ -1,5 +1,7 @@
 # mint-video-prompt-review
 
+The upstream contract is script/outline v4; creation/production stay v3. Scene notes are non-speaking. `cuts.audioRefs` continues an earlier owned line occurrence across cuts, segments or scenes without replaying or recounting it. Continuation chains cannot skip cuts or reorder dialogue. Parsed source IDs must match the upstream versions. Approval hashes include explicit scene assets and local opening/ending intent; unrelated segments remain unaffected. Stable C/S/P IDs disambiguate same-name image files without renaming the assets. Source bytes/coordinates, semantic fidelity and production review are separate checks. See the self-contained [handoff contract](references/source-audio-handoff.md).
+
 The **reviewer** for reference-image-to-video prompts. It independently reviews the worksheets a writer submitted, records its comments in the same worksheet, and registers a verdict.
 
 - It judges only against script beats, the asset table, the project brief and the video model's conventions. See the [review checklist](references/审核清单.md).

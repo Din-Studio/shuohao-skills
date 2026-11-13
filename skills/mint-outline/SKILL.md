@@ -1,11 +1,11 @@
 ---
 name: mint-outline
-version: 3.0.0
+version: 4.0.0
 description: |
-  创作或改编故事大纲：核心处境、贯穿线索、人物资产、稳定 ID 重要事件与分集梗概。
-  使用本地创作指南，不要求策略配置。输出 schemaVersion 3、Markdown 和离线中英报告。
-  支持分卷、分阶段检查、下游本地接口检查与显式 v2 迁移。
-  Use when asked to 改编大纲、短剧大纲、拆大纲、原创大纲、小说转短剧、adaptation outline。
+  解析已有剧本，提取来源覆盖、故事摘要、人物地点道具、稳定事件 ID 与分集事实。
+  只接受剧本，不接受小说、大纲或原创构思；不改写剧情，不决定镜头。
+  输出 schemaVersion 4、自包含来源核验及离线中英报告。保留显式历史迁移。
+  Use for existing-script parsing, 剧本解析、剧本对象归并、原文覆盖核对。
 allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
 metadata:
   license: Apache-2.0
@@ -16,39 +16,43 @@ metadata:
 
 # mint-outline
 
-`{baseDir}` 为本文件目录。Node 18+，仅标准库，可独立复制。正式产物位于工作目录的 `outline/`；临时材料在该目录的 `.work/`。JSON 是唯一编辑源。报告可重新生成，不进入版本控制。
+`{baseDir}` 为本文件目录。Node 18+，仅标准库，可独立复制。只解析已有剧本。小说、大纲、创作提案不是正式入口；不得把它们标记为 script 规避限制。文本类别须人工确认，摘要和坐标校验不能识别伪装的小说。
 
-## 创作流程
+正式编辑源在工作目录 `outline/`，分块及候选在 `outline/.work/`。原件不可覆盖。仅一个发布者组装正式 JSON。Markdown/HTML 为派生报告，不进入版本控制。
 
-1. 阅读实际输入、[创作指南](references/创作指南.md) 与 [数据契约](references/schema.md)。确认集数、分钟数、题材、原创或改编方式与自然语言要求；不凭书名脑补。
-2. 读取显式或向上发现的唯一 production.json。正式项目要求 schemaVersion 3；损坏配置不是缺少上游。creativeBrief 只在项目保存。独立大纲可保存本地要求；接入项目时先人工合并，再删除阶段副本。
-3. 先确定故事，再建立骨架，不写分镜。长篇尚未完整阅读时按 [分卷指南](references/volume-pass.md) 整理来源，明确未覆盖范围。
-4. 写 story、人物、场景及必要道具；原创无需 adaptation/from。完成 skeleton 后建立重要事件与 endingBeatId；完成 beats 后写分集。阶段通过不等于 full 交付。
-5. 按创作指南进行内容评审，引用集号和节点。已登记 required 问题必须履行，不能为了通过检查删除承诺。结构检查不会自动确认内容质量。
-6. 修改节点或目标后执行本地检查与已知下游接口检查。需要完整联合交付时，继续执行各阶段完整校验；本 skill 不 import 兄弟代码。
+## 解析流程
 
-production.autopilot 仅严格布尔 true 开启。自动驾驶自行决定并汇报，但不取消阶段检查与内容评审。视觉 style 与媒体协议不属于本阶段改造范围。
+1. 阅读原剧本、[解析指南](references/创作指南.md)、[数据契约](references/schema.md)。确认实际提供范围、是否知道总集数、允许变化与禁止变化；未知结尾和制作目标不补写。
+2. 读取显式或向上发现的 production.json（schemaVersion 3）。损坏配置阻断。项目 creativeBrief 只保存于 production；本地要求须人工合并后删除副本。
+3. 短剧本直接阅读。长剧本按[分块与覆盖](references/volume-pass.md)拆分。登记文档字节 SHA256、行数、负责范围；相邻上下文不算已负责范围。
+4. 先记录出处，再归并 C/S/P 身份和 B 事件。保留无台词人物、同名不同人和未知事实。summary 与每条提取事实附 sourceRefs；只交接下游确需的连续性、说法与揭晓限制。
+5. 执行 skeleton、beats、full 结构检查，再执行原件核验。partial 可交付完整的局部解析，不宣称全剧完整。Q 未回答就保持未回答，不能补写答案或删除问题。
+6. 独立上下文对照原文核验事实、原句、因果、顺序和授权；不要以 SHA256 通过冒充语义忠实。发现遗漏返回本阶段；表达转译由 script 在授权内处理，候选不进入正式正文。
+7. 修改后执行本地下游接口检查。script 从原件读取正文，不从摘要重新生成对白。执行目标仅在 script.targetSeconds 确认；进入制作必须确认并继续检查时长。
 
-## 命令权威入口
+自动驾驶仅在 production.autopilot 严格为 true 时开启，不扩大授权，不发明来源或结尾。人物与美术保留 tier/primary 的真实含义；是否出图由制作需求确定。本阶段不决定复用变体或镜头。
+
+## 命令
 
 ```bash
-node {baseDir}/scripts/mint-outline.mjs chunk book.txt outline/.work --per-volume 15
+node {baseDir}/scripts/mint-outline.mjs source-document script.txt --artifact outline/outline.json
+node {baseDir}/scripts/mint-outline.mjs chunk script.txt outline/.work --kind script --max-lines 200 --context-lines 2
 node {baseDir}/scripts/mint-outline.mjs validate outline/outline.json --stage skeleton
 node {baseDir}/scripts/mint-outline.mjs validate outline/outline.json --stage beats
-node {baseDir}/scripts/mint-outline.mjs validate outline/outline.json
-node {baseDir}/scripts/mint-outline.mjs checkup outline/outline.json --json --downstream
-node {baseDir}/scripts/mint-outline.mjs render outline/outline.json --md > outline/outline.md
-node {baseDir}/scripts/mint-outline.mjs render outline/outline.json --html > outline/outline-report.html
-node {baseDir}/scripts/mint-outline.mjs render outline/outline.json --html --lang en > outline/outline-report.en.html
+node {baseDir}/scripts/mint-outline.mjs validate outline/outline.json --verify-sources
+node {baseDir}/scripts/mint-outline.mjs verify-sources outline/outline.json
+node {baseDir}/scripts/mint-outline.mjs checkup outline/outline.json --verify-sources --downstream --json
+node {baseDir}/scripts/mint-outline.mjs render outline/outline.json --html --verify-sources > outline/outline-report.html
+node {baseDir}/scripts/mint-outline.mjs render outline/outline.json --md
 node {baseDir}/scripts/mint-outline.mjs assets outline/outline.json
 ```
 
-validate/checkup/render 可传 `--production FILE`。语言优先级为 --lang、文档 lang、production.lang、zh。报告只翻译界面，不改正文。检查不写回默认值。错误退出 1；提醒不阻断。render 可输出诊断报告但无效数据退出非零。
+source-document 读取字节生成文档身份，不登记阅读覆盖。chunk 保留原行，输出不覆盖已有 source-chunks.json；分块不等于已经阅读。validate/checkup/render 不传 --verify-sources 时仅检查内存结构，来源文件核验标记 skipped。verify-sources 会实际打开全部原件，缺失、变更、非法编码或越界均失败。错误退出 1，提醒不阻断，不回写默认值。validate/checkup/render 可传 --production FILE。报告语言依次取 --lang、文档 lang、production.lang、zh，正文不翻译。
 
-报告正文优先，随后展示事件、资产、目标时长、用户预算与工具参考值，最后展示结构及内容评审状态。缺少上游、阶段未完成、提醒和结构失败分别说明。
+## 迁移与测试
 
-## 迁移、样例与验证
+[显式迁移](references/migration.md)保留原件和全部旧证据，不伪造新 provenance。migrate-v4 --confirm 仅写入待补证据草稿，不能使草稿通过生产校验。migrate-v3 仅为历史操作。
 
-显式迁移见 [迁移说明](references/migration.md)。默认预览，不覆盖输入；未知版本不自动修饰。自有 [旧站时刻](examples/旧站时刻-outline.json) 保留既定 [故事提案](examples/故事提案.md)，表达迁移记录见 [迁移核对](examples/迁移核对.md)。
+自有[故事提案](examples/故事提案.md)先于[测试剧本](examples/旧站时刻-script.txt)，再建立[解析样例](examples/旧站时刻-outline.json)。不是从历史大纲自动伪造来源；差异见[样例核对](examples/迁移核对.md)。
 
-本地测试入口：scripts/selftest.mjs、scripts/fixes-selftest.mjs、scripts/migration-selftest.mjs，均通过 node 执行。主测试额外执行独立复制回归；不调用付费模型。
+通过 node 运行 scripts/selftest.mjs、scripts/fixes-selftest.mjs、scripts/migration-selftest.mjs、scripts/fusion-selftest.mjs。主测试还运行独立复制回归。不调用付费模型，不生成分镜或媒体。

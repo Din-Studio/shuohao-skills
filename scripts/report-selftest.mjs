@@ -310,7 +310,7 @@ const DOC = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
 
 // 合并显示不得给 v3 编辑源补上计划副本或可推导坐标。
 for (const stage of ['script', 'creation']) {
-  const data = { schemaVersion: 3, source: '夜班温度', episodes: [{ ep: 1,
+  const data = { schemaVersion: stage === 'script' ? 4 : 3, source: '夜班温度', episodes: [{ ep: 1,
     ...(stage === 'script' ? { targetSeconds: 24, scenes: [{ sceneId: 'S01', characters: ['C01'], flow: [{ action: '保存原始记录。' }] }] } : { segments: [] }) }] };
   const doc = `<html><body><p>当前大纲的开场展示</p><script type="application/json" id="${stage}-data">${JSON.stringify(data)}<\/script></body></html>`;
   const pane = makePane(doc, { id: stage });

@@ -105,8 +105,9 @@ try {
     s.params={charsPerSecond:3,actionSeconds:7};const beats=expandScript(s).get(1).scenes[0].beats;
     assert.equal(beats[0].seconds,7);assert.equal(beats[1].seconds,4);assert.equal(beatSeconds({line:'abc'},s.params),1);
   });
-  test('strict outline target despite estimation tolerance',()=>{
-    const o=clone(outline);o.params.minutesPerEpisode=.51;assert.equal(find(doc,'upstream-intent',{...ctx,outline:o}).status,'fail');
+  test('v4 rejects obsolete outline target and requires explicit script target',()=>{
+    const o=clone(outline);o.params.minutesPerEpisode=.51;assert.equal(find(doc,'outline-contract',{...ctx,outline:o}).status,'fail');
+    const s=clone(script);delete s.episodes[0].targetSeconds;assert.equal(find(doc,'script-contract',{...ctx,script:s}).status,'fail');assert.throws(()=>seedFromScript(s));
   });
   for(const [label,mutate] of [
     ['missing',s=>s.episodes[0].beatClaims.pop()],['unknown',s=>s.episodes[0].beatClaims[1].beatId='B99'],

@@ -46,9 +46,9 @@ try {
  rmSync(prodFile);const actual=join(project,'actual-production.json');json(actual,{schemaVersion:3});symlinkSync('actual-production.json',prodFile);
  eq(run('validate',docFile).status,0,'readable production symlink remains valid');
  // This fixture belongs to outline and projects only its own story; no sibling samples.
- const script={schemaVersion:3,source:fixture.source,episodes:fixture.episodes.map(ep=>{
+ const script={schemaVersion:4,source:fixture.source,provenance:clone(fixture.provenance),episodes:fixture.episodes.map(ep=>{
   const beats=fixture.beats.filter(b=>b.episode===ep.ep);
-  return {ep:ep.ep,targetSeconds:fixture.params.minutesPerEpisode*60,openingBeat:[1,1],scenes:[{flow:beats.map(b=>({action:b.outcome}))}],beatClaims:beats.map((b,i)=>({beatId:b.id,start:[1,i+1],end:[1,i+1]}))};
+  return {ep:ep.ep,targetSeconds:24,openingBeat:[1,1],scenes:[{flow:beats.map(b=>({action:b.outcome,sourceRefs:clone(b.sourceRefs)}))}],beatClaims:beats.map((b,i)=>({beatId:b.id,start:[1,i+1],end:[1,i+1]}))};
  })};
  const creation={schemaVersion:3,source:fixture.source,params:{tolerance:0.15},episodes:script.episodes.map(ep=>({ep:ep.ep,openingBeat:clone(ep.openingBeat),segments:[{sceneIndex:1,cuts:ep.scenes[0].flow.map((_,i)=>({beats:[i+1,i+1],seconds:ep.targetSeconds/ep.scenes[0].flow.length}))}]}))};
  const reset=()=>{json(docFile,fixture);json(scriptFile,script);json(creationFile,creation);};
@@ -61,7 +61,7 @@ try {
  eq(r.report.downstream.fullDownstreamValidation,'not-performed');eq(r.report.downstream.applicationWorkflow,'incomplete');eq(r.report.contentReview,'not-performed');
  // Closed duration endpoints must match creation's consumer, without rounding model limits.
  for (const [total, status] of [[20.4,0],[27.6,0],[20.3999999,1],[27.6000001,1]]) {
-  reset(); const o=clone(fixture);o.params.minutesPerEpisode=0.4;json(docFile,o);
+  reset();
   const s=clone(script);s.episodes.forEach(ep=>ep.targetSeconds=24);json(scriptFile,s);
   const c=clone(creation);c.episodes=c.episodes.slice(0,1);
   const cuts=c.episodes[0].segments[0].cuts;cuts.forEach(cut=>cut.seconds=total/cuts.length);json(creationFile,c);
@@ -92,7 +92,7 @@ try {
   ['creation',d=>d.episodes[0].endBeat=[1,2],'projection'],
   ['script',d=>d.episodes[0].ep=999,'episodes'],
   ['creation',d=>d.episodes[0].ep=999,'episodes'],
-  ['script',d=>d.episodes[0].targetSeconds+=1,'target-duration'],
+  ['script',d=>d.episodes[0].targetSeconds=0,'target-duration'],
   ['creation',d=>d.episodes[0].segments[0].cuts[0].seconds=999,'target-duration'],
   ['script',d=>d.episodes[0].beatClaims[0].beatId='B99','node-claims'],
   ['script',d=>d.episodes[0].beatClaims.pop(),'node-claims'],
@@ -120,17 +120,35 @@ try {
  }
  reset();rmSync(scriptFile);symlinkSync('missing-script.json',scriptFile);r=apply();eq(r.status,1);ok(r.report.downstream.gates.some(g=>g.file===scriptFile&&g.id==='readable'&&g.status==='fail'));ok(!r.report.downstream.gates.some(g=>g.id==='script-coverage'&&g.reason==='missing-upstream'),'damaged known script is not missing');rmSync(scriptFile);
  reset();rmSync(scriptFile);r=apply();eq(r.status,0);ok(r.report.downstream.gates.some(g=>g.id==='script-coverage'&&g.reason==='missing-upstream'));
- reset();const batch=clone(script);batch.episodes=batch.episodes.slice(3);json(scriptFile,batch);const creationBatch=clone(creation);creationBatch.episodes=creationBatch.episodes.slice(3);json(creationFile,creationBatch);r=apply();eq(r.status,0,'valid later batch is not mistaken for a complete series');
- reset();const stale=clone(fixture);stale.params.minutesPerEpisode+=1;json(docFile,stale);r=apply();eq(r.status,1,'changed outline duration invalidates existing script');ok(r.report.downstream.gates.some(g=>g.stage==='script'&&g.id==='target-duration'&&g.status==='fail'));
+ reset();const batch=clone(script);batch.episodes=batch.episodes.slice(3);batch.provenance.scope='partial';json(scriptFile,batch);const creationBatch=clone(creation);creationBatch.episodes=creationBatch.episodes.slice(3);json(creationFile,creationBatch);r=apply();eq(r.status,0,'valid later batch is not mistaken for a complete series');
+ reset();const stale=clone(script);stale.episodes[0].targetSeconds=100;json(scriptFile,stale);r=apply();eq(r.status,1,'changed script target invalidates existing creation');ok(r.report.downstream.gates.some(g=>g.stage==='creation'&&g.id==='target-duration'&&g.status==='fail'));
  // Missing opening markers must not be invented; current script text defines the end.
  reset();const noOpening=clone(script);noOpening.episodes.forEach(ep=>delete ep.openingBeat);const noMappedOpening=clone(creation);noMappedOpening.episodes.forEach(ep=>delete ep.openingBeat);json(scriptFile,noOpening);json(creationFile,noMappedOpening);r=apply();eq(r.status,0);
- noOpening.episodes[0].scenes[0].flow.push({action:'林蔚重新核对封存清单。'});json(scriptFile,noOpening);r=apply();eq(r.status,1,'appending current flow invalidates stale shot coverage');
+ noOpening.episodes[0].scenes[0].flow.push({action:'林蔚重新核对封存清单。',sourceRefs:clone(fixture.beats[0].sourceRefs)});json(scriptFile,noOpening);r=apply();eq(r.status,1,'appending current flow invalidates stale shot coverage');
  const appended=noMappedOpening.episodes[0].segments[0].cuts;appended.at(-1).beats[1]++;json(creationFile,noMappedOpening);r=apply();eq(r.status,0,'coverage follows calculated end, not stored endBeat');
  reset();const unclassified=clone(fixture);unclassified.beats.forEach(b=>{delete b.kind;delete b.weight;delete b.position;});json(docFile,unclassified);r=apply();eq(r.status,0,'unclassified B IDs are fully claimable');
  reset();json(join(scriptDir,'duplicate.json'),script);r=apply();eq(r.status,1,'ambiguous upstream is not arbitrarily selected');rmSync(join(scriptDir,'duplicate.json'));
  reset();const deleted=clone(fixture);deleted.beats.shift();json(docFile,deleted);r=apply();eq(r.status,1,'deleted outline node invalidates downstream claims');
  reset();const defaultTiming=clone(creation);delete defaultTiming.params.tolerance;json(creationFile,defaultTiming);r=apply();eq(r.status,0,'default tolerance is resolved without mutating JSON');
  for(const value of [null,'0.15',-1,1]){reset();const c=clone(creation);c.params.tolerance=value;json(creationFile,c);r=apply();eq(r.status,1,'invalid tolerance must not be defaulted');}
+
+ // Explicit downstream verification actually opens each artifact-relative source.
+ reset();const originalSource=readFileSync(join(root,'examples/旧站时刻-script.txt'));
+ for(const dir of [outlineDir,scriptDir])writeFileSync(join(dir,fixture.provenance.documents[0].path),originalSource);
+ let verified=run('checkup',docFile,'--downstream','--json','--verify-sources');eq(verified.status,0,verified.stderr);
+ writeFileSync(join(scriptDir,fixture.provenance.documents[0].path),'changed downstream original');verified=run('checkup',docFile,'--downstream','--json','--verify-sources');eq(verified.status,1);ok(JSON.parse(verified.stdout).downstream.gates.some(g=>g.id==='source-evidence'&&g.status==='fail'));writeFileSync(join(scriptDir,fixture.provenance.documents[0].path),originalSource);
+ // Parsing can omit targets; production cannot. Source changes invalidate downstream identity.
+ reset();const untimed=clone(script);delete untimed.episodes[0].targetSeconds;json(scriptFile,untimed);r=apply();eq(r.status,1);ok(r.report.downstream.gates.some(g=>g.stage==='creation'&&g.id==='target-duration'&&g.status==='fail'));
+ rmSync(creationFile);r=apply();eq(r.status,0,'parsing without target is valid');
+ reset();const changed=clone(fixture);changed.provenance.documents[0].sha256='a'.repeat(64);json(docFile,changed);r=apply();eq(r.status,1);ok(r.report.downstream.gates.some(g=>g.id==='source-evidence'&&g.status==='fail'));
+ // One actual line may continue through later cuts, across segments/scenes, not replay.
+ reset();const audio=clone(script),ae=audio.episodes[0],refs=clone(fixture.beats[0].sourceRefs);
+ ae.scenes=[{flow:[{line:'先查车，别追签名。',speaker:'C01',audio:{mode:'offscreen'},sourceRefs:refs},{action:'林蔚保留原页。',sourceRefs:refs}]},{flow:[{sound:'脚步声',audio:{mode:'offscreen'},seconds:1,sourceRefs:refs},{subtitle:'核查中',seconds:1,sourceRefs:refs}]}];
+ ae.beatClaims[0].start=[1,1];ae.beatClaims[0].end=[1,1];ae.beatClaims[1].start=[1,2];ae.beatClaims[1].end=[1,2];
+ const ac=clone(creation);ac.episodes[0].segments=[{sceneIndex:1,cuts:[{beats:[1,1],seconds:6}]},{sceneIndex:1,cuts:[{beats:[2,2],seconds:6,audioRefs:[[1,1]]}]},{sceneIndex:2,cuts:[{beats:[1,2],seconds:12,audioRefs:[[1,1]]}]}];
+ json(scriptFile,audio);json(creationFile,ac);r=apply();eq(r.status,0,'cross-segment and cross-scene audio continuation: '+JSON.stringify(r.report.downstream.gates.filter(g=>g.status==='fail')));
+ for(const mutate of [d=>d.episodes[0].segments[0].cuts[0].audioRefs=[[1,1]],d=>d.episodes[0].segments[0].cuts[0].audioRefs=[[1,2]],d=>d.episodes[0].segments[1].cuts[0].audioRefs=[[1,1],[1,1]],d=>d.episodes[0].segments[2].cuts[0].audioRefs=[[1,2]],d=>d.episodes[0].segments[2].cuts[0].audioRefs=[[99,1]],d=>d.episodes[0].segments[2].cuts[0].audioRefs='bad']){const c=clone(ac);mutate(c);json(creationFile,c);r=apply();eq(r.status,1);ok(r.report.downstream.gates.some(g=>g.id==='node-claims'&&g.status==='fail'));}
+ json(creationFile,ac);for(const mutate of [d=>delete d.episodes[0].scenes[0].flow[0].sourceRefs,d=>d.episodes[0].scenes[0].flow[0].action='also action',d=>d.episodes[0].scenes[0].flow[0].speaker='',d=>d.episodes[0].scenes[0].flow[0].speaker='C99',d=>d.episodes[0].scenes[0].flow[0].transformation={reason:'x'},d=>d.episodes[0].scenes[0].flow[0].candidate='pending',d=>d.episodes[0].scenes[0].flow[1].audio={mode:'inner'},d=>d.episodes[0].scenes[1].flow[0].seconds=0,d=>d.episodes[0].scenes[0].notes=[{kind:'background',text:'秘密'}]]){const s=clone(audio);mutate(s);json(scriptFile,s);r=apply();eq(r.status,1);ok(r.report.downstream.gates.some(g=>g.id==='source-evidence'&&g.status==='fail'));}
 
  // Execute the actual generated inline script against a small DOM adapter, not copied event logic.
  const html=renderHtml(fixture),js=html.match(/<script>([\s\S]*?)<\/script>/)[1];
@@ -155,5 +173,5 @@ try {
   d=dom();d.window.location.hash=`#ep-${ep}`;d.events.hashchange();ok(!d.clipped());eq(d.scrolls.at(-1),`ep-${ep}`,'history/hashchange locates');
  }
  for(const hash of ['#ep-999','#sec-story','#ep-6\"']){const d=dom(hash);ok(d.clipped());eq(d.scrolls,[]);}
- console.log(`✓ ${count} assertions passed: v3 actual CLI, downstream invalidation and generated report DOM.`);
+ console.log(`✓ ${count} assertions passed: v4 actual CLI, downstream invalidation and generated report DOM.`);
 } finally {rmSync(tmp,{recursive:true,force:true});}

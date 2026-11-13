@@ -1,4 +1,5 @@
-// Local v3 document contract; no strategy registry or sibling imports.
+// Local production v3 and outline v3/v4 projection; no sibling imports.
+import { sourceProjectionErrors } from './source-facts.mjs';
 const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const text = v => typeof v === 'string' && v.trim().length > 0;
 export function documentProblems(doc) {
@@ -26,11 +27,17 @@ export function check(id, label, status, detail = '', reason = undefined) {
 export const blocking = g => g.status === 'fail' && g.level === 'error';
 export const mark = g => g.status === 'pass' ? '✓' : g.status === 'skipped' ? '—' : g.level === 'warn' ? '提醒' : '✗';
 
-/** Validate the consumed outline v3 projection, not narrative policy or content quality. */
-export function assertOutlineV3(doc) {
-  const fail = message => { throw new Error('outline v3: ' + message + '；参见 references/migration.md'); };
-  if (!object(doc) || doc.schemaVersion !== 3) fail('需要显式 schemaVersion: 3，拒绝旧版或缺版本');
-  const documentBad = documentProblems(doc);
+/** Validate consumed facts, not narrative policy or semantic fidelity. v3 remains an explicit legacy projection. */
+export function assertOutline(doc) {
+  const fail = message => { throw new Error('outline v3/v4: ' + message + '；参见 references/migration.md'); };
+  if (!object(doc) || ![3,4].includes(doc.schemaVersion)) fail('需要显式 schemaVersion: 3 或 4，拒绝旧版或缺版本');
+  const v4 = doc.schemaVersion === 4;
+  const documentBad = documentProblems({...doc, schemaVersion:3});
+  if (v4) {
+    documentBad.push(...sourceProjectionErrors(doc));
+    for (const k of ['adaptation','arcs']) if (Object.hasOwn(doc,k)) documentBad.push(k + ' 已移出解析契约');
+    for (const k of ['adaptMode','minutesPerEpisode','episodes']) if (Object.hasOwn(doc.params ?? {},k)) documentBad.push('params.' + k + ' 已移出解析契约');
+  }
   if (documentBad.length) fail(documentBad.join('；'));
   if (doc.story && Object.hasOwn(doc.story, 'drive')) fail('story.drive 已废弃，请迁移');
   if (doc.adaptation && Object.hasOwn(doc.adaptation, 'core')) fail('adaptation.core 已废弃，请迁移');
@@ -51,11 +58,13 @@ export function assertOutlineV3(doc) {
       }
       if (key === 'scenes') {
         if (typeof item.primary !== 'boolean') fail('scene.primary 必须是布尔值');
+        if (v4 && Object.hasOwn(item,'reusePlan')) fail('reusePlan 属于美术制作决定，不属于来源事实');
         if (item.reusePlan !== undefined && !text(item.reusePlan)) fail('reusePlan 提供时必须非空');
       }
       if (key === 'props' && !text(item.function)) fail('props.function 必须非空');
       if (key === 'beats') {
         if (Object.hasOwn(item, 'type')) fail('beats.type 已废弃，请合并到 setup/outcome 后迁移');
+        if (v4 && ['position','kind','weight'].some(k => Object.hasOwn(item,k))) fail('beats 创作规划字段已移除');
         if (!Number.isInteger(item.episode) || item.episode < 1 ||
             (item.kind !== undefined && !['event','pressure','turn','payoff'].includes(item.kind)) ||
             (item.position !== undefined && !['opening','early','middle','late','ending'].includes(item.position)) ||
@@ -88,6 +97,9 @@ export function assertOutlineV3(doc) {
   }
   return doc;
 }
+
+// Compatibility export for existing callers; new callers use assertOutline.
+export const assertOutlineV3 = assertOutline;
 
 /** Only stage-owned visual text and image production fields are consumed. */
 export function assetProductionProblems(production, blockName) {

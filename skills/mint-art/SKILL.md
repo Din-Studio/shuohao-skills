@@ -1,6 +1,6 @@
 ---
 name: mint-art
-version: 2.0.0
+version: 2.1.0
 description: |
   给 AI 短剧出美术设定集（场景 + 叙事道具）：场景的设计意图、一致性锚点、光照时段变体、
   空景提示词；道具的戏剧功能、状态变体、尺度参照、白底无手提示词。
@@ -39,9 +39,11 @@ metadata:
     - codex
 ---
 
-## v3 上游契约与迁移
+## 上游契约与迁移
 
-seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schemaVersion: 3`。读取可选非空 `production.creativeBrief`，不解释策略配置。人物来源、弧光、节点分类与位置可以省略。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
+seed 接受已有剧本解析的 `outline.schemaVersion: 4`，兼容显式 v3 历史资产投影；production 仍要求 `schemaVersion: 3`。v4 CLI seed 回查来源文件、SHA256、行号和已读范围；缺失或改版不能静默继续。原文事实与限制写入资产的 `sourceFacts`，与制作设计分开，报告可查看。结构核验不等于来源语义审核。
+
+开工先阅读 [来源事实与制作补定](references/source-facts.md)。角色 tier 与场景 primary 原样消费，不以默认值替代。仅被提及、只出声、无台词、非人主体和群演都先保留来源身份，再按实际制作需要决定是否出图。读取可选非空 `production.creativeBrief`，不解释策略配置。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
 
 检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-background.md) 和 [迁移说明](references/migration.md)。
 
@@ -71,7 +73,7 @@ seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schem
 
 三种输入，优先级从高到低：
 
-1. **outline.json**（mint-outline 的产出）——最优，场景清单、出现集、关联剧情节点、复用方案都是现成的
+1. **outline.json**（mint-outline 的产出）——已有剧本的地点、道具、出处和状态事实。v4 不携带 reusePlan；复用与变体由本阶段决定，不能冒称原文事实
 2. 小说原文——自己归纳场景清单（主舞台优先，依照项目明确的资产预算控制数量，不依赖其他 skill 指南）
 3. 用户手写的场景清单
 

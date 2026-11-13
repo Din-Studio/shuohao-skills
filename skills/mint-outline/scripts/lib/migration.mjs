@@ -1,7 +1,7 @@
 // Explicit v2 -> v3 conversion. Runtime validators never dual-read old formats.
 import {readFileSync,writeFileSync,lstatSync,unlinkSync,constants,copyFileSync} from 'node:fs';
 import {resolve} from 'node:path';
-import {checkup,object} from './outline-core.mjs';
+import {checkup,object} from './legacy-v3-core.mjs';
 import {nonempty} from './document.mjs';
 const rules={payoffCoverage:['minPerEpisode'],firstMajor:['byEpisode'],majorGap:['maxGap'],endingPayoff:['minWeight'],endingModes:['nonFinal','final'],optionalQuestions:['allow'],stateProgress:[],arcCoverage:[],arcPayoff:['minWeight']};
 function describeRule(key,r) {

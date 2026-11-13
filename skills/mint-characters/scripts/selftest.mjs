@@ -497,7 +497,7 @@ ok(KNOWN_ASPECTS.includes('16:9') && KNOWN_ASPECTS.includes('9:16'), '画幅词�
 
 const md = renderMarkdown(CAST, '渡口');
 ok(md.includes('# 渡口 — 角色表'), 'Markdown 有标题');
-for (const c of CAST) ok(md.includes(`## ${c.name}`), `Markdown 包含 ${c.name}`);
+for (const c of CAST) ok(md.includes(`## ${c.id ? `[${c.id}] ` : ''}${c.name}`), `Markdown 包含 ${c.name} 及稳定身份`);
 ok(md.includes('角色设定图提示词'), 'Markdown 含设定图提示词');
 ok(renderMarkdown(CAST, 'Ferry', '', 'en').includes('# Ferry — Cast'), 'Markdown 跟随语言参数');
 
@@ -687,7 +687,7 @@ eq((graphHtml.match(/class="gedge"/g) || []).length, CAST_EDGES.length, '弦数�
 eq((graphHtml.match(/class="grow"/g) || []).length, CAST_EDGES.length, '关系表和边数一致');
 ok(CAST_EDGES.every((e) => e.a <= e.b), '边的端点排过序，方向不影响去重');
 // 节点点了要能跳到对应角色，靠的是和 .rost 同一套 data-target
-for (const c of CAST) ok(graphHtml.includes(`data-node="${c.name}" data-target="p-${slug(c.name)}"`), `${c.name} 的节点能跳转`);
+for (const c of CAST) ok(graphHtml.includes(`data-node="${c.id ?? c.name}" data-target="p-${slug(c.id ?? c.name)}"`), `${c.name} 的节点按身份跳转`);
 ok(graphHtml.includes('.main.gmode .char{display:none}'), '图谱和角色详情互斥');
 // 弦上的关系文字
 eq((graphHtml.match(/class="glabel"/g) || []).length, CAST_EDGES.length, '每条弦上都有关系文字');
@@ -710,6 +710,7 @@ ok(longHtml.includes('<title>一二三四五六七八九十甲乙丙丁戊己庚
 const many = Array.from({ length: 8 }, (_, i) => {
   const c = clone()[0];
   c.name = `角色${i}`;
+  c.id = `C${String(i+1).padStart(2,'0')}`;
   c.aliases = [];
   c.persona = { ...c.persona, relationships: Array.from({ length: 8 }, (_, j) => ({ name: `角色${j}`, relation: 'r' })) };
   return c;
@@ -1068,7 +1069,10 @@ eq(STAGE_DIR, 'characters', '段目录名与端到端工作目录约定一致');
 
   const cs2 = JSON.parse(JSON.stringify(CAST));
   cs2[1].name = cs2[0].name;
-  ok(imageJobsFrom(cs2).problems.some((x) => x.includes('同一个文件名')), '重名会让后出的盖掉先出的');
+  const distinct=imageJobsFrom(cs2).jobs;
+  ok(distinct[0].file !== distinct[1].file, '同名不同 ID 的图片产物彼此独立');
+  cs2[1].id=cs2[0].id;
+  ok(imageJobsFrom(cs2).problems.some((x) => x.includes('同一个文件名')), '重复身份仍然阻断覆盖');
 }
 
 /* ---------------- 自动驾驶（autopilot） ---------------- */

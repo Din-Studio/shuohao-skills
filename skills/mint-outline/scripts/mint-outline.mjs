@@ -1,9 +1,13 @@
 #!/usr/bin/env node
-// Self-contained outline v3 CLI. Node 18+; no third-party dependencies.
+// Self-contained outline v4 CLI. Node 18+; no third-party dependencies.
 import {mkdirSync,readFileSync,realpathSync,writeFileSync,lstatSync} from 'node:fs';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {migrateFile} from './lib/migration.mjs';
+import {migrateFileV4} from './lib/migration-v4.mjs';
+import {chunkScript,sourceDocument,verifySources} from './lib/source.mjs';
+export * from './lib/source.mjs';
+export {migrationDraftV4} from './lib/migration-v4.mjs';
 export {migrationDraft} from './lib/migration.mjs';
 import {checkup,validateOutline,computeAssets,STAGES,SKILL_ROOT} from './lib/outline-core.mjs';
 import {renderHtml,renderMarkdown} from './lib/outline-report.mjs';
@@ -31,7 +35,7 @@ export function findProduction(fromDir = '.', depth = PRODUCTION_DEPTH) {
 /* ------------------------------------------------------------------ */
 /*
  * production.json 顶层的 autopilot。为 true 时本 skill 的全部流程一口气跑完：
- * Step 0 缺的参数（集数 × 时长、题材）自己定，Step 3 的快版骨架不等用户拍板，
+ * 仅按已提供剧本与授权整理事实，不自行补齐集数、时长或未知结局，
  * 做过的决定全部写进最后的汇报。
  *
  * 转移的是**审批权**，不是取消检查点：结构与引用检查照常执行、快版骨架照样要出、
@@ -74,61 +78,7 @@ export function stageDirNote(docPath, productionPath, stage = STAGE_DIR) {
 }
 
 
-export const CHAPTER_RE =
-  /^[ \t　]*(第[0-9零一二三四五六七八九十百千两]+[章回节卷部][^\n]*|楔子[^\n]*|序章[^\n]*|尾声[^\n]*|番外[^\n]*|Chapter\s+\d+[^\n]*)$/gm;
-
-export const DEFAULT_PER_VOLUME = 15;
-export const MAX_VOLUMES = 60;
-export const FALLBACK_CHUNK = 20_000;
-export const FALLBACK_OVERLAP = 500;
-
-export function detectChapters(text) {
-  const found = [];
-  for (const m of text.matchAll(CHAPTER_RE)) {
-    found.push({ title: m[1].trim(), start: m.index });
-  }
-  return found;
-}
-
-/**
- * @returns {{volumes: string[], chapters: number, truncated: boolean, mode: 'chapter'|'size'}}
- */
-export function chunkVolumes(text, perVolume = DEFAULT_PER_VOLUME) {
-  if (!Number.isInteger(perVolume) || perVolume < 1) throw Error('perVolume must be a positive integer');
-  const clean = text.replace(/\r\n/g, '\n').trim();
-  if (!clean) return { volumes: [], chapters: 0, truncated: false, mode: 'chapter' };
-
-  const chapters = detectChapters(clean);
-
-  // 章节太少：按字数切（带重叠，让卡在切口上的情节两边都看得见）
-  if (chapters.length < 2) {
-    const volumes = [];
-    let cursor = 0, coveredEnd = 0;
-    while (cursor < clean.length && volumes.length < MAX_VOLUMES) {
-      const end = Math.min(cursor + FALLBACK_CHUNK, clean.length);
-      volumes.push(clean.slice(cursor, end).trim());
-      coveredEnd = end;
-      if (end >= clean.length) break;
-      cursor = Math.max(end - FALLBACK_OVERLAP, cursor + 1);
-    }
-    const truncated = coveredEnd < clean.length;
-    return { volumes, chapters: 0, truncated, mode: 'size' };
-  }
-
-  // 章前的引子归进第一卷
-  const starts = chapters.map((c) => c.start);
-  if (starts[0] > 0) starts.unshift(0);
-
-  const volumes = [];
-  for (let i = 0; i < starts.length && volumes.length < MAX_VOLUMES; i += perVolume) {
-    const from = starts[i];
-    const to = i + perVolume < starts.length ? starts[i + perVolume] : clean.length;
-    volumes.push(clean.slice(from, to).trim());
-  }
-  const covered = Math.min(starts.length, MAX_VOLUMES * perVolume);
-  const truncated = covered < starts.length;
-  return { volumes, chapters: chapters.length, truncated, mode: 'chapter' };
-}
+// Source chunks retain exact physical line coordinates; no novel/chapter adapter.
 
 /* ------------------------------------------------------------------ */
 /* slug                                                                */
@@ -160,13 +110,16 @@ export function loadProduction(docPath,explicit) {
  try {const production=readJson(path);if(!production||typeof production!=='object'||Array.isArray(production))throw Error('production.json must be an object');return {production,productionPath:path};}
  catch(error){return {productionError:path+': '+error.message,productionPath:path};}
 }
-const USAGE=`mint-outline v3
-  chunk BOOK WORKDIR [--per-volume N]
+const USAGE=`mint-outline v4 (existing scripts only)
+  chunk SCRIPT WORKDIR --kind script [--max-lines N] [--context-lines N]
+  source-document SCRIPT --artifact DOC [--id ID]
+  verify-sources DOC
   validate DOC [--stage skeleton|beats|full] [--production FILE]
   checkup DOC [--stage skeleton|beats|full] [--production FILE] [--json] [--downstream]
   render DOC [--html|--md] [--lang zh|en] [--stage STAGE] [--production FILE]
   assets DOC
-  migrate-v3 INPUT [--out OUTPUT] [--confirm]  preview first; never overwrite input
+  migrate-v4 INPUT [--out DRAFT] [--confirm]  evidence-incomplete draft; never overwrite input
+  migrate-v3 INPUT [--out OUTPUT] [--confirm]  historical v2 -> v3 only
   slug NAME
 Read references/创作指南.md. Structural validation is not content review.`;
 async function main(argv) {
@@ -174,26 +127,35 @@ async function main(argv) {
  if(!cmd||['-h','--help'].includes(cmd)){console.log(USAGE);return;}
  if(cmd==='slug'){console.log(slug(args[0]??''));return;}
  if(cmd==='chunk'){
-  const [book,workdir]=args;if(!book||!workdir)throw Error('chunk BOOK WORKDIR');
-  validateOptions(args,2,['--per-volume']);
-  const result=chunkVolumes(readFileSync(resolve(book),'utf8'),Number(flag(args,'--per-volume',DEFAULT_PER_VOLUME)));
+  const [file,workdir]=args;if(!file||!workdir)throw Error('chunk SCRIPT WORKDIR --kind script');
+  validateOptions(args,2,['--kind','--max-lines','--context-lines']);
+  const result=chunkScript(readFileSync(resolve(file)),{kind:flag(args,'--kind'),maxLines:Number(flag(args,'--max-lines',200)),contextLines:Number(flag(args,'--context-lines',2))});
   mkdirSync(resolve(workdir),{recursive:true});
-  result.volumes.forEach((v,i)=>writeFileSync(join(resolve(workdir),'vol-'+String(i).padStart(2,'0')+'.txt'),v));
-  console.log(JSON.stringify({...result,volumes:result.volumes.length,workdir:resolve(workdir)},null,2));return;
+  writeFileSync(join(resolve(workdir),'source-chunks.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx'});
+  console.log(JSON.stringify({...result,chunks:result.chunks.length,workdir:resolve(workdir)},null,2));return;
  }
- if(cmd==='migrate-v3'){
-  if(!args[0]||args[0].startsWith('--'))throw Error('migrate-v3 requires INPUT');
+ if(cmd==='source-document'){
+  if(!args[0]||args[0].startsWith('--'))throw Error('source-document requires SCRIPT');
+  validateOptions(args,1,['--artifact','--id']);
+  console.log(JSON.stringify(sourceDocument(args[0],{artifactPath:flag(args,'--artifact'),id:flag(args,'--id','D01')}),null,2));return;
+ }
+ if(cmd==='verify-sources'){
+  if(!args[0])throw Error('verify-sources requires DOC');validateOptions(args,1);
+  const report=checkup(readJson(args[0]),{verifySources:true,artifactPath:args[0]});console.log(JSON.stringify(report,null,2));if(report.stats.fail)process.exitCode=1;return;
+ }
+ if(['migrate-v3','migrate-v4'].includes(cmd)){
+  if(!args[0]||args[0].startsWith('--'))throw Error(cmd+' requires INPUT');
   validateOptions(args,1,['--out'],['--confirm']);
-  const output=flag(args,'--out'),result=migrateFile(args[0],output,{confirm:args.includes('--confirm')});
+  const output=flag(args,'--out'),result=(cmd==='migrate-v4'?migrateFileV4:migrateFile)(args[0],output,{confirm:args.includes('--confirm')});
   console.log(JSON.stringify(result,null,2));if(output&&!result.written)process.exitCode=1;return;
  }
  if(!['validate','checkup','render','assets'].includes(cmd))throw Error('Unknown command '+cmd+'\n'+USAGE);
  if(!args[0]||args[0].startsWith('--'))throw Error(cmd+' requires DOC');
- validateOptions(args,1,['--stage','--production',...(cmd==='render'?['--lang']:[])],cmd==='render'?['--html','--md']:cmd==='checkup'?['--json','--downstream']:[]);
+ validateOptions(args,1,['--stage','--production',...(cmd==='render'?['--lang']:[])],cmd==='render'?['--html','--md','--verify-sources']:cmd==='checkup'?['--json','--downstream','--verify-sources']:['--verify-sources']);
  if(args.includes('--html')&&args.includes('--md'))throw Error('Choose --html or --md, not both');
  const file=args[0],doc=readJson(file),stage=flag(args,'--stage','full');
  if(!STAGES.includes(stage))throw Error('Unknown stage '+stage);
- const context={...loadProduction(file,flag(args,'--production')),stage};
+ const context={...loadProduction(file,flag(args,'--production')),stage,artifactPath:resolve(file),verifySources:args.includes('--verify-sources')};
  if(cmd==='assets'){const result=checkup(doc,context);console.log(JSON.stringify(computeAssets(doc),null,2));if(result.stats.fail)process.exitCode=1;return;}
  if(cmd==='render'){
   const lang=flag(args,'--lang',doc?.lang??context.production?.lang??'zh');

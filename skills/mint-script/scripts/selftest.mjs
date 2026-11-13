@@ -27,9 +27,9 @@ test('local validation', () => assert.deepEqual(validateScript(DOC), []));
 test('upstream validation', () => assert.deepEqual(validateScript(DOC, CTX), []));
 test('seed minimal references, not duplicated plans or defaults', () => {
   const seed = seedFromOutline(OUTLINE);
-  assert.equal(seed.schemaVersion, 3); assert(!Object.hasOwn(seed, 'params'));
+  assert.equal(seed.schemaVersion, 4); assert(!Object.hasOwn(seed, 'params'));
   seed.episodes.forEach(e => {
-    assert.equal(e.targetSeconds, OUTLINE.params.minutesPerEpisode * 60);
+    assert(!Object.hasOwn(e,'targetSeconds'));
     assert.deepEqual(e.beatClaims, OUTLINE.beats.filter(b => b.episode === e.ep).map(b => ({ beatId: b.id, start: null, end: null })));
     assert.deepEqual(e.scenes, []);
     for (const key of ['opening', 'ending', 'openingBeat', 'endBeat', 'seedNote']) assert(!Object.hasOwn(e, key));
@@ -143,7 +143,7 @@ test('same scene multiple core segments', () => { const d = clone(DOC); d.episod
 mutate('opening must match byte for byte', d => { d.episodes[0].opening = OUTLINE.episodes[0].opening; }, 'upstream-projection', CTX);
 mutate('ending mode cannot drift', d => { d.episodes[0].ending = { mode: 'open', event: '结束' }; }, 'upstream-projection', CTX);
 mutate('ending event cannot paraphrase', d => { d.episodes[0].ending = { mode: 'closure', event: '交还伞，约定再见。' }; }, 'upstream-projection', CTX);
-mutate('target strict despite high tolerance', d => { d.params.tolerance = 0.9; d.episodes[0].targetSeconds = 60.000001; }, 'upstream-duration', CTX);
+test('target belongs only to script', () => { const d=clone(DOC); d.params.tolerance=0.9; d.episodes[0].targetSeconds=60.000001; assert.deepEqual(validateScript(d,CTX),[]); });
 mutate('unknown ep', d => { d.episodes[2].ep = 4; }, 'upstream-projection', CTX);
 mutate('missing claim', d => { d.episodes[0].beatClaims.pop(); }, 'beats-claimed', CTX);
 mutate('additional claim', d => { d.episodes[0].beatClaims.unshift({ beatId: 'B99', start: [1, 1], end: [1, 1] }); }, 'beats-claimed', CTX);
@@ -154,7 +154,7 @@ test('same type different IDs still required separately', () => {
   assert.deepEqual(validateScript(DOC, { ...CTX, outline: o }), []);
   const d = clone(DOC); d.episodes[0].beatClaims.pop(); assert.equal(gate(d, 'beats-claimed', { outline: o }).status, 'fail');
 });
-test('upstream minutes changed after seed', () => { const o = clone(OUTLINE); o.params.minutesPerEpisode = 2; assert.equal(gate(DOC, 'upstream-duration', { outline: o }).status, 'fail'); });
+test('retired upstream minutes cannot silently provide targets', () => { const o = clone(OUTLINE); o.params.minutesPerEpisode = 2; assert.equal(gate(DOC, 'outline-input', { outline: o }).status, 'fail'); });
 test('batch final does not become series final', () => { const d = clone(DOC); d.episodes = [d.episodes[0]]; assert.deepEqual(validateScript(d, CTX), []); });
 mutate('character refs', d => { d.episodes[0].scenes[0].characters.push('C99'); }, 'refs-characters', CTX);
 mutate('scene refs', d => { d.episodes[0].scenes[0].sceneId = 'S99'; }, 'refs-scenes', CTX);
@@ -222,7 +222,7 @@ test('upstream optional categories and positions do not gate claims', () => {
   for(const b of o.beats){delete b.kind;delete b.weight;delete b.position;}
   assert.deepEqual(validateScript(DOC,{outline:o}),[]);
   o.beats[0].position='ending';o.beats[1].position='opening';
-  assert.deepEqual(validateScript(DOC,{outline:o}),[]);
+  assert(validateScript(DOC,{outline:o}).length);
   o.beats[0].position='unknown';assert(validateScript(DOC,{outline:o}).length);
 });
 test('upstream supplied weight is conditional, not required', () => {
@@ -261,7 +261,7 @@ test('unknown UI language fails', () => assert.throws(() => renderHtml(DOC, { la
 test('warning display', () => { const d = clone(DOC); d.params.actionSeconds = 100; const h = renderHtml(d, { lang: 'en' }); assert(h.includes('Warning · Estimated duration notice')); assert(h.includes('Blocking failures: 0')); });
 test('missing upstream is not pass', () => { const h = renderHtml(DOC, { lang: 'en' }); assert(h.includes('Missing upstream')); assert(!h.includes('treated as passing')); });
 test('no payoff classification without outline', () => assert(!renderHtml(DOC, { lang: 'en' }).includes(' · payoff /')));
-test('renderer API rejects v2 rather than dual-reading it', () => { for(const render of [renderHtml,renderMarkdown]) assert.throws(()=>render({...DOC,schemaVersion:2}),/migrate-v3/); });
+test('renderer API rejects v2 rather than dual-reading it', () => { for(const render of [renderHtml,renderMarkdown]) assert.throws(()=>render({...DOC,schemaVersion:2}),/migrate-v4/); });
 test('malformed parameters are escaped in Markdown diagnostics', () => { const d=clone(DOC);d.params.actionSeconds='<img src=x onerror=alert(1)>';assert(!renderMarkdown(d).includes('<img')); });
 test('source / line / attribute / JSON escaping', () => {
   const d = clone(DOC); d.source = '</script><img src=x onerror=alert(1)>'; d.episodes[0].scenes[0].flow[1].line = '<img src=x onerror="alert(1)">';
@@ -277,7 +277,7 @@ test('invalid numeric identity is escaped in HTML attributes and Markdown', () =
   assert(!m.includes('<img src=x')); assert(!m.includes('<script>alert(1)'));
 });
 test('Q answer maps by resolves ID into actual core text', () => {
-  const o = clone(OUTLINE); o.episodes[0].ending = { mode: 'suspense', event: '询问旧伞是谁修过的。', question: { id: 'Q02', text: '谁修过旧伞？', resolution: 'required', dueByEp: 2 } }; o.beats[2].resolves = ['Q02'];
+  const o = clone(OUTLINE); o.episodes[0].ending = { mode: 'suspense', event: '询问旧伞是谁修过的。', question: { id: 'Q02', text: '谁修过旧伞？', sourceRefs: o.episodes[0].sourceRefs } }; o.beats[2].resolves = ['Q02'];
   const d = clone(DOC);
   const h = renderHtml(d, { outline: o });
   assert(h.includes('Q02')); assert(h.includes('B03 E2:')); assert(h.includes('教大家的人叫许秋。我的伞，是她修的。'));
@@ -322,4 +322,4 @@ try {
     const ownSource = readFileSync(join(copied, 'scripts/mint-script.mjs'), 'utf8'); assert(!/from ['"]\.\.\/\.\.\/mint-/.test(ownSource));
   });
 } finally { rmSync(temp, { recursive: true, force: true }); }
-console.log(`✓ ${passed} script v3 tests passed (local fixtures; no paid calls).`);
+console.log(`✓ ${passed} script v4 tests passed (local fixtures; no paid calls).`);

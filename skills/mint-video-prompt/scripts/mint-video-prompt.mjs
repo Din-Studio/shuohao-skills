@@ -63,6 +63,12 @@ export function lintWorksheet(sheet) {
       if (expected !== null && a !== expected) problems.push(`${tag}：节拍认领不连续，期望从第 ${expected} 拍开始`);
       expected = b + 1;
     }
+    if (cut?.audioRefs !== undefined) {
+      const refs = cut.audioRefs;
+      if (!Array.isArray(refs) || refs.some(p => !Array.isArray(p) || p.length !== 2 || !p.every(n => Number.isInteger(n) && n > 0)) || new Set(refs.map(p => JSON.stringify(p))).size !== refs.length) problems.push(`${tag}：audioRefs 必须为唯一正整数坐标`);
+      else if (refs.some(([scene,beat]) => scene > seg.sceneIndex || (scene === seg.sceneIndex && beat >= a))) problems.push(`${tag}：audioRefs 不能引用当前或更晚镜头的节拍`);
+      // Earlier-segment ownership and LINE identity require the dispatcher's full script check.
+    }
     if (typeof cut?.seconds !== 'number' || !Number.isFinite(cut.seconds) || cut.seconds <= 0) problems.push(`${tag}：seconds 必须为有限正数`);
     if (!SHOT_SIZES[cut?.size]) problems.push(`${tag}：size 不在景别枚举内`);
     if (!(cut?.camera in CAMERA_MOVES)) problems.push(`${tag}：camera 不在运镜词表内`);

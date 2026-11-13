@@ -49,6 +49,7 @@ try {
   write(cf,'{');assert.equal(checkKnownCreation(script,{root:dir,production})[0].status,'fail');passed++;
   write(cf,creation);write(join(dir,'creation/manifest.json'),'{');
   write(join(dir,'creation/example-creation.json.v2-backup.json'),'{');
+  write(join(dir,'creation/example-creation.json.v3-backup.json'),'{');
   write(join(dir,'creation/example-creation.json.migration.json'),'{');
   assert.equal(checkKnownCreation(script,{root:dir,production}).length,1);passed++;
   let result=cli('validate',sf,'--production',pf);

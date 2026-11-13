@@ -6,7 +6,8 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertOutlineV3, assetProductionProblems, creativeBackground, check, blocking, mark } from './lib/contracts.mjs';
+import { assertOutline, assetProductionProblems, creativeBackground, check, blocking, mark } from './lib/contracts.mjs';
+import { verifyOutlineSources, sourceFactsOf } from './lib/source-facts.mjs';
 export { creativeBackground } from './lib/contracts.mjs';
 import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
 
@@ -181,6 +182,14 @@ export function applyMerges(cast, merges) {
 /* ------------------------------------------------------------------ */
 /* slug                                                                */
 /* ------------------------------------------------------------------ */
+
+export const characterKey = c => c?.id ?? c?.name;
+/** Keep existing unique-name files; disambiguate same-name identities with stable IDs. */
+export function characterImageStem(c, characters) {
+  const stem=slug(c.name);
+  const collision=characters.filter(x=>slug(x.name)===stem).length>1;
+  return collision && /^C\d{2,}$/.test(c.id ?? '') ? `${c.id}-${stem}` : stem;
+}
 
 /** Filesystem-safe stem for a character name, CJK preserved. */
 export function slug(name) {
@@ -618,8 +627,9 @@ export const TIER_TO_IMPORTANCE = { lead: 'protagonist', support: 'supporting', 
  * 附一条 seedNote 带上下文。产出是骨架不是成品，直接跑 validate 会报一堆
  * 字段缺失，那是预期的。
  */
-export function seedFromOutline(outline) {
-  assertOutlineV3(outline);
+export function seedFromOutline(outline, { outlinePath } = {}) {
+  assertOutline(outline);
+  if (outlinePath) verifyOutlineSources(outline, outlinePath);
   const characters = (outline?.characters ?? []).map((c) => {
     const note = [
       c?.id ? `角色码 ${c.id}` : null,
@@ -631,9 +641,10 @@ export function seedFromOutline(outline) {
       // 从大纲搬来的事实，不用再想
       ...(c?.id ? { id: c.id } : {}),
       name: c?.name ?? '',
-      importance: TIER_TO_IMPORTANCE[c?.tier] ?? 'supporting',
+      importance: TIER_TO_IMPORTANCE[c.tier],
+      ...sourceFactsOf(c, outline, outlinePath),
       // 这一层才该做的设计，先占位
-      aliases: [],
+      aliases: outline.schemaVersion === 4 ? (c.aliases ?? []).map(a => a.name) : [],
       oneLiner: '',
       persona: {
         gender: '', ageRange: '', identity: '', appearance: '',
@@ -925,7 +936,7 @@ export function assembleCast(cards, { source, lang = DEFAULT_LANG, summary = '',
   };
   const orderIndex = new Map((order ?? []).map((name, i) => [String(name).trim().toLowerCase(), i]));
   // 不在 order 里的排到同档末尾（保持传入顺序），不报错——卡是从 merge 结果生成的，正常对得上
-  const byOrder = (c) => orderIndex.get(String(c?.name ?? '').trim().toLowerCase()) ?? orderIndex.size;
+  const byOrder = (c) => orderIndex.get(String(characterKey(c) ?? '').trim().toLowerCase()) ?? orderIndex.get(String(c?.name ?? '').trim().toLowerCase()) ?? orderIndex.size;
   const characters = cards
     .map((card, i) => [card, i])
     .sort((a, b) => rank(a[0]) - rank(b[0]) || byOrder(a[0]) - byOrder(b[0]) || a[1] - b[1])
@@ -951,8 +962,9 @@ export function renderMarkdown(characters, source, summary = '', lang = DEFAULT_
   for (const c of characters) {
     const { persona, image, voice } = c;
     out.push('---', '');
-    out.push(`## ${c.name}${c.aliases.length ? `（${c.aliases.join('、')}）` : ''}`, '');
+    out.push(`## ${c.id ? `[${c.id}] ` : ''}${c.name}${c.aliases.length ? `（${c.aliases.join('、')}）` : ''}`, '');
     out.push(`> ${t.importance[c.importance] ?? c.importance} · ${c.oneLiner}`, '');
+    if (c.sourceFacts) out.push('### ' + (lang === 'en' ? 'Source facts (not design decisions)' : '来源事实（不是制作补定）'), '', '```json', JSON.stringify(c.sourceFacts, null, 2), '```', '');
 
     if (c.sheetImage) out.push(`![${c.name} ${t.sheetCaption}](${c.sheetImage})`, '');
 
@@ -1036,7 +1048,7 @@ function renderRosterItem(c, index, t) {
     .filter(Boolean)
     .join(' ');
 
-  return `<button class="rost${index === 0 ? ' on' : ''}" data-target="p-${slug(c.name)}" data-hay="${esc(hay)}">
+  return `<button class="rost${index === 0 ? ' on' : ''}" data-target="p-${slug(characterKey(c))}" data-hay="${esc(hay)}">
   <span class="rost-thumb"${
     c.sheetImage ? ` style="background-image:url('${esc(c.sheetImage)}')"` : ''
   }></span>
@@ -1086,13 +1098,14 @@ function renderCharacter(c, index, t) {
          <span>${esc(c.name)} · ${esc(t.noImage)}<br><em>${esc(t.noImageHint)}</em></span>
        </div>`;
 
-  return `<article class="char${index === 0 ? ' on' : ''}" id="p-${slug(c.name)}">
+  return `<article class="char${index === 0 ? ' on' : ''}" id="p-${slug(characterKey(c))}">
   <header class="char-h">
     <span class="char-n">${String(index + 1).padStart(2, '0')}</span>
-    <h2>${esc(c.name)}</h2>
+    <h2>${c.id ? `[${esc(c.id)}] ` : ''}${esc(c.name)}</h2>
     <span class="badge">${esc(t.importance[c.importance] ?? c.importance)}</span>
     ${c.aliases.length ? `<span class="aka">${esc(t.aka)}　${esc(c.aliases.join(' · '))}</span>` : ''}
     <span class="char-one">${marked(c.oneLiner)}</span>
+    ${c.sourceFacts ? `<details><summary>Source facts / 来源事实（不是制作补定）</summary><pre>${esc(JSON.stringify(c.sourceFacts, null, 2))}</pre></details>` : ''}
   </header>
 
   <div class="upper">
@@ -1178,34 +1191,28 @@ const r1 = (n) => Math.round(n * 10) / 10;
  * 两个方向的说法都留着。指向没做画像的人算 dangling——不画，但要报数。
  */
 export function buildGraph(characters) {
-  const key = (s) => String(s).trim().toLowerCase();
-  const index = new Map();
-  for (const c of characters) {
-    index.set(key(c.name), c.name);
-    for (const a of c.aliases ?? []) index.set(key(a), c.name);
+  const normalize = s => String(s).trim().toLowerCase(), index = new Map();
+  const known = new Set(characters.map(characterKey));
+  for (const c of characters) for (const name of [c.name,...(c.aliases ?? [])]) {
+    const k=normalize(name), keys=index.get(k) ?? new Set();
+    keys.add(characterKey(c)); index.set(k,keys);
   }
-
-  const edges = new Map();
-  let dangling = 0;
-  for (const c of characters) {
-    for (const r of c.persona?.relationships ?? []) {
-      if (!r || typeof r.name !== 'string') continue;
-      const target = index.get(key(r.name));
-      if (!target || target === c.name) {
-        dangling++;
-        continue;
-      }
-      const [a, b] = [c.name, target].sort();
-      const k = `${a} ${b}`;
-      if (!edges.has(k)) edges.set(k, { a, b, notes: [] });
-      edges.get(k).notes.push({ from: c.name, text: String(r.relation ?? '') });
-    }
+  const edges=new Map(); let dangling=0;
+  for (const c of characters) for (const r of c.persona?.relationships ?? []) {
+    if (!r || (typeof r.name !== 'string' && typeof r.id !== 'string')) continue;
+    const candidates=index.get(normalize(r.name)), target=r.id !== undefined ? (known.has(r.id)?r.id:null) : candidates?.size===1?[...candidates][0]:null;
+    const source=characterKey(c);
+    if (!target || target===source) {dangling++;continue;}
+    const [a,b]=[source,target].sort(), key=JSON.stringify([a,b]);
+    if(!edges.has(key))edges.set(key,{a,b,notes:[]});
+    edges.get(key).notes.push({from:source,text:String(r.relation ?? '')});
   }
-  return { edges: [...edges.values()], dangling };
+  return {edges:[...edges.values()],dangling};
 }
 
 function renderGraph(ordered, t) {
   const { edges, dangling } = buildGraph(ordered);
+  const display = key => ordered.find(c=>characterKey(c)===key)?.name ?? key;
   const n = ordered.length;
   // 半径跟人数走，四个人不必撑满一整张画布；两侧留 110 给名字
   const R = Math.max(130, Math.min(260, 40 + n * 14));
@@ -1215,7 +1222,7 @@ function renderGraph(ordered, t) {
   const pos = new Map();
   ordered.forEach((c, i) => {
     const a = -Math.PI / 2 + (i * 2 * Math.PI) / Math.max(n, 1);
-    pos.set(c.name, { x: c0 + R * Math.cos(a), y: c0 + R * Math.sin(a), cos: Math.cos(a), sin: Math.sin(a) });
+    pos.set(characterKey(c), { x: c0 + R * Math.cos(a), y: c0 + R * Math.sin(a), cos: Math.cos(a), sin: Math.sin(a) });
   });
 
   // 控制点往圆心拉，弦是弯的——直线在人多时会糊成一团网
@@ -1255,13 +1262,13 @@ function renderGraph(ordered, t) {
 
   const dots = ordered
     .map((c) => {
-      const p = pos.get(c.name);
+      const p = pos.get(characterKey(c));
       // 圆顶和圆底的名字居中放，两侧的往外甩，免得压在节点上
       const flat = Math.abs(p.cos) < 0.25;
       const anchor = flat ? 'middle' : p.cos < 0 ? 'end' : 'start';
       const lx = c0 + (R + 15) * p.cos;
       const ly = c0 + (R + 15) * p.sin + (flat ? (p.sin < 0 ? -6 : 14) : 4.5);
-      return `<g class="gnode${c.importance === 'protagonist' ? ' lead' : ''}" data-node="${esc(c.name)}" data-target="p-${slug(c.name)}" tabindex="0" role="button" aria-label="${esc(c.name)}">
+      return `<g class="gnode${c.importance === 'protagonist' ? ' lead' : ''}" data-node="${esc(characterKey(c))}" data-target="p-${slug(characterKey(c))}" tabindex="0" role="button" aria-label="${esc(c.name)}">
   <circle class="ghit" cx="${r1(p.x)}" cy="${r1(p.y)}" r="24"></circle>
   <circle class="gdot" cx="${r1(p.x)}" cy="${r1(p.y)}" r="${NODE_R[c.importance] ?? 7}"></circle>
   <text x="${r1(lx)}" y="${r1(ly)}" text-anchor="${anchor}">${esc(c.name)}</text>
@@ -1272,7 +1279,7 @@ function renderGraph(ordered, t) {
   const rows = edges
     .map(
       (e) => `<button class="grow" data-a="${esc(e.a)}" data-b="${esc(e.b)}" data-target="p-${slug(e.a)}">
-  <b>${esc(e.a)}</b><i>—</i><b>${esc(e.b)}</b>
+  <b>${esc(display(e.a))}</b><i>—</i><b>${esc(display(e.b))}</b>
   ${e.notes.map((x) => `<span><em>${esc(x.from)}</em> ${marked(x.text)}</span>`).join('')}
 </button>`,
     )
@@ -1899,11 +1906,11 @@ export function imageJobsFrom(characters, production = null, { imagesDir = 'imag
       continue;
     }
     jobs.push({
-      key: c.name,
+      key: list.filter(x=>x.name===c.name).length>1 ? characterKey(c) : c.name,
       kind: 'character',
       name: c.name,
-      file: sheetFile(c.name, imagesDir),
-      cutoutFile: cutoutFile(c.name, imagesDir),
+      file: sheetFile(characterImageStem(c,list), imagesDir),
+      cutoutFile: cutoutFile(characterImageStem(c,list), imagesDir),
       prompt: String(prompt),
       negativePrompt: String(c?.image?.negativePrompt ?? ''),
       refFrom: null,
@@ -2034,7 +2041,7 @@ async function main(argv) {
   if (cmd === 'seed') {
     const [path] = rest;
     if (!path) throw new Error('用法：seed <outline.json>');
-    console.log(JSON.stringify(seedFromOutline(readJson(path)), null, 2));
+    console.log(JSON.stringify(seedFromOutline(readJson(path), { outlinePath: path }), null, 2));
     return;
   }
 
@@ -2109,11 +2116,13 @@ async function main(argv) {
         problems.push(`${f} 不是单张角色卡（缺 name）——重跑这个角色即可`);
         continue;
       }
-      if (seen.has(card.name)) {
-        problems.push(`「${card.name}」有两份卡（${seen.get(card.name)} 和 ${f}），删掉多余的那份`);
+      if (card.id !== undefined && !/^C\d{2,}$/.test(card.id)) { problems.push(`${f} 的角色 ID 非法`); continue; }
+      const identity=characterKey(card);
+      if (seen.has(identity)) {
+        problems.push(`「${identity}」有两份卡（${seen.get(identity)} 和 ${f}），保留当前身份的唯一版本`);
         continue;
       }
-      seen.set(card.name, f);
+      seen.set(identity, f);
       cards.push(card);
     }
 
@@ -2134,7 +2143,7 @@ async function main(argv) {
     if (orderPath) {
       const raw = readJson(orderPath);
       const list = Array.isArray(raw) ? raw : (raw.characters ?? []);
-      order = list.map((e) => (typeof e === 'string' ? e : e?.name)).filter(Boolean);
+      order = list.map((e) => (typeof e === 'string' ? e : characterKey(e))).filter(Boolean);
     } else {
       console.error(`⚠️ 没有 --order 也没有 ${join(dir, 'merged.json')}，同档角色将按文件名序而不是戏份序`);
     }
@@ -2238,7 +2247,7 @@ async function main(argv) {
     // 图存在才挂上去；没有就渲染成占位，不影响其余内容。
     const outDir = resolve(castPath, '..');
     for (const c of characters) {
-      const stem = `${imagesDir}/${slug(c.name)}`;
+      const stem = `${imagesDir}/${characterImageStem(c,characters)}`;
       if (existsSync(join(outDir, `${stem}-sheet.png`))) c.sheetImage = `${stem}-sheet.png`;
     }
 

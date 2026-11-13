@@ -9,6 +9,8 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { projectProblems, scriptParams, endPosition, episodeIntent } from './lib/document.mjs';
 import { migrateFile } from './lib/migration.mjs';
+import { verifySources } from './lib/source.mjs';
+import { playbackProblems } from './lib/playback.mjs';
 import { shapeProblems, scriptProblems, outlineProblems, reconcile, beatSeconds } from './lib/contracts.mjs';
 export { beatSeconds } from './lib/contracts.mjs';
 export const SKILL_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -297,16 +299,15 @@ export function expandScript(script) {
       lighting: sc.lighting ?? '',
       characters: sc.characters ?? [],
       props: sc.props ?? [],
+      ...(sc.sourceRefs ? {sourceRefs: structuredClone(sc.sourceRefs)} : {}),
+      ...(sc.notes ? {notes: structuredClone(sc.notes)} : {}),
       beats: (sc.flow ?? []).map((b, j) => {
 
-        const isLine = typeof b?.line === 'string';
+        const kind = ['action','line','subtitle','sound'].find(k => typeof b?.[k] === 'string');
         return {
-          n: j + 1,
-          kind: isLine ? 'line' : 'action',
-          seconds: beatSeconds(b, p),
-          speaker: isLine ? b.speaker : undefined,
-          delivery: isLine ? (b.delivery ?? '') : undefined,
-          text: isLine ? b.line : b.action,
+          n: j + 1, kind, seconds: beatSeconds(b, p), text: b?.[kind],
+          ...(kind === 'line' ? {speaker:b.speaker, ...(b.delivery ? {delivery:b.delivery} : {})} : {}),
+          ...Object.fromEntries(['sourceRefs','audio','transformation'].filter(k => b?.[k] !== undefined).map(k => [k,structuredClone(b[k])])),
         };
       }),
     }));
@@ -383,8 +384,22 @@ export function slug(name) {
   return cleaned || 'creation';
 }
 
+// Stable IDs win. Legacy name-only cast entries are usable only when both sides
+// have exactly one such name; never pick the first of two same-name people.
+function characterAssets(ctx) {
+  const cast = ctx.cast?.characters ?? [], facts = ctx.outline?.characters ?? cast;
+  return facts.map(c => {
+    const byId = cast.find(x => x.id === c.id && c.id);
+    if (byId) return {...c,name:byId.name};
+    const legacy = cast.filter(x => !x.id && x.name === c.name);
+    if (legacy.length && (legacy.length !== 1 || facts.filter(x => x.name === c.name).length !== 1))
+      return {...c,name:null};
+    return {...c,name:legacy[0]?.name ?? (cast.length ? null : c.name)};
+  });
+}
+
 export function namer(ctx = {}, voLabel = '画外音') {
-  const charName = new Map((ctx.outline?.characters ?? []).map((c) => [c.id, c.name]));
+  const charName = new Map(characterAssets(ctx).map((c) => [c.id, c.name]));
   const sceneName = new Map((ctx.art?.scenes ?? []).map((s) => [s.id, s.name]));
   const propName = new Map((ctx.art?.props ?? []).map((p) => [p.id, p.name]));
   return {
@@ -403,13 +418,18 @@ export function kindOfId(id) {
 }
 
 /** 名字 → 参考图相对路径（相对 creation/ 目录，与 characters/、art/ 平级）。纯函数，不碰文件系统。 */
-export function referenceImagePath(kind, name) {
-  return kind === 'character' ? `../characters/images/${slug(name)}-sheet.png` : `../art/images/${slug(name)}-sheet.png`;
+export function referenceImagePath(kind, name, id = null, ctx = {}) {
+  const assets = kind === 'character'
+    ? ctx.cast?.characters ?? ctx.outline?.characters ?? []
+    : [...(ctx.art?.scenes ?? []), ...(ctx.art?.props ?? [])];
+  const stem = slug(name);
+  const filename = id && assets.filter(x => slug(x.name) === stem).length > 1 ? `${id}-${stem}` : stem;
+  return `../${kind === 'character' ? 'characters' : 'art'}/images/${filename}-sheet.png`;
 }
 
 /** 拼路径 + 查文件是否存在，CLI 层直接可用的便捷封装。 */
-export function resolveReferenceImage(kind, name, workDir = '.', { existsImpl = existsSync } = {}) {
-  const path = referenceImagePath(kind, name);
+export function resolveReferenceImage(kind, name, workDir = '.', { existsImpl = existsSync, id = null, ctx = {} } = {}) {
+  const path = referenceImagePath(kind, name, id, ctx);
   return { path, exists: existsImpl(resolve(workDir, path)) };
 }
 
@@ -441,16 +461,24 @@ export function gateReport(doc, ctx = {}) {
   const gates = [gateResult('fields', '基础字段与当前有效参数', errors)];
   let upstreamValid = true;
   for (const [key, validate] of [['script', scriptProblems], ['outline', outlineProblems]]) {
-    if (ctx[key] === undefined) gates.push(gateResult(key + '-contract', key + ' v3 契约', [], {status:'skipped', reason:'missing-upstream'}));
+    if (ctx[key] === undefined) gates.push(gateResult(key + '-contract', key + ' v4 契约', [], {status:'skipped', reason:'missing-upstream'}));
     else {
       let issues;
       try { issues = validate(ctx[key]); } catch (error) { issues = [`${key} 数据结构损坏：${error.message}`]; }
       upstreamValid &&= !issues.length;
-      gates.push(gateResult(key + '-contract', key + ' v3 契约', issues));
+      gates.push(gateResult(key + '-contract', key + ' v4 契约', issues));
     }
   }
   gates.push(gateResult('project-contract', '项目 v3 契约与唯一创作要求', projectProblems(doc, ctx), ctx.production === undefined ? {status:'skipped',reason:'missing-upstream'} : {}));
   if (!upstreamValid) return gates;
+  for (const key of ['script','outline']) if (ctx[key]?.provenance) {
+    if (!ctx[key + 'Path']) gates.push(gateResult(key + '-source', '来源字节与坐标核验（非语义审核）', [], {status:'skipped',reason:'missing-source-path'}));
+    else {
+      let issues = [];
+      try { verifySources(ctx[key],ctx[key + 'Path']); } catch (e) { issues = [e.message]; }
+      gates.push(gateResult(key + '-source', '来源字节与坐标核验（非语义审核）', issues));
+    }
+  }
   if (!errors.length) {
     const issues = reconcile(doc, ctx.script, ctx.outline);
     gates.push(gateResult('upstream-intent', '开场／集尾／节点与目标时长对账', issues,
@@ -582,7 +610,7 @@ function technicalGates(doc, ctx = {}) {
             bad.refCoverage.push(`${sid} 引用的 ${id} 在 outline/art 里找不到名字，解不出设定图路径`);
             continue;
           }
-          const path = referenceImagePath(kind, name);
+          const path = referenceImagePath(kind, name, id, ctx);
           if (!imageExists(path)) bad.refCoverage.push(`${sid} 的 ${id}（${name}）没有设定图：期望 ${path}`);
         }
       }
@@ -649,7 +677,7 @@ function technicalGates(doc, ctx = {}) {
               else dlg += b.seconds;
               if (!prompt.includes(b.text)) bad.dlgVerbatim.push(`${sid} 的 prompt 缺台词「${b.text.slice(0, 12)}…」的原文`);
             }
-            if (dlg > cut.seconds) bad.fit.push(`${cid} 台词 ${r1(dlg)} 秒装不进 ${cut.seconds} 秒`);
+            // Fit is checked once per episode with shared continuation capacity below.
           }
         }
       });
@@ -674,6 +702,8 @@ function technicalGates(doc, ctx = {}) {
         }
       }
     }
+
+    if (sEp) bad.fit.push(...playbackProblems(ep, script.episodes.find(e => e.ep === ep.ep), b => beatSeconds(b, script.params)));
 
     // 节拍全覆盖：每场的节拍被恰好一次、按顺序、连续认领（分镜级）
     if (sEp) {
@@ -812,14 +842,9 @@ export function seedFromScript(script, epRange = null, ctx = {}) {
         lighting: sc.lighting,
         characters: sc.characters,
         props: sc.props,
-        beats: sc.beats.map((b) => ({
-          n: b.n,
-          kind: b.kind,
-          seconds: b.seconds,
-          ...(b.speaker ? { speaker: b.speaker } : {}),
-          ...(b.delivery ? { delivery: b.delivery } : {}),
-          text: b.text,
-        })),
+        ...(sc.sourceRefs ? {sourceRefs:sc.sourceRefs} : {}),
+        ...(sc.notes ? {notes:sc.notes} : {}),
+        beats: sc.beats.map(b => structuredClone(b)),
       })),
     });
   }
@@ -897,7 +922,12 @@ export function computeStats(doc, script) {
 /** 投产包与输入材料共用的视频参数：production 打底，creation 覆盖；两边都没有就是 null。 */
 export const packVideoOf = (doc, production = null) => (production?.video || doc?.video ? { ...production?.video, ...doc?.video } : null);
 
-export function exportPack(doc, script, { resolveImage = () => ({ name: '', path: '', exists: false }), dir = '.', production = null } = {}) {
+export function exportPack(doc, script, { resolveImage = () => ({ name: '', path: '', exists: false }), dir = '.', production = null, scriptPath } = {}) {
+  if (script) {
+    const issues = scriptProblems(script);
+    if (issues.length) throw new Error(issues.join('；'));
+    verifySources(script, scriptPath);
+  }
   const prefix = dir === '.' ? '' : `${dir}/`;
   const files = [];
 
@@ -949,8 +979,8 @@ const GATE_LABELS_EN = {
   'coverage': 'Every script beat claimed exactly once, in order, contiguous (cut level)',
   'segment-cap': 'Each segment 0 < total ≤ {1}s (the single-generation cap; also within the video model\'s duration range when production parameters are mounted)',
   'fields': 'Base fields and effective parameters',
-  'script-contract': 'Script v3 consumer contract',
-  'outline-contract': 'Outline v3 consumer contract',
+  'script-contract': 'Script v4 consumer contract',
+  'outline-contract': 'Outline v4 consumer contract',
   'upstream-intent': 'Opening, ending, beat claims and target duration reconciliation',
   'model-capability': 'Effective video model duration capability',
   'project-contract': 'Project v3 contract and unique creative brief',
@@ -1121,7 +1151,11 @@ export function reportContext(doc, ctx) {
       return {ep:ep.ep, ...intent,
         ...(intent.openingBeat ? {openingCuts:locate(ep,intent.openingBeat)} : {openingMapping:'not-marked'}),
         ...(intent.endBeat ? {endingCuts:locate(ep,intent.endBeat)} : {}),
-        ...(nodes.length ? {nodes} : {})};
+        ...(nodes.length ? {nodes} : {}),
+        execution: (expandScript(ctx.script).get(ep.ep)?.scenes ?? []).map(sc => ({sceneIndex:sc.sceneIndex,sceneId:sc.sceneId,
+          ...(sc.notes ? {notes:sc.notes} : {}), ...(sc.sourceRefs ? {sourceRefs:sc.sourceRefs} : {}),
+          beats:sc.beats.filter(b => b.sourceRefs || b.audio || b.transformation || ['subtitle','sound'].includes(b.kind))})),
+        audioContinuations:ep.segments.flatMap(seg => seg.cuts.flatMap((cut,i) => cut.audioRefs?.length ? [{segment:seg.id,cut:i+1,audioRefs:cut.audioRefs,playback:'continuation-not-replay'}] : []))};
     })};
 }
 const tOf = (lang) => {
@@ -1247,7 +1281,7 @@ function segmentImages(seg, ctx, imageExists) {
   const n = namer(ctx);
   return (seg.images ?? []).map((img, i) => {
     const name = n.nameOf(img.kind, img.ref) ?? img.ref;
-    const path = referenceImagePath(img.kind, name);
+    const path = referenceImagePath(img.kind, name, img.ref, ctx);
     return { picture: i + 1, kind: img.kind, ref: img.ref, name, role: img.role ?? '', path, exists: imageExists ? imageExists(path) : false };
   });
 }
@@ -1747,6 +1781,7 @@ validate/render/export/videos 都按参考图的相对路径（../characters/ima
 function readJson(path) {
   const value = JSON.parse(new TextDecoder('utf-8', {fatal:true}).decode(readFileSync(resolve(path))));
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${path} 必须为 JSON 对象，不能作为缺少上游跳过`);
+  if (value.schemaVersion === 4 && value.provenance) verifySources(value, resolve(path));
   return value;
 }
 
@@ -1795,6 +1830,8 @@ function loadCtx(rest, fromDir = '.') {
   const ctx = {
     script: get('--script'), outline: get('--outline'), cast: get('--cast'), art: get('--art'),
     recipes: shots ? loadShots(shots) : null, production, productionPath,
+    scriptPath: flag(rest, '--script') ? resolve(flag(rest, '--script')) : undefined,
+    outlinePath: flag(rest, '--outline') ? resolve(flag(rest, '--outline')) : undefined,
   };
   const root = productionPath ? dirname(resolve(productionPath))
     : ['creation','script','outline','art','characters'].includes(basename(resolve(fromDir))) ? dirname(resolve(fromDir)) : resolve(fromDir);
@@ -1804,7 +1841,10 @@ function loadCtx(rest, fromDir = '.') {
     try { lstatSync(dir); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
     const candidates = readdirSync(dir).filter(name => name.endsWith('.json') && !name.startsWith('.') && !/manifest|\.backup|\.bak|\.tmp|\.review|\.migration|\.v2-backup/i.test(name)).sort();
     if (candidates.length > 1) throw new Error(`上游 ${key} 不唯一，请显式提供路径：${candidates.join(', ')}`);
-    if (candidates.length === 1) ctx[key] = readJson(join(dir,candidates[0]));
+    if (candidates.length === 1) {
+      ctx[key + 'Path'] = join(dir,candidates[0]);
+      ctx[key] = readJson(ctx[key + 'Path']);
+    }
   }
   return ctx;
 }
@@ -1895,10 +1935,19 @@ export function worksheetSyncProblem(seg, sheet, load = null) {
  */
 export function dispatchBrief(doc, ctx = {}, epNo, { exists = () => false, hashFile = () => null } = {}) {
   if (!ctx.script) throw new Error('生成输入材料需要剧本');
+  verifySources(ctx.script, ctx.scriptPath);
+  if (ctx.outline) verifySources(ctx.outline, ctx.outlinePath);
   const seed = seedFromScript(ctx.script, [epNo, epNo], ctx).episodes[0];
   if (!seed) throw new Error(`剧本没有第 ${epNo} 集`);
   const model = videoModelOf(doc, ctx.production);
-  const asset = (kind, x) => { const r = referenceImagePath(kind, x.name); return { id: x.id, name: x.name, sheet: r, sheetExists: exists(r), sheetHash: hashFile(r) }; };
+  const sourceDocument = (d, artifactPath) => ({...structuredClone(d),path:realpathSync(resolve(dirname(resolve(artifactPath ?? '.')),d.path))});
+  const sourceEvidence = (x, upstream) => x?.sourceRefs ? {sourceRefs:structuredClone(x.sourceRefs),
+    sourceDocuments:(upstream?.provenance?.documents ?? []).filter(d => x.sourceRefs.some(r => r.documentId === d.id)).map(d => sourceDocument(d,ctx.outlinePath))} : {};
+  const asset = (kind, x) => {
+    const r = referenceImagePath(kind, x.name, x.id, ctx), list = {character:'characters',scene:'scenes',prop:'props'}[kind];
+    const fact = ctx.outline?.[list]?.find(a => a.id === x.id);
+    return { id:x.id,name:x.name,sheet:r,sheetExists:exists(r),sheetHash:hashFile(r), ...sourceEvidence(fact,ctx.outline) };
+  };
   const brief = doc?.creativeBrief ?? ctx.production?.creativeBrief;
   const { planSource, endBeat, openingBeat, ...intent } = episodeIntent(epNo, ctx);
   return {
@@ -1909,11 +1958,17 @@ export function dispatchBrief(doc, ctx = {}, epNo, { exists = () => false, hashF
     ...(brief ? { creativeBrief: brief } : {}),
     intent: { planSource, ...intent, ...(openingBeat ? { openingBeat } : {}), ...(endBeat ? { endBeat } : {}) },
     assets: {
-      characters: (ctx.outline?.characters ?? []).filter(c => c?.id && c?.name).map(c => asset('character', c)),
+      characters: characterAssets(ctx).filter(c => c?.id && c?.name).map(c => asset('character', c)),
       scenes: (ctx.art?.scenes ?? []).filter(x => x?.id && x?.name).map(x => asset('scene', x)),
       props: (ctx.art?.props ?? []).filter(x => x?.id && x?.name).map(x => asset('prop', x)),
     },
     seedScenes: seed.seedScenes,
+    ...(ctx.script.provenance ? {provenance: {...structuredClone(ctx.script.provenance),documents:ctx.script.provenance.documents.map(d => sourceDocument(d,ctx.scriptPath))}} : {}),
+    sourceVerification: ctx.script.provenance ? 'bytes-and-coordinates-only' : 'not-applicable',
+    beatClaims: (ctx.script.episodes.find(e => e.ep === epNo)?.beatClaims ?? []).map(claim => {
+      const fact=ctx.outline?.beats?.find(b => b.id === claim.beatId);
+      return {...structuredClone(claim), ...(fact ? {fact:structuredClone(fact), ...sourceEvidence(fact,ctx.outline)} : {})};
+    }),
   };
 }
 
@@ -2184,7 +2239,9 @@ async function main(argv) {
     const creationDir = dirname(resolve(path));
     const outDir = resolve(flag(rest, '--out', '.'));
     const sheetDir = resolve(flag(rest, '--dir', creationDir));
-    const toPack = (target) => relative(outDir, target).split('\\').join('/');
+    // Normalize existing ancestors too: macOS /var and /private/var may denote the same project.
+    const physical = p => existsSync(p) ? realpathSync(p) : join(physical(dirname(p)), basename(p));
+    const toPack = (target) => relative(physical(outDir), physical(target)).split('\\').join('/');
     ctx.imageExists = rel => existsSync(resolve(creationDir, rel));
     const problems = validateCreation(doc, ctx);
     if (problems.length) throw new Error(`投产前检查失败：${problems.join('；')}`);
@@ -2192,10 +2249,10 @@ async function main(argv) {
     const resolveImage = (kind, ref) => {
       const name = n.nameOf(kind, ref);
       if (!name) return { name: '', path: '', exists: false };
-      const r = resolveReferenceImage(kind, name, creationDir);
+      const r = resolveReferenceImage(kind, name, creationDir, {id:ref,ctx});
       return { name, path: toPack(resolve(creationDir, r.path)), exists: r.exists };
     };
-    const pack = exportPack(doc, ctx.script, { resolveImage, dir: '.', production: ctx.production });
+    const pack = exportPack(doc, ctx.script, { resolveImage, dir: '.', production: ctx.production, scriptPath: ctx.scriptPath });
     // 工作单就是投产包里的 prompt.md：必须已批准、绑定仍然有效并与 creation.json 一致；导出不改写它
     const load = materialLoader(doc, ctx, creationDir);
     const unapproved = [];

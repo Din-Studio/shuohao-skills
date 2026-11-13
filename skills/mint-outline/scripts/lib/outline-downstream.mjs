@@ -2,6 +2,7 @@
 import {readFileSync,readdirSync,lstatSync} from 'node:fs';
 import {join} from 'node:path';
 import {documentErrors} from './document.mjs';
+import {provenanceErrors,sourceRefsErrors,verifySources} from './source.mjs';
 const object=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
 const arr=x=>Array.isArray(x)?x:[];
 const positive=x=>typeof x==='number'&&Number.isFinite(x)&&x>0;
@@ -39,7 +40,7 @@ export function checkKnownDownstream(outline,root,options={}) {
   }
  }
  for(const {file,stage,doc} of records) {
-  add(file,stage,'version',doc.schemaVersion===3?[]:['schemaVersion must be 3; run migrate-v3']);
+  add(file,stage,'version',doc.schemaVersion===(stage==='script'?4:3)?[]:[`schemaVersion must be ${stage==='script'?4:3}; migrate explicitly`]);
   add(file,stage,'document',documentErrors(doc,options.production));
   add(file,stage,'source',doc.source===outline.source?[]:['source must match outline']);
   const errors=[];
@@ -54,10 +55,39 @@ export function checkKnownDownstream(outline,root,options={}) {
  }
  const scripts=records.filter(r=>r.stage==='script');
  for(const {file,stage,doc} of scripts) {
-  const duration=[], claims=[], projection=[], seen=new Set();
+  const duration=[], claims=[], projection=[], seen=new Set(),source=provenanceErrors(doc.provenance,{episodes:doc.episodes});
+  for(const d of arr(doc.provenance?.documents))if(!object(d)||!arr(outline?.provenance?.documents).some(o=>object(o)&&o.id===d.id&&o.sha256===d.sha256&&o.lineCount===d.lineCount))source.push(`source identity differs from outline: ${d?.id}`);
+  if(options.verifySources)source.push(...verifySources(doc,{artifactPath:file}).errors);
+  for(const ep of arr(doc.episodes))for(const [si,sc] of arr(ep?.scenes).entries()){
+   source.push(...sourceRefsErrors(sc?.sourceRefs,doc.provenance,`ep${ep?.ep}.scene${si+1}.sourceRefs`,{required:false}));
+   if(sc?.notes!==undefined&&!Array.isArray(sc.notes))source.push('scene.notes must be an array');
+   const transformation=x=>{if(x?.candidate!==undefined)source.push('candidate belongs only in .work');if(x?.transformation!==undefined&&(!object(x.transformation)||typeof x.transformation.reason!=='string'||!x.transformation.reason.trim()||typeof x.transformation.authorization!=='string'||!x.transformation.authorization.trim()))source.push('transformation requires reason and authorization');};
+   for(const n of arr(sc?.notes)){
+    transformation(n);
+    if(typeof n?.text!=='string'||!n.text.trim()||!['performance','background','continuity','restriction'].includes(n?.kind))source.push('scene note requires text/kind');
+    source.push(...sourceRefsErrors(n?.sourceRefs,doc.provenance,'scene.notes.sourceRefs'));
+   }
+   for(const b of arr(sc?.flow)){
+    transformation(b);
+    source.push(...sourceRefsErrors(b?.sourceRefs,doc.provenance,'flow.sourceRefs'));
+    const kinds=['action','line','subtitle','sound'].filter(k=>b?.[k]!==undefined);
+    if(kinds.length!==1||typeof b?.[kinds[0]]!=='string'||!b[kinds[0]].trim())source.push('flow requires exactly one non-empty action/line/subtitle/sound');
+    if(b?.line!==undefined&&(typeof b.speaker!=='string'||!(/^(?:C\d{2,}|VO)$/.test(b.speaker))))source.push('line requires speaker');
+    if(b?.line!==undefined&&b.speaker!=='VO'&&!arr(outline.characters).some(c=>c?.id===b.speaker))source.push('line references unknown character');
+    if(b?.line===undefined&&(b?.speaker!==undefined||b?.delivery!==undefined))source.push('speaker/delivery only allowed on line');
+    if(b?.audio!==undefined){
+     if(b.line===undefined&&b.sound===undefined)source.push('audio only allowed on line/sound');
+     if(!object(b.audio)||!['onscreen','offscreen','voiceover','inner'].includes(b.audio.mode))source.push('invalid audio mode');
+     if(b.audio?.subjective!==undefined&&typeof b.audio.subjective!=='boolean')source.push('invalid audio.subjective');
+     if(b.audio?.audibleTo!==undefined&&(!Array.isArray(b.audio.audibleTo)||new Set(b.audio.audibleTo).size!==b.audio.audibleTo.length||b.audio.audibleTo.some(id=>!arr(outline.characters).some(c=>c?.id===id))))source.push('invalid audio.audibleTo');
+    }
+    if(b?.seconds!==undefined&&(!positive(b.seconds)||(b.subtitle===undefined&&b.sound===undefined)))source.push('seconds only allowed positive on subtitle/sound');
+   }
+  }
+  add(file,stage,'source-evidence',source);
   for(const ep of arr(doc.episodes)) {
    const label=`ep${ep?.ep}`, upstream=arr(outline.episodes).find(e=>e?.ep===ep?.ep), keys=coordinates(ep);
-   if(!positive(ep?.targetSeconds)||ep.targetSeconds!==outline.params?.minutesPerEpisode*60)duration.push(`${label}: targetSeconds must equal outline minutesPerEpisode × 60`);
+   if(ep?.targetSeconds!==undefined&&!positive(ep.targetSeconds))duration.push(`${label}: targetSeconds must be positive when provided; outline supplies no target`);
    checkProjection(ep,upstream,label,projection);
    if(!Array.isArray(ep?.scenes)||!ep.scenes.length||ep.scenes.some(s=>!Array.isArray(s?.flow)||!s.flow.length))claims.push(`${label}: non-empty scenes/flow required to locate claims`);
    if(ep?.openingBeat!==undefined&&position(keys,ep.openingBeat)<0)claims.push(`${label}: invalid openingBeat`);
@@ -86,7 +116,7 @@ export function checkKnownDownstream(outline,root,options={}) {
    if(matches.length>1)claims.push(`${label}: ambiguous script episode in multiple project JSON files`);
    if(!matches.length) {
     if(gates.some(g=>g.stage==='script'&&['readable','discovery','version','episodes'].includes(g.id)&&g.status==='fail'))claims.push(`${label}: known script is damaged or unsupported; cannot verify coverage`);
-    else missing.push(`${label}: no matching script; coordinate existence and full coverage not checked`);
+    else missing.push(`${label}: no matching script; coordinate existence, full coverage and target-duration reconciliation not checked`);
    }
    if(script) {
     const upstreamFile=matches[0].record.file;
@@ -95,16 +125,30 @@ export function checkKnownDownstream(outline,root,options={}) {
    }
    if(ep?.openingBeat!==undefined&&!coord(ep.openingBeat))claims.push(`${label}: valid openingBeat coordinates required when provided`);
    let total=0, lastScene=0,lastBeat=0,openingCovered=false;
-   const keys=script?coordinates(script):[], covered=[];
+   const keys=script?coordinates(script):[], covered=[],owned=new Set(),audioLast=new Map();let cutIndex=0;
    if(!Array.isArray(ep?.segments)||!ep.segments.length)claims.push(`${label}: non-empty segments required`);
    for(const seg of arr(ep?.segments)) {
     if(!integer(seg?.sceneIndex)||!Array.isArray(seg?.cuts)||!seg.cuts.length)claims.push(`${label}: valid sceneIndex and non-empty cuts required`);
     for(const cut of arr(seg?.cuts)) {
+     cutIndex++;
      if(!positive(cut?.seconds))duration.push(`${label}: cut seconds must be finite and positive`);else total+=cut.seconds;
      const range=cut?.beats;
      if(!coord(range)||range[1]<range[0]){claims.push(`${label}: invalid cut beat range`);continue;}
      if((lastScene===0&&seg.sceneIndex!==1)||seg.sceneIndex<lastScene||(seg.sceneIndex===lastScene&&range[0]!==lastBeat+1)||(seg.sceneIndex!==lastScene&&(seg.sceneIndex!==lastScene+1||range[0]!==1)))claims.push(`${label}: cut claims must be ordered, contiguous and non-overlapping`);
      lastScene=seg.sceneIndex;lastBeat=range[1];
+     if(cut?.audioRefs!==undefined){
+      if(!Array.isArray(cut.audioRefs))claims.push(`${label}: audioRefs must be an array`);
+      const seenAudio=new Set();
+      for(const ref of arr(cut.audioRefs)){
+       const key=coord(ref)?ref.join(':'):null,beat=coord(ref)?script?.scenes?.[ref[0]-1]?.flow?.[ref[1]-1]:null;
+       if(!key||seenAudio.has(key)||!owned.has(key)||!script||typeof beat?.line!=='string'||!beat.line.trim())claims.push(`${label}: audioRefs must reference unique lines owned by earlier cuts in this episode`);
+       if(key&&owned.has(key)&&audioLast.get(key)!==cutIndex-1)claims.push(`${label}: audioRefs cannot skip an intervening cut in the same playback`);
+       audioLast.set(key,cutIndex);
+       seenAudio.add(key);
+      }
+     }
+     // Record owners only after validating continuations: current cut ownership is not earlier.
+     if(script){const start=position(keys,[seg.sceneIndex,range[0]]),end=position(keys,[seg.sceneIndex,range[1]]);if(start>=0&&end>=start)for(const key of keys.slice(start,end+1)){owned.add(key);audioLast.set(key,cutIndex);}}
      if(coord(ep?.openingBeat)&&ep.openingBeat[0]===seg.sceneIndex&&ep.openingBeat[1]>=range[0]&&ep.openingBeat[1]<=range[1])openingCovered=true;
      if(script) {
       const start=position(keys,[seg.sceneIndex,range[0]]),end=position(keys,[seg.sceneIndex,range[1]]);
@@ -117,10 +161,12 @@ export function checkKnownDownstream(outline,root,options={}) {
    if(ep?.openingBeat!==undefined&&!openingCovered)claims.push(`${label}: openingBeat must be covered by an actual cut`);
    // End is derived from current script coordinates; complete coverage above checks it.
 
-   const target=outline.params?.minutesPerEpisode*60;
-   if(ep?.targetSeconds!==undefined&&ep.targetSeconds!==target)duration.push(`${label}: targetSeconds differs from outline`);
-   const epsilon=Number.EPSILON*Math.max(1,Math.abs(target),Math.abs(total))*4;
-   if(!positive(target)||!Number.isFinite(total)||total<=0||total<target*(1-tolerance)-epsilon||total>target*(1+tolerance)+epsilon)duration.push(`${label}: cut total ${total} outside outline target ${target} tolerance`);
+   const target=script?.targetSeconds;
+   if(script){
+    if(ep?.targetSeconds!==undefined&&ep.targetSeconds!==target)duration.push(`${label}: targetSeconds differs from script`);
+    const epsilon=Number.EPSILON*Math.max(1,Math.abs(target),Math.abs(total))*4;
+    if(!positive(target)||!Number.isFinite(total)||total<=0||total<target*(1-tolerance)-epsilon||total>target*(1+tolerance)+epsilon)duration.push(`${label}: confirmed script target required; cut total ${total} outside target ${target} tolerance`);
+   } // Missing or damaged script already reported above; never relabel damaged as missing.
   }
   add(file,stage,'target-duration',duration);add(file,stage,'projection',projection);add(file,stage,'node-claims',claims);
   if(missing.length)add(file,stage,'script-coverage',missing,{status:'skipped',reason:'missing-upstream'});
@@ -129,5 +175,5 @@ export function checkKnownDownstream(outline,root,options={}) {
 }
 function checkProjection(ep,upstream,label,errors) {
  if(!upstream){errors.push(`${label}: no valid outline episode for projection reconciliation`);return;}
- for(const key of ['opening','ending','endBeat'])if(ep?.[key]!==undefined)errors.push(`${label}: ${key} is removed in project v3; run migrate-v3`);
+ for(const key of ['opening','ending','endBeat'])if(ep?.[key]!==undefined)errors.push(`${label}: ${key} is not copied into downstream project documents; migrate explicitly`);
 }

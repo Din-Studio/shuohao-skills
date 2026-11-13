@@ -2,7 +2,7 @@
 
 ## 安全边界
 
-先迁移 production、outline、script，再迁移 creation。本工具只处理 creation，不批量修改项目或兄弟阶段。正式 validate/render 只接受 v3。迁移不调用媒体模型。
+先迁移 production、outline、script，再迁移 creation。本工具只处理 creation，不批量修改项目或兄弟阶段。creation 正式 validate/render 仍接受 v3，但挂载的 script/outline 必须先完成各自 v4 显式迁移。迁移缺少的来源证据只能由作者回查补齐；本消费端不补造 provenance 或 targetSeconds。迁移不调用媒体模型。
 
 ```bash
 node scripts/mint-creation.mjs migrate-v3 old-creation.json

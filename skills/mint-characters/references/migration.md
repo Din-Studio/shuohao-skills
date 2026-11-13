@@ -1,4 +1,12 @@
-# 资产阶段对接 v3
+# 资产阶段对接 v4 与历史 v3
+
+## 当前 v4 输入
+
+outline v4 移除改编规划、固定分钟数与 reusePlan，保留 tier、primary、稳定资产 ID 和来源证据。CLI seed 核验原文版本与范围，并将必要 sourceRefs／notes 放入 sourceFacts；设计字段不冒称源事实。详见 [来源事实与制作补定](source-facts.md)。资产与媒体计划输出协议不变。运行 `scripts/v4-selftest.mjs` 验证当前投影。
+
+## 历史 v3 输入
+
+以下仅说明保留的 v3 消费兼容，不表示 v3 已升级成来源可核验的解析结果。
 
 本次只升级上游消费契约。cast.json 输出、图片提示词、参考图、媒体计划与导出协议不变，不为统一数字强加输出版本。
 

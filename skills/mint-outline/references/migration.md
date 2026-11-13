@@ -1,35 +1,27 @@
-# v2 → v3 显式迁移
+# 显式迁移与证据保存
 
-正式运行不接受 v2 或旧配置字段。无版本、v1、未知版本须先人工建立有效 v2 或直接按 v3 重建；不能只改版本号。
+正式运行要求 v4；不能只改版本号。旧创作大纲不自动成为剧本解析，缺少来源证据时必须人工补全。
 
-## 操作
+## v2／v3 → v4 待核验草稿
 
 ```bash
-node scripts/mint-outline.mjs migrate-v3 INPUT
-node scripts/mint-outline.mjs migrate-v3 INPUT --out OUTPUT
-node scripts/mint-outline.mjs migrate-v3 INPUT --out OUTPUT --confirm
+node scripts/mint-outline.mjs migrate-v4 INPUT
+node scripts/mint-outline.mjs migrate-v4 INPUT --out outline/.work/v4-draft.json --confirm
 ```
 
-无 --out 只预览。存在语义项时 status=pending，指定输出但未确认则退出 1 且不写文件。--confirm 明确接受预览中的保守文本合并，不是自动内容评审。先逐项审阅，无法确认时停止，不盲目执行确认。
+默认只预览。指定 --out 但不 --confirm 不写入并退出 1。--confirm 只确认保存保守草稿，不代表证据完整或语义批准。成功写入仍标记 status=pending-evidence；正式 validate 会拒绝没有 provenance/sourceRefs 的草稿。
 
-写入只创建不同的新路径，已有目标或旁路文件均拒绝；输入要求普通文件，不跟随符号链接。成功时生成 OUTPUT、OUTPUT.v2-backup（原始字节）、OUTPUT.review（迁移去向与历史选择）。原文件始终不变。可从备份复制恢复。三个文件不是跨文件事务；中断后先人工检查，再清理残留目标重试。工具不自动操作用户项目目录。
+输出独占创建，禁止覆盖输入、目标或旁路文件，不跟随输入符号链接。创建 OUTPUT、OUTPUT.legacy-backup（原始字节）、OUTPUT.review（完整 original、preserved 原值及待办）。原件不变。写入失败只删除本次已成功创建的文件，不删除并发作者文件。三文件并非跨文件事务；中断后人工检查残留，再决定处理。
 
-## 语义映射与人工合并
+- 删除的 adaptation（包括逐字 evidence、有效限制和历史取舍）、arcs、复用方案、规划参数、事件标签、Q 兑现规划全部保存在 review.original/preserved，不能直接丢弃。
+- story 现有 premise/throughline/ending 原句拼接为 summary；原始分栏和 audiencePromise 仍在报告中。不声称这些句子已有剧本证据。
+- 稳定 C/S/P/B/Q ID、分集、事件、用户预算、tier/primary 保持。endingBeatId 暂不迁入正式字段，需确认真实全剧末尾后恢复。
+- 不制造 provenance、行号、阅读覆盖、总集数或 targetSeconds。历史分钟数仍在报告中，不能自动充当 script 已确认执行目标。
+- 人工逐项对照原剧本，将有效限制迁入有出处 notes 或项目要求；历史改编决定不是源事实。本地 creativeBrief 接入项目时先人工合并至 production，再删除副本。
+- 补全范围与出处后执行 verify-sources、结构检查和独立来源／正文核验。没有可提供剧本时，保留历史文档，不把创作材料伪装成 v4 生产输入。
 
-- story.drive 各独有文本合并到 throughline；adaptation.core 合并到 premise。
-- beats.type 的含义附入 setup，不修改 B ID、episode、outcome 或 resolves。
-- stateChange 的 before/after 附入对应 synopsis，不改变集数、opening、ending、资产引用。
-- preferences 实际文本合并 creativeBrief。既有 brief 保留。
-- rules 每项进入预览，包括关闭项。开启的历史要求以文字保留在 brief；默认期限进入工作记录，不自动写入问题。manual overridePaths 逐项提醒，不能假定为模板默认。
-- 历史 profile 名称仅在迁移说明中保留；摘要与版本在原始备份，不迁入新正式产物。
-- 用户 thresholds、角色来源、原文 evidence、明确 Q 承诺及期限保持。不得删除未解 required 来通过检查。
+## 历史 v2 → v3
 
-工具不能判断语义重复，因此保守追加原文本而非自动删减。人工或 Agent 可审阅后将重复表述自然合并，逐项记录理由。自有样例见迁移核对记录：原 type/stateChange/core 已由正文完整表达，因此保留原正文，删除重复结构。
+migrate-v3 INPUT [--out OUTPUT] [--confirm] 保留，用于历史数据修复，不是生产入口。它保守合并 drive/core/type/stateChange 和旧要求，保留原文 evidence 与明确 Q 承诺；输出原字节 .v2-backup 及 .review。历史校验隔离于 legacy-v3-core.mjs，只供迁移使用。v3 输出仍需迁入 v4 并人工建立真实剧本证据。
 
-## 多文件顺序与验证边界
-
-先 production 与项目要求，再 outline、script、creation，最后检查人物/美术消费者及联合接口。迁移后的独立 brief 接入项目时合并到 production，再删除阶段副本；同时存在不能静默选优先级。
-
-迁移先校验 v2 结构形状，再校验生成的完整 v3。损坏参数、非法引用、未解承诺、非法旧字段不能因迁移被修饰成有效产物。旧创作规则是否应延续属于人工审阅，不以历史模板是否满足作为 v3 阻断条件。
-
-本工具不迁移兄弟阶段，不执行模型调用。结构通过后仍须内容评审和各阶段完整校验。原始输入与备份保留全部信息。
+未知版本或损坏结构不能自动修饰。先处理项目要求，再迁移解析和正文，最后由各阶段执行本地完整检查。本 skill 不迁移兄弟产物，不调用模型。

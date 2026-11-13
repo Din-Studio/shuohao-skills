@@ -4,6 +4,8 @@
 
 ## 派发前准备
 
+先阅读 `source-audio-handoff.md`。来源／正文独立核验与制作审核分别执行；未授权候选不进入正式材料。纯解析允许缺少目标时长，但制作前必须确认 script.targetSeconds。材料生成时任何来源缺失、改版或不可读都停止，不能沿旧坐标继续。
+
 在 `<工作目录>/creation/` 下：
 
 1. `seed` 生成本批的 creation.json 骨架（含 seedScenes）。
@@ -19,7 +21,9 @@
 | 字段 | 来源 |
 | --- | --- |
 | `source`、`ep`、`targetSeconds` | script |
-| `seedScenes` | 从当前 script 展开的这一集节拍底稿：场景、在场人物、道具、逐拍原文与估时 |
+| `seedScenes` | 当前集所有场次的四种 flow、人物／道具、原文与估时、完整 notes、sourceRefs、audio、transformation；包含 audioRefs 来源场 |
+| `provenance`、`sourceVerification` | 当前 script 来源身份；重新读取原件检查 SHA256、行数与坐标，输出路径在此边界解析为绝对路径。不是语义核验 |
+| `beatClaims` | script 事件认领及对应 outline 事件事实、来源证据；摘要只选择与当前段实际正文重叠的认领 |
 | `promptLang` | creation 或 production 的显式值，否则按模型默认 |
 | `maxSegmentSeconds`、`maxOnScreen` | creation.params 的有效值 |
 | `creativeBrief` | production 或独立 creation；没有就省略 |

@@ -28,7 +28,7 @@ metadata:
 
 调度方（或用户）应当提供：
 
-- 这一集的节拍底稿：每场的场景编号、在场人物、道具、逐拍的动作或台词原文与估时。
+- 这一集的 v4 节拍底稿：场景编号、人物、道具、逐拍 action/line/subtitle/sound 原文与估时，完整场次 notes、sourceRefs、audio 与正式 transformation。延续声音时读取其来源场正文及说明。
 - 资产表：人物、场景、道具的编号与名称，以及哪些资产已有设定图。
 - 项目要求 `creativeBrief`（可以没有）、有效视频模型、提示词语言、单段时长上限。
 - 工作单目录。
@@ -38,7 +38,7 @@ metadata:
 
 ## 2. 读取指南
 
-按顺序完整读取：
+先完整读取 `references/source-audio-handoff.md`，区分非发声说明与正文、声音延续与重播。再按顺序完整读取：
 
 1. `references/分镜指南.md`——怎样分段、认领节拍、安排景别与停留。
 2. `references/worksheet.md`——工作单格式、分镜结构字段与两张枚举表。

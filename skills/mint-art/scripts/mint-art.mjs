@@ -6,7 +6,8 @@
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertOutlineV3, assetProductionProblems, creativeBackground, check, blocking, mark } from './lib/contracts.mjs';
+import { assertOutline, assetProductionProblems, creativeBackground, check, blocking, mark } from './lib/contracts.mjs';
+import { verifyOutlineSources, sourceFactsOf } from './lib/source-facts.mjs';
 export { creativeBackground } from './lib/contracts.mjs';
 import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
 
@@ -167,8 +168,9 @@ export function slug(name) {
  * 模型只填设计字段（设计意图 / 锚点 / 光照 / 提示词）。
  */
 
-export function seedFromOutline(outline) {
-  assertOutlineV3(outline);
+export function seedFromOutline(outline, { outlinePath } = {}) {
+  assertOutline(outline);
+  if (outlinePath) verifyOutlineSources(outline, outlinePath);
   const eps = Array.isArray(outline?.episodes) ? outline.episodes : [];
   const beats = Array.isArray(outline?.beats) ? outline.beats : [];
 
@@ -180,7 +182,8 @@ export function seedFromOutline(outline) {
     return {
       id: s.id,
       name: s.name,
-      primary: !!s.primary,
+      primary: s.primary,
+      ...sourceFactsOf(s, outline, outlinePath),
       // 模型要填的设计字段，先占位
       summary: '',
       anchors: [],
@@ -202,6 +205,7 @@ export function seedFromOutline(outline) {
     return {
       id: pr.id,
       name: pr.name,
+      ...sourceFactsOf(pr, outline, outlinePath),
       // 大纲的 function 就是这里的 summary：两边都指「它在戏里干什么」，不是材质描述
       summary: pr.function ?? '',
       // 模型要填的设计字段，先占位
@@ -729,6 +733,7 @@ export function renderMarkdown(doc, lang = null, production = null, castNames = 
 
   for (const s of doc.scenes) {
     out.push('---', '', `## ${s.id} ${s.name}`, '', s.summary, '');
+    if (s.sourceFacts) out.push('### Source facts / 来源事实（不是制作补定）', '', '```json', JSON.stringify(s.sourceFacts, null, 2), '```', '');
     if (s.sheetImage) out.push(`![${s.name} ${t.sheetCaption}](${s.sheetImage})`, '');
     out.push(`### ${t.anchorsTitle}`, '');
     s.anchors.forEach((a, i) => out.push(`${i + 1}. **${a.name}** — ${a.desc}`));
@@ -755,6 +760,7 @@ export function renderMarkdown(doc, lang = null, production = null, castNames = 
     out.push('');
     for (const pr of props) {
       out.push('---', '', `## ${pr.id} ${pr.name}`, '', pr.summary, '');
+      if (pr.sourceFacts) out.push('### Source facts / 来源事实（不是制作补定）', '', '```json', JSON.stringify(pr.sourceFacts, null, 2), '```', '');
       if (pr.usage?.beatIds?.length) out.push(`${t.beatsTitle}: ${pr.usage.beatIds.join(' · ')}`, '');
       if (pr.sheetImage) out.push(`![${pr.name} ${t.propSheetCaption}](${pr.sheetImage})`, '');
       out.push(`### ${t.anchorsTitle}`, '');
@@ -846,7 +852,8 @@ export function renderHtml(doc, lang = null, production = null, castNames = null
     <span class="sc-id">${esc(pr.id)}</span>
     <h3>${esc(pr.name)}</h3>
     <span class="badge">${esc(pr.scale)}</span>
-    ${pr.usage?.episodes?.length ? `<span class="sc-use">${esc(t.usageTitle)} ${esc(pr.usage.episodes.join(t.listSep))}${pr.usage.beats?.length ? `${esc(t.pairSep)}${esc(t.beatsTitle)} ${esc(pr.usage.beats.join(' · '))}${pr.usage.beatIds?.length ? ` (${esc(pr.usage.beatIds.join(' · '))})` : ''}` : ''}</span>` : ''}
+    ${pr.sourceFacts ? `<details><summary>Source facts / 来源事实（不是制作补定）</summary><pre>${esc(JSON.stringify(pr.sourceFacts, null, 2))}</pre></details>` : ''}
+     ${pr.usage?.episodes?.length ? `<span class="sc-use">${esc(t.usageTitle)} ${esc(pr.usage.episodes.join(t.listSep))}${pr.usage.beats?.length ? `${esc(t.pairSep)}${esc(t.beatsTitle)} ${esc(pr.usage.beats.join(' · '))}${pr.usage.beatIds?.length ? ` (${esc(pr.usage.beatIds.join(' · '))})` : ''}` : ''}</span>` : ''}
   </header>
   <p class="sc-sum">${esc(pr.summary)}</p>
   ${plate}
@@ -884,7 +891,8 @@ export function renderHtml(doc, lang = null, production = null, castNames = null
     <span class="sc-id">${esc(s.id)}</span>
     <h3>${esc(s.name)}</h3>
     <span class="badge${s.primary ? '' : ' once'}">${esc(s.variantOf ? t.variantScene : s.primary ? t.primaryScene : t.onceScene)}</span>
-    ${s.usage?.episodes?.length ? `<span class="sc-use">${esc(t.usageTitle)} ${esc(s.usage.episodes.join(t.listSep))}${s.usage.beats?.length ? `${esc(t.pairSep)}${esc(t.sceneBeatsTitle)} ${esc(s.usage.beats.join(' · '))}` : ''}</span>` : ''}
+    ${s.sourceFacts ? `<details><summary>Source facts / 来源事实（不是制作补定）</summary><pre>${esc(JSON.stringify(s.sourceFacts, null, 2))}</pre></details>` : ''}
+     ${s.usage?.episodes?.length ? `<span class="sc-use">${esc(t.usageTitle)} ${esc(s.usage.episodes.join(t.listSep))}${s.usage.beats?.length ? `${esc(t.pairSep)}${esc(t.sceneBeatsTitle)} ${esc(s.usage.beats.join(' · '))}` : ''}</span>` : ''}
   </header>
   <p class="sc-sum">${esc(s.summary)}</p>
   ${plate}
@@ -1188,6 +1196,10 @@ document.querySelector('.expo').addEventListener('click', (e) => {
 /** 产物路径与 render 找图的路径必须是同一个函数算出来的，不许两边各写一遍。 */
 export const sheetFile = (name) => `images/${slug(name)}-sheet.png`;
 export const cutoutFile = (name) => `images/${slug(name)}-sheet-cutout.png`;
+export function assetImageStem(item, doc) {
+  const stem=slug(item.name), items=[...(doc.scenes ?? []),...(doc.props ?? [])];
+  return items.filter(x=>slug(x.name)===stem).length>1 ? `${item.id}-${stem}` : stem;
+}
 
 export function imageJobsFrom(doc, production = null) {
   const model = production?.image?.model ?? null;
@@ -1211,7 +1223,7 @@ export function imageJobsFrom(doc, production = null) {
       key: item.id,
       kind,
       name: item.name,
-      file: sheetFile(item.name),
+      file: sheetFile(assetImageStem(item,doc)),
       prompt: String(prompt),
       negativePrompt: String(item?.image?.negativePrompt ?? ''),
       refFrom: null,
@@ -1230,7 +1242,7 @@ export function imageJobsFrom(doc, production = null) {
   }
   for (const pr of props) {
     const job = take(pr, 'prop');
-    if (job) jobs.push({ ...job, cutoutFile: cutoutFile(pr.name) });
+    if (job) jobs.push({ ...job, cutoutFile: cutoutFile(assetImageStem(pr,doc)) });
   }
 
   // 重名会让两张图抢同一个文件名，后出的把先出的盖掉，而且 render 只看得见一张
@@ -1249,7 +1261,7 @@ export function imageJobsFrom(doc, production = null) {
 
 const USAGE = `mint-art.mjs — mint-art skill 的确定性工具（场景 + 道具）
 
-  seed <outline.json>                    从 outline v3 预填 art.json（打印到 stdout，设计字段留空）
+  seed <outline.json>                    从 outline v4（兼容 v3）预填 art.json（打印到 stdout，设计字段留空）
   validate <art.json> [--cast c.json]    校验；有违规逐条打印并 exit 1
                                          给了 cast.json 才查「提示词不含角色名」
   checkup <art.json> [--cast c.json]     只打印质量门 ✓/✗，有未过项 exit 1
@@ -1335,7 +1347,7 @@ async function main(argv) {
   if (cmd === 'seed') {
     const [path] = rest;
     if (!path) throw new Error('用法：seed <outline.json>');
-    console.log(JSON.stringify(seedFromOutline(readJson(path)), null, 2));
+    console.log(JSON.stringify(seedFromOutline(readJson(path), { outlinePath: path }), null, 2));
     return;
   }
 
@@ -1404,7 +1416,7 @@ async function main(argv) {
     // 图存在才挂上去；没有就渲染成占位，不影响其余内容
     const outDir = resolve(path, '..');
     for (const item of [...doc.scenes, ...(doc.props ?? [])]) {
-      const rel = `images/${slug(item.name)}-sheet.png`;
+      const rel = sheetFile(assetImageStem(item,doc));
       if (existsSync(resolve(outDir, rel))) item.sheetImage = rel;
     }
     process.stdout.write((rest.includes('--html') ? renderHtml(doc, lang, prod.doc, names, originalInput) : renderMarkdown(doc, lang, prod.doc, names)) + '\n');

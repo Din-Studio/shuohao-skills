@@ -1,0 +1,219 @@
+{
+  "schemaVersion": 4,
+  "source": "潮汐电台",
+  "provenance": {
+    "kind": "script",
+    "scope": "partial",
+    "documents": [
+      {
+        "id": "D01",
+        "path": "D01.txt",
+        "sha256": "0d09209a9c4af93bccfd06ff43b6ed24dcf17ea2d75c7bbdffe6742569d6adcc",
+        "lineCount": 4
+      },
+      {
+        "id": "D02",
+        "path": "D02.txt",
+        "sha256": "d8352b7d100bf085e2ba204a702da40df5cb4b72e7a392ea9aad1c88ddc770f0",
+        "lineCount": 4
+      },
+      {
+        "id": "D03",
+        "path": "D03.txt",
+        "sha256": "c347e5b872a04cb7cfde7e0d2a7bb53f6f9b7284338d4fd125055e273cfaa190",
+        "lineCount": 4
+      },
+      {
+        "id": "D04",
+        "path": "D04.txt",
+        "sha256": "fa6cbdae110f5dd69916169f72f4347ab7a2dc0421a6661c6a70497a4b86aec0",
+        "lineCount": 2
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 4
+      },
+      {
+        "documentId": "D02",
+        "startLine": 1,
+        "endLine": 4
+      },
+      {
+        "documentId": "D03",
+        "startLine": 1,
+        "endLine": 4
+      },
+      {
+        "documentId": "D04",
+        "startLine": 1,
+        "endLine": 2
+      }
+    ]
+  },
+  "episodes": [
+    {
+      "ep": 1,
+      "targetSeconds": 28,
+      "beatClaims": [
+        {"beatId":"B01","start":[1,1],"end":[1,2]},
+        {"beatId":"B02","start":[2,1],"end":[2,3]},
+        {"beatId":"B03","start":[3,1],"end":[3,2]},
+        {"beatId":"B04","start":[4,1],"end":[4,1]}
+      ],
+      "scenes": [
+        {
+          "sceneId": "S01",
+          "characters": ["C01"],
+          "props": ["P01"],
+          "notes": [
+            {
+              "kind": "restriction",
+              "text": "弟弟在船上只指导表演；背景不得发声，不得提前宣布获救。",
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 4,
+                  "endLine": 4
+                }
+              ]
+            }
+          ],
+          "flow": [
+            {
+              "line": "封港通知：外海航道已经关闭，请所有船只等待下一次通知，不要擅自进入港口。",
+              "speaker": "VO",
+              "audio": {
+                "mode": "voiceover",
+                "subjective": false
+              },
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 2,
+                  "endLine": 2
+                }
+              ]
+            },
+            {
+              "action": "值班员松开旋钮，指示灯仍亮。",
+              "sourceRefs": [
+                {
+                  "documentId": "D01",
+                  "startLine": 3,
+                  "endLine": 3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "sceneId": "S02",
+          "characters": [],
+          "notes": [
+            {
+              "kind": "continuity",
+              "text": "此处听见的是播音室已经开始的同一次广播。",
+              "sourceRefs": [
+                {
+                  "documentId": "D02",
+                  "startLine": 2,
+                  "endLine": 2
+                }
+              ]
+            }
+          ],
+          "flow": [
+            {
+              "action": "走廊空无一人。",
+              "sourceRefs": [
+                {
+                  "documentId": "D02",
+                  "startLine": 2,
+                  "endLine": 2
+                }
+              ]
+            },
+            {
+              "sound": "蜂鸣声响起。",
+              "seconds": 1,
+              "audio": {
+                "mode": "offscreen",
+                "subjective": false
+              },
+              "sourceRefs": [
+                {
+                  "documentId": "D02",
+                  "startLine": 3,
+                  "endLine": 3
+                }
+              ]
+            },
+            {
+              "subtitle": "封港，等待通知。",
+              "seconds": 2,
+              "sourceRefs": [
+                {
+                  "documentId": "D02",
+                  "startLine": 4,
+                  "endLine": 4
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "sceneId": "S03",
+          "characters": [],
+          "props": ["P02"],
+          "flow": [
+            {
+              "line": "封港通知：外海航道已经关闭，请所有船只等待下一次通知，不要擅自进入港口。",
+              "speaker": "VO",
+              "audio": {
+                "mode": "offscreen"
+              },
+              "sourceRefs": [
+                {
+                  "documentId": "D03",
+                  "startLine": 2,
+                  "endLine": 3
+                }
+              ]
+            },
+            {
+              "action": "接收机指针回落。",
+              "sourceRefs": [
+                {
+                  "documentId": "D03",
+                  "startLine": 4,
+                  "endLine": 4
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "sceneId": "S04",
+          "characters": [],
+          "props": ["P03"],
+          "notes": [{"kind":"restriction","text":"没有任何归航或获救结论。","sourceRefs":[{"documentId":"D04","startLine":2,"endLine":2}]}],
+          "flow": [
+            {
+              "action": "空码头，救生圈静止。",
+              "sourceRefs": [
+                {
+                  "documentId": "D04",
+                  "startLine": 2,
+                  "endLine": 2
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

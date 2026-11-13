@@ -1,4 +1,5 @@
-// Creation-owned v3 consumer contracts. No imports from other skills.
+// Creation-owned v4 upstream consumer contracts; creation stays v3. No sibling imports.
+import {sourceProblems, transformationProblems, audioProblems, continuationProblems} from './source.mjs';
 import { documentProblems, scriptParams, endPosition } from './document.mjs';
 const object = x => !!x && typeof x === 'object' && !Array.isArray(x);
 const text = x => typeof x === 'string' && !!x.trim();
@@ -7,8 +8,11 @@ const lineChars = line => String(line ?? '').replace(/\s+/g, '').length;
 // One unrounded estimator for defaults and explicit overrides.
 export function beatSeconds(beat, params = {}) {
   params = scriptParams({params});
-  if (!object(beat) || Object.hasOwn(beat, 'action') === Object.hasOwn(beat, 'line')) return null;
-  if (Object.hasOwn(beat, 'action')) return text(beat.action) && positive(params?.actionSeconds) ? params.actionSeconds : null;
+  if (!object(beat)) return null;
+  const kinds = ['action','line','subtitle','sound'].filter(k => Object.hasOwn(beat,k));
+  if (kinds.length !== 1 || !text(beat[kinds[0]])) return null;
+  if (beat.seconds !== undefined && (!['subtitle','sound'].includes(kinds[0]) || !positive(beat.seconds))) return null;
+  if (kinds[0] !== 'line') return beat.seconds ?? params.actionSeconds;
   if (!text(beat.line) || !positive(params?.charsPerSecond)) return null;
   const seconds = lineChars(beat.line) / params.charsPerSecond;
   return positive(seconds) ? seconds : null;
@@ -57,6 +61,7 @@ export function shapeProblems(doc) {
       for (const cut of seg.cuts) {
         if (!object(cut)) { errors.push('cut 必须为对象'); continue; }
         if (!positive(cut.seconds)) errors.push(`${seg.id} seconds 必须为有限正数`);
+        if (cut.audioRefs !== undefined && (!Array.isArray(cut.audioRefs) || cut.audioRefs.some(p => !Array.isArray(p) || p.length !== 2 || !p.every(n => Number.isInteger(n) && n > 0)) || new Set(cut.audioRefs.map(p => JSON.stringify(p))).size !== cut.audioRefs.length)) errors.push(`${seg.id} audioRefs 必须为唯一正整数坐标数组`);
         if (!Array.isArray(cut.beats) || cut.beats.length !== 2 || !cut.beats.every(n => Number.isInteger(n) && n > 0) || cut.beats[0] > cut.beats[1]) errors.push(`${seg.id} beats 必须为正整数顺序区间`);
         if (!Array.isArray(cut.characters) || cut.characters.some(id => !/^C\d{2,}$/.test(id)) || new Set(cut.characters).size !== cut.characters.length) errors.push(`${seg.id} characters 非法`);
         if (cut.props !== undefined && (!Array.isArray(cut.props) || cut.props.some(id => !/^P\d{2,}$/.test(id)) || new Set(cut.props).size !== cut.props.length)) errors.push(`${seg.id} props 非法`);
@@ -66,8 +71,9 @@ export function shapeProblems(doc) {
   return errors;
 }
 export function scriptProblems(script) {
-  if (!object(script) || script.schemaVersion !== 3) return ['script.schemaVersion 必须为 3；旧字段不能静默读取'];
-  const errors = documentProblems(script, 'script');
+  if (!object(script) || script.schemaVersion !== 4) return ['script.schemaVersion 必须为 4；旧字段不能静默读取'];
+  const errors = [...documentProblems(script, 'script'), ...sourceProblems(script)];
+  for (const k of ['candidates','context']) if (Object.hasOwn(script,k)) errors.push(`${k} 不得进入正式正文；使用 notes 或 .work`);
   if (!text(script.source)) errors.push('script.source 不能为空');
   const params = scriptParams(script);
   for (const k of ['charsPerSecond', 'actionSeconds']) if (!positive(params[k])) errors.push(`script.params.${k} 非法`);
@@ -89,9 +95,21 @@ export function scriptProblems(script) {
       if (!object(sc) || !/^S\d{2,}$/.test(sc.sceneId) || !Array.isArray(sc.characters) || (sc.props !== undefined && (!Array.isArray(sc.props) || sc.props.some(id => typeof id !== 'string' || !/^P\d{2,}$/.test(id)) || new Set(sc.props).size !== sc.props.length)) || !Array.isArray(sc.flow) || !sc.flow.length) { errors.push(`E${ep.ep} scene 非法`); validShape = false; continue; }
       if (sc.characters.some(id => !/^C\d{2,}$/.test(id)) || new Set(sc.characters).size !== sc.characters.length) errors.push(`E${ep.ep} 场次人物 ID 非法或重复`);
       if (sc.lighting !== undefined && !text(sc.lighting)) errors.push(`E${ep.ep} lighting 必须为非空字符串`);
+      for (const k of ['candidates','context']) if (Object.hasOwn(sc,k)) errors.push(`${k} 不得进入正式场次；使用 notes 或 .work`);
+      if (sc.notes !== undefined && (!Array.isArray(sc.notes) || sc.notes.some(n => !object(n) || !text(n.text) || !['performance','background','continuity','restriction'].includes(n.kind)))) errors.push(`E${ep.ep} notes 非法`);
+      for (const note of Array.isArray(sc.notes) ? sc.notes : []) {
+        errors.push(...transformationProblems(note?.transformation, 'note'));
+        for (const k of ['candidate','candidates']) if (Object.hasOwn(note ?? {},k)) errors.push('转译候选必须留在 .work');
+        if (script.provenance && (!Array.isArray(note?.sourceRefs) || !note.sourceRefs.length)) errors.push('解析 notes 缺少 sourceRefs');
+      }
       for (const b of sc.flow) {
-        if (beatSeconds(b, script.params) === null || (text(b.line) && ![...sc.characters, 'VO'].includes(b.speaker))) errors.push(`E${ep.ep} flow 必须为动作或合法人物台词`);
-        if (object(b) && b.delivery !== undefined && (!text(b.line) || !text(b.delivery))) errors.push(`E${ep.ep} delivery 只允许台词的非空表演说明`);
+        if (beatSeconds(b, script.params) === null || (text(b?.line) && ![...sc.characters, 'VO'].includes(b.speaker))) errors.push(`E${ep.ep} flow 必须为 action/line/subtitle/sound 之一及合法发声者`);
+        if (!object(b)) continue;
+        for (const k of ['candidate','candidates']) if (Object.hasOwn(b,k)) errors.push('转译候选必须留在 .work');
+        if (b.speaker !== undefined && !text(b.line)) errors.push('非台词正文不能带 speaker');
+        if (b.delivery !== undefined && (!text(b.line) || !text(b.delivery))) errors.push(`E${ep.ep} delivery 只允许台词的非空表演说明`);
+        errors.push(...audioProblems(b, 'flow'), ...transformationProblems(b.transformation, 'flow'));
+        if (script.provenance && (!Array.isArray(b.sourceRefs) || !b.sourceRefs.length)) errors.push('解析 flow 缺少 sourceRefs');
       }
     }
     if (!validShape) continue;
@@ -108,47 +126,50 @@ export function scriptProblems(script) {
   return errors;
 }
 export function outlineProblems(outline) {
-  if (!object(outline) || outline.schemaVersion !== 3) return ['outline.schemaVersion 必须为 3'];
-  const errors = documentProblems(outline, 'outline');
+  if (!object(outline) || outline.schemaVersion !== 4) return ['outline.schemaVersion 必须为 4'];
+  const errors = [...documentProblems(outline, 'outline'), ...sourceProblems(outline, {required:true})];
   if (!text(outline.source)) errors.push('outline.source 不能为空');
-  if (!text(outline.params?.genre) || !['忠实','抽核','借壳','原创'].includes(outline.params?.adaptMode)) errors.push('outline genre/adaptMode 非法');
-  if (!object(outline.story) || ['premise','throughline','ending'].some(k => !text(outline.story[k])) || !Array.isArray(outline.story.focusCharacterIds) || !outline.story.focusCharacterIds.length) errors.push('outline story 核心内容缺失');
-  for (const [value, key] of [[outline.story, 'drive'], [outline.adaptation, 'core']]) if (object(value) && Object.hasOwn(value, key)) errors.push(`outline ${key} 已停用，请迁移`);
-  if (!positive(outline.params?.minutesPerEpisode) || !Number.isInteger(outline.params?.episodes) || outline.params.episodes < 1) errors.push('outline 集数/目标时长非法');
+  for (const key of ['adaptation','arcs']) if (Object.hasOwn(outline,key)) errors.push(`outline.${key} 已移除`);
+  for (const key of ['adaptMode','minutesPerEpisode','episodes']) if (Object.hasOwn(outline.params ?? {},key)) errors.push(`outline.params.${key} 已移除`);
+  if (!object(outline.story) || !text(outline.story.summary)) errors.push('outline.story.summary 不能为空');
   for (const k of ['characters','scenes','props','beats','episodes']) if (!(k === 'props' && outline[k] === undefined) && !Array.isArray(outline[k])) errors.push(`outline.${k} 必须为数组`);
   if (errors.length) return errors;
   for (const k of ['characters','scenes','props','beats']) {
-    const prefix = {characters:'C',scenes:'S',props:'P',beats:'B'}[k]; const seen = new Set();
+    const prefix = {characters:'C',scenes:'S',props:'P',beats:'B'}[k], seen = new Set();
     for (const item of outline[k] ?? []) {
       if (!object(item) || !new RegExp(`^${prefix}\\d{2,}$`).test(item.id) || seen.has(item.id)) errors.push(`outline.${k} ID 非法或重复`);
       if (k !== 'beats' && !text(item?.name)) errors.push(`outline.${k} 名称不能为空`);
+      if (!Array.isArray(item?.sourceRefs) || !item.sourceRefs.length) errors.push(`outline.${k} 缺少 sourceRefs`);
+      if (k === 'characters' && !['lead','support','functional'].includes(item?.tier)) errors.push('outline tier 非法');
+      if (k === 'scenes' && typeof item?.primary !== 'boolean') errors.push('outline primary 非法');
+      if (k === 'scenes' && Object.hasOwn(item ?? {},'reusePlan')) errors.push('outline reusePlan 已移交美术');
       seen.add(item?.id);
     }
   }
-  if (errors.length) return errors;
-  if (new Set(outline.story.focusCharacterIds).size !== outline.story.focusCharacterIds.length || outline.story.focusCharacterIds.some(id => !outline.characters.some(c => c.id === id))) errors.push('outline focusCharacterIds 无效或重复');
+  const focus = outline.story?.focusCharacterIds;
+  if (focus !== undefined && (!Array.isArray(focus) || new Set(focus).size !== focus.length || focus.some(id => !outline.characters.some(c => c?.id === id)))) errors.push('outline focusCharacterIds 无效或重复');
   const eps = new Set();
   for (const ep of outline.episodes) {
-    if (!object(ep) || !Number.isInteger(ep.ep) || ep.ep < 1 || ep.ep > outline.params.episodes || eps.has(ep.ep) || !text(ep.opening) || !MODES.includes(ep.ending?.mode) || !text(ep.ending?.event)) errors.push('outline 分集开场/集尾/集号非法');
-    if (object(ep) && Object.hasOwn(ep, 'stateChange')) errors.push('outline stateChange 已停用，请迁移');
+    if (!object(ep) || !Number.isInteger(ep.ep) || ep.ep < 1 || eps.has(ep.ep) || !text(ep.synopsis)) errors.push('outline 集号或 synopsis 非法');
+    if (ep?.opening !== undefined && !text(ep.opening)) errors.push('outline opening 非法');
+    if (ep?.ending !== undefined && (!object(ep.ending) || !text(ep.ending.event) || (ep.ending.mode !== undefined && !MODES.includes(ep.ending.mode)))) errors.push('outline ending 非法');
+    if (!Array.isArray(ep?.sourceRefs) || !ep.sourceRefs.length) errors.push('outline episode 缺少 sourceRefs');
     eps.add(ep?.ep);
   }
-  if (eps.size !== outline.params.episodes) errors.push('outline 分集数量与总集数不一致');
   let previousEpisode = 0;
   for (const beat of outline.beats) {
     if (beat?.episode < previousEpisode) errors.push('outline 节点所属集倒序');
     previousEpisode = beat?.episode;
-    if (!object(beat) || !eps.has(beat.episode) || (beat.position !== undefined && !['opening','early','middle','late','ending'].includes(beat.position)) || (beat.kind !== undefined && !['event','pressure','turn','payoff'].includes(beat.kind)) || !text(beat.setup) || !text(beat.outcome)) errors.push('outline 节点所属集或内容非法');
-    else if (beat.weight !== undefined && (beat.kind !== 'payoff' || !['minor','major'].includes(beat.weight))) errors.push('outline 节点 weight 与 kind 不一致');
-    if (object(beat) && Object.hasOwn(beat, 'type')) errors.push('outline beats.type 已停用，请迁移');
+    if (!object(beat) || !eps.has(beat.episode) || !text(beat.setup) || !text(beat.outcome)) errors.push('outline 节点所属集或内容非法');
+    for (const k of ['position','kind','weight','type']) if (Object.hasOwn(beat ?? {},k)) errors.push(`outline beats.${k} 已移除`);
   }
   for (const prop of outline.props ?? []) if (prop?.beatIds !== undefined && (!Array.isArray(prop.beatIds) || prop.beatIds.some(id => !outline.beats.some(b => b?.id === id)))) errors.push('outline 道具 beatIds 引用无效');
   for (const ep of outline.episodes) for (const [key, assets] of [['characterIds','characters'],['sceneIds','scenes'],['propIds','props']]) {
     const ids = ep?.[key];
     if (key === 'propIds' && ids === undefined) continue;
-    if (!Array.isArray(ids) || (key !== 'propIds' && !ids.length) || new Set(ids).size !== ids.length || ids.some(id => !(outline[assets] ?? []).some(a => a?.id === id))) errors.push(`outline E${ep?.ep} ${key} 引用无效`);
+    if (!Array.isArray(ids) || new Set(ids).size !== ids.length || ids.some(id => !(outline[assets] ?? []).some(a => a?.id === id))) errors.push(`outline E${ep?.ep} ${key} 引用无效`);
   }
-  if (!outline.beats.some(b => b?.id === outline.story?.endingBeatId && b?.episode === outline.params.episodes)) errors.push('outline 终局节点必须属于最终集');
+  if (outline.story.endingBeatId !== undefined && !outline.beats.some(b => b?.id === outline.story.endingBeatId && b?.episode === outline.provenance.totalEpisodes)) errors.push('outline 终局节点需要已知最终集');
   return errors;
 }
 export function reconcile(doc, script, outline) {
@@ -156,10 +177,16 @@ export function reconcile(doc, script, outline) {
   for (const [label, upstream] of [['script', script], ['outline', outline]])
     if (upstream && upstream.source !== doc.source) errors.push(`${label}.source 与 creation 不一致`);
   if (script && outline && script.source !== outline.source) errors.push('script/outline source 不一致');
+  if (script?.provenance && outline) for (const document of script.provenance.documents ?? []) {
+    const upstream = outline.provenance?.documents?.find(d => d.id === document.id);
+    if (!upstream) errors.push(`script 来源 ${document.id} 不在 outline.provenance 中`);
+    else if (document.sha256 !== upstream.sha256 || document.lineCount !== upstream.lineCount)
+      errors.push(`script 来源 ${document.id} 与 outline 版本不一致（sha256/lineCount）`);
+    // Paths are relative to each stage's artifact, not coordination identities.
+  }
   if (script && outline) for (const ep of script.episodes) {
     if (Object.hasOwn(ep, 'opening') || Object.hasOwn(ep, 'ending')) errors.push(`script E${ep.ep} 重复保存上游计划，请显式迁移`);
     if (!outline.episodes.some(o => o.ep === ep.ep)) errors.push(`script E${ep.ep} 在大纲里不存在`);
-    if (Math.abs(ep.targetSeconds - outline.params.minutesPerEpisode * 60) > 1e-9) errors.push(`E${ep.ep} 剧本目标时长与大纲不一致`);
     const ids = outline.beats.filter(b => b.episode === ep.ep).map(b => b.id);
     if (JSON.stringify(ids) !== JSON.stringify(ep.beatClaims?.map(c => c.beatId))) errors.push(`E${ep.ep} 节点认领与大纲顺序/身份不一致`);
     for (const sc of ep.scenes) {
@@ -169,6 +196,7 @@ export function reconcile(doc, script, outline) {
     }
   }
   for (const ep of doc.episodes) {
+    errors.push(...continuationProblems(ep, script?.episodes.find(s => s.ep === ep.ep)));
     const coordinates = ep.segments.flatMap(seg => seg.cuts.map(cut => ({scene:seg.sceneIndex, from:cut.beats[0], to:cut.beats[1]})));
     let previous = null;
     for (const c of coordinates) {

@@ -29,7 +29,7 @@ metadata:
 调度方（或用户）应当提供：
 
 - 待审核的工作单路径，通常是一集的全部段。状态必须为 `in_review`。
-- 这一集的节拍底稿：逐拍的动作或台词原文、在场人物、道具。
+- 这一集的 v4 节拍底稿：action/line/subtitle/sound、人物与道具，完整 notes、sourceRefs、audio、正式 transformation，以及 audioRefs 所引用来源场的正文与说明。
 - 资产表、项目要求 `creativeBrief`（可以没有）、有效视频模型、单段时长上限。这些与节拍底稿通常在同一份输入材料 JSON 里；记下它的路径，登记批准时需要。
 
 材料格式见 `examples/回执/输入材料.json`。**判断只依据工作单和这些材料**：不采信编写方的口头说明或自我评价，工作单里的「编写回应」只用于了解上一轮意见怎样被处理。缺少节拍底稿时停止并说明，不凭印象审核。
@@ -38,7 +38,7 @@ metadata:
 
 ## 2. 读取指南
 
-完整读取 `references/审核清单.md`。工作单格式与分镜结构字段见 `references/worksheet.md`。
+完整读取 `references/审核清单.md` 和 `references/source-audio-handoff.md`。本角色审核制作计划，不把来源哈希通过当作来源忠实性证明，不把计划批准当作成片通过。工作单格式与分镜结构字段见 `references/worksheet.md`。
 
 ## 3. 审核
 

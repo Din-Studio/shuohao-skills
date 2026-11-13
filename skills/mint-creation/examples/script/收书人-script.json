@@ -98,7 +98,7 @@
       ]
     }
   ],
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "params": {
     "tolerance": 0.3
   }

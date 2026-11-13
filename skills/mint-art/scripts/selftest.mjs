@@ -683,7 +683,8 @@ eq(STAGE_DIR, 'art', '段目录名与端到端工作目录约定一致');
 
   const d3 = clone();
   d3.scenes[1].name = d3.scenes[0].name;
-  ok(imageJobsFrom(d3).problems.some((x) => x.includes('同一个文件名')), '两个名字算出同一个文件名，后出的会盖掉先出的');
+  const collisionJobs=imageJobsFrom(d3).jobs;
+  eq(new Set(collisionJobs.map(j=>j.file)).size,collisionJobs.length,'同名不同 ID 的资产路径不覆盖');
 }
 
 /* ---------------- 自动驾驶（autopilot） ---------------- */

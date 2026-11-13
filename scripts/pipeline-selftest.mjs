@@ -23,18 +23,30 @@ const run = (bin, args, opts = {}) => spawnSync(bin, args, {
 const report = (...args) => run(process.execPath, ['scripts/report.mjs', ...args]);
 
 try {
-  // demo-script.json 是被忽略的本地历史数据；干净克隆没有它时明确说明未检查。
-  if (existsSync(join(root, 'demo-script.json'))) {
-    const demo = JSON.parse(readFileSync(join(root, 'demo-script.json'), 'utf8'));
-    eq(demo.schemaVersion, 3, '根目录独立剧本采用 v3');
-    eq(demo.episodes.length, 40, '早期剧本迁移保持原有40集');
-    const prose = demo.episodes.map(e => ({ ep: e.ep, targetSeconds: e.targetSeconds, scenes: e.scenes }));
-    eq(createHash('sha256').update(JSON.stringify(prose)).digest('hex'), '168ce5a1f2321d87b56884a579bd2231fd63a8344d78d0aa4c5100ceaeb81862', '正文、资产、目标时长与特殊 delivery 保持原值');
-    for (const ep of demo.episodes) {
-      for (const field of ['endBeat', 'seedNote', 'hook', 'cliff', 'beatsClaimed', 'hookBeat']) ok(!(field in ep), `独立剧本 E${ep.ep} 不携带 ${field}`);
-      ok(ep.scenes.every(scene => Array.isArray(scene.flow) && scene.flow.length > 0), '剧本正文没有因迁移删除');
-    }
-  } else console.log('未检查 demo-script.json：本地历史数据不存在。');
+  // Deterministic independent-authoring regression: no ignored demo file or skipped branch.
+  const authored = { schemaVersion: 4, source: '桥头交班', params: { actionSeconds: 6 }, episodes: [
+    { ep: 1, targetSeconds: 24, scenes: [{ sceneId: 'S01', characters: ['C01', 'C02'], props: ['P01'], flow: [
+      { action: '姚青将巡检记录交给接班员。' },
+      { speaker: 'C01', line: '只确认读数，不替我签名。', delivery: '平静而明确' },
+      { action: '接班员另起一行记录实际读数。' },
+      { speaker: 'C02', line: '这次是我的记录。', delivery: '低声' }
+    ] }] }
+  ] };
+  const authoredFile = join(temp, 'independent-script.json');
+  writeFileSync(authoredFile, JSON.stringify(authored));
+  const before = readFileSync(authoredFile);
+  const scriptCli = join(root, 'skills/mint-script/scripts/mint-script.mjs');
+  const checked = run(process.execPath, [scriptCli, 'validate', authoredFile, '--no-production']);
+  eq(checked.status, 0, checked.stdout + checked.stderr);
+  const shown = run(process.execPath, [scriptCli, 'render', authoredFile, '--html', '--no-production']);
+  eq(shown.status, 0, shown.stderr);
+  const exported = JSON.parse(shown.stdout.match(/<script[^>]*id="script-data"[^>]*>([\s\S]*?)<\/script>/)[1]);
+  assert.deepEqual(exported, authored); passed++;
+  eq(createHash('sha256').update(readFileSync(authoredFile)).digest('hex'), createHash('sha256').update(before).digest('hex'), '渲染保留正文、资产、目标时长与特殊 delivery');
+  for (const ep of exported.episodes) {
+    for (const field of ['endBeat', 'seedNote', 'hook', 'cliff', 'beatsClaimed', 'hookBeat']) ok(!(field in ep), `独立剧本不携带 ${field}`);
+    ok(ep.scenes.every(scene => scene.flow.length > 0), '独立剧本正文没有被删除');
+  }
   ok(!existsSync(join(root, 'skills/novel-storyboard')), '退役 skill 目录不存在');
   for (const lang of ['zh', 'en']) {
     const out = join(temp, `merged-${lang}.html`);
@@ -72,7 +84,8 @@ try {
   eq(explicit.status, 1, '不同故事的上游投影不匹配，必须报告失败');
   const mixed = readFileSync(join(temp, 'explicit.html'), 'utf8');
   ok(mixed.includes('面板未生成：mint-script'), '不同故事组合不能伪装成剧本联合通过');
-  ok(mixed.includes('id="pane-creation"'), '其他可渲染面板仍然保留');
+  // v4 creation also verifies supplied source identity; mismatched upstreams cannot render it.
+  for (const id of ['characters', 'art']) ok(mixed.includes(`id="pane-${id}"`), '独立且可渲染的资产面板仍然保留');
   const urlTextArt = JSON.parse(readFileSync(fixture('mint-art', '-art.json'), 'utf8'));
   urlTextArt.scenes[0].summary += ' 资料路径记作 url(images/reference.png)，这是正文。';
   urlTextArt.exportNote = 'url(../original.png)';

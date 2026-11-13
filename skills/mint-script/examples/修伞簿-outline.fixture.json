@@ -1,48 +1,78 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "source": "修伞簿",
   "fixtureScope": "本 skill 自有大纲消费接口夹具；仅覆盖剧本所读取的接口，不声称通过大纲完整校验。",
   "params": {
-    "episodes": 3,
-    "minutesPerEpisode": 1,
-    "genre": "生活与亲情",
-    "adaptMode": "原创"
+    "genre": "生活与亲情"
   },
   "story": {
+    "summary": "修伞人林禾从蓝线绕法猜测亲缘，逐步接受纹路不是身份证据。她留下联系方式，等待许秋自愿见面，双方只约定继续谈话，不确认亲缘。",
     "focusCharacterIds": [
       "C01"
     ],
-    "premise": "一把旧伞让修伞人想起离散母亲。",
-    "throughline": "从凭纹路猜认身份转向双方自愿的询问。",
-    "audiencePromise": "在修补小事中看见人的边界与耐心。",
-    "ending": "得到继续谈话的约定，亲缘身份仍然开放。",
-    "endingBeatId": "B06"
+    "endingBeatId": "B06",
+    "sourceRefs": [
+      {
+        "documentId": "umbrella",
+        "startLine": 4,
+        "endLine": 66
+      }
+    ]
   },
   "characters": [
     {
       "id": "C01",
       "name": "林禾",
       "tier": "lead",
-      "role": "修伞人，寻找母亲但不以纹路认亲"
+      "role": "修伞人，寻找母亲但不以纹路认亲",
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 2,
+          "endLine": 2
+        }
+      ]
     },
     {
       "id": "C02",
       "name": "陈岚",
       "tier": "support",
-      "role": "旧伞的主人，守护修伞师傅的隐私"
+      "role": "旧伞的主人，守护修伞师傅的隐私",
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 2,
+          "endLine": 2
+        }
+      ]
     },
     {
       "id": "C03",
       "name": "许秋",
       "tier": "support",
-      "role": "曾传授绕线方法的修伞师傅，自愿前来谈话"
+      "role": "曾传授绕线方法的修伞师傅，自愿前来谈话",
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 2,
+          "endLine": 2
+        }
+      ]
     }
   ],
   "scenes": [
     {
       "id": "S01",
       "name": "街角修伞铺",
-      "description": "临街工作台和存放修伞簿的抽屉。"
+      "description": "临街工作台和存放修伞簿的抽屉。",
+      "primary": true,
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 3,
+          "endLine": 3
+        }
+      ]
     }
   ],
   "props": [
@@ -52,6 +82,13 @@
       "beatIds": [
         "B01",
         "B02"
+      ],
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 3,
+          "endLine": 3
+        }
       ]
     },
     {
@@ -60,6 +97,13 @@
       "beatIds": [
         "B03",
         "B06"
+      ],
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 3,
+          "endLine": 3
+        }
       ]
     },
     {
@@ -68,6 +112,13 @@
       "beatIds": [
         "B04",
         "B05"
+      ],
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 3,
+          "endLine": 3
+        }
       ]
     }
   ],
@@ -75,51 +126,80 @@
     {
       "id": "B01",
       "episode": 1,
-      "position": "early",
-      "kind": "event",
       "setup": "客户送来旧伞。",
-      "outcome": "林禾发现蓝线绕法与童年记忆相似，但只确认伞骨需要修补。"
+      "outcome": "林禾发现蓝线绕法与童年记忆相似，但只确认伞骨需要修补。",
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 8,
+          "endLine": 18
+        }
+      ]
     },
     {
       "id": "B02",
       "episode": 1,
-      "position": "ending",
-      "kind": "turn",
       "setup": "记忆让林禾想立刻追问旧伞来源。",
-      "outcome": "林禾交还修好的伞，并预约在客户同意后询问修伞人。"
+      "outcome": "林禾交还修好的伞，并预约在客户同意后询问修伞人。",
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 19,
+          "endLine": 24
+        }
+      ]
     },
     {
       "id": "B03",
       "episode": 2,
-      "position": "early",
-      "kind": "pressure",
       "setup": "林禾期待旧簿能证明某种唯一联系。",
-      "outcome": "旧簿表明同样的手法传授给多人，陈岚拒绝擅自提供私人地址。"
+      "outcome": "旧簿表明同样的手法传授给多人，陈岚拒绝擅自提供私人地址。",
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 29,
+          "endLine": 39
+        }
+      ]
     },
     {
       "id": "B04",
       "episode": 2,
-      "position": "ending",
-      "kind": "event",
       "setup": "林禾不能靠纹路确认身份，也不能越过隐私。",
-      "outcome": "林禾留下自己的联系方式，让对方决定是否见面。"
+      "outcome": "林禾留下自己的联系方式，让对方决定是否见面。",
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 40,
+          "endLine": 45
+        }
+      ]
     },
     {
       "id": "B05",
       "episode": 3,
-      "position": "early",
-      "kind": "event",
       "setup": "陈岚转交了林禾的邀请。",
-      "outcome": "许秋自愿前来，确认自己教过这种修伞方法，却未说明亲缘身份。"
+      "outcome": "许秋自愿前来，确认自己教过这种修伞方法，却未说明亲缘身份。",
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 50,
+          "endLine": 60
+        }
+      ]
     },
     {
       "id": "B06",
       "episode": 3,
-      "position": "ending",
-      "kind": "payoff",
-      "weight": "minor",
       "setup": "林禾想知道身份，却接受对方也需要时间。",
-      "outcome": "双方约定明天继续谈话，林禾只记录约定，不写下未经确认的身份。"
+      "outcome": "双方约定明天继续谈话，林禾只记录约定，不写下未经确认的身份。",
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 61,
+          "endLine": 66
+        }
+      ]
     }
   ],
   "episodes": [
@@ -140,6 +220,13 @@
       ],
       "propIds": [
         "P01"
+      ],
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 4,
+          "endLine": 24
+        }
       ]
     },
     {
@@ -160,6 +247,13 @@
       "propIds": [
         "P02",
         "P03"
+      ],
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 25,
+          "endLine": 45
+        }
       ]
     },
     {
@@ -171,8 +265,14 @@
         "question": {
           "id": "Q01",
           "text": "许秋与林禾失散的母亲是什么关系？",
-          "resolution": "optional",
-          "reason": "本次完成的是自愿谈话的开始，身份答案留待双方愿意继续交流。"
+          "reason": "本次完成的是自愿谈话的开始，身份答案留待双方愿意继续交流。",
+          "sourceRefs": [
+            {
+              "documentId": "umbrella",
+              "startLine": 46,
+              "endLine": 66
+            }
+          ]
         }
       },
       "synopsis": "许秋赴约，双方决定逐步谈起过去。担心不认亲就会错过机会。接受先谈话，暂不确定身份。",
@@ -186,15 +286,34 @@
       "propIds": [
         "P02",
         "P03"
+      ],
+      "sourceRefs": [
+        {
+          "documentId": "umbrella",
+          "startLine": 46,
+          "endLine": 66
+        }
       ]
     }
   ],
-  "adaptation": {
-    "keep": [],
-    "cut": [],
-    "merge": [],
-    "risks": [
-      "原创样例，没有原作证据；修伞纹路不能单独证明身份。"
+  "provenance": {
+    "kind": "script",
+    "scope": "complete",
+    "totalEpisodes": 3,
+    "documents": [
+      {
+        "id": "umbrella",
+        "path": "修伞簿-source.txt",
+        "sha256": "4a5d698c524aa2a699d24469261bfd7798b5d5a345f43560c1252016edfc5345",
+        "lineCount": 66
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "umbrella",
+        "startLine": 1,
+        "endLine": 66
+      }
     ]
   }
 }

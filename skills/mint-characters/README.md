@@ -2,9 +2,11 @@
 
 # mint-characters
 
-## v3 上游契约与迁移
+当前来源交接支持 outline v4 的剧本事实，兼容显式 v3 历史资产投影。CLI `seed` 核验原文 SHA256 与范围；`sourceFacts` 将证据和限制与设计补定分开。详见[来源事实](references/source-facts.md)。production 保持 v3。
 
-seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schemaVersion: 3`。读取可选非空 `production.creativeBrief`，不解释策略配置。人物来源、弧光、节点分类与位置可以省略。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
+## 上游契约与迁移
+
+seed 接受 `outline.schemaVersion: 4` 和显式 v3 历史资产投影；production 仍要求 `schemaVersion: 3`。读取可选非空 `production.creativeBrief`，不解释策略配置。人物来源、弧光、节点分类与位置可以省略。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
 
 检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-background.md) 和 [迁移说明](references/migration.md)。
 

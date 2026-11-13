@@ -9,34 +9,38 @@
 
 # shuohao-skills
 
-**Agent skills for AI short-drama production** — from a novel to shoot-ready material: production parameters, character bibles, adaptation outlines, scene & prop bibles, screenplays, shot planning, and reference-sheet-to-video ordering. Built for AI coding agents, **runs in pi, Claude Code, and codex**.
+**Agent skills for AI short-drama production** — from an existing screenplay to production material: source coverage, structure and assets, one execution script, visual design, shot planning and optional generation. Built for AI coding agents, **runs in pi, Claude Code, and codex**.
 
-Here is the whole pipeline — **the production parameters lock the aspect and the models first; the outline converges the structure; script, scenes and characters iterate together; creation segments the script and mounts existing design sheets directly**:
+The pipeline: **outline parses an existing screenplay; script reconciles execution content with the original; character and art stages design assets; creation dispatches shot writing and independent review**. Project requirements and authorization constrain all stages. Confirm models and episode duration before production:
 
 <img src="assets/pipeline-en.svg" alt="AI short-drama production pipeline" width="680">
 
 | Skill | What it does |
 | --- | --- |
 | [**mint-setup**](skills/mint-setup/README.en.md) | Locks asset-image and video models, resolution tiers and independent aspect ratios, plus art style, languages and autopilot. Writes `production.json` at the work-directory root for the five creative skills. Optional creative requirements are plain language and independent of aspect ratio |
-| [**mint-outline**](skills/mint-outline/README.en.md) | Defines the audience promise, stable story beats, episode endings, optional arcs and assets. A local guide supports different creative goals without universal payoff or ending requirements |
+| [**mint-outline**](skills/mint-outline/README.en.md) | Accepts existing screenplays only. Tracks source versions and reading coverage, stable events and assets. Partial sources remain partial; missing episodes, endings and answers are not invented |
 | [**mint-characters**](skills/mint-characters/README.en.md) | Turns the cast the outline settled on into a character bible: profiles, design prompts, voice prompts, model sheets. Seeds the roster from outline.json; report language is configurable and the art style is copied whole from `production.json` |
 | [**mint-art**](skills/mint-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; base contracts and production parameters are checked |
-| [**mint-script**](skills/mint-script/README.en.md) | Writes scenes and beat flow, claims outline beats by stable ID, locates openings and endings, and reconciles upstream target duration. Opening landings are optional, ending coordinates are computed, and estimated time is not measured performance |
+| [**mint-script**](skills/mint-script/README.en.md) | Forms one execution script from the original, retaining event claims and asset IDs. Separates action, speech, subtitles, sound and non-speaking notes. Per-episode targetSeconds is the sole execution target: optional for parsing, required before production. Independent authoring remains available |
 | [**mint-creation**](skills/mint-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` exports an offline plan; the separately installed ly-video skill generates and recovers tasks. Shot expression is reviewed against the guide; model limits remain deterministic checks |
 | [**mint-video-prompt**](skills/mint-video-prompt/README.en.md) | The prompt writer: splits an episode into segments and cuts, writes each segment's prompt into a worksheet (`<segment>/prompt.md`) and submits it for review; revises and resubmits when changes are requested. Invoked as a subagent by mint-creation, or used on its own |
 | [**mint-video-prompt-review**](skills/mint-video-prompt-review/README.en.md) | The prompt reviewer: independently checks worksheets against the script, assets, project brief and model conventions, records comments in the same worksheet and registers `approved`, `changes_requested` or `blocked`. It never rewrites the prompt |
 
 **Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for English interface labels (story content and raw diagnostics retain their original language). The UI language can also be settled once in `production.json`.
 
-**To run the whole thing without interruptions**, switch on autopilot in `production.json` (`mint-setup init --autopilot`): reading `"autopilot": true`, each of the five creative skills runs its own stage end to end — no questions, no waiting for sign-off, deciding for itself and listing every decision in its final report. **It transfers approval, it does not remove checkpoints**: gates stay gates, money is still costed first, and loss limits still apply. Off by default.
+**To run the whole thing without interruptions**, switch on autopilot in `production.json` (`mint-setup init --autopilot`): reading `"autopilot": true`, each of the five creative skills runs its own stage end to end — no questions, no waiting for sign-off, deciding for itself and listing every decision in its final report. **Autopilot does not expand adaptation or rewriting permission or remove checks**. Without permission, organize sources and report expression gaps; candidates stay outside the execution script. Paid generation still requires current authorization. Off by default.
 
 ## Creative guides and data versions
 
-Outline, script and creation each carry a self-contained `references/创作指南.md`. Store optional project requirements as natural-language `production.json.creativeBrief`. There are no four-dimensional profile selections, guide versions, source hashes or policy-application commands. Visual prose remains in `production.json.style`; framing does not dictate pacing.
+Outline, script and creation each carry a self-contained `references/创作指南.md`. Store optional project requirements as natural-language `production.json.creativeBrief`. There are no four-dimensional profile selections, guide-version registries or policy-application commands. Source hashes identify the exact screenplay version, not the creative guide. Visual prose remains in `production.json.style`; framing does not dictate pacing.
 
-JSON stores story content and necessary handoff relationships. Adaptation notes, question tracking, arcs and beat categories are optional where appropriate. Stable beat claims, asset references, explicit promises and model limits remain checked. Duration estimates are advisory, not measured performance.
+JSON stores source facts and necessary handoff relationships. Outline no longer holds adaptation planning, arcs, event categories or fixed episode minutes. Source preservation is not an instruction to speak every sentence. One utterance can continue across shots without replay or repeated timing; actual repeated lines remain separate occurrences. Model duration limits remain hard constraints.
 
-**Breaking data change:** production, outline, script and creation require `schemaVersion: 3`. Back up old projects, preview `migrate-v3`, review semantic merges, and write a new file following each skill's migration guide. Changing only the version number is not a migration. Guide edits do not invalidate existing artifacts. Structural checks and content review remain separate; missing upstream data prevents claims of joint verification.
+**Breaking data change:** outline and script use `schemaVersion: 4`; production and creation stay at v3. Back up old projects and preview `migrate-v4` following each skill's guide. Complete source evidence and semantic review before writing a new file. Changing only the number is not migration. Historical decisions stay in migration records. Asset stages retain explicit v3 projection compatibility, without claiming source verification.
+
+Notes, audio semantics, source relations and reveal restrictions reach writers and reviewers and bind affected worksheet approvals. Unrelated scenes do not invalidate them. Originals remain unchanged. Markdown/HTML displays are derived; `<segment>/prompt.md` remains an editable production worksheet. Report structural checks, source/script review and production-plan review separately. Prompt approval is not finished-video approval. This change adds no translation, rough-cut or finished-video review stage.
+
+See the [implementation and verification record](docs/剧本解析融合-实施验收.md) for migration boundaries and test evidence (Chinese).
 
 ## One page for the whole pipeline
 
@@ -65,7 +69,7 @@ node scripts/pipeline-selftest.mjs # real rendering, interaction adapters, isola
 
 The following screenshots show historical interfaces. Render the local samples for the current report UI:
 
-**mint-outline · short-drama adaptation outline**
+**mint-outline · screenplay parsing**
 
 ![Adaptation outline report](skills/mint-outline/assets/report.webp)
 

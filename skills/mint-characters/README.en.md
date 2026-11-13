@@ -2,9 +2,11 @@
 
 # mint-characters
 
-## v3 upstream contract
+Current source handoff: outline v4 script facts are accepted; explicit v3 asset projections remain compatible. CLI `seed` verifies source SHA256 and ranges. `sourceFacts` preserves evidence and restrictions separately from design decisions. See [Source facts](references/source-facts.md). Production stays v3.
 
-Seed accepts outline schemaVersion 3 only; production also requires schemaVersion 3. Read the optional non-empty creativeBrief as natural language, never as policy or model parameters. Character provenance/arc and beat classification/position are optional. Missing production skips upstream checks; damaged or legacy production fails. Asset outputs and media plans remain unchanged.
+## Upstream contract
+
+Seed accepts outline schemaVersion 4 and explicit legacy v3 asset projections; production still requires schemaVersion 3. Read the optional non-empty creativeBrief as natural language, never as policy or model parameters. Character provenance/arc and beat classification/position are optional. Missing production skips upstream checks; damaged or legacy production fails. Asset outputs and media plans remain unchanged.
 
 Check objects use `status: pass|fail|skipped`, `category`, and `level`, never an ok boolean. Skips are not passes. Content review is not performed by these checks. See [contract](references/creative-background.md) and [migration](references/migration.md).
 

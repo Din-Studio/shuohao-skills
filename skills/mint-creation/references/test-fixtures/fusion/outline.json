@@ -1,0 +1,259 @@
+{
+  "schemaVersion": 4,
+  "source": "潮汐电台",
+  "provenance": {
+    "kind": "script",
+    "scope": "partial",
+    "documents": [
+      {
+        "id": "D01",
+        "path": "D01.txt",
+        "sha256": "0d09209a9c4af93bccfd06ff43b6ed24dcf17ea2d75c7bbdffe6742569d6adcc",
+        "lineCount": 4
+      },
+      {
+        "id": "D02",
+        "path": "D02.txt",
+        "sha256": "d8352b7d100bf085e2ba204a702da40df5cb4b72e7a392ea9aad1c88ddc770f0",
+        "lineCount": 4
+      },
+      {
+        "id": "D03",
+        "path": "D03.txt",
+        "sha256": "c347e5b872a04cb7cfde7e0d2a7bb53f6f9b7284338d4fd125055e273cfaa190",
+        "lineCount": 4
+      },
+      {
+        "id": "D04",
+        "path": "D04.txt",
+        "sha256": "fa6cbdae110f5dd69916169f72f4347ab7a2dc0421a6661c6a70497a4b86aec0",
+        "lineCount": 2
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 4
+      },
+      {
+        "documentId": "D02",
+        "startLine": 1,
+        "endLine": 4
+      },
+      {
+        "documentId": "D03",
+        "startLine": 1,
+        "endLine": 4
+      },
+      {
+        "documentId": "D04",
+        "startLine": 1,
+        "endLine": 2
+      }
+    ]
+  },
+  "story": {
+    "summary": "封港夜的广播跨过空走廊，备用机随后重播。码头没有归航或获救结论。"
+  },
+  "characters": [
+    {
+      "id": "C01",
+      "name": "值班员",
+      "tier": "functional",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 3,
+          "endLine": 4
+        }
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "id": "S01",
+      "name": "播音室",
+      "primary": true,
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 1
+        }
+      ]
+    },
+    {
+      "id": "S02",
+      "name": "走廊",
+      "primary": false,
+      "sourceRefs": [
+        {
+          "documentId": "D02",
+          "startLine": 1,
+          "endLine": 1
+        }
+      ]
+    },
+    {
+      "id": "S03",
+      "name": "备用接收室",
+      "primary": false,
+      "sourceRefs": [
+        {
+          "documentId": "D03",
+          "startLine": 1,
+          "endLine": 1
+        }
+      ]
+    },
+    {
+      "id": "S04",
+      "name": "码头",
+      "primary": false,
+      "sourceRefs": [
+        {
+          "documentId": "D04",
+          "startLine": 1,
+          "endLine": 1
+        }
+      ]
+    }
+  ],
+  "props": [
+    {
+      "id": "P01",
+      "name": "旋钮",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 3,
+          "endLine": 3
+        }
+      ]
+    },
+    {
+      "id": "P02",
+      "name": "备用接收机",
+      "sourceRefs": [
+        {
+          "documentId": "D03",
+          "startLine": 2,
+          "endLine": 4
+        }
+      ]
+    },
+    {
+      "id": "P03",
+      "name": "救生圈",
+      "sourceRefs": [
+        {
+          "documentId": "D04",
+          "startLine": 2,
+          "endLine": 2
+        }
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "id": "B01",
+      "episode": 1,
+      "setup": "封港广播开始。",
+      "outcome": "值班员松开旋钮，广播继续。",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 2,
+          "endLine": 3
+        }
+      ]
+    },
+    {
+      "id": "B02",
+      "episode": 1,
+      "setup": "同一次广播传入空走廊。",
+      "outcome": "蜂鸣响起，封港字幕出现。",
+      "sourceRefs": [
+        {
+          "documentId": "D02",
+          "startLine": 2,
+          "endLine": 4
+        }
+      ]
+    },
+    {
+      "id": "B03",
+      "episode": 1,
+      "setup": "备用接收机重新播放通知。",
+      "outcome": "第二次广播结束，指针回落。",
+      "sourceRefs": [
+        {
+          "documentId": "D03",
+          "startLine": 2,
+          "endLine": 4
+        }
+      ]
+    },
+    {
+      "id": "B04",
+      "episode": 1,
+      "setup": "空码头没有归航。",
+      "outcome": "救生圈静止，获救情况仍未知。",
+      "sourceRefs": [
+        {
+          "documentId": "D04",
+          "startLine": 2,
+          "endLine": 2
+        }
+      ]
+    }
+  ],
+  "episodes": [
+    {
+      "ep": 1,
+      "synopsis": "封港通知播放两次，空码头未给出获救结论。",
+      "opening": "广播宣布封港，不宣布救援结果。",
+      "ending": {
+        "mode": "open",
+        "event": "空码头没有归航或获救结论。"
+      },
+      "characterIds": [
+        "C01"
+      ],
+      "sceneIds": [
+        "S01",
+        "S02",
+        "S03",
+        "S04"
+      ],
+      "propIds": [
+        "P01",
+        "P02",
+        "P03"
+      ],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 4
+        },
+        {
+          "documentId": "D02",
+          "startLine": 1,
+          "endLine": 4
+        },
+        {
+          "documentId": "D03",
+          "startLine": 1,
+          "endLine": 4
+        },
+        {
+          "documentId": "D04",
+          "startLine": 1,
+          "endLine": 2
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "source": "潮汐电台",
+  "scenes": [
+    {
+      "id": "S01",
+      "name": "播音室",
+      "primary": true,
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 1
+        }
+      ]
+    },
+    {
+      "id": "S02",
+      "name": "走廊",
+      "primary": false,
+      "sourceRefs": [
+        {
+          "documentId": "D02",
+          "startLine": 1,
+          "endLine": 1
+        }
+      ]
+    },
+    {
+      "id": "S03",
+      "name": "备用接收室",
+      "primary": false,
+      "sourceRefs": [
+        {
+          "documentId": "D03",
+          "startLine": 1,
+          "endLine": 1
+        }
+      ]
+    },
+    {
+      "id": "S04",
+      "name": "码头",
+      "primary": false,
+      "sourceRefs": [
+        {
+          "documentId": "D04",
+          "startLine": 1,
+          "endLine": 1
+        }
+      ]
+    }
+  ],
+  "props": [
+    {
+      "id": "P01",
+      "name": "旋钮",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 3,
+          "endLine": 3
+        }
+      ]
+    },
+    {
+      "id": "P02",
+      "name": "备用接收机",
+      "sourceRefs": [
+        {
+          "documentId": "D03",
+          "startLine": 2,
+          "endLine": 4
+        }
+      ]
+    },
+    {
+      "id": "P03",
+      "name": "救生圈",
+      "sourceRefs": [
+        {
+          "documentId": "D04",
+          "startLine": 2,
+          "endLine": 2
+        }
+      ]
+    }
+  ],
+  "note": "creation 自有资产交接夹具，仅核对稳定 ID、路径与引用。测试临时写入非空占位字节，不是生成资产，不声称视觉准确。"
+}

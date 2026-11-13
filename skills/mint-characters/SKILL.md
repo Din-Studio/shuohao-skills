@@ -1,6 +1,6 @@
 ---
 name: mint-characters
-version: 2.0.0
+version: 2.1.0
 description: |
   从小说或短故事里拆出角色表、人物画像、形象提示词、音色提示词，
   并给每个角色出角色设定图（左半身像 + 右全身三视图 + 细节条），产出 JSON + Markdown + 可交互的 report.html。
@@ -35,9 +35,11 @@ metadata:
     - codex
 ---
 
-## v3 上游契约与迁移
+## 上游契约与迁移
 
-seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schemaVersion: 3`。读取可选非空 `production.creativeBrief`，不解释策略配置。人物来源、弧光、节点分类与位置可以省略。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
+seed 接受已有剧本解析的 `outline.schemaVersion: 4`，兼容显式 v3 历史资产投影；production 仍要求 `schemaVersion: 3`。v4 CLI seed 回查来源文件、SHA256、行号和已读范围；缺失或改版不能静默继续。原文事实与限制写入资产的 `sourceFacts`，与制作设计分开，报告可查看。结构核验不等于来源语义审核。
+
+开工先阅读 [来源事实与制作补定](references/source-facts.md)。角色 tier 与场景 primary 原样消费，不以默认值替代。仅被提及、只出声、无台词、非人主体和群演都先保留来源身份，再按实际制作需要决定是否出图。读取可选非空 `production.creativeBrief`，不解释策略配置。缺 production 时仅跳过上游对账；提供损坏上游、旧配置或缺视觉正文的 production 必须失败。资产输出与媒体计划协议不变。
 
 检查对象统一为 `status: pass/fail/skipped + category + level`，不再输出 ok 布尔值。跳过不计为通过。内容评审未执行时明确说明。开工前阅读 [契约](references/creative-background.md) 和 [迁移说明](references/migration.md)。
 
@@ -144,14 +146,16 @@ node {baseDir}/scripts/mint-characters.mjs seed <outline.json> > <workdir>/seed.
 | `arc` | 直接落进 `persona.arc` |
 | `role` / `from` | 进 `seedNote`——定位（女主 / 反派）与「由原著的谁合并而来」，扫原文时知道该收哪几条线的戏 |
 
-留空待填：`aliases`（要读原文才知道）、`oneLiner`、`persona` 其余各项、`image`、`voice`。**seed 出来的是骨架不是成品**，直接跑 `validate` 会报一堆字段缺失，那是预期的——后面 Step 2–6 就是来填它的。
+v4 已有证据的 `aliases` 原样带入，`sourceFacts` 保存别名出处、presence 和必要限制。留空待填：尚无依据的别名、`oneLiner`、`persona` 其余各项、`image`、`voice`。**seed 出来的是骨架不是成品**，直接跑 `validate` 会报一堆字段缺失，那是预期的——后面 Step 2–6 就是来填它的。
 
 两处口径要守住：
 
 - **大纲定的分档不要推翻**。谁重要是改编阶段拍板的事，这一层只负责把定下来的人做深。真觉得分档不对，回去改大纲，别在这里悄悄改一个不一样的
 - **主角组内部可以细分**。outline 的 `lead` 是「男女主 + 主反派」一整组，对应 `protagonist` 与 `major` 两档，seed 一律给 `protagonist`；照 `seedNote` 里的定位把主角之外的改成 `major`，这不算推翻分档
 
-**没有 `outline.json` 也照常跑**，本 skill 不依赖它——跳过 seed，从 Step 2 开始自己从原文拆角色表。
+**已有 v4 解析时跳过 Step 2–4 的名字归并。** 对照来源补齐 seed 中每个稳定 ID，按 `card-<C ID>.json` 保存角色卡；同名不同 ID 分别保留。来源遗漏返回 outline，不运行旧名字归并把两个人重新合在一起。关系指向同名人物时填写 `persona.relationships[].id`，名字只负责展示。只有无歧义的历史名字关系才自动连线。
+
+**没有 `outline.json` 也照常运行**，本 skill 不依赖它——跳过 seed，从 Step 2 开始独立提取角色。后面的名字归并仅属于无稳定 ID 的历史独立输入，不用于 v4 解析结果。
 
 ### Step 2 — 分块
 

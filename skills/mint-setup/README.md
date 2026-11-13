@@ -17,7 +17,7 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
 ```bash
 node scripts/mint-setup.mjs caps
 node scripts/mint-setup.mjs init --aspect 9:16 \
-  --source 回南天 --video-model "MiniMax H3" --video-resolution 768p \
+  --source 回南天 --video-model "seedance2.0" --video-resolution 720p \
   > <工作目录>/production.json
 node scripts/mint-setup.mjs style-template
 # 按用户要求填满 production.json 的 style，再校验
@@ -26,7 +26,8 @@ node scripts/mint-setup.mjs show <工作目录>/production.json
 ```
 
 - **成片画幅没有默认值**，必须显式传入 `--aspect`。它只设置视频比例。
-- 资产图默认 `nanobanana2`、`2K`、`16:9`。可通过 `--image-model`、`--asset-resolution`、`--asset-aspect` 调整。
+- 视频模型可选 Seedance 2.5、Seedance 2.0、Wan 3.0；生图模型可选 `image-2`、NanoBanana。选择后核对实时模型 ID 与档位；NanoBanana 有多个版本时确认具体版本。
+- 脚本的资产图默认值为 `nanobanana2`、`2K`、`16:9`。交互时先确认生图模型，再通过 `--image-model`、`--asset-resolution`、`--asset-aspect` 设置。
 - **画风没有默认值或预设类型**。`init` 留下空骨架；使用 `--style <style.json>` 可以载入已写好的画风。
 - 画风短语 `style.phrase` 供 Seedance 等模型指南使用。角色与环境画风分别存入 `style.character` 和 `style.scene`。更换画风时整套更换，正向要求不能同时写进反向词。
 - 报告语言默认中文，`--lang en` 可设为英文。提示词语言通过 `--prompt-lang` 设置，视频阶段按模型规则处理。

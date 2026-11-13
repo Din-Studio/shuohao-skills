@@ -1,7 +1,8 @@
 // Explicit v2 -> v3 only. Preview never writes; original bytes are never replaced.
 import { lstatSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { DEFAULT_PARAMS, object, own, nonempty } from './document.mjs';
+import { DEFAULT_PARAMS, object, own, nonempty, documentErrors, parameterErrors } from './document.mjs';
+import { sceneSemanticsErrors } from './semantics.mjs';
 export function readJsonStrict(file) {
   return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(file)));
 }
@@ -81,4 +82,108 @@ export function migrateFile(input, { out, confirm = false, ctx = {}, validate } 
     }
   } catch (error) { for (const file of created.reverse()) unlinkSync(file); throw error; }
   return { ...summary, written: true, out, backup, record };
+}
+
+// Historical operation only: new production never accepts schemaVersion 3.
+export function validateHistoricalV3(doc, ctx = {}, validateV4 = () => []) {
+  if (doc?.schemaVersion !== 3) return ['Historical validator expects script v3'];
+  const projected = structuredClone(doc); projected.schemaVersion = 4;
+  const { outline, ...rest } = ctx;
+  const errors = validateV4(projected, { ...rest, root:undefined, verifySources:false });
+  for (const ep of doc.episodes ?? []) {
+    if (typeof ep?.targetSeconds !== 'number' || !Number.isFinite(ep.targetSeconds) || ep.targetSeconds <= 0) errors.push('v3 targetSeconds required');
+    for (const sc of ep?.scenes ?? []) for (const b of sc?.flow ?? []) if (!own(b,'action') && !own(b,'line')) errors.push('v3 only accepts action/line');
+  }
+  if (outline !== undefined) {
+    if (outline?.schemaVersion !== 3 || !Number.isFinite(outline?.params?.minutesPerEpisode) || outline.params.minutesPerEpisode <= 0) errors.push('Historical outline v3 and positive minutesPerEpisode required');
+    if (outline?.source !== doc.source) errors.push('source differs from historical outline');
+    for (const ep of doc.episodes ?? []) {
+      const up = outline?.episodes?.find(e => e.ep === ep?.ep);
+      if (!up || ep.targetSeconds !== outline.params?.minutesPerEpisode * 60) errors.push('Historical upstream episode/target mismatch');
+      if (own(ep,'opening') || own(ep,'ending')) errors.push('Historical duplicate upstream plan');
+      const ids = (outline?.beats ?? []).filter(b => b.episode === ep?.ep).map(b => b.id);
+      if (JSON.stringify(ids) !== JSON.stringify((ep?.beatClaims ?? []).map(b => b.beatId))) errors.push('Historical claims mismatch');
+      for (const sc of ep?.scenes ?? []) {
+        if (!(outline?.scenes ?? []).some(s => s.id === sc.sceneId)) errors.push('Historical unknown scene');
+        for (const c of sc.characters ?? []) if (!(outline?.characters ?? []).some(x => x.id === c)) errors.push('Historical unknown character');
+        for (const p of sc.props ?? []) if (!(outline?.props ?? []).some(x => x.id === p)) errors.push('Historical unknown prop');
+      }
+    }
+  }
+  return errors;
+}
+
+export function migrateV4(input, { ctx = {}, independent = false, validate = () => [] } = {}) {
+  const errors = [], pending = [], retired = {};
+  if (!object(input) || input.schemaVersion !== 3) return { document:null, errors:['migrate-v4 expects script v3; migrate v2 to v3 explicitly first'], pending, retired };
+  const document = structuredClone(input);
+  document.schemaVersion = 4;
+  errors.push(...documentErrors(document,'script'), ...parameterErrors(document));
+  let previousEp = 0;
+  const ids = new Set();
+  for (const ep of Array.isArray(document.episodes) ? document.episodes : []) {
+    if (!Number.isSafeInteger(ep?.ep) || ep.ep <= previousEp) errors.push('v3 episodes must be ordered positive integers');
+    previousEp = ep?.ep;
+    if (own(ep,'targetSeconds') && (typeof ep.targetSeconds !== 'number' || !Number.isFinite(ep.targetSeconds) || ep.targetSeconds <= 0)) errors.push('v3 targetSeconds must be positive when supplied');
+    const index = c => Array.isArray(c) && c.length === 2 && c.every(n=>Number.isSafeInteger(n)&&n>0) && Array.isArray(ep?.scenes?.[c[0]-1]?.flow) && c[1] <= ep.scenes[c[0]-1].flow.length ? ep.scenes.slice(0,c[0]-1).reduce((n,s)=>n+(s?.flow?.length??0),0)+c[1]-1 : null;
+    if (own(ep,'openingBeat') && index(ep.openingBeat) === null) errors.push('v3 invalid openingBeat');
+    if (own(ep,'beatClaims') && !Array.isArray(ep.beatClaims)) errors.push('v3 beatClaims must be array');
+    let lastEnd = -1;
+    for (const c of Array.isArray(ep?.beatClaims) ? ep.beatClaims : []) {
+      const start=index(c?.start), end=index(c?.end);
+      if (!/^B\d{2,}$/.test(c?.beatId??'') || ids.has(c?.beatId) || start === null || end === null || start <= lastEnd || end < start) errors.push('v3 invalid/duplicate/out-of-order claim');
+      ids.add(c?.beatId);lastEnd=end;
+    }
+    for (const sc of Array.isArray(ep?.scenes) ? ep.scenes : []) {
+      if (!object(sc) || !/^S\d{2,}$/.test(sc.sceneId??'') || !Array.isArray(sc.characters) || sc.characters.some(c=>!/^C\d{2,}$/.test(c)) || new Set(sc.characters).size !== sc.characters.length || !Array.isArray(sc.flow) || !sc.flow.length) errors.push('v3 malformed scene');
+      errors.push(...sceneSemanticsErrors(sc,`E${ep?.ep}`));
+      for (const b of Array.isArray(sc?.flow) ? sc.flow : []) if (!own(b,'action') && !own(b,'line')) errors.push('v3 source only supports action/line');
+    }
+  }
+  if (!Array.isArray(input.episodes) || !input.episodes.length || input.episodes.some(e => !object(e) || !Array.isArray(e.scenes) || !e.scenes.length)) errors.push('v3 input requires episodes with actual scenes');
+  if (!nonempty(input.source)) errors.push('v3 input requires a work title');
+  // A v3 document cannot prove source reading. Add blocking draft provenance only
+  // after validating the otherwise-migrated text against supplied project inputs.
+  for (const ep of Array.isArray(document.episodes) ? document.episodes : []) {
+    if (own(ctx,'outline')) for (const key of ['opening','ending']) if (own(ep,key)) {
+      retired[`episodes.${ep.ep}.${key}`] = structuredClone(ep[key]); delete ep[key];
+      pending.push({path:`episodes.${ep.ep}.${key}`,reason:'Historical duplicated plan retained in migration report; reconcile meaning with current outline.'});
+    }
+    if (!own(ep,'targetSeconds')) pending.push({path:`episodes.${ep?.ep}.targetSeconds`,reason:'Not inferred; confirm before production.'});
+  }
+  // Legacy outlines cannot be fed to a v4 validator, but an explicitly supplied
+  // current outline and every production/cast/art boundary must remain checked.
+  const validationCtx={...ctx,stage:'full',root:undefined,verifySources:false};
+  if (ctx.outline?.schemaVersion === 3) delete validationCtx.outline;
+  errors.push(...validate(document,validationCtx));
+  if (!independent) {
+    document.provenance=null;
+    pending.push({path:'provenance',reason:'Read original script; supply document hashes, owned coverage and exact flow/note sourceRefs. Do not invent source evidence.'});
+  }
+  pending.push({path:'episodes',reason:'Review original wording, non-speaking notes, sound/subtitle/audio identity and authorization. Structural migration is not semantic verification.'});
+  return { document, errors, pending, retired, original:structuredClone(input), draft:!independent, contentReview:'not-performed' };
+}
+
+export function migrateV4File(input, { out, confirm = false, ctx = {}, independent = false, validate } = {}) {
+  if (typeof confirm !== 'boolean' || typeof independent !== 'boolean') throw new Error('confirm/independent must be boolean');
+  input = resolve(input);
+  const stat = lstatSync(input);
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Migration input must be a regular non-symlink file');
+  const original = readFileSync(input);
+  const result = migrateV4(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(original)), {ctx,independent,validate});
+  const summary = {...result,input,written:false};
+  if (!out || result.errors.length || !confirm) return summary;
+  out = resolve(out);
+  const backup = out+'.v3-backup', record = out+'.review';
+  for (const file of [out,backup,record]) {
+    try { lstatSync(file); throw new Error('Refusing existing output: '+file); } catch(e) { if(e.code !== 'ENOENT') throw e; }
+  }
+  if (!readFileSync(input).equals(original)) throw new Error('Input changed during preview; retry');
+  const created = [];
+  try {
+    for (const [file,data] of [[backup,original],[record,JSON.stringify({...result,document:undefined,accepted:confirm},null,2)+'\n'],[out,JSON.stringify(result.document,null,2)+'\n']]) {
+      writeFileSync(file,data,{flag:'wx'}); created.push(file);
+    }
+  } catch(e) { for(const file of created.reverse()) unlinkSync(file); throw e; }
+  return {...summary,written:true,out,backup,record};
 }

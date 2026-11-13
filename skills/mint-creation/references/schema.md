@@ -21,6 +21,8 @@
 
 `promptLang` 也可省略，默认跟着模型走：挂 seedance 系列默认 `zh`（官方指南通篇中文术语与中文案例），其余默认 `en`（「参考图 + 提示词」这条能力跨模型通用，英文提示词兼容面最广）。两种都能手动切到另一种语言，中文模式人名放行。**没有 `style` 字段**——画风一致性完全由参考图本身保证（角色/场景/道具设定图早就按各自 skill 的画风出好了），不需要在提示词里重复交代一遍。
 
+必须同时阅读 [来源、非发声说明与跨镜声音交接](source-audio-handoff.md)。line/sound 的 audio、四种 flow、notes 与 transformation 必须传递至当前输入材料；来源哈希核验不是忠实性审核。
+
 ## segment（段）
 
 | 字段 | 类型 | 说明 |
@@ -40,7 +42,7 @@
 | `ref` | string | 该资产的编号：`kind=character` 对应 `outline.json` 的 `characters[].id`（C 编号）；`scene`/`prop` 对应 `art.json` 的 `id`（S/P 编号） |
 | `role` | string | 这张图在这一格里的用途，人读的一句话（如「身份参考」「环境参考」），写进工作单的分镜结构与 manifest，不进质量门 |
 
-**按名字找文件，不按编号找**：`ref` 先经 `outline.characters` / `art.scenes` / `art.props` 的 id→name 映射转成名字，再拼 `slug(name)` 得到设定图路径——`character` 是 `../characters/images/<slug>-sheet.png`，`scene`/`prop` 是 `../art/images/<slug>-sheet.png`（相对 `creation/` 目录，与设定图 skill 的段目录同级）。编号与名字分离是上游的现状：`cast.json` 的角色对象只有 `name`，id→name 的映射在 `outline.json` 里；场景/道具在 `art.json` 里自带 id + name。落盘文件名按名字 slug，不按编号——这是设定图 skill 的落盘惯例，本 skill 只是按同一条规则拼路径。
+**按稳定编号查找资产，再根据当前资产列表解析文件名**：角色优先匹配 `cast.characters[].id`，旧名称匹配只接受无歧义的唯一结果。唯一名称保留 `<slug>-sheet.png`；角色名称 slug 碰撞时使用 `<C ID>-<slug>-sheet.png`，场景与道具在同一目录共同检查碰撞，使用 `<S/P ID>-<slug>-sheet.png`。角色目录是 `../characters/images/`，场景／道具目录是 `../art/images/`，均相对 creation 目录。检查、派发、报告与导出使用同一规则，不修改原始名称，不合并同名身份。
 
 **不是每段都要挂全部资产**——段级挂载是**这一格实际引用的**，不是「这场戏出现过的」全集。一段如果是纯特写、不需要重新交代环境，可以不挂场景设定图；只要该资产本身在 `characters/` 或 `art/` 里存在设定图文件，`refimage-coverage` 门就不会拦（它查的是「能不能解出文件」，不是「这段有没有挂」）。
 
@@ -49,7 +51,8 @@
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `beats` | [int, int] | 认领该场第几拍到第几拍（含两端）。**每个节拍必须被恰好一个分镜认领**，按顺序、连续 |
-| `seconds` | number | 分镜时长，必须为有限正数。没有通用的建议时长硬门。认领节拍的台词秒数必须装得下 |
+| `seconds` | number | 分镜时长，必须为有限正数。没有通用的建议时长硬门。台词须装进拥有及延续镜头共享时长 |
+| `audioRefs` | [int, int][] | 可选，同集更早镜头已拥有的 LINE 坐标；可跨段跨场，禁止当前／向前／动作／重复引用。不替代 beats，不重播 |
 | `size` | enum | 景别：`extreme-wide` 大远景 / `wide` 全景 / `medium` 中景 / `close` 特写 / `extreme-close` 大特写。对应的英文短语必须出现在这一切自己的 `[Shot k]` 行里 |
 | `camera` | enum | 运镜，统一词表（原样字符串，英文词沿用 H3 官方词表——这是通用摄影语汇，不是任何一个模型的私有字段）：`Static Shot` `Push In` `Pull Out` `Zoom In/Out` `Pan Left/Right` `Truck Left/Right` `Tilt Up/Down` `Pedestal Up/Down` `Arc Shot` `Tracking Shot` `Shake Slightly/Strongly` `POV` `Roll Clockwise/Counterclockwise`。运镜词同样必须出现在这一切自己的 `[Shot k]` 行里 |
 | `characters` | string[] | 画内人物（C 编号），必须 ⊆ 剧本该场人物；空镜给空数组。> `maxOnScreen` 时必须带 `note` |
@@ -83,11 +86,11 @@ ambience: A faint bell chime fades under the low hum of the night; no music.
 
 ## 时长约束链
 
-台词秒数（按剧本语速折算）≤ 分镜 `seconds`；段 Σ分镜 ≤ `maxSegmentSeconds`，并落进有效视频模型的合法时长区间；集 Σ段 落在剧本 `targetSeconds` 的 tolerance 内。提供 outline 时，先严格对账目标为 minutesPerEpisode × 60，容差不能放宽此项。所有时间是估算，不是生成结果。估时、段和集的求和、模型边界检查及 manifest 都使用未舍入数值；只有报告显示可以舍入。15.04 秒不能作为 15 秒通过模型上限。
+每次台词秒数（按剧本语速折算）装进拥有镜头及明确 audioRefs 延续镜头的共享 `seconds`，只累计一次，按正文台词顺序分配容量，延续链不得跳过中间镜头；段 Σ分镜 ≤ `maxSegmentSeconds`，并落进有效视频模型的合法时长区间；集 Σ段 落在剧本 `targetSeconds` 的 tolerance 内。targetSeconds 只属于 script；解析阶段可以未知，进入 creation seed/check/export 前必须确认，不能从 outline 推导。所有时间是估算，不是生成结果。估时、段和集的求和、模型边界检查及 manifest 都使用未舍入数值；只有报告显示可以舍入。15.04 秒不能作为 15 秒通过模型上限。
 
-## v3 上游与唯一计划
+## v4 上游与唯一执行目标
 
-script、outline、creation、production 必须显式 schemaVersion:3。正式读取拒绝旧 creative/creativeContext、params.rules/defaults/preferences、旧镜头阈值和旧开场字段，不静默忽略。
+script、outline 必须显式 schemaVersion:4；creation、production 仍为 schemaVersion:3。正式读取拒绝旧 creative/creativeContext、params.rules/defaults/preferences、旧镜头阈值和旧开场字段，不静默忽略。
 
 creation 集对象不持久化 opening、ending、endBeat。计划只从当前加载的 outline 读取；无 outline 时读取独立 script 的可选 opening/ending。提供 outline 时，script 中的计划副本报待迁移错误。source、ep、目标秒数和 B ID 顺序进行实际对账，但同名不证明语义同步。
 
@@ -97,7 +100,7 @@ script beatClaims 在独立模式可以省略；提供 outline 时必须按顺�
 
 script params 可选。唯一有效参数入口使用 charsPerSecond=4.5、actionSeconds=2.5、tolerance=0.15 的工具默认值，并接受显式覆盖。读取和渲染不回写默认值。非法数值、损坏参数和无效动作／台词失败，不按零秒累计。delivery、lighting 可选，特殊表演说明保留；省略不影响合法性。
 
-outline 的人物 from/arc、audiencePromise、adaptation、props、节点 position/kind/weight 按 v3 可选。weight 仅允许 kind=payoff 时提供。endingBeatId 仍需引用最终集节点，不能简单使用最后数组项代替。显式资产和节点引用继续检查。完整 Q 语义、预算和内容质量仍由大纲阶段校验及内容评审负责，本消费端不冒充完整大纲检查。
+outline v4 必须有 provenance、story.summary、对象与事件出处。删除 adaptation/arcs、params.adaptMode/minutesPerEpisode/episodes、beats.position/kind/weight 和 scenes.reusePlan；保留 tier/primary。endingBeatId 可选，只有识别已知实际全剧结尾时才能填写，不使用最后数组项代替。显式资产和节点引用继续检查。完整 Q 语义、预算和内容质量仍由大纲阶段校验及内容评审负责，本消费端不冒充完整大纲检查。
 
 ## 创作要求与发现
 
@@ -144,7 +147,7 @@ inputHash: <批准时写入的输入摘要>
 | `export` | creation.json + 工作单 + 当前上游 | manifest.json | 每段工作单已批准、两重绑定有效、与 creation.json 一致 |
 | `videos` | manifest.json + creation.json + 工作单 + 当前上游 | 无（计划） | 同 export，并且 manifest 的视频参数与当前配置一致 |
 
-- **批准绑定内容与输入**：`bodyHash` 是分镜结构与正文的摘要；`inputHash` 是这一段依据的输入的摘要——认领节拍的原文、挂载参考图的内容、视频模型与参数、提示词语言、单段上限和项目要求。任何一样变化，这一段的批准失效，`status`、`apply`、`export`、`videos` 全部拒绝。绑定范围只到这一段：别的段、别的集、上游文件里无关的字段发生变化，不影响它。开场与集尾计划的措辞不在绑定之内，修改之后由调度方决定是否重新审核首尾两段。
+- **批准绑定内容与输入**：`bodyHash` 是分镜结构与正文的摘要；`inputHash` 是这一段依据的输入的摘要——拥有与延续正文、来源身份、相关场次 notes、事件认领、挂载资产证据与参考图内容、视频模型参数、提示词语言、目标时长、同框与单段限制、项目要求。任何一样变化，这一段的批准失效，`status`、`apply`、`export`、`videos` 全部拒绝。绑定范围只到这一段：别的段、别的集、上游文件里无关的字段发生变化，不影响它。显式场次 characters/props 也进入绑定，包括声音来源场。开场措辞只绑定实际开场坐标所在段（未标注时使用第一拍），集尾措辞只绑定实际最后一拍所在段；修改后自动使相关批准失效，不影响其他段。
 - **状态头只由角色命令改写**：`in_review` 由编写方的提交命令写入，`approved`、`changes_requested` 与 `blocked` 由审核方的结论命令写入。主会话只在 `prompts init` 时写出草稿；`prompts new|submit|verdict` 是给没有安装兄弟 skill 的 subagent 使用的本地等价物，不是给主会话代替两个角色使用的。
 - **manifest 记录来源**：`creation` 是 creation.json 相对 manifest 的路径，`videos` 靠它重新核对；每段的 `prompt` 与参考图路径同样相对 manifest。没有 `creation` 的旧 manifest 需要重新导出。
 - **二级标题只有三个**：意见或回应里多出二级标题的工作单被所有命令拒绝，避免它之下的内容在改写时丢失。

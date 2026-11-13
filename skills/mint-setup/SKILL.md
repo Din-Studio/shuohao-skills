@@ -47,19 +47,19 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
 
 `{baseDir}` 是本文件所在目录。脚本为 `{baseDir}/scripts/mint-setup.mjs`，Node 18+，只使用标准库，无 npm 依赖。
 
-**边界**：不写故事、不出图、不下单。角色与美术阶段生成设定图，视频创作阶段直接挂载设定图生成视频。集数、时长属于大纲阶段；创作方向只记录自然语言要求，不在本阶段创作故事。
+**边界**：不写故事、不出图、不下单。角色与美术阶段生成设定图，视频创作阶段直接挂载设定图生成视频。已提供集数由 outline 按来源记录，逐集执行目标只保存在 script.targetSeconds，制作前必须确认；创作方向与允许变化只记录自然语言要求，自动驾驶不扩大授权，不在本阶段创作故事。
 
 ### Step 0 — 确认要求
 
 三项技术要求必须确认：
 
 1. **成片画幅**：例如 `9:16` 或 `16:9`。没有默认值，猜错会导致视频重出。
-2. **视频模型与档位**：读取已安装 ly-video，执行其 `models` 与 `models --model <ID>` 查看实时模型和档位；本地 `caps` 只提供历史快照。
+2. **视频模型与档位**：请用户从 Seedance 2.5、Seedance 2.0、Wan 3.0 中选择。读取已安装 ly-video，执行其 `models` 与 `models --model <ID>` 核对所选模型的实时 ID 和档位；本地 `caps` 只提供历史快照。
 3. **画风**：确认名字与具体质感要求。没有预设选项或默认画风；真人实拍、手绘、水墨、黏土定格都可以。
 
 另收集可选的 **creativeBrief**：请用户直接描述想要的作品与不希望的处理。没有额外要求就省略；不追问策略名称或版本，不自动推导规则。要求变化后明确提示下游内容需要重新评审。
 
-生图模型默认 `nanobanana2`，资产图默认 `2K`、`16:9`。资产图是设定表，成片竖屏不要求设定图也竖屏。
+**生图模型**请用户从 `image-2`、NanoBanana 中选择。通过已安装 ly-image 的 `models` 和 `models --model <ID>` 核对实时 ID 与档位；NanoBanana 有多个版本时，确认具体版本，不自行猜测。脚本未指定时仍默认 `nanobanana2`，但交互时应先确认用户选择。资产图默认 `2K`、`16:9`。资产图是设定表，成片竖屏不要求设定图也竖屏。
 
 自动驾驶默认关闭。用户明确要求全自动时添加 `--autopilot`。它只影响下游五个创作 skill，不免除本阶段的要求确认。
 
@@ -67,7 +67,7 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
 
 ```bash
 node {baseDir}/scripts/mint-setup.mjs caps
-node {baseDir}/scripts/mint-setup.mjs caps --model "MiniMax H3"
+node {baseDir}/scripts/mint-setup.mjs caps --model "seedance2.0"
 ```
 
 模型能力表保留历史采集来源与 UUID，只做离线检查。表外模型明确跳过能力检查。生成前通过已安装 ly-image / ly-video 的 models --model 查询实时 schema，不把快照当成当前能力。
@@ -78,7 +78,7 @@ node {baseDir}/scripts/mint-setup.mjs caps --model "MiniMax H3"
 
 ```bash
 node {baseDir}/scripts/mint-setup.mjs init --aspect 9:16 \
-  --source <剧名> --video-model "MiniMax H3" --video-resolution 768p \
+  --source <剧名> --video-model "seedance2.0" --video-resolution 720p \
   > <工作目录>/production.json
 ```
 

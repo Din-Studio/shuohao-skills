@@ -25,7 +25,7 @@ try {
     const isolated = join(temp, name, 'standalone');
     cpSync(source, isolated, { recursive: true });
     check(`${name} 自测入口存在`, () => assert.ok(existsSync(join(isolated, 'scripts/selftest.mjs'))));
-    if (['mint-outline', 'mint-script', 'mint-creation'].includes(name)) check(`${name} v3 自包含指南`, () => {
+    if (['mint-outline', 'mint-script', 'mint-creation'].includes(name)) check(`${name} 当前契约自包含指南`, () => {
       assert.ok(existsSync(join(isolated, 'references/创作指南.md')));
       assert.ok(!existsSync(join(isolated, 'references/profiles')));
       assert.ok(!existsSync(join(isolated, 'references/profile-contract.md')));
@@ -74,11 +74,21 @@ try {
     const cli = join(root, 'skills/mint-creation/scripts/mint-creation.mjs');
     for (const [skill, dir, target] of [['mint-video-prompt', '第七盏灯', 20], ['mint-video-prompt-review', '回执/第一轮', 10], ['mint-video-prompt-review', '回执/第二轮', 14]]) {
       const base = join(root, 'skills', skill, 'examples', dir), work = join(temp, 'bridge', skill, dir.replace('/', '-'), 'creation');
-      const input = JSON.parse(readFileSync(join(base.replace(/\/第.轮$/, ''), '输入材料.json'), 'utf8'));
+      const inputBase = base.replace(/\/第.轮$/, '');
+      const input = JSON.parse(readFileSync(join(inputBase, '输入材料.json'), 'utf8'));
       cpSync(base, work, { recursive: true });
-      const script = { schemaVersion: 3, source: input.source, episodes: [{ ep: 1, targetSeconds: target, scenes: input.seedScenes.map(sc => ({
+      const provenance = input.provenance ? structuredClone(input.provenance) : undefined;
+      for (const [i, doc] of (provenance?.documents ?? []).entries()) {
+        const source = resolve(inputBase, doc.path);
+        assert.ok(source.startsWith(join(root, 'skills', skill) + '/'), '来源必须属于样例自己的 skill');
+        const local = `source-${i + 1}.txt`;
+        cpSync(source, join(work, local)); doc.path = local;
+      }
+      const script = { schemaVersion: 4, source: input.source, ...(provenance ? {provenance} : {}), episodes: [{ ep: 1, targetSeconds: target, scenes: input.seedScenes.map(sc => ({
         sceneId: sc.sceneId, lighting: sc.lighting, characters: sc.characters, props: sc.props,
-        flow: sc.beats.map(b => b.kind === 'line' ? { speaker: b.speaker, line: b.text } : { action: b.text }) })) }] };
+        ...(sc.notes ? {notes: sc.notes} : {}), ...(sc.sourceRefs ? {sourceRefs: sc.sourceRefs} : {}),
+        // brief seconds on action/line are derived estimates, not editable script fields.
+        flow: sc.beats.map(b => ({[b.kind]: b.text, ...(b.kind === 'line' ? {speaker: b.speaker, ...(b.delivery ? {delivery: b.delivery} : {})} : {}), ...(b.audio ? {audio: b.audio} : {}), ...(b.sourceRefs ? {sourceRefs: b.sourceRefs} : {}), ...(b.transformation ? {transformation: b.transformation} : {}), ...(['sound','subtitle'].includes(b.kind) && b.seconds ? {seconds: b.seconds} : {})})) })) }] };
       writeFileSync(join(work, 'script.json'), JSON.stringify(script));
       writeFileSync(join(work, 'c.json'), JSON.stringify({ schemaVersion: 3, source: input.source, promptLang: input.promptLang, video: input.video,
         params: { maxSegmentSeconds: input.maxSegmentSeconds, maxOnScreen: input.maxOnScreen, tolerance: 0.15 }, episodes: [{ ep: 1, segments: [] }] }));
