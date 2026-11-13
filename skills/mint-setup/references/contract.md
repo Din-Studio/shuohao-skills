@@ -82,10 +82,10 @@
 
 ## resolve 参数输出
 
-```bash
-node scripts/mint-setup.mjs resolve --for characters
-node scripts/mint-setup.mjs resolve --for art
-node scripts/mint-setup.mjs resolve --for video
+```text
+mint_skill({skill:"mint-setup",args:["resolve","--for","characters"]})
+mint_skill({skill:"mint-setup",args:["resolve","--for","art"]})
+mint_skill({skill:"mint-setup",args:["resolve","--for","video"]})
 ```
 
 可加 `--from <目录>` 指定查找起点。阶段只有 `characters`、`art`、`video`。
@@ -96,7 +96,7 @@ node scripts/mint-setup.mjs resolve --for video
 - `resolution` 与 `aspectRatio` 保留配置原值，`inputData.resolution` 规范化为已知枚举的大小写。
 - 视频返回 `durationRange`；逐段 `duration` 不在这里固定。
 
-`inputData` 是结构化参数，不是提示词。出图调用补充 `prompt`、独立的 `negative_prompt`，需要参考图时补充 `images` URL 数组。本地图片先上传得到 URL；不要把像素尺寸或调用指令塞进提示词。
+inputData is an offline parameter structure, not a canvas draft. Follow the media stage's canvas handoff: map supported fields, create or reuse observed reference nodes, connect them in order and verify the prompt. Never pass local paths as uploaded URLs. The current canvas does not send negativePrompt; if the plan requires it, stop for explicit creative revision rather than dropping it. Keep pixel sizes and invocation instructions out of prompts.
 
 ## 视频投产包
 
@@ -104,10 +104,11 @@ node scripts/mint-setup.mjs resolve --for video
 
 视频模型接收整数秒且有范围：
 
-```bash
-node scripts/mint-setup.mjs duration 12.5 --model "MiniMax H3"
-# { "duration": 13, "note": "12.5 秒向上取整到 13 秒" }
+```text
+mint_skill({skill:"mint-setup",args:["duration","12.5","--model","MiniMax H3"]})
 ```
+
+The returned duration is 13, with a rounding notice.
 
 向上取整、限制到模型区间、发生调整时说明原因。超长段应先重新拆分，不能用截短生成时长代替剧情覆盖。
 

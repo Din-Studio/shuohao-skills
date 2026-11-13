@@ -7,13 +7,12 @@ description: |
   报告语言可指定（--lang），默认中文，任意语言都支持；
   画风**不内置任何类型**——它由用户在 mint-setup 那一段填进 production.json 顶层的 style.character，
   本 skill 整块抄过来用（真人实拍、吉卜力、水墨、黏土定格都行，不用改代码）。
-  零依赖、零 npm；本地不执行生成，实际生图可交给独立安装的 ly-image。
+  Self-contained deterministic scripts export plans; the host canvas_cli performs authorized generation.
   上传、提交、任务恢复和下载归外部生成工具，本 skill 可独立交付创作与计划。
   跑过 mint-setup 的项目会自动读工作目录根的 production.json：画风与设定图画幅两条硬检查，出图模型与尺寸也从那里取；
   顶层 autopilot 为 true 时全程不打断——报告语言、选角人数、归并复核全自己定，做过的决定写进汇报。
   Use when asked to 拆小说角色、分析人物、生成角色卡、character sheets from a novel。
-# 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
-allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
+allowed-tools: read write edit grep find ls mint_skill canvas_cli
 triggers:
   - mint-characters
   - 拆角色
@@ -25,14 +24,7 @@ triggers:
   - character sheet from novel
 metadata:
   license: Apache-2.0
-  requires:
-    bins:
-      - node          # >= 18，只用标准库，无 npm 依赖
-    # 可选外部执行工具：ly-image；不影响本 skill 独立产出
-  runtimes:
-    - pi            # 没有子代理：并发步骤在当前会话串行做，产出一致
-    - claude-code
-    - codex
+  runtimes: [mint-cloud]
 ---
 
 ## v3 上游契约与迁移
@@ -45,9 +37,7 @@ seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schem
 
 输入一篇小说/短故事，输出每个角色的：人物画像、形象提示词、音色提示词、角色设定图。
 
-`{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/mint-characters.mjs`，零依赖，`node` 直接跑。
-
-**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。实际生成交给独立安装的 ly-image——见 `references/media-handoff.md`。
+`{baseDir}` is the packaged skill directory. Scripts remain self-contained and standard-library-only. Invoke deterministic operations through mint_skill with command tokens, never shell syntax or script paths. All artifact paths are workspace-relative; use read/write/edit/find/grep/ls directly. Character design runs sequentially in the main session. The application supplies canvas_cli for authorized generation; read references/media-handoff.md.
 
 ---
 
@@ -76,8 +66,8 @@ seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schem
 - `zh` / `en` / `ja` —— 内置，不用管
 - **其他任何语言** —— 你要现场翻一份。跑
 
-  ```bash
-  node {baseDir}/scripts/mint-characters.mjs ui-template <lang>
+  ```text
+  mint_skill({skill:"mint-characters",args:["ui-template","<lang>"]})
   ```
 
   它打印一份英文骨架，把每个值翻译成目标语言，整块放进 `cast.json` 顶层的 `ui` 字段。渲染时会合并进内置表。
@@ -90,8 +80,8 @@ seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schem
 
 **本 skill 不内置任何画风，也不问用户画风。**画风是 `mint-setup` 那一段定的，住在工作目录根的 `production.json` 顶层。这一步只是把它取出来：
 
-```bash
-node {baseDir}/scripts/mint-characters.mjs style
+```text
+mint_skill({skill:"mint-characters",args:["style"]})
 ```
 
 打印这部剧的 `style.character` 那一块：`render` / `surface` / `lighting` / `negative` / `tags` 五段英文正文。**它们要原样抄进角色卡**——`render` 进 `image.sheet` 与 `image.prompt`，`negative` 的每一条进 `image.negativePrompt`。
@@ -113,9 +103,9 @@ Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时�
 | Step 0.1 问报告语言 | 按继承取（`--lang` > cast.json 顶层 > `production.json` > 中文），不问；非内置语言的 `ui` 骨架自己翻 |
 | Step 4 `mergeCandidates` 逐条复核 | **自己判**：证据够才合，拿不准就**不合并**——合错了两个人并成一个，比没合更难修。逐条判定结果写进汇报 |
 | Step 5 选角取前 N 位 | 用户没说就取默认 30，不问 |
-| Step 8 出图 | 完成离线计划；已授权时通过 ly-image 生成并检查，不自动重投。没有生成工具则明确未生成 |
+| Step 8 generation | Export the offline plan; use host canvas_cli only within spending authorization. Inspect existing tasks instead of resubmitting. Report missing capability or ungenerated media. |
 
-**转移的是审批权，不是取消检查点**：Step 7 的校验照样要过、出图前照样打印要出多少张、拿到图照样要核对——只是不再等人点头。**替用户做的每一个决定都要写进 Step 10 的汇报**，归并判定与选角人数一条不漏。
+Autopilot delegates creative choices within the task. Step 7 validation, image-count disclosure and output inspection still apply. It does not grant spending authorization; stop generation if that authorization is missing. Report every decision in Step 10, including every merge judgment and the selected cast size.
 
 ### Step 1 — 定位输入
 
@@ -129,10 +119,11 @@ Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时�
 
 **有 `outline.json`（mint-outline 的产出）就一起要过来，走 seed**——大纲是角色设定的上游，它的 `characters` 块已经定死了角色清单：
 
-```bash
-mkdir -p <workdir>
-node {baseDir}/scripts/mint-characters.mjs seed <outline.json> > <workdir>/seed.json
+```text
+mint_skill({skill:"mint-characters",args:["seed","outline/作品-outline.json"]})
 ```
+
+Save successful stdout with write to characters/.work/seed.json; seed has no --out. In the following examples, <workdir> means the workspace-relative characters/.work directory and <stage> means characters.
 
 搬过来的是大纲已经拍板的事实，留空的是这一层才该做的设计：
 
@@ -155,8 +146,8 @@ node {baseDir}/scripts/mint-characters.mjs seed <outline.json> > <workdir>/seed.
 
 ### Step 2 — 分块
 
-```bash
-node {baseDir}/scripts/mint-characters.mjs chunk <book.txt> <workdir>
+```text
+mint_skill({skill:"mint-characters",args:["chunk","book.txt","characters/.work"]})
 ```
 
 打印 `{"chunks": N, ...}`。
@@ -167,9 +158,9 @@ node {baseDir}/scripts/mint-characters.mjs chunk <book.txt> <workdir>
 
 ### Step 3 — 第一趟扫描（仅 N > 1）
 
-**有子代理就并发，没有就串行**：Claude Code 用 Task、codex 用 subagent，每块一个子代理，**所有调用放在同一条消息里**才是真并发；**pi 默认不带子代理**，就在当前会话里一块一块顺着读。两条路结果一样，串行只是慢。
+Scan chunks sequentially in the main session. No additional workflow roles are registered for this pass.
 
-每个子代理的任务：
+For each chunk:
 1. 读 `{baseDir}/references/roster-pass.md`，照它执行
 2. 读 `<workdir>/chunk-NN.txt`
 3. 把 roster JSON 写到 `<workdir>/roster-NN.json`
@@ -177,9 +168,11 @@ node {baseDir}/scripts/mint-characters.mjs chunk <book.txt> <workdir>
 
 ### Step 4 — 归并 + 复核
 
-```bash
-node {baseDir}/scripts/mint-characters.mjs merge <workdir> | tee <workdir>/merged.json
+```text
+mint_skill({skill:"mint-characters",args:["merge","characters/.work"]})
 ```
+
+Save successful stdout with write to characters/.work/merged.json; merge has no --out.
 
 落到 `merged.json` 不只是留档：Step 6 的 assemble 靠它拿同档角色的戏份顺序。
 
@@ -193,9 +186,11 @@ node {baseDir}/scripts/mint-characters.mjs merge <workdir> | tee <workdir>/merge
 { "merges": [{ "keep": "陆行远", "absorb": ["陆", "陆先生"] }] }
 ```
 
-```bash
-node {baseDir}/scripts/mint-characters.mjs merge <workdir> --apply merges.json | tee <workdir>/merged.json
+```text
+mint_skill({skill:"mint-characters",args:["merge","characters/.work","--apply","characters/.work/merges.json"]})
 ```
+
+Save successful stdout with write to characters/.work/merged.json.
 
 `keep`/`absorb` 用名字或任一别名定位都行，找不到会直接报错。输出仍带 `mergeCandidates`，剩下的都确认是不同的人（或清空）再进下一步。没有要合的就直接往下走——但 `merged.json` 必须留着。
 
@@ -205,7 +200,7 @@ node {baseDir}/scripts/mint-characters.mjs merge <workdir> --apply merges.json |
 
 ### Step 6 — 第二趟出卡
 
-每个角色一份，同样是有子代理就并发、没有（例如 pi）就在当前会话串行做。
+Develop one card per character sequentially in the main session.
 
 每份任务拿到：
 - `{baseDir}/references/profile-pass.md` 和 `{baseDir}/references/schema.md`（读它们，照着做）
@@ -220,10 +215,8 @@ node {baseDir}/scripts/mint-characters.mjs merge <workdir> --apply merges.json |
 
 然后合成 cast.json——**用 assemble，不要手拼**（手拼会丢字段、写错顶层键）：
 
-```bash
-node {baseDir}/scripts/mint-characters.mjs assemble <workdir> \
-  --source <书名> --lang <lang> \
-  --out <段目录>/<书名>-cast.json
+```text
+mint_skill({skill:"mint-characters",args:["assemble","characters/.work","--source","<title>","--lang","<lang>","--out","characters/作品-cast.json"]})
 ```
 
 坏卡会被逐个点名——哪份 `card-*.json` 坏了就只重跑那个角色，其他不用动。
@@ -232,8 +225,8 @@ node {baseDir}/scripts/mint-characters.mjs assemble <workdir> \
 
 ### Step 7 — 校验 ⛔ 不能跳
 
-```bash
-node {baseDir}/scripts/mint-characters.mjs validate <cast.json> <book.txt>
+```text
+mint_skill({skill:"mint-characters",args:["validate","characters/作品-cast.json","book.txt"]})
 ```
 
 记得带上 `--lang`（Step 0.1 定的）。检查：结构、`importance` 枚举、**引文逐字**、**出图提示词不含人名**、**语言分工**（人类字段跟随 `lang`、出图/TTS 提示词永远英文）、**非内置语言必须带 `ui`**，以及生产参数的两条——**画风整块用上**（`render` 原句进了两条提示词、`negative` 一条不落地进了反向词）、**设定图版面画幅与 production.json 一致**（找不到那份文件就明说跳过）。
@@ -255,26 +248,24 @@ node {baseDir}/scripts/mint-characters.mjs validate <cast.json> <book.txt>
 
 左栏半身像是面部设计基准，右上三视图的脸照它画，右下是关键细节的小特写。**两条硬要求**：三视图的脸必须与半身像一致（否则一张图两个长相）；三个全身像的比例必须协调（模型会为了塞下细节把人压扁）。
 
-```bash
-cd <段目录>
-node {baseDir}/scripts/mint-characters.mjs images <cast.json>
+```text
+mint_skill({skill:"mint-characters",args:["images","characters/作品-cast.json","--out","characters/image-plan.json"]})
 ```
 
-本命令只输出离线计划，不会生成图片。可增加 `--out image-plan.json` 保存计划，`--only` 筛选任务，`--style-ref auto` 添加风格参考依赖。
+This exports an offline plan, not images. --only selects items and --style-ref auto adds reference dependencies. Read [canvas handoff](references/media-handoff.md). The main session uses host canvas_cli to inspect live models, map items to nodes and ordered references, submit within authorization, inspect tasks and download verified outputs. Complete and verify anchor images before dependent generation and preserve input hashes. Unsupported fields, including negative prompts the current canvas does not send, block handoff until explicit plan revision.
 
-读取 [生成交接流程](references/media-handoff.md)，再读取已安装的 **ly-image**。由它发现实时模型/schema、构造请求、预览、在授权范围内提交，并使用原回执恢复查询与下载。计划按参考依赖排序；基准图核验完成后才能生成依赖图。外部下载名不同于本地报告路径，核验格式和内容后放到计划 output，再 render。
-
-没有 ly-image 或没有生成授权时，只交付提示词与计划，明确“未生成”。原 `--force`、`--cutout`、超时与并发选项已退役；质量重做和透明底由 ly-image 另行处理，不能自动重复付费。
+Without canvas capability or authorization, deliver prompts/plans and state that images were not generated. Retired --force, --cutout, timeout and concurrency flags are not recovery controls. Quality retries and optional cutouts require separate authorized canvas work; never resubmit uncertain tasks.
 
 核对左右两栏是否同一人物、三个全身像是否等高。版面要求见 [sheet](references/sheet.md)。
 
 ### Step 9 — 输出
 
-```bash
-cd <段目录>
-node {baseDir}/scripts/mint-characters.mjs render <cast.json> --md   > <书名>-cast.md
-node {baseDir}/scripts/mint-characters.mjs render <cast.json> --html > report.html
+```text
+mint_skill({skill:"mint-characters",args:["render","characters/作品-cast.json","--md"]})
+mint_skill({skill:"mint-characters",args:["render","characters/作品-cast.json","--html"]})
 ```
+
+Save successful stdout with write to characters/作品-cast.md and characters/report.html respectively; render has no --out.
 
 语言取 `cast.json` 里的 `lang`（没写就跟 `production.json`），要临时覆盖就加 `--lang <code>`。
 
@@ -293,7 +284,7 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
     ├── report.html                ← 双击就能开
     ├── images/
     │   ├── <slug>-sheet.png       ← 通过外部生成并核验后才有
-    │   └── jobs/                  ← 外部 skill 回执，保留用于恢复
+    │   └── jobs/                  ← canvas task/output mappings for recovery
     └── .work/                     ← 分块、roster、角色卡，跑完可删
 ```
 
@@ -308,12 +299,14 @@ report.html 的样式约定见 `{baseDir}/references/report-style.md`——要�
 - 单次上限 24 块（净覆盖约 93 万字符），超了会明确报 `truncated`，不静默截断
 - 人类可读字段跟随 `--lang`（默认中文）；出图和 TTS 提示词**永远英文**，那些引擎吃英文最稳
 - 设定图最容易出的两个问题：**一张图里两个长相**、**为了塞细节把人物压扁**。拿到图先扫一眼，见 `references/sheet.md`
-- `images` 只输出离线计划；实际生成只交给 ly-image，不内置第二套网关调用。
+- images exports an offline plan. Authorized generation uses the host canvas_cli, with no additional gateway client or personal credentials.
 - 想要能实时编辑、边跑边看的交互界面，那是另一个东西，不在这个 skill 里
 
 ## 自测
 
-```bash
+Developer-only terminal self-tests; cloud models do not execute these commands:
+
+```sh
 node {baseDir}/scripts/selftest.mjs
 node {baseDir}/scripts/v3-selftest.mjs
 node {baseDir}/scripts/upstream-selftest.mjs

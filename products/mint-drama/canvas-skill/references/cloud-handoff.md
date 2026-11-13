@@ -1,0 +1,16 @@
+# From a creative plan to canvas generation
+
+The main session performs this handoff using existing `mint_skill`, workspace file tools, and `canvas_cli`. The application does not automatically submit plans.
+
+1. Export the offline images/videos plan with `mint_skill`. For video, re-run the plan export against current inputs and compare its approval/input identity before any generation. Preserve the approved prompt, model, ordered references, parameters and output targets.
+2. Read canvas state and the live exact model schema. Check canvas-supported parameter mappings in commands.md. Report unsupported constraints; do not choose another model, discard negative prompts, or alter durations silently.
+3. Keep a workspace handoff record containing the plan path/input identity and, per job, its id, expected output, nodeId, reference-node IDs in plan order, and returned task/resource identities. This is a generation identity record, not a quality-failure log. Record known identities before advancing the stage.
+4. Match existing outputs and tasks against the current plan. An existing filename or similarly titled node alone does not prove identity. For a job with dependsOn, finish and verify the referenced job first. A planned output path is not yet an image.
+5. Locate existing reference nodes or upload the authorized local files through `canvas_cli`. Check the returned node identity and real media kind. Wire references in plan order; inspect the target node's references and mentionCandidates. If the canvas's resolved reference order or inputs differ from the approved plan, stop before generation.
+6. Write the proposed apply batch to a workspace JSON file using write. Use the actual canvas contract to create/update nodes and connect references. Read back nodes to verify prompt, model, parameters and references before submission. Node edits are not generation.
+7. Present the exact generation scope and discovered cost information under the host's approval rules. Content approval is separate from spending authorization. Submit authorized nodes once with run/run-batch. Save returned identities, including pending/batch information; never label accepted submission as success.
+8. Inspect tasks for the existing nodes. An uncertain submission, timeout or download failure requires recovery of the original task, not another run. A failed task or requested quality redo is a new generation decision requiring the appropriate authorization.
+9. Once an output succeeds, inspect resources and download the intended resource into the plan's output path, converted to a workspace-relative path. Reject a plan output outside this workspace. Verify a nonempty file, real media type, dimensions/duration and expected creative content. Do not rename a JPEG to PNG or overwrite unrelated output.
+10. Render the affected report via mint_skill and save its stdout with write. Report actual deliverables, failed or pending jobs, and any verification unavailable in this environment.
+
+The local fake-bridge test verifies command construction, session injection, transport policy and response handling. Real reference ordering, browser execution, model schemas, generation, approval and billing still require the later cloud acceptance session.

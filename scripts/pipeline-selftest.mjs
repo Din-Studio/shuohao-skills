@@ -215,16 +215,16 @@ try {
   }
   // pi 的角色定义与 Claude Code 的同名：只用子代理扩展认识的字段，不写模型（继承调度会话），指南路径由任务简报给出
   const piTools = {
-    'mint-video-prompt-writer': 'read, write, edit, bash, grep, find, ls',
-    'mint-video-prompt-reviewer': 'read, edit, bash, grep, find, ls',
+    'mint-video-prompt-writer': 'read, write, edit, grep, find, ls, mint_skill',
+    'mint-video-prompt-reviewer': 'read, edit, grep, find, ls, mint_skill',
   };
   for (const [agent, tools] of Object.entries(piTools)) {
     const text = readFileSync(join(root, 'agents/pi', `${agent}.md`), 'utf8');
     const front = text.match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? '';
     eq(front.split('\n').map(line => line.split(':')[0]).join(','), 'name,description,tools', `pi 角色定义 ${agent} 只有 name、description、tools`);
     ok(front.includes(`name: ${agent}`) && front.includes(`tools: ${tools}`), `pi 角色定义 ${agent} 的工具白名单`);
-    ok(/最后一条回复/.test(text) && /不能向用户提问/.test(text), `pi 角色 ${agent} 说明非交互与回报方式`);
-    ok(/不启动其他代理/.test(text), `pi 角色 ${agent} 不继续派发`);
+    ok(/final report/.test(text) && /cannot ask the user questions/.test(text), `Role ${agent} explains noninteractive reporting`);
+    ok(/Do not delegate/.test(text), `Role ${agent} cannot delegate further`);
   }
   ok(!existsSync(join(root, '.pi')), '仓库不保留项目级 .pi 角色定义');
   eq(claude('--uninstall').status, 0, '从 Claude Code 卸载成功');

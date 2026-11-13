@@ -9,7 +9,7 @@
 
 # shuohao-skills
 
-**Agent skills for AI short-drama production** — from a novel to shoot-ready material: production parameters, character bibles, adaptation outlines, scene & prop bibles, screenplays, shot planning, and reference-sheet-to-video ordering. Built for AI coding agents, **runs in pi, Claude Code, and codex**.
+**Agent skills for AI short-drama production** — from a novel to shoot-ready material: production parameters, character bibles, adaptation outlines, scene & prop bibles, screenplays, shot planning, and reference-sheet-to-video ordering. Cloud execution is packaged in **products/mint-drama** for Mint's host-managed Pi runtime.
 
 Here is the whole pipeline — **the production parameters lock the aspect and the models first; the outline converges the structure; script, scenes and characters iterate together; creation segments the script and mounts existing design sheets directly**:
 
@@ -22,8 +22,8 @@ Here is the whole pipeline — **the production parameters lock the aspect and t
 | [**mint-characters**](skills/mint-characters/README.en.md) | Turns the cast the outline settled on into a character bible: profiles, design prompts, voice prompts, model sheets. Seeds the roster from outline.json; report language is configurable and the art style is copied whole from `production.json` |
 | [**mint-art**](skills/mint-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Seeds from outline.json; base contracts and production parameters are checked |
 | [**mint-script**](skills/mint-script/README.en.md) | Writes scenes and beat flow, claims outline beats by stable ID, locates openings and endings, and reconciles upstream target duration. Opening landings are optional, ending coordinates are computed, and estimated time is not measured performance |
-| [**mint-creation**](skills/mint-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` exports an offline plan; the separately installed ly-video skill generates and recovers tasks. Shot expression is reviewed against the guide; model limits remain deterministic checks |
-| [**mint-video-prompt**](skills/mint-video-prompt/README.en.md) | The prompt writer: splits an episode into segments and cuts, writes each segment's prompt into a worksheet (`<segment>/prompt.md`) and submits it for review; revises and resubmits when changes are requested. Invoked as a subagent by mint-creation, or used on its own |
+| [**mint-creation**](skills/mint-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` exports an offline plan; the host canvas_cli handles authorized generation, task inspection and downloads. Shot expression is reviewed against the guide; model limits remain deterministic checks |
+| [**mint-video-prompt**](skills/mint-video-prompt/README.en.md) | The prompt writer: splits an episode into segments and cuts, writes each segment's prompt into a worksheet (`<segment>/prompt.md`) and submits it for review; revises and resubmits when changes are requested. Dispatched by mint-creation through the isolated mint_prompt workflow |
 | [**mint-video-prompt-review**](skills/mint-video-prompt-review/README.en.md) | The prompt reviewer: independently checks worksheets against the script, assets, project brief and model conventions, records comments in the same worksheet and registers `approved`, `changes_requested` or `blocked`. It never rewrites the prompt |
 
 **Every skill renders its report in English too** — reports default to a Chinese UI; pass `--lang en` to `render` for English interface labels (story content and raw diagnostics retain their original language). The UI language can also be settled once in `production.json`.
@@ -42,7 +42,9 @@ JSON stores story content and necessary handoff relationships. Adaptation notes,
 
 The five stage reports can be merged into a single page with a left-hand nav — **you get a pane for every stage you actually have**:
 
-```bash
+Developer-only report rendering check from the repository root; the cloud model uses each stage's mint_skill render instead:
+
+```sh
 node scripts/report.mjs --from <demo-dir> --out report.html
 ```
 
@@ -58,7 +60,9 @@ Merging solves three problems, **all of them inside the assembler, none inside t
 
 One pane shows at a time by default. "Show all" in the bottom-left expands every pane so Cmd+F reaches the whole document. Number keys `1`–`5` switch panes, and `#pane-script` deep-links straight to one.
 
-```bash
+Developer-only terminal self-tests from the repository root:
+
+```sh
 node scripts/report-selftest.mjs   # assembler unit tests
 node scripts/pipeline-selftest.mjs # real rendering, interaction adapters, isolated install tests
 ```
@@ -85,74 +89,31 @@ The following screenshots show historical interfaces. Render the local samples f
 
 Includes its own example and offline report renderer. See [mint-creation](skills/mint-creation/README.en.md).
 
-The main session only dispatches in this stage: after `seed` it launches a **writer subagent** (mint-video-prompt), runs the structural checks, then launches a **reviewer subagent** (mint-video-prompt-review), and loops until every segment worksheet is approved before writing back to creation.json, exporting and handing off generation. Approval is bound to a segment's content and to the inputs it relies on, so regenerating a reference image, editing a claimed line or changing model parameters sends only the affected segments back to review. A segment still unapproved after three submissions, or one the reviewer marked as blocked, stops the loop and goes to the user. Without the two sibling skills installed, the subagents read the guide copies bundled with mint-creation; pi without a subagent extension launches separate `pi -p` processes through bash; only an environment that can neither dispatch nor start a separate process runs both roles serially in one session, and the report says the review was not independent.
+The main session seeds inputs, dispatches the isolated mint-video-prompt-writer workflow, runs deterministic prompts check, then dispatches mint-video-prompt-reviewer independently. Only valid approved worksheets can be applied, exported and handed off. Approval binds segment content and its beat/reference/model/requirement inputs; changes invalidate only affected segments. Stop after three submissions without approval, two consecutive structural failures for the same reason, or a blocked review. Resolve blockers with the user or upstream before continuing. Generation remains a separate authorized canvas phase.
 
-## Install
+## Mint cloud product
 
-```bash
-git clone https://github.com/eternityspring/shuohao-skills.git
-cd shuohao-skills
-./scripts/install.sh
+[products/mint-drama](products/mint-drama) assembles the eight canonical skills, prompt roles and workflow into a self-contained product package. Developers run the following in that directory with Node 24 and the package's pinned pnpm version:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm assemble
+pnpm test
 ```
 
-It detects whether you have pi, Claude Code, or codex installed and **symlinks** every skill into place — so `git pull` takes effect immediately. All 8 `novel-*` skills are now named `mint-*`; script entry points and writer/reviewer agent names have changed too. Run the installer again to replace this repository's old-name links, then reload skills or start a new session. Real directories and links to other sources are left untouched. Old commands and script paths are no longer provided.
+These are developer-only commands. The model does not invoke bash, install packages or execute scripts. It uses workspace read/write/edit/find/grep/ls and deterministic tool calls:
 
-```bash
-./scripts/install.sh mint-characters   # just one skill
-./scripts/install.sh --codex            # only into codex
-./scripts/install.sh --pi               # only into pi
-./scripts/install.sh --uninstall        # remove the symlinks
-# Installing to pi also links the two role definitions in agents/pi/ into ~/.pi/agent/agents (the directory the subagent extension reads by default)
-# Installing to Claude Code also links the two subagent definitions in agents/ into ~/.claude/agents
+```text
+mint_skill({skill:"mint-setup",args:["init","--aspect","9:16","--video-model","MiniMax H3","--video-resolution","768p"]})
 ```
 
-Prefer to do it by hand:
+Args preserve CLI operation/option tokens without node or a script path. All artifact paths are workspace-relative. Use supported --out flags for exports; for stdout-only init/seed/render operations, save successful stdout with write. There are no pipes, redirection, directory changes or shell globs. Deterministic scripts retain standard-library-only implementations and do not import sibling skills.
 
-```bash
-ln -s "$PWD/skills/mint-characters" ~/.claude/skills/mint-characters
-ln -s "$PWD/skills/mint-characters" ~/.codex/skills/mint-characters
-ln -s "$PWD/skills/mint-characters" ~/.pi/agent/skills/mint-characters
-```
+Writer and reviewer use `workflow({name:"mint_prompt",args:{role:"mint-video-prompt-writer",task:"<complete brief>"}})` and role mint-video-prompt-reviewer. Briefs supply absolute packaged guide paths and workspace-relative input/worksheet paths. These foreground isolated Pi sessions share host model/authentication and cannot delegate. The main session runs mint_skill prompts check between them. workflow_control accepts status or cancel with runId; after interruption inspect worksheets and resume only the unfinished phase with a new workflow call.
 
-**pi has a second route**: install the whole repository as a pi package and all eight skills come in at once, with `git pull` still taking effect immediately:
+The host supplies canvas_cli, connection identity and credentials. Plans map to supported canvas nodes and ordered references, then authorized run, tasks/resources inspection and download to expected workspace outputs. Read each stage's media-handoff reference. Preserve content/input hashes and approvals; unsupported parameters block handoff. No --session, daemon pairing, CLI subprocess or personal credentials. Autopilot does not add spending authority, and uncertain/completed tasks are not resubmitted.
 
-```bash
-pi install /path/to/shuohao-skills                        # local directory
-pi install git:github.com/eternityspring/shuohao-skills   # straight from GitHub
-```
-
-The repository's root `skills/` directory is pi's convention directory — **no `package.json` required**. Once installed, `pi config` toggles them individually. A pi package does not carry role definitions; run `./scripts/install.sh --pi` once more if you want the writer and reviewer roles.
-
-## What differs between the three agents
-
-The workflow, the scripts and the artifacts are identical across all three. Only two things differ — **neither changes the result, only how you type the command and how fast it runs**:
-
-| | pi | Claude Code | codex |
-| --- | --- | --- | --- |
-| Skill command | `/skill:mint-outline` | `/mint-outline` | `/mint-outline` |
-| Sub-agent concurrency | The core ships without sub-agents, built-in todos or background bash; a subagent extension adds the `subagent` tool. Without it, mint-creation launches separate `pi -p` processes through bash for writing and review | Task | subagent |
-
-Asking in plain words ("break this book down into characters", plus the path) works on all three and is equivalent to typing the command.
-
-Creative steps can run serially when sub-agents are unavailable. Actual media generation and task recovery belong to the separately installed ly-image / ly-video skills, not local creative scripts.
-
-## External generation skills
-
-Install these first when you want generated media:
-
-```bash
-npx skills@latest add Din-Studio/skills --agent codex --skill ly-image ly-video -g -y
-```
-
-The user-level copies in `~/.agents/skills/` are also discoverable by pi. Reload skills or start a new session. Each creative skill remains standalone: `images` and `videos` now export plans only, even without `--dry-run`. Use `--out plan.json` to save a new plan. Read the stage's `references/media-handoff.md`, then the installed external skill, for live model discovery, request preparation, authorized submission, task recovery and output placement. Old generation flags are retired; never resubmit uncertain tasks.
-
-## Requirements
-
-| | Required? | Notes |
-| --- | --- | --- |
-| **Node** | Yes | ≥ 18. The skill scripts use only the standard library — **no npm dependencies, nothing to install** |
-| **Model quota** | Yes | The writing stages use your current session's quota. **No API key needed** |
-| **ly-image / ly-video skills** | Optional | Install separately from [Din-Studio/skills](https://github.com/Din-Studio/skills). Actual generation requires Node 22.20+ and private credentials; existing `~/.config/ly/config.json` is supported. Local writing, validation and plan export remain independent |
+Local package and fake-transport tests do not establish real cloud approval, billing, browser delivery or generation quality; those checks belong to later Mint integration.
 
 > **Note on output language.** These skills are Chinese-first. `mint-characters` produces Chinese character profiles even for an English source novel, and its validator actively rejects English in those fields. See that skill's README for what it would take to change.
 
@@ -181,11 +142,13 @@ Two hard requirements:
 
 Run every self-test before adding a skill:
 
-```bash
+Developer-only terminal self-test sweep from the repository root:
+
+```sh
 for f in skills/*/scripts/*selftest.mjs scripts/*-selftest.mjs; do node "$f" || exit; done
 ```
 
-There is no CI. Run the local tests, including cross-stage integration, explicit migration and isolated-copy checks. **Only tested on macOS with Node 24**; there is no platform-specific code, so Linux and older Node releases should be fine, but that is unverified.
+There is no CI. Run the local tests, including cross-stage integration, explicit migration and isolated-copy checks. The cloud product requires Node 24.22.1+. Some legacy suites require POSIX paths and file symlinks; use Linux for the complete sweep. See the [integration verification record](docs/mint-cloud-runtime-integration-plan.md#verification-record) for actual results and cloud checks still deferred.
 
 ## Working-directory layout
 

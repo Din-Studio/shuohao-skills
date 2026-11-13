@@ -80,7 +80,7 @@ try {
     publish(m);
     const out=join(temp,'handoff.json'),r=cli('videos',manifestPath,'--only','E01-01','--out',out);
     assert.equal(r.status,0,r.stderr);const plan=JSON.parse(r.stdout),j=plan.jobs[0];
-    assert.equal(plan.status,'planned');assert.equal(plan.skill,'ly-video');assert.equal(plan.model,'MiniMax H3');
+    assert.equal(plan.status,'planned');assert.equal(plan.skill,'scenemint-canvas');assert.equal(plan.model,'MiniMax H3');
     assert.equal(plan.jobs.length,1);assert.equal(j.id,'E01-01');
     assert.equal(j.prompt,'shots:\n[Shot 1] wide shot, Static Shot — observe.\nambience: silence.');
     assert.deepEqual(j.params,{aspect_ratio:'9:16',resolution:'768p',duration:7});

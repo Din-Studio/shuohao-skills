@@ -2,12 +2,13 @@
 
 旧 production 没有版本号；迁移也接受显式 schemaVersion: 2。正式入口只接受 schemaVersion: 3，不双读旧 creative。
 
-```bash
-node scripts/mint-setup.mjs migrate-v3 old-production.json
-node scripts/mint-setup.mjs migrate-v3 old-production.json --out production-v3.json
-# 预览存在语义待确认项时，审阅后才添加：
-node scripts/mint-setup.mjs migrate-v3 old-production.json --out production-v3.json --confirm
-node scripts/mint-setup.mjs validate production-v3.json
+Use workspace-relative paths. Add --confirm only after reviewing pending semantic changes:
+
+```text
+mint_skill({skill:"mint-setup",args:["migrate-v3","old-production.json"]})
+mint_skill({skill:"mint-setup",args:["migrate-v3","old-production.json","--out","production-v3.json"]})
+mint_skill({skill:"mint-setup",args:["migrate-v3","old-production.json","--out","production-v3.json","--confirm"]})
+mint_skill({skill:"mint-setup",args:["validate","production-v3.json"]})
 ```
 
 默认仅输出 JSON 预览（status、pending、candidate），不修改文件。目标存在、目标是原文件、软链接目标或损坏输入均拒绝。只写入新文件，不自动扫描或操作用户项目。原文件逐字保持，作为可恢复的原始副本；需要恢复时删除新文件或复制原文件到另一个工作位置。本工具没有原地替换模式，也不宣称多文件事务。
@@ -26,4 +27,4 @@ node scripts/mint-setup.mjs validate production-v3.json
 
 --confirm 只确认本次预览的去向，不代表内容评审完成。工具仍检查模型参数和视觉正文，不修饰损坏旧输入，不执行图片或视频生成。
 
-离线回归：`node scripts/migration-selftest.mjs`。测试覆盖预览只读、语义确认、技术字段与原文保真、原文件恢复、防覆盖及非法旧输入。
+Developer-only offline regression: `node scripts/migration-selftest.mjs` from this skill directory. It covers read-only preview, semantic confirmation, technical/text fidelity, original recovery, overwrite refusal and invalid legacy inputs. Cloud models do not execute this terminal command.

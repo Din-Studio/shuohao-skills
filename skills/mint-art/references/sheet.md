@@ -1,13 +1,13 @@
 # 设定图出图（场景 + 道具）· 版面与提示词
 
-本 skill 只导出出图计划；实际生成使用独立安装的 **ly-image**。先阅读 [交接与恢复流程](media-handoff.md)。
+This skill exports an offline plan; authorized generation uses the host canvas_cli. Read [canvas handoff and recovery](media-handoff.md). All tool paths are workspace-relative.
 
-```bash
-node <baseDir>/scripts/mint-art.mjs images <剧名>-art.json --out image-plan.json
+```text
+mint_skill({skill:"mint-art",args:["images","art/作品-art.json","--out","art/image-plan.json"]})
 ```
 
 可使用 `--only` 选择任务，`--dry-run` 预览；默认同样不会生成。变体自动补齐母场景依赖，并按先母后子的顺序导出。
-模型、档位和画幅来自显式 production.json，提示词来自 image.sheet 与 image.negativePrompt。缺完整制作参数时先补齐，不能使用隐式默认值。设定图画幅与视频画幅分别读取，不折算像素。实时 schema 由 ly-image 核对。
+模型、档位和画幅来自显式 production.json，提示词来自 image.sheet 与 image.negativePrompt。缺完整制作参数时先补齐，不能使用隐式默认值。设定图画幅与视频画幅分别读取，不折算像素。Use host canvas_cli models to verify the current schema. Unsupported plan fields, including negative prompts the current canvas does not send, block submission until explicit creative revision.
 
 以下是版面和提示词的创作要求；计划不等于图片。
 
@@ -59,14 +59,14 @@ node <baseDir>/scripts/mint-art.mjs images <剧名>-art.json --out image-plan.js
 
 ## 变体场景的提示词
 
-`variantOf` 进入计划的参考依赖；ly-image 必须先完成母场景，再绑定其成图作为参考：
+variantOf becomes a plan dependency. Complete and verify the parent scene through canvas_cli before connecting its observed output node as a reference:
 母场景主视角 + `changes` 的改动描述 + 一句
 `keep the structure, materials and wear identical to the reference image`。
 这比从零生成一致得多——变体机制的意义就在这。
 
 ## 道具的透明底
 
-白底出图之后，可另交 ly-image 执行透明底编辑；先查实时模型、参数和价格。核验后放到 optionalCutoutOutput，保留原白底主图；render 仍读取 `<slug>-sheet.png`。
+Keep the white-background master. A cutout is a separate authorized canvas operation: first read the packaged command guidance and observed node tool capabilities, verify supported parameters and current costs, then download and verify the result at optionalCutoutOutput. If no suitable tool is available, report it as unfinished. Render continues to read <slug>-sheet.png; never reuse the retired --cutout flag.
 
 ## 画风一致性
 

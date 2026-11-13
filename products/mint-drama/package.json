@@ -1,0 +1,28 @@
+{
+  "name": "@mint/mint-drama",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "assemble": "node scripts/assemble.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs",
+    "test:skills": "node scripts/test-skills.mjs",
+    "verify:package": "node scripts/verify-package.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "1.3.0",
+    "@earendil-works/pi-coding-agent": "1.3.0",
+    "@earendil-works/pi-tui": "1.3.0",
+    "@narumitw/pi-goal": "0.54.13",
+    "@quintinshaw/pi-dynamic-workflows": "3.14.0",
+    "@scenemint/canvas-cli": "link:./vendor/canvas-cli",
+    "typebox": "1.3.27"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2"
+  },
+  "engines": { "node": ">=24.22.1" },
+  "packageManager": "pnpm@12.14.0"
+}

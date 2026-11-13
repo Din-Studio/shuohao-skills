@@ -1,0 +1,44 @@
+{
+  "name": "@scenemint/canvas-cli",
+  "version": "0.18.7",
+  "description": "SceneMint canvas CLI, cloud transport for mint-agent (see README.md)",
+  "license": "MIT",
+  "private": true,
+  "bin": {
+    "scenemint-canvas": "bin/scenemint-canvas.mjs"
+  },
+  "type": "module",
+  "exports": {
+    "./policy": {
+      "types": "./src/policy.d.mts",
+      "import": "./src/policy.mjs"
+    },
+    "./contract": {
+      "types": "./src/contract.d.mts",
+      "import": "./src/contract.mjs"
+    },
+    "./client": {
+      "import": "./src/client.mjs"
+    },
+    "./session": {
+      "import": "./src/session.mjs"
+    },
+    "./media": {
+      "import": "./src/media.mjs"
+    },
+    "./common": {
+      "import": "./src/common.mjs"
+    },
+    "./host": {
+      "types": "./src/host.d.mts",
+      "import": "./src/host-argv.mjs"
+    },
+    "./cloud": {
+      "types": "./src/cloud.d.mts",
+      "import": "./src/cloud.mjs"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

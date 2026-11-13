@@ -4,10 +4,12 @@
 
 ## 安全入口
 
-```bash
-node scripts/mint-script.mjs migrate-v3 OLD.json --outline OUTLINE-v3.json
-node scripts/mint-script.mjs migrate-v3 OLD.json --outline OUTLINE-v3.json --out NEW.json
-node scripts/mint-script.mjs migrate-v3 OLD.json --outline OUTLINE-v3.json --out NEW.json --confirm
+All paths are workspace-relative:
+
+```text
+mint_skill({skill:"mint-script",args:["migrate-v3","script/OLD.json","--outline","outline/OUTLINE-v3.json"]})
+mint_skill({skill:"mint-script",args:["migrate-v3","script/OLD.json","--outline","outline/OUTLINE-v3.json","--out","script/NEW.json"]})
+mint_skill({skill:"mint-script",args:["migrate-v3","script/OLD.json","--outline","outline/OUTLINE-v3.json","--out","script/NEW.json","--confirm"]})
 ```
 
 没有 --out 只预览，即使 --confirm 也不写入。存在 pending 时返回非零；--out 不能绕过待确认项。--confirm 表示已阅读并接受迁移记录，不表示故事内容已评审。结构错误不能通过确认绕过。

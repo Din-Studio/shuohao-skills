@@ -7,7 +7,7 @@ description: |
   创作方向由自然语言要求与本地指南确定，不预设冷开场、密集动作或悬念集尾。
   输出 JSON、Markdown、离线中英报告。不分镜、不出图、不调用付费模型。
   Use when asked to 写剧本、台词、场次、写戏、screenwriting、script。
-allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
+allowed-tools: read write edit grep find ls mint_skill
 triggers:
   - mint-script
   - 剧本
@@ -16,16 +16,14 @@ triggers:
   - screenplay
 metadata:
   license: Apache-2.0
-  requires:
-    bins: [node]
-  runtimes: [pi, claude-code, codex]
+  runtimes: [mint-cloud]
 ---
 
 # mint-script v3
 
 剧本负责人物行为和表达。分镜、镜号、模型提示词、参考图及生成调度属于视频制作阶段。整个 skill 可单独复制，只有 Node 18+ 标准库依赖，不读取兄弟代码、兄弟样例或第三方 skill。
 
-{baseDir} 是本文件目录。命令、示例和自测入口统一见 [README](README.md)，不在多份指南重复维护。
+{baseDir} is the packaged skill directory. Use workspace-relative paths with read/write/edit/find/grep/ls and invoke deterministic commands through mint_skill without shell execution. [README](README.md) owns command examples and developer-only self-tests.
 
 ## 输入与要求
 

@@ -39,7 +39,7 @@ seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schem
 | `scenes` | 是 | 场景数组 |
 | `props` | 否 | **叙事道具**数组——只收有特写、跨集、承载剧情的（3–8 件为宜），场景陈设归场景锚点。选法见 `prop-pass.md` |
 
-**顶层没有 `style` 字段。**画风住在工作目录根的 `production.json`，`art.json` 里再抄一份就是第二个来源，两个来源必然会漂。跑 `node scripts/mint-art.mjs style` 取这部剧的 `style.scene` 那一块。老产物里还留着这个字段的，`validate` 会点名让删掉。
+**顶层没有 `style` 字段。**画风住在工作目录根的 `production.json`，`art.json` 里再抄一份就是第二个来源，两个来源必然会漂。跑 `mint_skill({skill:"mint-art",args:["style"]})` 取这部剧的 `style.scene` 那一块。老产物里还留着这个字段的，`validate` 会点名让删掉。
 
 ## 单个场景（以校验器为准）
 
@@ -95,9 +95,9 @@ seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schem
 
 ## 校验
 
-```bash
-node scripts/mint-art.mjs validate art.json --cast cast.json
-node scripts/mint-art.mjs checkup art.json               # 只打印 检查状态 pass/fail/skipped
+```text
+mint_skill({skill:"mint-art",args:["validate","art/作品-art.json","--cast","characters/作品-cast.json"]})
+mint_skill({skill:"mint-art",args:["checkup","art/作品-art.json"]})
 ```
 
 正式样例先阅读 `examples/雨棚留言-故事提案.md`（schema 阅读者从 skill 根目录定位）。独立水池场景不要求 reusePlan；节点关联包含 event 和 turn，不伪造 payoff。当前资产不含真实生成图片。

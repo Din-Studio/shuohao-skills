@@ -31,7 +31,7 @@ seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schem
 
 `summary` 缺失会被 `validate` 判为违规——报告顶部会空着。
 
-**顶层没有 `style` 字段。**画风住在工作目录根的 `production.json`，`cast.json` 里再抄一份就是第二个来源，两个来源必然会漂。跑 `node scripts/mint-characters.mjs style` 取这部剧的那一块，详见 `style.md`。
+**顶层没有 `style` 字段。**画风住在工作目录根的 `production.json`，`cast.json` 里再抄一份就是第二个来源，两个来源必然会漂。跑 `mint_skill({skill:"mint-characters",args:["style"]})` 取这部剧的那一块，详见 `style.md`。
 
 单张角色卡：
 

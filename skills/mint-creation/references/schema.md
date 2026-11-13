@@ -145,7 +145,7 @@ inputHash: <批准时写入的输入摘要>
 | `videos` | manifest.json + creation.json + 工作单 + 当前上游 | 无（计划） | 同 export，并且 manifest 的视频参数与当前配置一致 |
 
 - **批准绑定内容与输入**：`bodyHash` 是分镜结构与正文的摘要；`inputHash` 是这一段依据的输入的摘要——认领节拍的原文、挂载参考图的内容、视频模型与参数、提示词语言、单段上限和项目要求。任何一样变化，这一段的批准失效，`status`、`apply`、`export`、`videos` 全部拒绝。绑定范围只到这一段：别的段、别的集、上游文件里无关的字段发生变化，不影响它。开场与集尾计划的措辞不在绑定之内，修改之后由调度方决定是否重新审核首尾两段。
-- **状态头只由角色命令改写**：`in_review` 由编写方的提交命令写入，`approved`、`changes_requested` 与 `blocked` 由审核方的结论命令写入。主会话只在 `prompts init` 时写出草稿；`prompts new|submit|verdict` 是给没有安装兄弟 skill 的 subagent 使用的本地等价物，不是给主会话代替两个角色使用的。
+- **Role-owned state headers**: the writer's mint_skill submit writes in_review; the reviewer's verdict writes approved, changes_requested or blocked. The main session may initialize drafts with prompts init but never substitutes for either role. The cloud product dispatches the packaged roles through mint_prompt; legacy local equivalents prompts new/submit/verdict do not grant main-session authority to write or review content.
 - **manifest 记录来源**：`creation` 是 creation.json 相对 manifest 的路径，`videos` 靠它重新核对；每段的 `prompt` 与参考图路径同样相对 manifest。没有 `creation` 的旧 manifest 需要重新导出。
 - **二级标题只有三个**：意见或回应里多出二级标题的工作单被所有命令拒绝，避免它之下的内容在改写时丢失。
 - **模型一致**：状态头的 `model` 与当前有效视频模型不同则检查失败——更换模型后需要重新编写并审核。

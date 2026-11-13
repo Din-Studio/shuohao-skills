@@ -6,12 +6,10 @@ description: |
   使用本地创作指南，不要求策略配置。输出 schemaVersion 3、Markdown 和离线中英报告。
   支持分卷、分阶段检查、下游本地接口检查与显式 v2 迁移。
   Use when asked to 改编大纲、短剧大纲、拆大纲、原创大纲、小说转短剧、adaptation outline。
-allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
+allowed-tools: read write edit grep find ls mint_skill
 metadata:
   license: Apache-2.0
-  requires:
-    bins: [node]
-  runtimes: [pi, claude-code, codex]
+  runtimes: [mint-cloud]
 ---
 
 # mint-outline
@@ -31,17 +29,21 @@ production.autopilot 仅严格布尔 true 开启。自动驾驶自行决定并�
 
 ## 命令权威入口
 
-```bash
-node {baseDir}/scripts/mint-outline.mjs chunk book.txt outline/.work --per-volume 15
-node {baseDir}/scripts/mint-outline.mjs validate outline/outline.json --stage skeleton
-node {baseDir}/scripts/mint-outline.mjs validate outline/outline.json --stage beats
-node {baseDir}/scripts/mint-outline.mjs validate outline/outline.json
-node {baseDir}/scripts/mint-outline.mjs checkup outline/outline.json --json --downstream
-node {baseDir}/scripts/mint-outline.mjs render outline/outline.json --md > outline/outline.md
-node {baseDir}/scripts/mint-outline.mjs render outline/outline.json --html > outline/outline-report.html
-node {baseDir}/scripts/mint-outline.mjs render outline/outline.json --html --lang en > outline/outline-report.en.html
-node {baseDir}/scripts/mint-outline.mjs assets outline/outline.json
+All artifact paths are workspace-relative. Use workspace read/write/edit/find/grep/ls directly; invoke deterministic operations through mint_skill, without shell syntax or script paths.
+
+```text
+mint_skill({skill:"mint-outline",args:["chunk","book.txt","outline/.work","--per-volume","15"]})
+mint_skill({skill:"mint-outline",args:["validate","outline/outline.json","--stage","skeleton"]})
+mint_skill({skill:"mint-outline",args:["validate","outline/outline.json","--stage","beats"]})
+mint_skill({skill:"mint-outline",args:["validate","outline/outline.json"]})
+mint_skill({skill:"mint-outline",args:["checkup","outline/outline.json","--json","--downstream"]})
+mint_skill({skill:"mint-outline",args:["render","outline/outline.json","--md"]})
+mint_skill({skill:"mint-outline",args:["render","outline/outline.json","--html"]})
+mint_skill({skill:"mint-outline",args:["render","outline/outline.json","--html","--lang","en"]})
+mint_skill({skill:"mint-outline",args:["assets","outline/outline.json"]})
 ```
+
+Use write to save each successful render's stdout to outline/outline.md, outline/outline-report.html or outline/outline-report.en.html respectively. Render has no --out flag.
 
 validate/checkup/render 可传 `--production FILE`。语言优先级为 --lang、文档 lang、production.lang、zh。报告只翻译界面，不改正文。检查不写回默认值。错误退出 1；提醒不阻断。render 可输出诊断报告但无效数据退出非零。
 
@@ -51,4 +53,4 @@ validate/checkup/render 可传 `--production FILE`。语言优先级为 --lang�
 
 显式迁移见 [迁移说明](references/migration.md)。默认预览，不覆盖输入；未知版本不自动修饰。自有 [旧站时刻](examples/旧站时刻-outline.json) 保留既定 [故事提案](examples/故事提案.md)，表达迁移记录见 [迁移核对](examples/迁移核对.md)。
 
-本地测试入口：scripts/selftest.mjs、scripts/fixes-selftest.mjs、scripts/migration-selftest.mjs，均通过 node 执行。主测试额外执行独立复制回归；不调用付费模型。
+Developer-only self-tests: scripts/selftest.mjs, scripts/fixes-selftest.mjs and scripts/migration-selftest.mjs run with Node in a developer terminal. The main suite also checks isolated copies. These tests do not call paid models; cloud models do not execute them.

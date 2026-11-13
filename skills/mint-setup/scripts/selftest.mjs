@@ -457,7 +457,8 @@ ok(!mentionsTerm('grounded architectural perspective', 'warped perspective'), '�
   eq(r.inputData.resolution, '2K', '档位原样进 inputData，不折算像素');
   eq(Object.keys(r.inputData).join(','), 'aspect_ratio,resolution', 'inputData 只有这两个键，prompt 由调用方补');
   eq(r.skill, GENERATION_SKILLS.image, 'resolve 说明外部生图 skill');
-  ok(r.command.includes('image.mjs models --model'), '出图阶段先发现实时模型，不直接生成');
+  eq(r.command.tool, 'canvas_cli', 'Image discovery uses the host canvas tool');
+  eq(r.command.args.join(','), ['models', r.model, '--model-type', 'image'].join(','), 'Search configured image names before selecting a live catalog ID');
 }
 {
   const d = clone(); d.image.asset.resolution = '2k';
@@ -509,8 +510,9 @@ eq(resolveStage(PORTRAIT, 'art').aspectRatio, '16:9', '场景阶段与角色阶�
   eq(r.promptLang, 'en', '视频阶段带上提示词语言');
   eq(r.durationRange.max, 15, '视频阶段带上单段时长上限');
   eq(r.inputData.duration, undefined, 'duration 逐段不同，不在这里定');
-  eq(r.skill, GENERATION_SKILLS.video, '视频阶段使用 ly-video');
-  ok(r.command.includes('video.mjs models --model'), '视频阶段先发现实时模型');
+  eq(r.skill, GENERATION_SKILLS.video, 'Video handoff uses the canvas skill');
+  eq(r.command.tool, 'canvas_cli', 'Video discovery uses the host canvas tool');
+  eq(r.command.args.join(','), ['models', r.model, '--model-type', 'video'].join(','), 'Search configured video names before selecting a live catalog ID');
 }
 {
   const r = resolveStage(LANDSCAPE, 'video');
@@ -550,7 +552,7 @@ eq(Object.keys(STAGES).join(','), 'characters,art,video', '三个消费端');
   ok(!/参考像素/.test(md), '参数表里不再有参考像素——档位就是下给模型的值');
   ok(md.includes('| 视频 aspect_ratio | 9:16 |'), '参数表用视频模型的字段名');
   ok(md.includes('| 视频 resolution | 768p |'), '视频分辨率原样显示');
-  ok(Object.values(GENERATION_SKILLS).every(s => md.includes(s)), '说明两个外部生成 skill');
+  ok(md.includes('canvas_cli'), 'Reports identify the host canvas tool for media generation');
   ok(md.includes('| 自动驾驶 | 关闭（该问就问） |'), '参数表把自动驾驶摆出来——它决定这一趟会不会停下来问');
   ok(md.includes('## 质量门'), '参数表带质量门');
   ok(md.includes('| 画风 | 真人实拍 |'), '参数表显示画风名称');
@@ -583,7 +585,7 @@ for (const [name, m] of Object.entries({ ...IMAGE_MODELS, ...VIDEO_MODELS })) {
 }
 ok(Object.keys(IMAGE_MODELS).includes('nanobanana2'), '生图能力表收了 nanobanana2');
 ok(Object.keys(VIDEO_MODELS).includes('MiniMax H3'), '生视频能力表收了 MiniMax H3——分镜的 H3 提示词就是给它的');
-eq(Object.values(GENERATION_SKILLS).join(','), 'ly-image,ly-video', '按类型交给外部 skill');
+eq(Object.values(GENERATION_SKILLS).join(','), 'scenemint-canvas,scenemint-canvas', '按类型交给外部 skill');
 eq(SUPPORTED_LANGS.join(','), 'zh,en', '语言枚举与五个 skill 的报告语言对齐');
 eq(styleLabelOf(null), '未填', '没有画风就说没填，不编一个名字出来');
 eq(styleLabelOf({ label: { zh: '水墨' } }, 'en'), '水墨', '没写英文名就回落中文名');

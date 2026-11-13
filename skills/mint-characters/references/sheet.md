@@ -1,13 +1,13 @@
 # 角色设定图 · 版面与提示词
 
-本 skill 只导出出图计划；实际生成使用独立安装的 **ly-image**。先阅读 [交接与恢复流程](media-handoff.md)。
+This skill exports an offline plan; authorized generation uses the host canvas_cli. Read [canvas handoff and recovery](media-handoff.md). All tool paths are workspace-relative.
 
-```bash
-node <baseDir>/scripts/mint-characters.mjs images <剧名>-cast.json --out image-plan.json
+```text
+mint_skill({skill:"mint-characters",args:["images","characters/作品-cast.json","--out","characters/image-plan.json"]})
 ```
 
 可使用 `--only` 选择任务，`--dry-run` 预览；默认同样不会生成。使用 `--style-ref auto|角色名` 添加风格参考依赖，`--images` 设置图片目录。
-模型、档位和画幅来自显式 production.json，提示词来自 image.sheet 与 image.negativePrompt。缺完整制作参数时先补齐，不能使用隐式默认值。设定图画幅与视频画幅分别读取，不折算像素。实时 schema 由 ly-image 核对。
+模型、档位和画幅来自显式 production.json，提示词来自 image.sheet 与 image.negativePrompt。缺完整制作参数时先补齐，不能使用隐式默认值。设定图画幅与视频画幅分别读取，不折算像素。Use host canvas_cli models to verify the current schema. Unsupported plan fields, including negative prompts the current canvas does not send, block submission until explicit creative revision.
 
 以下是版面和提示词的创作要求；计划不等于图片。
 
@@ -48,11 +48,11 @@ same expression`。拿到图先扫一眼两边是不是同一个人，不一致�
 `production.json` 里那一块画风**整块原样抄进每张提示词**（见 `style.md`）后好了很多，
 但不能保证完全一致。
 
-使用 `--style-ref auto`：计划先列基准角色，再列依赖角色，并补充风格匹配提示词。ly-image 先完成并核验基准图，再将其作为后续任务参考。也可使用 `--style-ref 角色名` 指定基准。第一张决定整体基调；计划排序不是生成成功证明。
+--style-ref auto lists the anchor character first, adds dependent characters and style-matching prompt content. Complete and verify that sheet through canvas_cli before connecting its observed output node as a reference. --style-ref <character name> selects an explicit anchor. The first sheet sets the tone; plan ordering is not proof of completed generation.
 
 ## 想要透明背景
 
-白底主图保留。透明底作为独立编辑任务交给 ly-image，查询当前模型、参数与价格，核验结果后放到计划 optionalCutoutOutput。不要沿用旧 --cutout 命令或固定价格。
+Keep the white-background master. A cutout is a separate authorized canvas operation: first read the packaged command guidance and observed node tool capabilities, verify supported parameters and current costs, then download and verify the result at optionalCutoutOutput. If no suitable tool is available, report it as unfinished. Never reuse the retired --cutout flag or a fixed historical price.
 
 ## 其他约束
 

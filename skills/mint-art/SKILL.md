@@ -12,11 +12,10 @@ description: |
   本 skill 整块抄过来用（真人实拍、吉卜力、水墨、黏土定格都行，不用改代码）。
   有 outline.json 就使用 seed 预填场景清单与出现集；本地 images 导出离线计划。
   上传、提交、任务恢复和下载归外部生成工具，本 skill 可独立交付创作与计划。
-  零依赖、零 npm；本地不执行生成，实际生图可交给独立安装的 ly-image。
+  Self-contained deterministic scripts export plans; the host canvas_cli performs authorized generation.
   production.json 顶层 autopilot 为 true 时全程不打断——输入、道具清单自己定，做过的决定写进汇报。
   Use when asked to 场景设定、出场景、环境设定集、场景一致性、scene bibles for AI short drama。
-# 工具名两套都列：pi 认小写（read/write/edit/bash/grep/find/ls），Claude Code 认大写；各自取各自认得的
-allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
+allowed-tools: read write edit grep find ls mint_skill canvas_cli
 triggers:
   - mint-art
   - 美术设定
@@ -29,14 +28,7 @@ triggers:
   - prop sheet
 metadata:
   license: Apache-2.0
-  requires:
-    bins:
-      - node          # >= 18，只用标准库，无 npm 依赖
-    # 可选外部执行工具：ly-image；不影响本 skill 独立产出
-  runtimes:
-    - pi            # 没有子代理：并发步骤在当前会话串行做，产出一致
-    - claude-code
-    - codex
+  runtimes: [mint-cloud]
 ---
 
 ## v3 上游契约与迁移
@@ -59,9 +51,7 @@ seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schem
 | 道具尺度参照 | AI 经常把手持道具画成家具尺寸，提示词必须带尺度短语 |
 | 道具白底无手 | 道具图要被贴进各种镜头，必须可抠；拿着道具的手是最常见污染 |
 
-`{baseDir}` = 本文件所在目录。脚本 `{baseDir}/scripts/mint-art.mjs`，零依赖，`node` 直接跑。
-
-**运行环境**：pi、Claude Code、codex 都能跑，工作流一样。**pi 默认不带子代理**（也没有内置待办与后台 bash），所有写着「有子代理就并发」的步骤在 pi 里就是当前会话顺着做一遍——产出一致，只是慢。实际生成可交给独立安装的 ly-image——见 `references/media-handoff.md`。
+`{baseDir}` is the packaged skill directory. Scripts remain self-contained and standard-library-only. Invoke deterministic operations through mint_skill with command tokens, never shell syntax or script paths. All artifact paths are workspace-relative; use read/write/edit/find/grep/ls directly. Art design runs sequentially in the main session. The application supplies canvas_cli for authorized generation; read references/media-handoff.md.
 
 **边界（不做的事）**：不做分镜、不写剧本、不管角色（`mint-characters` 的活）、不排大纲（`mint-outline` 的活）。**道具只收叙事道具**（有特写、跨集、承载剧情的，通常 3–8 件）——场景陈设归场景锚点，一次性手部道具镜头级提示词解决，都不单独建资产。
 
@@ -77,8 +67,8 @@ seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schem
 
 **画风不内置、不问用户、不自己编。**它是 `mint-setup` 那一段定的，住在工作目录根的 `production.json` 顶层。取出来：
 
-```bash
-node {baseDir}/scripts/mint-art.mjs style
+```text
+mint_skill({skill:"mint-art",args:["style"]})
 ```
 
 打印这部剧的 `style.scene` 那一块：`render` / `surface` / `negative` / `tags`。**它们要原样抄进设定卡**——`render` 与 `surface` 进 `image.sheet` 与 `image.prompt`，`negative` 的每一条进 `image.negativePrompt`。
@@ -107,16 +97,17 @@ Step 0 那份 `production.json` 顶层还有一个 `autopilot`。为 `true` 时�
 | --- | --- |
 | Step 0 三种输入选哪个 | 按写死的优先级自己选（outline.json > 小说原文 > 用户手写清单），选了哪个写进汇报 |
 | Step 2 叙事道具收哪几件 | 自己定（有特写、跨集、承载剧情，3–8 件），清单与取舍理由写进汇报 |
-| Step 4 出图 | 完成离线计划；已授权时通过 ly-image 生成并检查，不自动重投。没有生成工具则明确未生成 |
+| Step 4 generation | Export the offline plan; use host canvas_cli only within spending authorization. Inspect existing tasks instead of resubmitting. Report missing capability or ungenerated media. |
 
-**转移的是审批权，不是取消检查点**：确定性检查照样要过、拿到图照样要核对锚点——只是不再等人点头。**替用户做的每一个决定都要写进 Step 5 的汇报**，道具取舍一条不漏。
+Autopilot delegates creative choices within the task. Deterministic checks and image-anchor inspection still apply. It does not grant spending authorization; stop generation if that authorization is missing. Report every decision in Step 5, including all prop selections and exclusions.
 
 ### Step 1 — seed 骨架（有 outline.json 才有这步）
 
-```bash
-mkdir -p <段目录>
-node {baseDir}/scripts/mint-art.mjs seed <outline.json> > <段目录>/<剧名>-art.json
+```text
+mint_skill({skill:"mint-art",args:["seed","outline/作品-outline.json"]})
 ```
+
+Save successful stdout with write to art/作品-art.json. Seed has no --out flag.
 
 确定性搬运：场景 id/名称/主场景标记/出现集/关联剧情节点，带复用方案的场景会有 `seedNote` 提示做成变体。**这些事实不要让模型重新想一遍。**
 
@@ -124,7 +115,7 @@ node {baseDir}/scripts/mint-art.mjs seed <outline.json> > <段目录>/<剧名>-a
 
 ### Step 2 — 逐场景填设定 + 提取叙事道具
 
-每个场景一份，有子代理就并发、没有（例如 pi）就在当前会话串行做，产出一致。每份任务拿到：
+Develop one scene at a time in the main session. Each scene pass reads:
 
 - `{baseDir}/references/scene-pass.md` 和 `{baseDir}/references/schema.md`（读它们，照着做）
 - `{baseDir}/references/realism.md`（真实感怎么落进提示词：生活痕迹、光的来源、材质做旧各进哪种图。**非写实画风只取通用那半边**）
@@ -138,8 +129,8 @@ node {baseDir}/scripts/mint-art.mjs seed <outline.json> > <段目录>/<剧名>-a
 
 ### Step 3 — 校验 ⛔ 不能跳
 
-```bash
-node {baseDir}/scripts/mint-art.mjs validate <art.json> --cast <cast.json>
+```text
+mint_skill({skill:"mint-art",args:["validate","art/作品-art.json","--cast","characters/作品-cast.json"]})
 ```
 
 资产检查全是代码，另含字段/引用与 production 完整性检查。场景 + 共用 6 道：锚点 3–5、光照状态 ≥1、**无人**、提示词全英文、不含角色名（给了 --cast 才查）、变体引用完整。道具专属 4 道：**状态 ≥1**、**尺度短语写进提示词**、**反向词禁手**、**设定图纯白背景**。生产参数 2 道：**画风整块用上**（渲染句进了 `sheet` 与 `prompt`、反向词一条不落地进了场景的反向词）、**设定图版面画幅与生产参数一致**（找不到 production.json 就明说跳过）。
@@ -148,26 +139,24 @@ node {baseDir}/scripts/mint-art.mjs validate <art.json> --cast <cast.json>
 
 ### Step 4 — 出图（可选）
 
-```bash
-cd <段目录>
-node {baseDir}/scripts/mint-art.mjs images <剧名>-art.json
+```text
+mint_skill({skill:"mint-art",args:["images","art/作品-art.json","--out","art/image-plan.json"]})
 ```
 
-本命令只输出离线计划，不会生成图片。可增加 `--out image-plan.json` 保存计划，`--only` 筛选任务。
+This exports an offline plan, not images; --only selects items. Read [canvas handoff](references/media-handoff.md). The main session uses host canvas_cli to inspect live models, map items to nodes and ordered references, submit within authorization, inspect tasks and download verified outputs. Verify dependency images before dependent generation and preserve input hashes. Unsupported parameters, including negative prompts that the current canvas does not send, block handoff until explicit plan revision.
 
-读取 [生成交接流程](references/media-handoff.md)，再读取已安装的 **ly-image**。由它发现实时模型/schema、构造请求、预览、在授权范围内提交，并使用原回执恢复查询与下载。计划按参考依赖排序；基准图核验完成后才能生成依赖图。外部下载名不同于本地报告路径，核验格式和内容后放到计划 output，再 render。
-
-没有 ly-image 或没有生成授权时，只交付提示词与计划，明确“未生成”。原 `--force`、`--cutout`、超时与并发选项已退役；质量重做和透明底由 ly-image 另行处理，不能自动重复付费。
+Without canvas capability or authorization, deliver prompts/plans and state that images were not generated. Retired --force, --cutout, timeout and concurrency flags are not recovery controls. Quality retries and optional cutouts require separate authorized canvas work; never resubmit uncertain tasks.
 
 全图无人；道具另加无手、纯白背景。版面要求见 [sheet](references/sheet.md)。
 
 ### Step 5 — 输出与汇报
 
-```bash
-cd <段目录>
-node {baseDir}/scripts/mint-art.mjs render <剧名>-art.json --cast ../characters/<剧名>-cast.json --md   > <剧名>-art.md
-node {baseDir}/scripts/mint-art.mjs render <剧名>-art.json --cast ../characters/<剧名>-cast.json --html > art-report.html
+```text
+mint_skill({skill:"mint-art",args:["render","art/作品-art.json","--cast","characters/作品-cast.json","--md"]})
+mint_skill({skill:"mint-art",args:["render","art/作品-art.json","--cast","characters/作品-cast.json","--html"]})
 ```
+
+Save successful stdout with write to art/作品-art.md and art/art-report.html respectively. Render has no --out.
 
 `render` 与 `validate/checkup` 读取相同的 `--cast` 上游并执行禁名检查。独立运行没有角色文件时省略 `--cast`，报告明确跳过；已经提供但损坏或不可读的角色文件必须失败。
 
@@ -186,7 +175,7 @@ node {baseDir}/scripts/mint-art.mjs render <剧名>-art.json --cast ../character
     ├── art-report.html            ← 双击就能开
     └── images/
         ├── <slug>-sheet.png       ← 通过外部生成并核验后才有
-        └── jobs/                  ← 外部 skill 回执，保留用于恢复
+        └── jobs/                  ← canvas task/output mappings for recovery
 ```
 
 ---
@@ -206,13 +195,15 @@ seed 吃 outline.json 的场景与道具两块（大纲没有 `props` 时道具�
 
 - 报告界面内置中英（`--lang`，默认中文、或跟 art.json 的 `lang` 字段）；出图提示词永远英文
 - 画风不自己定也不自己编：`style.scene` 从 `production.json` 取，`style.character` 是角色 skill 的，两块别互相搬
-- `images` 只输出离线计划；实际生成只交给 ly-image，不内置第二套网关调用。
+- images exports an offline plan. Authorized generation uses the host canvas_cli, with no additional gateway client or personal credentials.
 - 场景数量不设硬上限——上限在 mint-outline 的主场景门那里管；这里管的是每个资产的质量
 - 道具只收叙事道具，3–8 件为宜——每多一件就多一份跨集一致性维护
 
 ## 自测
 
-```bash
+Developer-only terminal self-tests; cloud models do not execute these commands:
+
+```sh
 node {baseDir}/scripts/selftest.mjs
 node {baseDir}/scripts/v3-selftest.mjs
 node {baseDir}/scripts/upstream-selftest.mjs

@@ -10,7 +10,7 @@ description: |
   9 道检查（含 v3 契约）全部由脚本检查。分辨率与比例直接使用 模型枚举档位，生成前按实时 schema 核对，不折算像素。
   成片画幅没有默认值，必须显式指定。本 skill 不调用模型，不出图，不下单。
   Use when asked to 定参数、配置画幅、竖屏还是横屏、出图分辨率、视频参数、production setup for AI short drama。
-allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep
+allowed-tools: read write edit grep find ls mint_skill canvas_cli
 triggers:
   - mint-setup
   - 生产参数
@@ -26,13 +26,7 @@ triggers:
   - production setup
 metadata:
   license: Apache-2.0
-  requires:
-    bins:
-      - node
-  runtimes:
-    - pi
-    - claude-code
-    - codex
+  runtimes: [mint-cloud]
 ---
 
 ## v3 创作契约与迁移
@@ -45,7 +39,7 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
 
 管线的第 0 段。先统一技术参数，再进行创作。
 
-`{baseDir}` 是本文件所在目录。脚本为 `{baseDir}/scripts/mint-setup.mjs`，Node 18+，只使用标准库，无 npm 依赖。
+`{baseDir}` is the packaged skill directory. Scripts remain self-contained and standard-library-only. Invoke mint_skill with CLI command tokens, never shell syntax or script paths. All artifact paths are workspace-relative; use read/write/edit/find/grep/ls for workspace files. Save returned stdout with write when an operation has no --out flag.
 
 **边界**：不写故事、不出图、不下单。角色与美术阶段生成设定图，视频创作阶段直接挂载设定图生成视频。集数、时长属于大纲阶段；创作方向只记录自然语言要求，不在本阶段创作故事。
 
@@ -54,7 +48,7 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
 三项技术要求必须确认：
 
 1. **成片画幅**：例如 `9:16` 或 `16:9`。没有默认值，猜错会导致视频重出。
-2. **视频模型与档位**：读取已安装 ly-video，执行其 `models` 与 `models --model <ID>` 查看实时模型和档位；本地 `caps` 只提供历史快照。
+2. **Video model and tier**: use `canvas_cli({args:["models","--model-type","video"]})`, follow pagination and inspect the exact configured model's inputSchema/localConstraints. Local caps are historical only.
 3. **画风**：确认名字与具体质感要求。没有预设选项或默认画风；真人实拍、手绘、水墨、黏土定格都可以。
 
 另收集可选的 **creativeBrief**：请用户直接描述想要的作品与不希望的处理。没有额外要求就省略；不追问策略名称或版本，不自动推导规则。要求变化后明确提示下游内容需要重新评审。
@@ -65,22 +59,22 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
 
 ### Step 1 — 检查模型能力
 
-```bash
-node {baseDir}/scripts/mint-setup.mjs caps
-node {baseDir}/scripts/mint-setup.mjs caps --model "MiniMax H3"
+```text
+mint_skill({skill:"mint-setup",args:["caps"]})
+mint_skill({skill:"mint-setup",args:["caps","--model","MiniMax H3"]})
 ```
 
-模型能力表保留历史采集来源与 UUID，只做离线检查。表外模型明确跳过能力检查。生成前通过已安装 ly-image / ly-video 的 models --model 查询实时 schema，不把快照当成当前能力。
+The capability table retains historical provenance and UUIDs for offline checks only. Unknown models explicitly skip those checks. Before generation use canvas_cli models with --model-type image or video, follow pagination and inspect the exact model's live schema. Do not treat the snapshot as current capability.
 
 **资产图与视频分别检查**：`nanobanana2` 不接受 `4:3` 资产图，不代表视频不能选择 `4:3`。`image-2` 的 `4K` 资产图只接受 `16:9` / `9:16`。
 
 ### Step 2 — 创建参数文件
 
-```bash
-node {baseDir}/scripts/mint-setup.mjs init --aspect 9:16 \
-  --source <剧名> --video-model "MiniMax H3" --video-resolution 768p \
-  > <工作目录>/production.json
+```text
+mint_skill({skill:"mint-setup",args:["init","--aspect","9:16","--source","<title>","--video-model","MiniMax H3","--video-resolution","768p"]})
 ```
+
+Save successful stdout with write to production.json at the workspace root. Init has no --out flag.
 
 可选参数：`--creative-brief "正文"`、`--autopilot`、`--asset-resolution`、`--asset-aspect`、`--image-model`、`--lang`、`--prompt-lang`、`--style <style.json>`。
 
@@ -90,8 +84,8 @@ node {baseDir}/scripts/mint-setup.mjs init --aspect 9:16 \
 
 先阅读 `{baseDir}/references/schema.md`，再获取空骨架：
 
-```bash
-node {baseDir}/scripts/mint-setup.mjs style-template
+```text
+mint_skill({skill:"mint-setup",args:["style-template"]})
 ```
 
 没有传入 `--style` 时，`init` 留下空骨架，不能直接通过校验。
@@ -112,9 +106,9 @@ node {baseDir}/scripts/mint-setup.mjs style-template
 
 ### Step 4 — 校验
 
-```bash
-node {baseDir}/scripts/mint-setup.mjs validate <工作目录>/production.json
-node {baseDir}/scripts/mint-setup.mjs checkup <工作目录>/production.json
+```text
+mint_skill({skill:"mint-setup",args:["validate","production.json"]})
+mint_skill({skill:"mint-setup",args:["checkup","production.json"]})
 ```
 
 9 道检查（含 v3 契约）：数据版本与创作要求、字段与枚举、比例写法、资产图横构图或方形、分辨率已填、视频模型参数、生图模型参数、画风完整、画风不矛盾。有违规先修正，再重跑直到通过。
@@ -123,8 +117,8 @@ node {baseDir}/scripts/mint-setup.mjs checkup <工作目录>/production.json
 
 ### Step 5 — 汇报与交付
 
-```bash
-node {baseDir}/scripts/mint-setup.mjs show <工作目录>/production.json
+```text
+mint_skill({skill:"mint-setup",args:["show","production.json"]})
 ```
 
 汇报模型、资产图档位与比例、视频档位与画幅、画风名称、语言、自动驾驶状态、文件路径及跳过的检查。不生成 HTML 报告。
@@ -149,18 +143,20 @@ node {baseDir}/scripts/mint-setup.mjs show <工作目录>/production.json
 - `autopilot` 只认布尔值 `true`。开启后不等待逐步审批，但质量门、费用预估和失败止损仍然生效。
 - 每个创作阶段的产物归自己的目录，根目录只存生产参数。
 
-```bash
-node {baseDir}/scripts/mint-setup.mjs resolve --for characters
-node {baseDir}/scripts/mint-setup.mjs resolve --for art
-node {baseDir}/scripts/mint-setup.mjs resolve --for video
-node {baseDir}/scripts/mint-setup.mjs duration 12.5 --model "MiniMax H3"
+```text
+mint_skill({skill:"mint-setup",args:["resolve","--for","characters"]})
+mint_skill({skill:"mint-setup",args:["resolve","--for","art"]})
+mint_skill({skill:"mint-setup",args:["resolve","--for","video"]})
+mint_skill({skill:"mint-setup",args:["duration","12.5","--model","MiniMax H3"]})
 ```
 
 `resolve` 输出结构化 `inputData`。出图时补充提示词与参考图 URL；视频还要补充逐段时长。分辨率与比例是枚举值，不写入提示词作为像素指令。模型专属字段由下单阶段按模型 schema 补充。
 
 ## 自测与样例
 
-```bash
+Developer-only terminal self-tests; cloud models do not execute these commands:
+
+```sh
 node {baseDir}/scripts/selftest.mjs
 node {baseDir}/scripts/migration-selftest.mjs
 node {baseDir}/scripts/upstream-selftest.mjs

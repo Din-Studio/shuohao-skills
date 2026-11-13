@@ -14,16 +14,17 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
 
 ## 使用
 
-```bash
-node scripts/mint-setup.mjs caps
-node scripts/mint-setup.mjs init --aspect 9:16 \
-  --source 回南天 --video-model "MiniMax H3" --video-resolution 768p \
-  > <工作目录>/production.json
-node scripts/mint-setup.mjs style-template
-# 按用户要求填满 production.json 的 style，再校验
-node scripts/mint-setup.mjs validate <工作目录>/production.json
-node scripts/mint-setup.mjs show <工作目录>/production.json
+Cloud operations use workspace-relative paths and the host tools, without shell execution:
+
+```text
+mint_skill({skill:"mint-setup",args:["caps"]})
+mint_skill({skill:"mint-setup",args:["init","--aspect","9:16","--source","回南天","--video-model","MiniMax H3","--video-resolution","768p"]})
+mint_skill({skill:"mint-setup",args:["style-template"]})
+mint_skill({skill:"mint-setup",args:["validate","production.json"]})
+mint_skill({skill:"mint-setup",args:["show","production.json"]})
 ```
+
+Save init stdout with write to production.json, fill its style using the returned style-template and the user's requirements, then validate. Init has no --out.
 
 - **成片画幅没有默认值**，必须显式传入 `--aspect`。它只设置视频比例。
 - 资产图默认 `nanobanana2`、`2K`、`16:9`。可通过 `--image-model`、`--asset-resolution`、`--asset-aspect` 调整。
@@ -48,7 +49,7 @@ node scripts/mint-setup.mjs show <工作目录>/production.json
 | style-blocks | 画风名称及角色、环境正文完整 |
 | style-coherent | 正反向要求不矛盾 |
 
-模型能力表保留历史采集来源与 UUID，只做离线检查。表外模型明确跳过能力检查。生成前通过已安装 ly-image / ly-video 的 models --model 查询实时 schema，不把快照当成当前能力。
+Historical caps retain provenance and UUIDs for offline checks only; unknown models skip capability checks. Before generation use the host canvas_cli models command with --model-type image or video, follow pagination and inspect the exact model's inputSchema/localConstraints. The host supplies connection and credentials; do not install another generation tool.
 
 **视频画幅不限制资产图模型**：`nanobanana2` 不收 `4:3` 资产图，但仍可搭配支持 `4:3` 的视频模型。`image-2` 的 `4K` 资产图只收 `16:9` / `9:16`。
 
@@ -69,11 +70,11 @@ mint-creation   → creation/
 
 `init --autopilot` 开启自动驾驶，默认关闭。开启后五个创作阶段各自跑完整段、不等待逐步审批，但质量门、费用预估和失败止损不变。只认 JSON 布尔值 `true`。本阶段仍要确认画幅、视频模型与画风。
 
-```bash
-node scripts/mint-setup.mjs resolve --for characters
-node scripts/mint-setup.mjs resolve --for art
-node scripts/mint-setup.mjs resolve --for video
-node scripts/mint-setup.mjs duration 12.5 --model "MiniMax H3"
+```text
+mint_skill({skill:"mint-setup",args:["resolve","--for","characters"]})
+mint_skill({skill:"mint-setup",args:["resolve","--for","art"]})
+mint_skill({skill:"mint-setup",args:["resolve","--for","video"]})
+mint_skill({skill:"mint-setup",args:["duration","12.5","--model","MiniMax H3"]})
 ```
 
 `resolve` 输出模型、比例、档位与结构化 `inputData`；视频还返回时长范围。调用方补充提示词、参考图 URL 和逐段时长。角色与美术只返回各自需要的画风块，视频返回名称与画风短语。
@@ -85,7 +86,9 @@ node scripts/mint-setup.mjs duration 12.5 --model "MiniMax H3"
 
 两套画风是样例，不是可选范围。样例也是自测夹具，不依赖其他 skill 的数据。
 
-```bash
+Developer-only terminal self-tests from this skill directory; cloud models do not execute these commands:
+
+```sh
 node scripts/selftest.mjs
 node scripts/migration-selftest.mjs
 node scripts/upstream-selftest.mjs

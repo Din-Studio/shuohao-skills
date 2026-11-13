@@ -1,0 +1,10 @@
+export declare const LAYOUT_POLICY: Readonly<{
+  version: number;
+  nodeGapX: number;
+  nodeGapY: number;
+  groupGapX: number;
+  groupGapY: number;
+  groupPadding: number;
+  fitFrames: boolean;
+  boundsKind: "body";
+}>;

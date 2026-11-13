@@ -4,23 +4,21 @@ version: 1.0.0
 description: |
   视频提示词编写：根据剧本节拍、资产表和项目要求，完成一集的分段、分镜与参考图直出视频提示词，
   写入每段一份的工作单 <段号>/prompt.md 并提交审核。收到审核意见后逐条修改并再次提交。
-  只负责编写，不审核自己的产物，不生成视频。通常由调度方以 subagent 方式调用，也可以单独使用。
+  Writing only: independent review and generation belong to the orchestrator's separate workflow phases.
   Use when asked to 编写视频提示词、写分镜提示词、修改被退回的视频提示词。
-allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep
+allowed-tools: read write edit grep find ls mint_skill
 triggers:
   - mint-video-prompt
   - 视频提示词编写
   - 编写视频提示词
 metadata:
   license: Apache-2.0
-  requires:
-    bins: [node]
-  runtimes: [pi, claude-code, codex]
+  runtimes: [mint-cloud]
 ---
 
 # mint-video-prompt
 
-`{baseDir}` 是本文件目录。Node 18+，只有标准库依赖。整个目录可以单独拷走：不读取其他 skill 的实现或指南，不依赖第三方 skill。
+`{baseDir}` is the absolute packaged skill directory. Scripts remain self-contained and standard-library-only. The orchestrator invokes this role with `workflow({name:"mint_prompt",args:{role:"mint-video-prompt-writer",task:"<complete brief>"}})` in a foreground isolated Pi session using the host model/authentication. Do not delegate. Use read/write/edit/find/grep/ls for workspace files and mint_skill for deterministic commands. All artifact paths are workspace-relative; no shell expansion or process execution.
 
 你是**编写方**。产物是工作单，不是 creation.json，也不是视频。审核由另一个独立的审核方完成；你不填写审核意见，不修改审核状态为 approved。
 
@@ -45,8 +43,8 @@ metadata:
 3. `references/creation-prompt.md`——提示词骨架，跨模型通用。
 4. 模型填法指南，由视频模型决定：
 
-```bash
-node {baseDir}/scripts/mint-video-prompt.mjs guide --model "seedance2.0"
+```text
+mint_skill({skill:"mint-video-prompt",args:["guide","--model","seedance2.0"]})
 ```
 
 MiniMax H3 读取 `references/h3-prompt.md`；seedance 系列读取 `references/seedance2-prompt.md`；其他模型没有填法指南，只照通用骨架写，并在回报中说明能力未核实。不要拿另一族的指南代替。
@@ -55,8 +53,8 @@ MiniMax H3 读取 `references/h3-prompt.md`；seedance 系列读取 `references/
 
 先确定这一集怎样分段，再逐段写。每段一份工作单：
 
-```bash
-node {baseDir}/scripts/mint-video-prompt.mjs new E01-01 --out <工作单目录> --model "MiniMax H3" --scene 1
+```text
+mint_skill({skill:"mint-video-prompt",args:["new","E01-01","--out","creation","--model","MiniMax H3","--scene","1"]})
 ```
 
 在工作单里填写两处：
@@ -68,10 +66,14 @@ node {baseDir}/scripts/mint-video-prompt.mjs new E01-01 --out <工作单目录> 
 
 ## 4. 自查并提交
 
-```bash
-node {baseDir}/scripts/mint-video-prompt.mjs lint <工作单目录>/E01-*/prompt.md
-node {baseDir}/scripts/mint-video-prompt.mjs submit <工作单目录>/E01-*/prompt.md
+Use find to discover the assigned worksheets and pass explicit paths; the tool does not expand shell globs. For example:
+
+```text
+mint_skill({skill:"mint-video-prompt",args:["lint","creation/E01-01/prompt.md","creation/E01-02/prompt.md"]})
+mint_skill({skill:"mint-video-prompt",args:["submit","creation/E01-01/prompt.md","creation/E01-02/prompt.md"]})
 ```
+
+After an interruption inspect worksheet state and finish only the unfinished phase. Do not resubmit an unchanged in_review or approved worksheet just to recover a lost response.
 
 `submit` 先自查，全部通过才把状态改为 `in_review` 并把轮次加一；有一份不通过就一份都不提交。自查只覆盖不需要剧本就能确定的事。节拍覆盖、台词逐字、时长与参考图文件由调度方拿着剧本做完整结构检查；调度方退回的结构问题与审核意见同等对待，修正后再次提交。
 
@@ -96,7 +98,9 @@ node {baseDir}/scripts/mint-video-prompt.mjs submit <工作单目录>/E01-*/prom
 
 `examples/第七盏灯/` 是本 skill 自有样例：故事提案、输入材料，以及两份已提交审核的工作单（MiniMax H3，英文提示词）。先有故事，后有分镜。
 
-```bash
+Developer-only terminal self-test; the cloud model does not execute this command:
+
+```sh
 node {baseDir}/scripts/selftest.mjs
 ```
 

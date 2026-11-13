@@ -5,7 +5,7 @@
 - 产物是 `<段号>/prompt.md` 工作单：状态头、分镜结构、审核意见区、编写回应区，以及最后一条分隔线之下的提示词正文。格式见 [worksheet](references/worksheet.md)。
 - 提示词骨架跨模型通用，见 [creation-prompt](references/creation-prompt.md)；填法按视频模型读取 [H3](references/h3-prompt.md) 或 [seedance](references/seedance2-prompt.md) 指南。分段与停留的判断见[分镜指南](references/分镜指南.md)。
 - 只编写，不审核自己的产物，不生成视频。审核由独立的审核方完成。
-- 通常由调度方以 subagent 方式调用，也可以单独使用。Node 18+，只有标准库依赖；整个目录可以单独复制。
+- The orchestrator calls `workflow({name:"mint_prompt",args:{role:"mint-video-prompt-writer",task:"<complete brief>"}})` with absolute packaged guide paths and workspace-relative inputs. This foreground isolated Pi session uses the host model/authentication and cannot delegate. Deterministic commands use mint_skill; scripts remain self-contained.
 
 完整步骤与命令见 [SKILL.md](SKILL.md)。
 

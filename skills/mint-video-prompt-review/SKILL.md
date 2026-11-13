@@ -4,23 +4,21 @@ version: 1.0.0
 description: |
   视频提示词审核：独立审核编写方提交的工作单 <段号>/prompt.md，对照剧本节拍、资产表、项目要求和视频模型口径，
   把审核意见写进同一份工作单，并登记结论 approved、changes_requested 或 blocked。
-  只审核，不改写分镜结构和提示词正文，不生成视频。通常由调度方以 subagent 方式调用，也可以单独使用。
+  Review only: an isolated mint_prompt workflow role, with no prompt rewriting or media generation.
   Use when asked to 审核视频提示词、评审分镜提示词、复审修改后的视频提示词。
-allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep
+allowed-tools: read edit grep find ls mint_skill
 triggers:
   - mint-video-prompt-review
   - 视频提示词审核
   - 审核视频提示词
 metadata:
   license: Apache-2.0
-  requires:
-    bins: [node]
-  runtimes: [pi, claude-code, codex]
+  runtimes: [mint-cloud]
 ---
 
 # mint-video-prompt-review
 
-`{baseDir}` 是本文件目录。Node 18+，只有标准库依赖。整个目录可以单独拷走：不读取其他 skill 的实现或指南，不依赖第三方 skill。
+`{baseDir}` is the absolute packaged skill directory. Scripts remain self-contained and standard-library-only. The orchestrator invokes this role with `workflow({name:"mint_prompt",args:{role:"mint-video-prompt-reviewer",task:"<complete brief>"}})` in a foreground isolated Pi session using the host model/authentication. Do not delegate. Your tools are read, edit, grep, find, ls and mint_skill; the script tool restricts reviewer operations. All artifact paths are workspace-relative. Inspect existing state after interruptions and review only unfinished in_review segments.
 
 你是**审核方**。你的职责是让有问题的提示词在花钱生成之前被拦下，同时不让没有问题的提示词被无休止地打回。你不改写分镜结构和提示词正文——发现问题就写清楚，交还编写方修改。
 
@@ -70,10 +68,10 @@ metadata:
 
 然后登记结论：
 
-```bash
-node {baseDir}/scripts/mint-video-prompt-review.mjs verdict changes_requested <目录>/E01-02/prompt.md
-node {baseDir}/scripts/mint-video-prompt-review.mjs verdict blocked <目录>/E01-04/prompt.md
-node {baseDir}/scripts/mint-video-prompt-review.mjs verdict approved --inputs <输入材料.json> <目录>/E01-01/prompt.md <目录>/E01-03/prompt.md
+```text
+mint_skill({skill:"mint-video-prompt-review",args:["verdict","changes_requested","creation/E01-02/prompt.md"]})
+mint_skill({skill:"mint-video-prompt-review",args:["verdict","blocked","creation/E01-04/prompt.md"]})
+mint_skill({skill:"mint-video-prompt-review",args:["verdict","approved","--inputs","creation/.work/E01-inputs.json","creation/E01-01/prompt.md","creation/E01-03/prompt.md"]})
 ```
 
 状态头只通过这个命令改写。`approved` 必须带上你审核时依据的那份输入材料：命令写入内容摘要与输入摘要，此后分镜结构、正文，或者这一段依据的节拍原文、参考图、模型参数、项目要求发生任何变化，批准都会失效。有必须修改或阻塞时命令拒绝批准，没有必须修改时命令拒绝退回，没有阻塞时命令拒绝登记阻塞。逐段给结论：一集里可以有的段批准、有的段退回。
@@ -88,7 +86,9 @@ node {baseDir}/scripts/mint-video-prompt-review.mjs verdict approved --inputs <�
 
 `examples/回执/` 是本 skill 自有样例：故事提案、输入材料，以及同一段的两轮工作单——第一轮退回（两条必须修改、一条建议），第二轮批准（seedance2.0，中文提示词）。先有故事，后有分镜。
 
-```bash
+Developer-only terminal self-test; the cloud model does not execute this command:
+
+```sh
 node {baseDir}/scripts/selftest.mjs
 ```
 

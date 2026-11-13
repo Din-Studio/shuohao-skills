@@ -1253,7 +1253,7 @@ const USAGE = `mint-art.mjs — mint-art skill 的确定性工具（场景 + 道
   validate <art.json> [--cast c.json]    校验；有违规逐条打印并 exit 1
                                          给了 cast.json 才查「提示词不含角色名」
   checkup <art.json> [--cast c.json]     只打印质量门 ✓/✗，有未过项 exit 1
-  images <art.json>          导出离线交接计划，交给 ly-image 生成
+  images <art.json>          导出离线交接计划，交给 canvas_cli 生成
          [--only <ID列表>]                仅选择指定任务（图片自动补齐参考依赖）
          [--dry-run]                      只预览计划；本命令始终不上传、不提交
          [--out <plan.json>]              另存计划（不覆盖已有文件）
@@ -1265,7 +1265,7 @@ const USAGE = `mint-art.mjs — mint-art skill 的确定性工具（场景 + 道
   slug <name>                            场景名转安全文件名
 
 render 会自动去 images/<slug>-sheet.png 找图，找到就嵌进报告。
-images 只导出计划，不执行生成。使用 ly-image 完成并核验图片后，放到计划 output 路径再 render。`;
+images 只导出计划，不执行生成。使用 canvas_cli 完成并核验图片后，放到计划 output 路径再 render。`;
 
 function readJson(path) {
   return JSON.parse(readFileSync(resolve(path), 'utf8'));

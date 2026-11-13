@@ -4,10 +4,12 @@
 
 ## 操作
 
-```bash
-node scripts/mint-outline.mjs migrate-v3 INPUT
-node scripts/mint-outline.mjs migrate-v3 INPUT --out OUTPUT
-node scripts/mint-outline.mjs migrate-v3 INPUT --out OUTPUT --confirm
+INPUT and OUTPUT are workspace-relative paths:
+
+```text
+mint_skill({skill:"mint-outline",args:["migrate-v3","INPUT"]})
+mint_skill({skill:"mint-outline",args:["migrate-v3","INPUT","--out","OUTPUT"]})
+mint_skill({skill:"mint-outline",args:["migrate-v3","INPUT","--out","OUTPUT","--confirm"]})
 ```
 
 无 --out 只预览。存在语义项时 status=pending，指定输出但未确认则退出 1 且不写文件。--confirm 明确接受预览中的保守文本合并，不是自动内容评审。先逐项审阅，无法确认时停止，不盲目执行确认。

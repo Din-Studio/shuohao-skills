@@ -1,34 +1,59 @@
-# 外部媒体生成交接
+# Canvas media handoff
 
-本 skill 只负责创作、校验与离线交接计划，不读取凭据、不上传、不提交、不轮询。整个目录可独立拷走；没有生成工具时仍交付文本、计划与报告，并明确“未生成”。
+The creative script exports a self-contained offline plan. The application provides `canvas_cli` and packaged scenemint-canvas guidance; read its model, node, reference, task and download sections. The host owns connection and credentials. Do not add --session, pair a daemon, install a CLI, run a subprocess or request personal credentials. Without this capability or generation authorization, deliver the plan and state that images were not generated.
 
-实际生成使用 [Din-Studio/skills](https://github.com/Din-Studio/skills) 的 `ly-image` / `ly-video`。它们独立安装，不复制到本 skill，也不是本地脚本的代码依赖。交接格式依据该仓库 9e3cebed82d1af08d9dfc6125010250295eca39b 的请求与恢复约定整理；实际调用前读取安装版本的 SKILL.md 和 references/commands.md。
-
-## 安装与凭据
-
-```bash
-npx skills@latest add Din-Studio/skills --agent codex --skill ly-image ly-video -g -y
+```text
+mint_skill({skill:"mint-characters",args:["images","characters/作品-cast.json","--out","characters/image-plan.json"]})
 ```
 
-安装器把资源放到用户级 `~/.agents/skills/`，pi 也能发现该目录；其他 agent 按安装器选项选择目标。安装后重新加载技能或启动新会话。
+Normal and --dry-run modes are offline; --out refuses overwrite. Items contain id, model, unchanged prompt, typed params, ordered references, dependsOn and output. This is not a canvas request. Tool paths are workspace-relative. If a plan contains resolved absolute paths, verify containment in the trusted workspace and convert the same files to workspace-relative tool arguments. Never accept an outside path or blindly strip a prefix. Re-export after moving a project; data references remain relative to their owning artifact.
 
-外部 skill 要求 Node.js 22.20+，不要求安装 `ly` CLI。可复用已有 `~/.config/ly/config.json`；也支持执行环境中的 `LY_API_KEY` / `LY_ACCESS_TOKEN` 或 `LY_CONFIG_FILE`。不要打印配置、把密钥写进仓库、请求文件、回执或命令参数。旧 `~/.config/lingying/` 与 assethub 管理令牌不是新链路的前置条件。
+Keep a workspace handoff record linking item IDs and current inputs/reference hashes to observed node, task, resource/output IDs and expected paths. Inspect existing tasks and outputs before any submission. Files alone do not prove input identity. Complete and verify dependencies before generating dependent sheets.
 
-## 从计划到生成
+## Prepare nodes and references
 
-1. 本地 `images` / `videos` 输出 `status: planned`。默认和 `--dry-run` 都不访问网络。`--out plan.json` 另存计划，不覆盖现有文件；不用该选项则只有 stdout。
-2. 计划包含明确模型、每项 `id`、原文 `prompt`、原生类型 `params`、有序 `references`、`dependsOn`、目标 `output`。路径均为本机绝对路径；移动项目后重新导出。计划不是外部 skill 的请求 JSON，不可直接传给 `generate`。
-3. 读取已安装的目标 skill；从其真实安装目录定位 `scripts/image.mjs` 或 `scripts/video.mjs`。执行 `models` 和 `models --model <明确ID>`，核对当前 input_schema、限制和价格。不静默换模型，不把本地能力快照当成实时承诺。
-4. 按依赖顺序处理任务。先检查是否已有与当前输入匹配的产物或外部回执；已有文件不证明输入一致。依赖图必须核验完成并放到对应 output 后，才生成引用它的任务。不能把计划中的待生成路径当成已存在图片。
-5. 为每项单独写 UTF-8 请求，仅含 `model`、`prompt`、`params`、`inputs`。保持提示词与素材顺序；按实时 schema 将每个 reference 绑定为 `{"field":"实际字段","path":"绝对路径"}`。不要猜测模型一定接受 images、反向词或音频；参数不兼容时报告并修正方案，不静默丢弃约束。路径不能塞进 params 冒充已上传 URL。
-6. 运行外部 `generate --request request.json --dry-run`。该预览会访问模型发现，但不上传、不提交。说明模型、数量、视频总秒数与实时费用预估；只有用户已授权生成的范围才能继续，纯提示词或预览请求不等于付费授权。
-7. 使用新回执路径 `generate --request request.json --job jobs/<id>.json` 提交一次。使用 `task --job jobs/<id>.json --wait 60 --download --output-dir downloads/<id>` 恢复查询和下载。退出码零不代表完成；检查 `ok` 和 `data.status`。
-8. 检查返回文件存在、非空和真实媒体格式；图片查看构图、身份与锚点，视频核对时长、运动、画幅和音轨。外部脚本下载名不等于计划 output，检查后复制或转换到 output；不能把 JPEG 直接改扩展名当 PNG。目标已存在时先核对身份，替换须保留旧产物并确认范围。再运行本 skill 的 render，并汇报实际文件与任务 ID。
+```text
+canvas_cli({args:["status"]})
+canvas_cli({args:["ls","/","--long"]})
+canvas_cli({args:["models","--model-type","image"]})
+canvas_cli({args:["read","<observed node ID>"]})
+```
 
-## 恢复与迁移
+Follow catalog pagination, select the exact configured model and inspect its current inputSchema/localConstraints. Historical caps do not prove current availability, limits or prices. Do not substitute a model or discard constraints.
 
-- 新生成、上传、下载和任务回执完全归外部 skill。本地不再维护 `.tasks.json`。
-- 旧台账先保留；有 taskId 时，核对原网关、项目和任务身份，再通过外部 `task --task <ID>` 查询。不要把旧台账当成新回执，不自动重新提交。
-- 超时、网络错误或下载失败只恢复原任务。`submitting` / `submission_unknown` 且缺 task ID 时先核对网关记录。不要删除回执或换文件名绕过状态不确定。
-- `--force`、`--cutout`、`--timeout`、`--concurrency` 已从本地命令退役并报错。透明底另交 ly-image 选择实时可用编辑模型，审核费用后生成到 `optionalCutoutOutput`；保留白底主图。
-- 新生成或质量重做是另一项可能计费的任务。不得因轮询超时、效果不满意或自动驾驶而无限重投；没有明确授权就先汇报。
+Write a workspace batch such as characters/.work/canvas-edit.json with the supported node shape:
+
+```json
+{"commands":[{"type":"add_node","kind":"gen","position":{"x":0,"y":0},"title":"<plan item id>","draft":{"mode":"image","modelId":"<observed catalog ID>","prompt":"<exact plan prompt>","aspectRatio":"<approved aspect_ratio>","resolution":"<approved resolution>"}}]}
+```
+
+Choose position from current canvas state. Map params.aspect_ratio to draft.aspectRatio and resolution to resolution. Do not paste generic params/input_data or schemas into draft. The current canvas does not send negativePrompt: a plan requiring a negative prompt or another unsupported parameter is blocked until its creative plan is revised explicitly. Never silently omit the requirement.
+
+```text
+canvas_cli({args:["apply","--file","characters/.work/canvas-edit.json"]})
+```
+
+Save returned node IDs. Existing nodes use update_node with nodeId, partial draft and expect.promptSha from read for prompt changes. Re-read after stale before revising a payload.
+
+Reuse verified reference nodes or upload authorized workspace files with `canvas_cli({args:["upload","characters/images/<reference>.png","--title","<reference title>"]})`. Connect observed source and target IDs in plan order using a separate apply batch:
+
+```json
+{"commands":[{"type":"connect","source":"<reference node ID>","target":"<generation node ID>","targetHandle":"reference"}]}
+```
+
+Once references have outputs, read the target's references and mentionCandidates. Copy mention syntax only from the response and preserve reference order and approved prompt content. If mention requirements alter content or reference order cannot be represented, revise and revalidate the creative plan first. Read back the prepared node to verify exact model, parameters, prompt and references.
+
+## Submit once, inspect and download
+
+Disclose model, node list, image count and current host cost information before spending. Report an unavailable quote as unknown, not a guessed price. Autopilot does not add spending authorization. Only the main session submits within the authorized scope:
+
+```text
+canvas_cli({args:["run","<observed node ID>","--approved"]})
+canvas_cli({args:["tasks","--node","<observed node ID>"]})
+canvas_cli({args:["resources","<observed node ID>"]})
+canvas_cli({args:["download","<observed node ID>","--resource","<observed resource ID>","--out","characters/images/<expected-sheet>.png"]})
+```
+
+--approved asserts existing authorization; acceptance is not completion. Match successful task/output identities to saved inputs. On interrupted or uncertain submission inspect status, tasks, nodes and resources; never resubmit automatically. Resume a failed download against the same output. Preserve legacy receipts for reconciliation rather than replaying them.
+
+Verify file presence, nonempty content and real format, then inspect face identity across both panels, equal full-body scale and details. A renamed JPEG is not a PNG; report a format mismatch or unavailable conversion. Replacements, optional cutouts and quality retries require appropriate authorization and are never automatic repeats. Verify the expected plan output before rendering reports with mint_skill and saving stdout through write. Report actual files/task IDs and unresolved quality checks.

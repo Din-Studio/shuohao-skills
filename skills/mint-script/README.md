@@ -16,22 +16,19 @@
 
 ## 命令入口
 
-Node 18+，仅标准库。以下命令从本 skill 目录执行。正式产物放入项目根 script/；examples 中的 production.fixture 仅是测试输入。
+Scripts remain self-contained and standard-library-only. Cloud models use mint_skill and workspace read/write/edit/find/grep/ls, without shell execution. All paths below are workspace-relative; production.json stays at the root and screenplay artifacts in script/.
 
-```bash
-node scripts/mint-script.mjs seed examples/修伞簿-outline.fixture.json --eps 1-3
-node scripts/mint-script.mjs validate examples/修伞簿-script.json --no-production \
-  --outline examples/修伞簿-outline.fixture.json --art examples/修伞簿-art.fixture.json
-node scripts/mint-script.mjs checkup examples/修伞簿-script.json --no-production --json
-node scripts/mint-script.mjs render examples/修伞簿-script.json --html --no-production \
-  --outline examples/修伞簿-outline.fixture.json --art examples/修伞簿-art.fixture.json \
-  --cast examples/修伞簿-cast.fixture.json > /tmp/script-report.html
-# --md 输出 Markdown；--lang en 切换英文界面
-node scripts/mint-script.mjs validate PROJECT/script/STORY.json --production PROJECT/production.json
-# 骨架增加 --stage skeleton，不等于完整交付
-node scripts/mint-script.mjs migrate-v3 OLD.json --outline OUTLINE-v3.json
-node scripts/mint-script.mjs migrate-v3 OLD.json --outline OUTLINE-v3.json --out NEW.json --confirm
+```text
+mint_skill({skill:"mint-script",args:["seed","outline/作品-outline.json","--eps","1-3"]})
+mint_skill({skill:"mint-script",args:["validate","script/作品-script.json","--outline","outline/作品-outline.json","--art","art/作品-art.json"]})
+mint_skill({skill:"mint-script",args:["checkup","script/作品-script.json","--json"]})
+mint_skill({skill:"mint-script",args:["render","script/作品-script.json","--html","--outline","outline/作品-outline.json","--art","art/作品-art.json","--cast","characters/作品-cast.json"]})
+mint_skill({skill:"mint-script",args:["validate","script/作品-script.json","--production","production.json"]})
+mint_skill({skill:"mint-script",args:["migrate-v3","script/OLD.json","--outline","outline/OUTLINE-v3.json"]})
+mint_skill({skill:"mint-script",args:["migrate-v3","script/OLD.json","--outline","outline/OUTLINE-v3.json","--out","script/NEW.json","--confirm"]})
 ```
+
+Save successful seed stdout with write to script/作品-script.json and render stdout to script/script-report.html; these operations have no --out. Use --md for Markdown or --lang en for English UI. --stage skeleton checks a skeleton, not full delivery. Standalone validation can use --no-production; omit unavailable upstream flags and report skipped checks.
 
 CLI 自动发现唯一 outline/art/cast。显式文件优先，多候选需要人工指定，损坏或非法 UTF-8 输入失败。--no-production 与 --production 互斥，不禁止显式或唯一发现的大纲。项目配置要求 schemaVersion:3。
 
@@ -49,7 +46,9 @@ validate/checkup/render 同时检查已知 creation 的实际节拍覆盖与 v3 
 
 outline/art/cast/production fixture 全部本地自有。迁移专用旧输入在 scripts/fixtures/，不作为正式创作样例。旧截图不是 v3 验收证据。
 
-```bash
+Developer-only terminal self-tests from this skill directory; the cloud model does not execute these commands:
+
+```sh
 node scripts/selftest.mjs
 node scripts/downstream-selftest.mjs
 node scripts/migration-selftest.mjs

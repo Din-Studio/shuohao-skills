@@ -35,38 +35,44 @@ mint-art        → art.json     (where & what they hold: art assets)
 
 ## CLI
 
-```bash
-node scripts/mint-art.mjs seed outline.json > art.json
-node scripts/mint-art.mjs validate art.json --cast cast.json
-node scripts/mint-art.mjs checkup art.json
-node scripts/mint-art.mjs render art.json --html             # Chinese report UI (default)
-node scripts/mint-art.mjs render art.json --html --lang en   # English report UI
-node scripts/mint-art.mjs style
+Cloud tool calls use workspace-relative paths:
+
+```text
+mint_skill({skill:"mint-art",args:["seed","outline/story-outline.json"]})
+mint_skill({skill:"mint-art",args:["validate","art/story-art.json","--cast","characters/story-cast.json"]})
+mint_skill({skill:"mint-art",args:["checkup","art/story-art.json"]})
+mint_skill({skill:"mint-art",args:["render","art/story-art.json","--html"]})
+mint_skill({skill:"mint-art",args:["render","art/story-art.json","--html","--lang","en"]})
+mint_skill({skill:"mint-art",args:["style"]})
 ```
+
+Save seed stdout with write to art/story-art.json; save render stdout to art/art-report.html (or an English report path). Neither command has --out.
 
 `render` accepts the same `--cast cast.json` as `validate/checkup`. Missing cast skips the name check; a supplied damaged or unreadable file fails. Discovered images affect display only; exported JSON preserves the input.
 
 ## Image generation (optional)
 
-```bash
-node scripts/mint-art.mjs images art.json              # export offline plan only
-node scripts/mint-art.mjs images art.json --dry-run    # print what would be submitted
-node scripts/mint-art.mjs images art.json --out image-plan.json # save plan; does not generate
+```text
+mint_skill({skill:"mint-art",args:["images","art/story-art.json"]})
+mint_skill({skill:"mint-art",args:["images","art/story-art.json","--dry-run"]})
+mint_skill({skill:"mint-art",args:["images","art/story-art.json","--out","art/image-plan.json"]})
 ```
 
-Via the **ly-image** gateway. One sheet per scene and per prop, both using the **master-view + L-shaped detail border** layout (bottom and right edges). Scene details = anchor close-ups; prop details = anchor close-ups + other states + a side profile. Scenes are empty of people; props additionally ban hands and sit on pure white for clean cut-out. No ly-image → prompts only.
+Each scene and prop has one sheet with a master view and an L-shaped detail border along the bottom and right. Scene details show anchors; prop details show anchors, other states and a side profile. Scenes contain no people; props also exclude hands and use a pure white background.
 
-The local command exports a plan only. Read [handoff instructions](references/media-handoff.md), then use the independently installed ly-image skill for discovery, preview, generation and task recovery. Verify downloaded files and place them at each planned output path before rendering. No external skill is required for standalone writing, validation or plan export.
+Read [canvas handoff](references/media-handoff.md). The application supplies canvas_cli for live capabilities, nodes/references, authorized generation, task inspection and downloads to expected outputs. Preserve input hashes and dependency order; unsupported fields block submission. Without capability or authorization, deliver the plan and state that images were not generated. Autopilot does not grant new spending authorization.
 
 ## Autopilot
 
 When the `production.json` at the work-directory root (produced by `mint-setup`) carries `"autopilot": true`, this skill runs its stage **end to end**: it does not ask which input to use, it decides the prop list itself, and it generates every scene and prop sheet in one go. Every decision it made goes into the final report.
 
-**It transfers approval, it does not remove checkpoints**: all applicable checks still have to pass and every sheet is still checked against its anchors (no people, no hands, pure white background) — it just does not wait for a nod. Written as `false`, left out, or with no `production.json` at all, nothing changes. When `validate` finds the file with the flag on, it prints `↳ 自动驾驶：开启`.
+Autopilot delegates creative choices within the task. Deterministic checks and image-anchor inspection (no people, no hands, pure white background) still apply. Generation requires existing spending authorization; autopilot does not provide it. A false or absent flag keeps the normal creative confirmation points. The validator reports whether autopilot is enabled.
 
 ## Selftest
 
-```bash
+Developer-only terminal self-tests from this skill directory; cloud models do not execute these commands:
+
+```sh
 node scripts/selftest.mjs
 node scripts/v3-selftest.mjs
 node scripts/upstream-selftest.mjs
@@ -82,7 +88,9 @@ The formal sample is Rain Canopy Messages (雨棚留言), a neighbourhood-market
 
 All inputs below belong to Rain Canopy Messages. The outline file is a consumed-field v3 fixture, not a full outline deliverable.
 
-```bash
+Developer-only fixture rendering check, run from this skill directory:
+
+```sh
 node scripts/mint-art.mjs validate examples/雨棚留言-art.json --production examples/雨棚留言-production.json --cast examples/雨棚留言-cast-names.json
 node scripts/mint-art.mjs render examples/雨棚留言-art.json --production examples/雨棚留言-production.json --cast examples/雨棚留言-cast-names.json --html --lang en
 ```

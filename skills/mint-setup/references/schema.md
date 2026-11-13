@@ -34,7 +34,7 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
 }
 ```
 
-实际生成使用独立安装的 **ly-image / ly-video**，本 skill 只管理 production.json。`resolution` 与 `aspectRatio` 保留为制作参数，生成前按实时 `input_schema` 核对。不折算像素，提示词里不写像素。
+The host canvas_cli performs authorized generation; this skill manages production.json. Keep resolution/aspectRatio as production parameters and verify them against the exact live model's inputSchema and localConstraints. Do not convert tiers to pixels or put pixel instructions in prompts. The host supplies connection and credentials. Unsupported mappings block handoff; the current canvas does not send negativePrompt, so required negative constraints cannot be silently discarded.
 
 ## 字段
 
@@ -47,10 +47,10 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
 | `style` | object | **画风本身**，由用户在这一段填。没有内置类型，没有默认值。下面单开一节 |
 | `lang` | enum | 报告界面语言 `zh` / `en`。五个 skill 的 `render --lang` 缺省时跟它 |
 | `promptLang` | enum | 视频提示词语言 `zh` / `en`。默认 `en`——官方规范口径 |
-| `image.model` | string | 生图模型，取 ly-image 的 `models` 返回的 id。内置能力表里有的查枚举，没有的明说跳过 |
+| `image.model` | string | Image model ID observed through canvas_cli models --model-type image. Unknown offline models explicitly skip snapshot checks. |
 | `image.asset.resolution` | string | **资产图分辨率档位**：`1K` / `2K` / `4K`。角色设定图、场景设定图、道具设定图共用 |
 | `image.asset.aspectRatio` | string | **资产图比例**：`W:H`。**必须是横构图或方形** |
-| `video.model` | string | 生视频模型，取 ly-video 的 `models` 返回的 id |
+| `video.model` | string | Video model ID observed through canvas_cli models --model-type video. |
 | `video.aspectRatio` | string | **视频 aspect_ratio**：`W:H`。这就是成片画幅 |
 | `video.resolution` | string | **视频 resolution 档位**。枚举**逐个模型不同**：`MiniMax H3` 是 `768p` / `2K`，seedance 全系是 `480p` / `720p`（`seedance2.0` 多一档 `1080p`） |
 
@@ -60,8 +60,8 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
 
 **现在画风就是这个字段本身**，一部剧一套，在这一段填。跑 `style-template` 拿骨架与逐字段说明：
 
-```bash
-node scripts/mint-setup.mjs style-template
+```text
+mint_skill({skill:"mint-setup",args:["style-template"]})
 ```
 
 | 字段 | 说明 |
@@ -105,8 +105,8 @@ node scripts/mint-setup.mjs style-template
 
 一行拿到某一段要抄的那一块：
 
-```bash
-node scripts/mint-setup.mjs style <production.json> --for character
+```text
+mint_skill({skill:"mint-setup",args:["style","production.json","--for","character"]})
 ```
 
 ## autopilot：转移审批权，不是取消检查点
@@ -121,7 +121,7 @@ node scripts/mint-setup.mjs style <production.json> --for character
 | 不受影响 | 为什么 |
 | --- | --- |
 | **质量门照样是门** | `validate` 没过就修到过。门拦的是「白出一整批」，跟问不问用户无关 |
-| **花钱前照样先算账** | 预估花费照样算清楚、照样报给用户（打印出来），只是不等回应就往下走 |
+| **Costs and spending authorization** | Disclose available current costs before generation. Autopilot covers creative decisions only; proceed within existing spending authorization, and stop if authorization is missing. |
 | **止损照样止损** | 同一段连着失败两次仍然跳过、记进汇报。不打断不等于无限重试烧钱 |
 
 **只认布尔真值。**JSON 里写成字符串 `"false"`，在 JavaScript 里是真值——那种写法会让一整条管线闷头跑完，比不写更坏。所以 `fields` 门查类型：写了就必须是 `true` / `false`；**整个不写不算违规**，老项目的 `production.json` 里本来就没有这个字段，按 `false` 处理。
@@ -157,15 +157,15 @@ node scripts/mint-setup.mjs style <production.json> --for character
 
 ## 能力表从哪来
 
-这两张表保留历史采集的模型 UUID 与能力快照，不代表当前服务。生成前读取已安装 ly-image / ly-video 的 SKILL.md，查询实时模型详情：
+The tables retain historical UUIDs and capabilities, not current service promises. Query live models through the host tool:
 
-```bash
-node <ly-image-dir>/scripts/image.mjs models
-node <ly-video-dir>/scripts/video.mjs models
-node <ly-video-dir>/scripts/video.mjs models --model "MiniMax H3"
+```text
+canvas_cli({args:["models","--model-type","image"]})
+canvas_cli({args:["models","--model-type","video"]})
+canvas_cli({args:["models","MiniMax H3","--model-type","video"]})
 ```
 
-`<ly-image-dir>` / `<ly-video-dir>` 是真实安装目录，不是本仓库目录。实际模型 ID 以 models 返回值为准。
+Follow pagination, match the exact observed model ID and inspect its inputSchema/localConstraints. A substring search can return several models; never select a different one silently.
 
 所以表可以填，但**出处不许省**：`IMAGE_MODELS` / `VIDEO_MODELS` 里每一条都带 `source`（取数命令）和 `modelId`（UUID），过期了重新跑一次就能对账。自测里有断言盯着这两个字段。
 
@@ -173,8 +173,8 @@ node <ly-video-dir>/scripts/video.mjs models --model "MiniMax H3"
 
 一行看全表：
 
-```bash
-node scripts/mint-setup.mjs caps
+```text
+mint_skill({skill:"mint-setup",args:["caps"]})
 ```
 
 **表里没有的模型不是错误**：`model-caps` 与 `video-model` 两道门明说跳过，其余门照常。用户确认了口径，往表里加一条就自动开始查。
@@ -183,9 +183,10 @@ node scripts/mint-setup.mjs caps
 
 视频模型收的 `duration` 是**整数秒且有区间**：`MiniMax H3` 是 5~15，`seedance2.5` 是 4~30，seedance2.0 全系是 4~15。分镜的段秒数是按节拍算出来的，不一定是整数，也可能短于下限。折算规则写死在一处：
 
-```bash
-node scripts/mint-setup.mjs duration 12.5 --model "MiniMax H3"
-# → { "duration": 13, "note": "12.5 秒向上取整到 13 秒" }
+```text
+mint_skill({skill:"mint-setup",args:["duration","12.5","--model","MiniMax H3"]})
 ```
+
+The returned duration is 13, with a rounding notice.
 
 向上取整、夹进区间、动过就说清楚。下游参数交接见本 skill 的 `contract.md`。

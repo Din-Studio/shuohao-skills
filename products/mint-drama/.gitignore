@@ -1,0 +1,4 @@
+# Generated from canonical skills and roles by pnpm assemble.
+.pi/skills/
+.pi/agents/
+.pi/assembled.json

@@ -4,9 +4,11 @@
 
 先迁移 production、outline、script，再迁移 creation。本工具只处理 creation，不批量修改项目或兄弟阶段。正式 validate/render 只接受 v3。迁移不调用媒体模型。
 
-```bash
-node scripts/mint-creation.mjs migrate-v3 old-creation.json
-node scripts/mint-creation.mjs migrate-v3 old-creation.json --script new-script.json --outline new-outline.json --out new-creation.json --confirm
+All paths are workspace-relative:
+
+```text
+mint_skill({skill:"mint-creation",args:["migrate-v3","creation/old-creation.json"]})
+mint_skill({skill:"mint-creation",args:["migrate-v3","creation/old-creation.json","--script","script/new-script.json","--outline","outline/new-outline.json","--out","creation/new-creation.json","--confirm"]})
 ```
 
 默认仅预览。存在 pending 时退出非零，不写文件；--confirm 明确接受迁移记录中的处理建议，仍不能跳过损坏数据或计划冲突。写入新文件，拒绝覆盖任何已有目标和符号链接。输入始终不变，是可恢复的原始备份。

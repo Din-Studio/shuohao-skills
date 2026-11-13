@@ -6,7 +6,7 @@
 - 意见分为 `[必须修改]`、`[建议]` 与 `[阻塞]`。没有必须修改和阻塞就批准；有必须修改才退回；编写方无法单独解决的问题登记为阻塞。意见只保留本轮，不做累积记录。
 - 批准绑定内容与输入：批准之后分镜结构或提示词正文被改动，或者这一段依据的节拍原文、参考图内容、模型参数、项目要求发生变化，批准自动失效。
 - 只审核，不改写分镜结构和提示词正文，不生成视频。工作单格式见 [worksheet](references/worksheet.md)。
-- 通常由调度方以 subagent 方式调用，也可以单独使用。Node 18+，只有标准库依赖；整个目录可以单独复制。
+- The orchestrator calls `workflow({name:"mint_prompt",args:{role:"mint-video-prompt-reviewer",task:"<complete brief>"}})` after a deterministic prompts check, with absolute packaged guide paths and workspace-relative inputs. The isolated foreground Pi session uses the host model/authentication, has no write tool and cannot delegate. Verdicts use mint_skill with role restrictions; scripts remain self-contained.
 
 完整步骤与命令见 [SKILL.md](SKILL.md)。
 

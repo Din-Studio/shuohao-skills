@@ -11,7 +11,7 @@
 
 # shuohao-skills
 
-**AI 短剧制作的 skill 集合**：从一本小说到直接喂生成管线的制作素材——定生产参数、拆角色、排大纲、出场景与道具设定、写剧本、切分镜、参考图直出视频。给 AI 编码 agent 用，**pi、Claude Code、codex 都能跑**。
+**AI 短剧制作的 skill 集合**：从一本小说到直接喂生成管线的制作素材——定生产参数、拆角色、排大纲、出场景与道具设定、写剧本、切分镜、参考图直出视频。Cloud execution is packaged in **products/mint-drama** for Mint's host-managed Pi runtime.
 
 整条管线长这样——**生产参数先定死画幅与模型，改编大纲收敛结构，剧本、场景、角色三者同步迭代，视频创作按剧本分段切镜，直接挂载已有设定图**：
 
@@ -21,11 +21,11 @@
 | --- | --- |
 | [**mint-setup**](skills/mint-setup) | 确认制作参数、视觉正文和自然语言创作要求，写入工作目录根的 `production.json`。画幅不决定叙事节奏 |
 | [**mint-outline**](skills/mint-outline) | 建立作品承诺、稳定剧情节点、分集与集尾计划、可选阶段里程碑和资产清单。创作方法读取本地指南，不强制兑现频率、悬念或终局胜利 |
-| [**mint-characters**](skills/mint-characters) | 把大纲定下的角色做成角色设定集：人物画像、形象提示词、音色提示词、角色设定图。吃 outline.json 预填角色表，报告语言可选，画风整块取自 `production.json`。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
-| [**mint-art**](skills/mint-art) | 给 AI 短剧出美术设定集（场景 + 叙事道具）：一致性锚点、光照与状态变体、尺度参照、无人无手白底提示词。吃 outline.json 预填清单，基础契约与制作参数由脚本检查。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
+| [**mint-characters**](skills/mint-characters) | 把大纲定下的角色做成角色设定集：人物画像、形象提示词、音色提示词、角色设定图。吃 outline.json 预填角色表，报告语言可选，画风整块取自 `production.json`。**`images` 只导出离线计划**；Host canvas_cli handles authorized generation, preserving reference dependencies and output paths |
+| [**mint-art**](skills/mint-art) | 给 AI 短剧出美术设定集（场景 + 叙事道具）：一致性锚点、光照与状态变体、尺度参照、无人无手白底提示词。吃 outline.json 预填清单，基础契约与制作参数由脚本检查。**`images` 只导出离线计划**；Host canvas_cli handles authorized generation, preserving reference dependencies and output paths |
 | [**mint-script**](skills/mint-script) | 编写场次与节拍流，按 ID 认领大纲节点，定位开场与集尾，严格对账上游目标时长。开场落点按需标记，结束坐标由正文计算；估算不等于真实表演时长 |
-| [**mint-creation**](skills/mint-creation) | 参考图直出视频：按剧本分段、切镜，直接挂载已有的角色、场景与道具设定图，不生成中间分镜图。视频提示词按模型选择结构，`export` 输出投产包，`videos` 导出离线计划，独立安装的 ly-video 负责生成与恢复。镜头表达按指南评审，模型技术限制由工具检查 |
-| [**mint-video-prompt**](skills/mint-video-prompt) | 视频提示词编写方：按剧本节拍完成一集的分段、分镜与提示词，写入每段一份的工作单 `<段号>/prompt.md` 并提交审核；被退回后逐条修改再提交。由 mint-creation 以 subagent 方式调用，也可以单独使用 |
+| [**mint-creation**](skills/mint-creation) | 参考图直出视频：按剧本分段、切镜，直接挂载已有的角色、场景与道具设定图，不生成中间分镜图。视频提示词按模型选择结构，`export` 输出投产包，`videos` 导出离线计划，Host canvas_cli handles authorized generation, task inspection and downloads.镜头表达按指南评审，模型技术限制由工具检查 |
+| [**mint-video-prompt**](skills/mint-video-prompt) | 视频提示词编写方：按剧本节拍完成一集的分段、分镜与提示词，写入每段一份的工作单 `<段号>/prompt.md` 并提交审核；被退回后逐条修改再提交。Dispatched by mint-creation through the isolated mint_prompt workflow |
 | [**mint-video-prompt-review**](skills/mint-video-prompt-review) | 视频提示词审核方：独立对照剧本、资产、项目要求与模型口径审核工作单，把意见写进同一份工作单并登记 approved、changes_requested 或 blocked。只审核，不改写提示词 |
 
 **五个创作 skill 的报告都支持中英双语界面**：默认中文，`render --lang en` 切换为英文界面（故事内容与原始诊断保持原文）。界面语言也可以在 `production.json` 里一处定死。
@@ -44,7 +44,9 @@ JSON 保存故事内容和必要交接关系。原创不强制填写改编取舍
 
 五段的报告可以合成一张单页，左侧导航切换——**有哪几段就出哪几个面板**：
 
-```bash
+Developer-only report rendering check from the repository root; the cloud model uses each stage's mint_skill render instead:
+
+```sh
 node scripts/report.mjs --from <demo目录> --out report.html
 ```
 
@@ -60,9 +62,11 @@ node scripts/report.mjs --from <demo目录> --out report.html
 
 默认一次显示一个面板。左下角「平铺全部」把所有面板同时展开，Cmd+F 恢复全局搜索。数字键 `1`–`5` 切面板，`#pane-script` 这样的深链可以直接分享到某一屏。
 
-```bash
-node scripts/report-selftest.mjs   # 合并器单元测试
-node scripts/pipeline-selftest.mjs # 真实渲染、交互适配与隔离安装测试
+Developer-only terminal self-tests from the repository root:
+
+```sh
+node scripts/report-selftest.mjs   # assembler unit tests
+node scripts/pipeline-selftest.mjs # real rendering, interaction adapters, isolated install tests
 ```
 
 提供小说后，按阶段生成以下产物。下列截图为历史界面示意；当前界面以本地 `render` 为准：
@@ -87,76 +91,31 @@ node scripts/pipeline-selftest.mjs # 真实渲染、交互适配与隔离安装�
 
 自带《收书人》样例与离线报告渲染，详见 [mint-creation](skills/mint-creation)。
 
-这一阶段的主会话只调度：`seed` 之后派发**编写 subagent**（加载 mint-video-prompt）写分镜与提示词，结构检查通过后派发**审核 subagent**（加载 mint-video-prompt-review），循环到每段工作单都是 approved，再回写 creation.json、导出投产包、交接生成。批准绑定这一段的内容与它依据的输入，设定图重新生成、认领的台词被修改或更换模型参数之后，只有受影响的段需要重新审核。同一段提交三轮仍未批准，或审核方登记了阻塞时停止循环，交给用户。没有安装两个兄弟 skill 时，subagent 读取 mint-creation 自带的指南副本；pi 没有子代理扩展时通过 bash 启动独立的 `pi -p` 进程；只有不能派发、也不能启动独立进程的环境才在同一会话串行完成，并注明审核不独立。
+The main session seeds inputs, dispatches the isolated mint-video-prompt-writer workflow, runs deterministic prompts check, then dispatches mint-video-prompt-reviewer independently. Only valid approved worksheets can be applied, exported and handed off. Approval binds segment content and its beat/reference/model/requirement inputs; changes invalidate only affected segments. Stop after three submissions without approval, two consecutive structural failures for the same reason, or a blocked review. Resolve blockers with the user or upstream before continuing. Generation remains a separate authorized canvas phase.
 
-## 安装
+## Mint cloud product
 
-```bash
-git clone https://github.com/eternityspring/shuohao-skills.git
-cd shuohao-skills
-./scripts/install.sh
+[products/mint-drama](products/mint-drama) assembles the eight canonical skills, prompt roles and workflow into a self-contained product package. Developers run the following in that directory with Node 24 and the package's pinned pnpm version:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm assemble
+pnpm test
 ```
 
-自动检测本机安装了 pi、Claude Code 还是 codex，把所有 skill **软链**过去——`git pull` 之后立刻生效，不需要重新安装。本版本将全部 8 个 `novel-*` skill 改名为 `mint-*`，脚本入口和编写／审核角色名称同步改名。更新后请执行一次安装脚本，清理指向本仓库的旧名称软链并安装新名称，再重新加载技能或启动新会话；真实目录与其他来源软链不会删除。旧命令与旧脚本路径不再提供。
+These are developer-only commands. The model does not invoke bash, install packages or execute scripts. It uses workspace read/write/edit/find/grep/ls and deterministic tool calls:
 
-```bash
-./scripts/install.sh mint-characters   # 只安装某一个
-./scripts/install.sh --codex            # 只安装到 codex
-./scripts/install.sh --pi               # 只安装到 pi
-./scripts/install.sh --uninstall        # 取消软链
-# 安装到 pi 时，同时把 agents/pi/ 下的两个角色定义链接到 ~/.pi/agent/agents（子代理扩展默认读取的目录）
-# 安装到 Claude Code 时，同时把 agents/ 下的两个 subagent 定义链接到 ~/.claude/agents
+```text
+mint_skill({skill:"mint-setup",args:["init","--aspect","9:16","--video-model","MiniMax H3","--video-resolution","768p"]})
 ```
 
-不想用脚本就自己链：
+Args preserve CLI operation/option tokens without node or a script path. All artifact paths are workspace-relative. Use supported --out flags for exports; for stdout-only init/seed/render operations, save successful stdout with write. There are no pipes, redirection, directory changes or shell globs. Deterministic scripts retain standard-library-only implementations and do not import sibling skills.
 
-```bash
-ln -s "$PWD/skills/mint-characters" ~/.claude/skills/mint-characters
-ln -s "$PWD/skills/mint-characters" ~/.codex/skills/mint-characters
-ln -s "$PWD/skills/mint-characters" ~/.pi/agent/skills/mint-characters
-```
+Writer and reviewer use `workflow({name:"mint_prompt",args:{role:"mint-video-prompt-writer",task:"<complete brief>"}})` and role mint-video-prompt-reviewer. Briefs supply absolute packaged guide paths and workspace-relative input/worksheet paths. These foreground isolated Pi sessions share host model/authentication and cannot delegate. The main session runs mint_skill prompts check between them. workflow_control accepts status or cancel with runId; after interruption inspect worksheets and resume only the unfinished phase with a new workflow call.
 
-**pi 还有第二条路**：把整个仓库当成 pi 包安装，八个 skill 一次全进来，`git pull` 同样立刻生效：
+The host supplies canvas_cli, connection identity and credentials. Plans map to supported canvas nodes and ordered references, then authorized run, tasks/resources inspection and download to expected workspace outputs. Read each stage's media-handoff reference. Preserve content/input hashes and approvals; unsupported parameters block handoff. No --session, daemon pairing, CLI subprocess or personal credentials. Autopilot does not add spending authority, and uncertain/completed tasks are not resubmitted.
 
-```bash
-pi install /path/to/shuohao-skills                        # 本地目录
-pi install git:github.com/eternityspring/shuohao-skills   # 直接从 GitHub
-```
-
-仓库根的 `skills/` 就是 pi 的约定目录，**不需要 `package.json`**。安装完 `pi config` 里可以逐个开关。pi 包不携带角色定义；需要编写方与审核方的角色定义时，再运行一次 `./scripts/install.sh --pi`。
-
-## 三个 agent 的差别
-
-工作流、脚本、产出三家完全一样，不同的只有两处——**都不影响结果，只影响怎么打命令和跑多快**：
-
-| | pi | Claude Code | codex |
-| --- | --- | --- | --- |
-| skill 命令 | `/skill:mint-outline` | `/mint-outline` | `/mint-outline` |
-| 子代理并发 | 内核不带子代理，也没有内置待办与后台 bash；安装子代理扩展后有 `subagent` 工具。mint-creation 没有扩展时通过 bash 启动独立的 `pi -p` 进程完成编写与审核 | Task | subagent |
-
-直接用中文说「帮我拆一下这本书的角色」并给出路径，三家都能唤起，与打命令等价。
-
-本仓库不再内置生成编排。实际生成由独立安装的 ly-image / ly-video 执行；任务恢复使用外部回执，不通过重跑本地 `images` / `videos` 重新提交。
-
-## 外部生成技能
-
-需要实际生图、生视频时，先安装：
-
-```bash
-npx skills@latest add Din-Studio/skills --agent codex --skill ly-image ly-video -g -y
-```
-
-用户级副本位于 `~/.agents/skills/`，pi 也能发现；安装后重新加载技能或启动新会话。各创作 skill 仍自包含：`images` / `videos` 现在只导出计划，即使不带 `--dry-run` 也不提交。使用 `--out plan.json` 保存新计划。
-
-实际生成先阅读对应阶段的 `references/media-handoff.md`，再读取已安装外部 skill。由外部 skill 完成实时模型发现、请求预览、授权提交、原任务恢复与下载；核验后放到计划 output 路径再渲染报告。旧生成选项已退役；不得因提交状态不确定而自动重投。
-
-## 前置条件
-
-| | 必需？ | 说明 |
-| --- | --- | --- |
-| **Node** | 必需 | ≥ 18。skill 的脚本只用标准库，**没有 npm 依赖，不需要 install** |
-| **模型额度** | 必需 | 写文本的部分用你当前会话的额度，**不需要任何 API key** |
-| **ly-image / ly-video skills** | 可选 | 从 [Din-Studio/skills](https://github.com/Din-Studio/skills) 独立安装。实际生成需要 Node 22.20+ 和私有凭据，可复用 `~/.config/ly/config.json`。本仓库创作、校验和计划导出仍可独立运行 |
+Local package and fake-transport tests do not establish real cloud approval, billing, browser delivery or generation quality; those checks belong to later Mint integration.
 
 ## 仓库约定
 
@@ -181,11 +140,13 @@ skills/<skill-name>/
 
 加新 skill 之前，先把全部自测跑一遍：
 
-```bash
+Developer-only terminal self-test sweep from the repository root:
+
+```sh
 for f in skills/*/scripts/*selftest.mjs scripts/*-selftest.mjs; do node "$f" || exit; done
 ```
 
-没有配置 CI。自测在本地运行，包含跨阶段联合测试、旧数据迁移和独立拷贝检查。**已在 macOS + Node 22/24 上验证**；代码没有平台相关调用，Linux 和更低版本 Node 理论上没问题，但没验。
+There is no CI. Local tests cover cross-stage integration, migration and isolated-copy checks. The cloud product requires Node 24.22.1+. Some legacy suites require POSIX paths and file symlinks; use Linux for the complete sweep. See the [integration verification record](docs/mint-cloud-runtime-integration-plan.md#verification-record) for actual results and deferred cloud checks.
 
 ## 工作目录约定
 

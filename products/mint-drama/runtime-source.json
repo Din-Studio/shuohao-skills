@@ -1,0 +1,86 @@
+{
+  "repository": "mint-agent",
+  "revision": "327bb1ece8fe1d07a7b5637f8173481fc73ffde9",
+  "entries": [
+    [
+      "vendor/canvas-cli",
+      "vendor/canvas-cli"
+    ],
+    [
+      "contracts/vendor/app-web/canvas-protocol",
+      "contracts/vendor/app-web/canvas-protocol"
+    ],
+    [
+      "src/canvas-cli-tool.ts",
+      "runtime/canvas-cli-tool.ts"
+    ],
+    [
+      "src/workspace-file-guard.ts",
+      "runtime/workspace-file-guard.ts"
+    ],
+    [
+      "src/launch-config.ts",
+      "runtime/launch-config.ts"
+    ]
+  ],
+  "files": {
+    "runtime/canvas-cli-tool.ts": "a18423118e6521ff84fb6094073e46d82c496e7128febe617d30d94a5d844d62",
+    "runtime/launch-config.ts": "3ca786cb69cfbe740289d478802122fc89ebec712015b0a3826e6c62b72e9d74",
+    "runtime/workspace-file-guard.ts": "765673441a08d3146ee281ee9c6d98203b51152e7e13fb060b430d4c00de610d",
+    "vendor/canvas-cli/bin/scenemint-canvas.mjs": "16c73312b998f76a74d88553ba7e760d08db09ef4da7bd23ecc1087a17b1ccdc",
+    "vendor/canvas-cli/LICENSE": "30668bd7268d72a2a7b0ba660b9b2737cb14622e09490708d6f81819cc9421c2",
+    "vendor/canvas-cli/package.json": "4cc6c4089924f9126f24078cf83608e5dd02d94cc40351a489c41f5e44810d75",
+    "vendor/canvas-cli/README.md": "13eed03b013ed6c709cc95d1b99f17cdd1bfd6f67fd2340ef92e269389b0f798",
+    "vendor/canvas-cli/skills/scenemint-canvas/references/commands.md": "697b683e8a8c0089c72ac589918c68dac9eba35b8cda8592cc44970d4a88f40c",
+    "vendor/canvas-cli/skills/scenemint-canvas/SKILL.md": "0faf2d8e8f3d4ad0969bd92981d4f84fb0e38892c7eba403b1fb31e42343e336",
+    "vendor/canvas-cli/src/cli.mjs": "f2fada72104a31c7b50b637e38897322759129105f83d3d30580171bbd69d4d5",
+    "vendor/canvas-cli/src/client.mjs": "5bbb53456f1a47387181e80d0c76ef12486d767b8dab23728673825f41568af8",
+    "vendor/canvas-cli/src/cloud-state.mjs": "f498f52d760953f4c3070fc7bbbd146b91230e1c1e0c96c1c8dfa0c8bfb9768f",
+    "vendor/canvas-cli/src/cloud.d.mts": "941280f0b1ef8d46503aa49ec5f935d63c7ffe06a005b7aa05e6951f6e4b652e",
+    "vendor/canvas-cli/src/cloud.mjs": "e0edad56da00d8e5f54a9dd2935f07d7b836af0885ee798fb47d6f3ebd519d0e",
+    "vendor/canvas-cli/src/common.mjs": "91d1ccd7ac597314730d4db1a313698c143e90203c1d634fd556d85e67b4b8e6",
+    "vendor/canvas-cli/src/connection-code.d.mts": "7f2467fa334a3b0937ce02ca0f35cd822c7befbb77524179adc4cbd46fed2563",
+    "vendor/canvas-cli/src/connection-code.mjs": "65f378822a173c228b81fde86b037fe292ddd6e633d7ca0605c440be817e3f6f",
+    "vendor/canvas-cli/src/contract.d.mts": "276bd44723b2ea598929a259772ba3bbdae190ea67fcb789869f88ee73a1d5fa",
+    "vendor/canvas-cli/src/contract.mjs": "f164f18f83a93581156073cbaa40fabaf7975cf15bc6743af487a21f7abf9b56",
+    "vendor/canvas-cli/src/echo.d.mts": "d12b063d5d23621a18ab58ce19cf90b6aa67e07fa9e390ac370f7bb490b272fe",
+    "vendor/canvas-cli/src/echo.mjs": "f30c60495c056dddb02e8bf4a596b257cafaf168a07c4cedb7c9228504ff2d21",
+    "vendor/canvas-cli/src/host-argv.mjs": "707fc318b5439bd509433737c0d879cf87c7c86d98ccd672f4fe70eb1c38e2b7",
+    "vendor/canvas-cli/src/host-text.mjs": "68ab9624473984cd9a70d7d840d9bc29b847dc59390c4b467f200d5b7d85b366",
+    "vendor/canvas-cli/src/host.d.mts": "8bed527af5cd130f111a3173b13dec82faf4586af477e73f0a9ed66e93826c85",
+    "vendor/canvas-cli/src/layout-policy.d.mts": "867d3592ba0a6013d68f025bc18c4def2f3be6dbd47ce4b2a607d555bfa773b8",
+    "vendor/canvas-cli/src/layout-policy.mjs": "2a431f12a98eaf560906ef46d07becf96b71ecc7dae4d99176c434f14929a810",
+    "vendor/canvas-cli/src/media.mjs": "c66bdd18325744ff8217804dabfaa6e4690c9617a87ec21b8e47736e521b7085",
+    "vendor/canvas-cli/src/output-dirs.mjs": "3322ba9232d9c86515d4f6a0964ad172766aedc10fcafe6929140dd667dbfda6",
+    "vendor/canvas-cli/src/policy.d.mts": "747bbbd0db2a50b414522932622d64f5513d39dc7399985c57684bcb88ab43cb",
+    "vendor/canvas-cli/src/policy.mjs": "fbece1b25fe876861b2d827eb281a9909ff4074950e7dd6ab1cf4b5db4c94bff",
+    "vendor/canvas-cli/src/run-await.mjs": "223cf310a8a3e2b997c8bd4b556fdf36f86b5e5e703e58e2d9b66a5a0972137e",
+    "vendor/canvas-cli/src/scene3d-identity.d.mts": "300a14c053d9b0154000b3d9fee4b4acfe08c9e44d35c658e31ad39d2cf375a7",
+    "vendor/canvas-cli/src/scene3d-identity.mjs": "a0a1029c4faf36218d83e18fc13fcb1527d3f92c948a9a77cd555bbc0f2b8643",
+    "vendor/canvas-cli/src/scene3d-labels.mjs": "9faad59103818c8754c4c03a34d816b6e4f11145b23af65846680f71f16ef6f5",
+    "vendor/canvas-cli/src/scene3d-text.d.mts": "84bb3edcb656301a32ae1e65856d074c4ba579d0e143f3d9c25ba8b5bbe68b3b",
+    "vendor/canvas-cli/src/scene3d-text.mjs": "372b185daa1d91cc1563d7cad123e2a1010bfd5a883f8c2792ee7769d4f569d2",
+    "vendor/canvas-cli/src/session.mjs": "9a5d0822f5c8dd482d7bcd07a7e1266bbdd2ffceec9fe0e44d042eab6e7091ff",
+    "vendor/canvas-cli/src/spec.mjs": "64a49cce69fe80613e8764b1b5cc581f5e1c2264bd214f1b390452d134d8a62e",
+    "vendor/canvas-cli/src/tidy-summary.d.mts": "63da06afd12b6fa0543af798df382d79844e2adaa051601601118397e5004028",
+    "vendor/canvas-cli/src/tidy-summary.mjs": "4b0296bda5bf6a45d8a8c5de59d8a4b23f7b7c56f771371d2580d7db98acdd77",
+    "contracts/vendor/app-web/canvas-protocol/connection-code.d.mts": "eb0bf0dbc73a679ed7fe9bcc92d30a6bea08879b9f9522132fb4419b3a17c34d",
+    "contracts/vendor/app-web/canvas-protocol/connection-code.mjs": "3ac535cd582d54eb6d3b16aa06ad2f4982a3185aabdd5d5a7ead7f76a34551a7",
+    "contracts/vendor/app-web/canvas-protocol/contract.d.mts": "bbd7572ad6e70cf5a70ac22621ae035f59d3dc6a7211d22787bed42d74e27953",
+    "contracts/vendor/app-web/canvas-protocol/contract.mjs": "27280e32bd822ba8bacbc1e9fda31f53fc11ad423c6a4040d0828b15677e02f1",
+    "contracts/vendor/app-web/canvas-protocol/echo.d.mts": "a12265c2942e7dd7a21c5511504bbcd2e6929e5d95f30c37db24e859eea03d41",
+    "contracts/vendor/app-web/canvas-protocol/echo.mjs": "67f31de034aa9d832a72e43539d7f391ab11a2fc8d3f777e1aa93a38853d7a43",
+    "contracts/vendor/app-web/canvas-protocol/host-text.mjs": "8ae27e2707048889d1b594ef5afe184675ab66a5d19a7b4cb251ebb3111e01f3",
+    "contracts/vendor/app-web/canvas-protocol/layout-policy.d.mts": "0b4a5a0ffa046117ffd9ac1597d5388f16d43c3ec3c80dddf82059eb18bfbf31",
+    "contracts/vendor/app-web/canvas-protocol/layout-policy.mjs": "b770ac11d019b88da1fc378b2a1021254a9cc7703307a909471108b7b6aa3fe8",
+    "contracts/vendor/app-web/canvas-protocol/policy.d.mts": "b3477bd793f1a182a6205dfa580b5451c0190b1d28665283a257f0d1c29fa61a",
+    "contracts/vendor/app-web/canvas-protocol/policy.mjs": "76e3de94d9a590a83c3839725b8d8cd90a450a0cfaa10a5dab6eaf4d39b45b88",
+    "contracts/vendor/app-web/canvas-protocol/scene3d-identity.d.mts": "6b10af7ae039d9e21c6cb1d6223900e77d66f2a53fa0f42ca75d9dc39eb7bbb3",
+    "contracts/vendor/app-web/canvas-protocol/scene3d-identity.mjs": "e798a40b8952b05358d36a0d86d4aacbe8980e41981ab147e3f2a6cbc8168913",
+    "contracts/vendor/app-web/canvas-protocol/scene3d-labels.mjs": "983627670e3662a7e7cf4fc1a6eca4fbb1588774ff2f916b3a17376782b23707",
+    "contracts/vendor/app-web/canvas-protocol/scene3d-text.d.mts": "3ca5bfc711b6ddbcc4a9111d40737c4306fd78d24bd634ac106668a1cee98c4f",
+    "contracts/vendor/app-web/canvas-protocol/scene3d-text.mjs": "84e572dd4b682f9e1c1c5a3c2ff6e20434d97676aa08018b52d74d6d84c84f3f",
+    "contracts/vendor/app-web/canvas-protocol/tidy-summary.d.mts": "482700fb0ecc0d904ed0edfc4a4a1e5ffabe2501618fdf85d847043236bbb0a8",
+    "contracts/vendor/app-web/canvas-protocol/tidy-summary.mjs": "56ffcaa1896667af65ce18aa837be3f058b13b08302e874653cd110bdecd419f"
+  }
+}

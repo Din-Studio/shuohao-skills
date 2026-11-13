@@ -14,16 +14,17 @@ Locks asset-image and video models, resolution tiers, independent aspect ratios,
 
 ## Usage
 
-```bash
-node scripts/mint-setup.mjs caps
-node scripts/mint-setup.mjs init --aspect 9:16 \
-  --source Example --video-model "MiniMax H3" --video-resolution 768p \
-  > <work-dir>/production.json
-node scripts/mint-setup.mjs style-template
-# Fill production.json's style block before validating
-node scripts/mint-setup.mjs validate <work-dir>/production.json
-node scripts/mint-setup.mjs show <work-dir>/production.json
+Cloud operations use workspace-relative paths and the host tools, without shell execution:
+
+```text
+mint_skill({skill:"mint-setup",args:["caps"]})
+mint_skill({skill:"mint-setup",args:["init","--aspect","9:16","--source","Example","--video-model","MiniMax H3","--video-resolution","768p"]})
+mint_skill({skill:"mint-setup",args:["style-template"]})
+mint_skill({skill:"mint-setup",args:["validate","production.json"]})
+mint_skill({skill:"mint-setup",args:["show","production.json"]})
 ```
+
+Save init stdout with write to production.json, fill its style using the returned style-template and the user's requirements, then validate. Init has no --out.
 
 - The finished-video aspect has no default. `--aspect` sets only the video ratio.
 - Asset defaults: `nanobanana2`, `2K`, `16:9`. Override with `--image-model`, `--asset-resolution` and `--asset-aspect`.
@@ -46,7 +47,7 @@ node scripts/mint-setup.mjs show <work-dir>/production.json
 | style-blocks | Style label and both style blocks are complete |
 | style-coherent | Positive and negative requirements agree |
 
-Model tables retain historical source metadata and UUIDs for offline checks. Unknown models explicitly skip capability checks. Before generation, use the independently installed ly-image / ly-video skills to discover live schemas. Resolution and aspect are service tiers, not pixel dimensions.
+Historical caps retain provenance and UUIDs for offline checks only; unknown models skip capability checks. Before generation use the host canvas_cli models command with --model-type image or video, follow pagination and inspect the exact model's inputSchema/localConstraints. The host supplies connection and credentials; do not install another generation tool. Resolution and aspect are service tiers, not pixel dimensions.
 
 A video ratio does not constrain the asset-image model. For example, `nanobanana2` sheets can remain at `16:9` while a compatible video model produces `4:3`. The `image-2` model at `4K` accepts only `16:9` or `9:16` images.
 
@@ -67,11 +68,11 @@ The five creative skills search upward from their output directory, at most five
 
 `init --autopilot` enables uninterrupted downstream execution. It transfers approval, not checkpoints: validation, cost estimates and loss limits remain. Only JSON boolean `true` enables it. Setup still requires the user's aspect, video model and art-style decisions.
 
-```bash
-node scripts/mint-setup.mjs resolve --for characters
-node scripts/mint-setup.mjs resolve --for art
-node scripts/mint-setup.mjs resolve --for video
-node scripts/mint-setup.mjs duration 12.5 --model "MiniMax H3"
+```text
+mint_skill({skill:"mint-setup",args:["resolve","--for","characters"]})
+mint_skill({skill:"mint-setup",args:["resolve","--for","art"]})
+mint_skill({skill:"mint-setup",args:["resolve","--for","video"]})
+mint_skill({skill:"mint-setup",args:["duration","12.5","--model","MiniMax H3"]})
 ```
 
 `resolve` returns model parameters and assembled `inputData`; video also includes its duration range. The caller adds prompts, reference URLs and per-segment duration. Image stages receive their respective style block; video receives the style label and phrase.
@@ -83,7 +84,9 @@ node scripts/mint-setup.mjs duration 12.5 --model "MiniMax H3"
 
 These are examples, not a style menu. They also serve as independent test fixtures.
 
-```bash
+Developer-only terminal self-tests from this skill directory; cloud models do not execute these commands:
+
+```sh
 node scripts/selftest.mjs
 node scripts/migration-selftest.mjs
 node scripts/upstream-selftest.mjs

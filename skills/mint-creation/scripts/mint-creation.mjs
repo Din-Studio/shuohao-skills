@@ -1735,7 +1735,7 @@ const USAGE = `mint-creation.mjs — mint-creation skill 的确定性工具（�
                                                             ┘ mint-video-prompt-review 时使用
   export <creation.json> --script <script.json> [--out .] [--dir <工作单目录>]
                                                 导出投产包：根部 manifest.json，引用已批准的 <段号>/prompt.md 工作单
-  videos <manifest.json>          导出离线交接计划，交给 ly-video 生成
+  videos <manifest.json>          导出离线交接计划，交给 canvas_cli 生成
          [--only <ID列表>]                仅选择指定任务（图片自动补齐参考依赖）
          [--dry-run]                      只预览计划；本命令始终不上传、不提交
          [--out <plan.json>]              另存计划（不覆盖已有文件）

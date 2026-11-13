@@ -28,8 +28,8 @@ export function mediaPlan(jobs, { kind, model, inputBase = {}, outDir, only = nu
   }
   selected.forEach(visit);
   return {
-    schemaVersion: 1, status: 'planned', kind, skill: `ly-${kind}`, model,
-    note: '离线交接材料，不是 generate 请求。先读取已安装 skill，发现实时 schema；按字段绑定 references，审核 params 并构造 request JSON。未提交、未生成。',
+    schemaVersion: 1, status: 'planned', kind, skill: 'scenemint-canvas', model,
+    note: 'Offline canvas handoff, not a submission. Use canvas_cli to discover the live schema, prepare nodes and ordered references, obtain approval, and submit. Nothing has been generated.',
     jobs: ordered.map(job => {
       const references = (job.images ?? []).map(ref => {
         const path = resolve(outDir, ref.path);
@@ -53,7 +53,7 @@ export function mediaPlan(jobs, { kind, model, inputBase = {}, outDir, only = nu
 export function checkPlanFlags(args) {
   const retired = ['--force', '--cutout', '--timeout', '--concurrency'];
   const flag = args.find(arg => retired.some(f => arg === f || arg.startsWith(f + '=')));
-  if (flag) throw new Error(`${flag} 已移除：本命令只导出计划。生成、抠图和任务恢复请交给 ly-image / ly-video；不要自动重新提交。`);
+  if (flag) throw new Error(`${flag} 已移除：本命令只导出计划。生成、抠图和任务恢复请交给 canvas_cli；不要自动重新提交。`);
   for (const name of ['--out', '--only', '--style-ref', '--images']) {
     const i = args.indexOf(name);
     if (i >= 0 && (!args[i + 1] || args[i + 1].startsWith('--') || args.indexOf(name, i + 1) >= 0))

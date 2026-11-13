@@ -3,8 +3,8 @@
 **本 skill 不内置任何画风。**画风住在工作目录根的 `production.json` 顶层，由用户在
 `mint-setup` 那一段填。本 skill 要的是其中的 `style.character` 那一块。
 
-```bash
-node scripts/mint-characters.mjs style
+```text
+mint_skill({skill:"mint-characters",args:["style"]})
 ```
 
 从当前目录向上最多 5 层找 `production.json`，把角色那一块原样打出来。**出角色卡之前先跑它**——

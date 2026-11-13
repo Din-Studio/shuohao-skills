@@ -1,0 +1,5 @@
+{
+  "name": "mint_prompt",
+  "description": "Run one isolated prompt writer or reviewer. The main session checks worksheets between phases.",
+  "script": "export const meta = { name: 'mint_prompt', description: 'Dispatch one prompt role', phases: [{ title: 'Prompt role' }] };\nreturn await agent(args.task, { agentType: args.role, label: args.role, phase: 'Prompt role', retries: 0 });\n"
+}

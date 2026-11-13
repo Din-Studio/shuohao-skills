@@ -1,10 +1,10 @@
 # mint-creation
 
-从 v3 剧本制作参考图直出视频方案。**不生成分镜图，不改写上游故事。** 主会话只调度：分镜与提示词由编写方 subagent 完成，内容审核由审核方 subagent 完成，循环到全部批准后才回写、导出、交接生成。
+Build reference-sheet-to-video plans from v3 scripts without intermediate storyboard images or upstream story rewriting. The main session orchestrates a writer workflow, deterministic prompts check and independent reviewer workflow, then applies, exports and hands off only approved segments.
 
 - JSON 保存段、镜头、真实节拍认领和资产关系。阶段目标与边界见[创作指南](references/创作指南.md)，派发与循环规则见[调度手册](references/dispatch.md)。
 - 每段一份工作单 `<段号>/prompt.md`：状态头、分镜结构、审核意见、编写回应和提示词正文。批准同时绑定这一段的内容与它依据的输入（认领节拍的原文、参考图内容、模型与参数、项目要求），任何一样变化，这一段的批准失效，别的段不受影响；未批准的段不能导出，也不能进入生成计划。
-- 编写方与审核方各自在独立上下文的 subagent 里工作。已经安装 `mint-video-prompt` 与 `mint-video-prompt-review` 时加载它们；没有安装时读取本目录 `references/` 里逐字一致的指南副本，使用 `prompts new|submit|verdict`。
+- Dispatch through `workflow({name:"mint_prompt",args:{role:"mint-video-prompt-writer",task:"<complete brief>"}})` or role mint-video-prompt-reviewer. Supply absolute packaged guide paths and workspace-relative inputs. Foreground isolated Pi sessions share host model/authentication and cannot delegate. The main session uses mint_skill between roles; stop after three unapproved submissions or two identical structural failures. workflow_control accepts status/cancel with runId; after interruption inspect worksheets and finish only the unfinished phase.
 - opening/ending 读取当前大纲或独立剧本；结束坐标从实际正文计算，不持久化。可选 openingBeat 只保留上游显式标注，缺省不伪造映射。
 - 不需要策略选择、摘要或应用流程。项目要求采用唯一的自然语言 creativeBrief。
 - 保留模型时长硬限制、参考图身份与顺序、台词原文和镜头顺序覆盖检查。没有通用镜头建议时长硬门。
@@ -13,9 +13,9 @@
 
 ## 使用
 
-完整步骤、命令及七个自测入口见 [SKILL.md](SKILL.md)。数据接口见 [schema](references/schema.md)，旧数据见[迁移指南](references/migration.md)。Node 18+，只有标准库依赖；整个目录可以单独复制，不需要兄弟 skill。
+See [SKILL.md](SKILL.md) for mint_skill calls and developer-only self-tests, [schema](references/schema.md) for data and [migration](references/migration.md) for old inputs. Deterministic scripts remain standard-library-only and self-contained. The products/mint-drama package supplies both roles and guides.
 
-生产配置和唯一上游自动发现；多候选、损坏或不可读输入失败。缺少上游明确显示未检查，不计为通过。生成与外部媒体交接保持原协议，需要另行授权和费用告知；自测不调用模型。
+Production and unique upstream files are discovered locally; ambiguous, damaged or unreadable inputs fail, and missing upstream checks are skipped explicitly. Authorized generation uses the host canvas_cli with cost disclosure, saved input hashes and task/output identities; see [canvas handoff](references/media-handoff.md). Tests do not establish real cloud generation.
 
 ## 自有样例
 

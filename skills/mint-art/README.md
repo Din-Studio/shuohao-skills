@@ -66,34 +66,38 @@ mint-art        → art.json     （哪里 + 手里拿的：美术资产）
 
 ## 命令行直接用
 
-```bash
-node scripts/mint-art.mjs seed outline.json > art.json      # 从大纲预填场景骨架
-node scripts/mint-art.mjs validate art.json --cast cast.json
-node scripts/mint-art.mjs checkup art.json                  # 只跑质量门
-node scripts/mint-art.mjs render art.json --html            # 出报告（界面默认中文）
-node scripts/mint-art.mjs render art.json --html --lang en  # 英文界面报告
-node scripts/mint-art.mjs style                             # 看这部剧的画风（场景那一块）
+Cloud tool calls use workspace-relative paths:
+
+```text
+mint_skill({skill:"mint-art",args:["seed","outline/作品-outline.json"]})
+mint_skill({skill:"mint-art",args:["validate","art/作品-art.json","--cast","characters/作品-cast.json"]})
+mint_skill({skill:"mint-art",args:["checkup","art/作品-art.json"]})
+mint_skill({skill:"mint-art",args:["render","art/作品-art.json","--html"]})
+mint_skill({skill:"mint-art",args:["render","art/作品-art.json","--html","--lang","en"]})
+mint_skill({skill:"mint-art",args:["style"]})
 ```
+
+Save seed stdout with write to art/作品-art.json; save render stdout to art/art-report.html (or an English report path). Neither command has --out.
 
 `render` 支持与 `validate/checkup` 相同的 `--cast cast.json`：未提供时明确跳过禁名检查；提供损坏或不可读文件时失败。自动挂图仅影响显示，导出 JSON 保持输入原值。
 
 ## 出图（可选）
 
-```bash
-node scripts/mint-art.mjs images art.json              # 仅导出离线计划
-node scripts/mint-art.mjs images art.json --dry-run    # 只看要提交什么
-node scripts/mint-art.mjs images art.json --out image-plan.json # 保存计划，不生成图片
+```text
+mint_skill({skill:"mint-art",args:["images","art/作品-art.json"]})
+mint_skill({skill:"mint-art",args:["images","art/作品-art.json","--dry-run"]})
+mint_skill({skill:"mint-art",args:["images","art/作品-art.json","--out","art/image-plan.json"]})
 ```
 
-走 **ly-image**（灵影网关）。场景和道具各一张设定图，版面都是**主视角大图 + 底部和右侧的 L 形细节边框**：场景细节格放锚点特写，道具细节格放锚点特写 + 其他状态 + 侧面。场景**无人**；道具另加**无手、纯白背景**。没有 ly-image 就只交提示词，其余照常。
+Each scene and prop has one sheet with a master view and an L-shaped detail border along the bottom and right. Scene details show anchors; prop details show anchors, other states and a side profile. Scenes contain no people; props also exclude hands and use a pure white background.
 
-本地命令只导出计划。阅读 [生成交接](references/media-handoff.md)，再使用独立安装的 ly-image 完成模型发现、预览、生成与任务恢复。下载核验后放到计划 output 路径再 render。独立创作、校验和导出计划不依赖外部 skill。
+Read [canvas handoff](references/media-handoff.md). The application supplies canvas_cli for live capabilities, nodes/references, authorized generation, task inspection and downloads to expected outputs. Preserve input hashes and dependency order; unsupported fields block submission. Without capability or authorization, deliver the plan and state that images were not generated. Autopilot does not grant new spending authorization.
 
 ## 自动驾驶（autopilot）
 
 工作目录根的 `production.json`（`mint-setup` 的产出）顶层写着 `"autopilot": true` 时，本 skill 的全部流程**一口气跑完**：不问用哪份输入，道具清单自己定，场景与道具设定图一次出全，做过的决定全部写进最后的汇报。
 
-**转移的是审批权，不是取消检查点**：确定性检查照样要过、拿到图照样核对锚点（无人、无手、纯白背景）——只是不再等人点头。字段写着 `false`、整个没写、或者根本没有 `production.json`，就是原来的样子（该问就问）。跑 `validate` 时找到生产参数并且开着，会打印一句 `↳ 自动驾驶：开启`。
+Autopilot delegates creative choices within the task. Deterministic checks and image-anchor inspection (no people, no hands, pure white background) still apply. Generation requires existing spending authorization; autopilot does not provide it. A false or absent flag keeps the normal creative confirmation points. The validator reports whether autopilot is enabled.
 
 ## 文件
 
@@ -108,7 +112,7 @@ references/
   scene-pass.md          怎么填场景设定（AI 短剧的思路）
   prop-pass.md           怎么选、怎么填叙事道具
   realism.md             真实感怎么落进提示词（写实档全套，其余画风只取通用那半边）
-  sheet.md               设定图的版面与提示词（生成交给 ly-image）
+  sheet.md               sheet layout and prompts; generation through host canvas_cli
   report-style.md        报告的设计约定
 examples/
   雨棚留言-art.json           《雨棚留言》三场景 + 两件道具样例，全部质量门通过
@@ -118,7 +122,9 @@ assets/
 
 ## 自测
 
-```bash
+Developer-only terminal self-tests from this skill directory; cloud models do not execute these commands:
+
+```sh
 node scripts/selftest.mjs
 node scripts/v3-selftest.mjs
 node scripts/upstream-selftest.mjs
@@ -134,7 +140,9 @@ node scripts/upstream-selftest.mjs
 
 以下输入全部属于《雨棚留言》。outline-v3 文件仅用于资产消费投影测试，不是完整大纲交付。
 
-```bash
+Developer-only fixture rendering check, run from this skill directory:
+
+```sh
 node scripts/mint-art.mjs validate examples/雨棚留言-art.json --production examples/雨棚留言-production.json --cast examples/雨棚留言-cast-names.json
 node scripts/mint-art.mjs render examples/雨棚留言-art.json --production examples/雨棚留言-production.json --cast examples/雨棚留言-cast-names.json --html
 ```

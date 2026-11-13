@@ -14,7 +14,7 @@ Feed it a novel or a short story, and get a complete design bible for every char
 - **Profile** — gender, age, standing, appearance, temperament, motivation, arc, relationships, each backed by **verbatim quotes from the source**
 - **Design prompts** — art direction copied verbatim from the show's style block, bilingual image prompt + negative prompt + style tags; negative prompts are preserved in the plan and checked against the live model schema
 - **Voice prompts** — timbre, pitch, pace, accent, emotion, plus a voice-design prompt for Qwen3-TTS / ElevenLabs Voice Design
-- **A character model sheet** — **one per character**: an image using `production.image.asset.aspectRatio`, divided into three zones: an ID-photo-style bust on the left (~34%, the reference for the face design), a full-body turnaround top-right, and a strip of key-detail close-ups bottom-right. White background for clean cut-out; `images` exports a plan; ly-image performs generation
+- **A character model sheet** — **one per character**: an image using `production.image.asset.aspectRatio`, divided into three zones: an ID-photo-style bust on the left (~34%, the reference for the face design), a full-body turnaround top-right, and a strip of key-detail close-ups bottom-right. White background for clean cut-out; `images` exports a plan; host canvas_cli performs generation
 - **Relationship map** — a whole-cast view inside the report: who is tied to whom, and how. Hover a character to light up every link they are part of, click to jump to their profile
 
 Outputs `cast.json`, a Markdown report, and a self-contained `report.html` you can just double-click.
@@ -46,9 +46,11 @@ mint-characters → cast.json    (who: character assets)
 
 If you have an `outline.json`, start with `seed` — its `characters` block already settles the roster:
 
-```bash
-node scripts/mint-characters.mjs seed outline.json > seed.json
+```text
+mint_skill({skill:"mint-characters",args:["seed","outline/story-outline.json"]})
 ```
+
+Save successful stdout with write to characters/.work/seed.json. All tool paths are workspace-relative; seed has no --out.
 
 What comes across is what the outline already decided (character id, name, tier, arc, which source characters were merged into this one); what is left blank is the work this layer owes (aliases, profile, design prompt, voice prompt). `tier` maps onto `importance`: `lead` → protagonist, `support` → supporting, `functional` → minor.
 
@@ -58,16 +60,7 @@ What comes across is what the outline already decided (character id, name, tier,
 
 ## Use
 
-Copy this entire directory to your agent's skills directory, such as `~/.pi/agent/skills/mint-characters`, `~/.claude/skills/mint-characters` or `~/.codex/skills/mint-characters`. A symlink to this directory also works. Scripts need Node 18+ and no third-party dependencies. Then:
-
-```
-/mint-characters ./your-novel.txt          # Claude Code, codex
-/skill:mint-characters ./your-novel.txt    # pi (skill commands take a skill: prefix; arguments are identical)
-```
-
-Or just say "break this book down into characters" and give it the path — same on all three.
-
-**pi has no sub-agents**: both passes (chunked roster extraction, then one card per character) run in sequence inside the current session there. Several times slower, byte-for-byte the same output.
+The Mint cloud product packages this skill under products/mint-drama. Ask for character extraction with the workspace-relative novel path. The main session scans chunks and develops cards sequentially; deterministic operations use mint_skill and workspace files use read/write/edit/find/grep/ls. Scripts remain self-contained and standard-library-only. The model does not install skills or execute a shell.
 
 ### Report language
 
@@ -88,8 +81,8 @@ Two things never follow the language: **image and TTS prompts stay English** (th
 
 **This skill ships no built-in styles and has no default one.** The style lives at the top level of `production.json` in the work-directory root, written by the user during `/mint-setup` — photorealistic live-action, Ghibli-like hand-painting, ink wash, claymation, 1980s film grain, whatever. **No code changes.**
 
-```bash
-node scripts/mint-characters.mjs style     # dump this show's style.character block
+```text
+mint_skill({skill:"mint-characters",args:["style"]})
 ```
 
 The block carries five things, copied **verbatim** into every character card:
@@ -135,8 +128,8 @@ The data is embedded as `<script type="application/json">`; exporting just wraps
 
 Feeding a long text into one context window loses characters, so it runs in two passes:
 
-**Pass 1 — scan** (cheap model)
-The text is split on paragraph boundaries into overlapping 40k-character chunks. Each chunk is scanned in parallel for character names, aliases, concrete description, and verbatim quotes. The overlap is what keeps a character introduced right at a chunk seam visible to both sides.
+**Pass 1 — scan**
+The text is split on paragraph boundaries into overlapping 40k-character chunks. The main session scans them sequentially for character names, aliases, concrete descriptions and verbatim quotes. The overlap keeps a character introduced at a chunk boundary visible to both chunks.
 
 **Merge**
 Names and aliases are indexed together, so different forms of address across chunks converge onto one person. Where exact matching cannot reach (「陆」 and 「陆行远」 share no key), the script lists containment-based `mergeCandidates` for the model to review; confirmed merges are applied deterministically from a merges.json. Characters are ranked by how many chunks mention them — that ranking is the proxy for screen time.
@@ -157,38 +150,40 @@ Four hard rules, all checked deterministically by a script rather than trusted t
 
 None of these were written up front. Each one exists because real model output violated it and the validator caught it.
 
-## Use the scripts directly
+## Cloud tool operations
 
-The helpers run fine without an agent — only the two model passes need one:
+Cloud tool operations (workspace-relative paths):
 
-```bash
-node scripts/mint-characters.mjs seed outline.json              # seed the roster from an outline, if you have one
-node scripts/mint-characters.mjs chunk book.txt /tmp/wk        # split
-node scripts/mint-characters.mjs merge /tmp/wk                 # merge roster-*.json, with merge candidates
-node scripts/mint-characters.mjs merge /tmp/wk --apply m.json   # apply reviewed merges
-node scripts/mint-characters.mjs assemble /tmp/wk --source Book # combine card-*.json into cast.json, prominence-ordered
-node scripts/mint-characters.mjs validate cast.json book.txt   # validate
-node scripts/mint-characters.mjs images cast.json               # export offline plan only
-node scripts/mint-characters.mjs images cast.json --dry-run     # print what would be submitted
-node scripts/mint-characters.mjs images cast.json --style-ref auto  # pin the style to the first sheet
-node scripts/mint-characters.mjs render cast.json --html       # build report.html
-node scripts/mint-characters.mjs slug "胡二爷"                  # filesystem-safe name
+```text
+mint_skill({skill:"mint-characters",args:["seed","outline/story-outline.json"]})
+mint_skill({skill:"mint-characters",args:["chunk","book.txt","characters/.work"]})
+mint_skill({skill:"mint-characters",args:["merge","characters/.work"]})
+mint_skill({skill:"mint-characters",args:["merge","characters/.work","--apply","characters/.work/merges.json"]})
+mint_skill({skill:"mint-characters",args:["assemble","characters/.work","--source","Book","--out","characters/story-cast.json"]})
+mint_skill({skill:"mint-characters",args:["validate","characters/story-cast.json","book.txt"]})
+mint_skill({skill:"mint-characters",args:["images","characters/story-cast.json","--out","characters/image-plan.json"]})
+mint_skill({skill:"mint-characters",args:["images","characters/story-cast.json","--dry-run"]})
+mint_skill({skill:"mint-characters",args:["images","characters/story-cast.json","--style-ref","auto"]})
+mint_skill({skill:"mint-characters",args:["render","characters/story-cast.json","--html"]})
+mint_skill({skill:"mint-characters",args:["slug","胡二爷"]})
 ```
+
+Use write to save seed stdout to characters/.work/seed.json, merge stdout to characters/.work/merged.json and render stdout to characters/report.html. Those operations have no --out. Read [canvas handoff](references/media-handoff.md) before generation; the model does not invoke a shell.
 
 ## Autopilot
 
 When the `production.json` at the work-directory root (produced by `mint-setup`) carries `"autopilot": true`, this skill runs its stage **end to end**: it does not ask about report language or how many characters to sheet; it reviews the merge candidates itself (when unsure, it leaves them separate) and generates every selected character's sheet in one go. Every decision it made goes into the final report.
 
-**It transfers approval, it does not remove checkpoints**: validation still has to pass, the image step still prints how many sheets it is about to generate, and the results still get checked — it just does not wait for a nod. Written as `false`, left out, or with no `production.json` at all, nothing changes. When `validate` finds the file with the flag on, it prints `↳ 自动驾驶：开启`.
+Autopilot delegates creative choices within the task. Validation, image-count disclosure and output inspection still apply. Generation requires existing spending authorization; autopilot does not provide it. A false or absent flag keeps the normal creative confirmation points. The validator reports whether autopilot is enabled.
 
 ## Limits
 
 - Caps at 24 chunks (~930k characters net of overlap) per run. Beyond that it reports `truncated` explicitly — it does **not** silently drop the tail
 - Human-readable fields follow `--lang`; image and TTS prompts are **always English**, since those engines work best that way regardless of report language
-- Every selected character has a handoff job. Use `--only` to limit the plan; `--style-ref auto` includes the anchor dependency. Actual generation and costs belong to ly-image.
+- Every selected character has a handoff job. Use `--only` to limit the plan; `--style-ref auto` includes the anchor dependency. Actual generation and costs belong to host canvas_cli.
 - **Art style can still vary across a cast**, since each character is generated independently. It used to drift badly under the old "flat vector cartoon" wording — one run produced anime-ish, semi-realistic and ink-wash results side by side. Copying the whole style block from `production.json` verbatim into every prompt fixed most of that, but not all of it. Passing `--style-ref auto` feeds the first sheet back as a reference for the rest, which helps; see `references/sheet.md`
 
-> Actual generation uses the independently installed [ly-image skill](https://github.com/Din-Studio/skills). It requires Node 22.20+ and can reuse private `~/.config/ly/config.json`. Read [handoff and recovery](references/media-handoff.md); never store secrets in requests or the repository. Missing tools or authorization means prompts/plans only, not generated images.
+> Authorized generation uses the host canvas_cli. Read [handoff and recovery](references/media-handoff.md); preserve input hashes, dependencies and task/output identities. The host owns connection and credentials. Unsupported parameters block handoff; missing capability or spending authorization means prompts/plans only. Autopilot does not extend spending authority.
 
 ## Files
 
@@ -216,7 +211,9 @@ In `examples/渡口.txt` the peddler is only ever referred to by a nickname and 
 
 ## Self-test
 
-```bash
+Developer-only terminal self-tests from this skill directory; cloud models do not execute these commands:
+
+```sh
 node scripts/selftest.mjs
 node scripts/v3-selftest.mjs
 node scripts/upstream-selftest.mjs

@@ -11,7 +11,7 @@ const opts = { kind: 'image', model: 'explicit-model', inputBase: { resolution: 
 try {
   const jobs = [job('child', { refFrom: 'parent', negativePrompt: 'no text' }), job('parent', { refFrom: 'anchor' }), job('anchor')];
   const plan = mediaPlan(jobs, { ...opts, only: 'child' });
-  assert.equal(plan.status, 'planned'); assert.equal(plan.skill, 'ly-image');
+  assert.equal(plan.status, 'planned'); assert.equal(plan.skill, 'scenemint-canvas');
   assert.deepEqual(plan.jobs.map(j => j.id), ['anchor', 'parent', 'child']);
   assert.equal(plan.jobs[2].prompt, jobs[0].prompt);
   assert.equal(plan.jobs[2].params.negative_prompt, 'no text');
@@ -34,7 +34,7 @@ try {
   writeFileSync(join(dir, 'b.png'), 'fixture b');
   const video = job('clip', { file: 'clip/video.mp4', duration: 7, images: [{ path: 'b.png' }, { path: 'a.png' }] });
   const vp = mediaPlan([video], { ...opts, kind: 'video' });
-  assert.equal(vp.skill, 'ly-video'); assert.equal(vp.jobs[0].params.duration, 7);
+  assert.equal(vp.skill, 'scenemint-canvas'); assert.equal(vp.jobs[0].params.duration, 7);
   assert.deepEqual(vp.jobs[0].references.map(r => r.path), [join(dir, 'b.png'), join(dir, 'a.png')]);
   assert.throws(() => mediaPlan([job('clip', { images: [{ path: 'absent' }] })], opts));
   writeFileSync(join(dir, 'empty.png'), '');

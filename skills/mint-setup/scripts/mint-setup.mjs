@@ -42,9 +42,9 @@ export function findProduction(fromDir = '.', depth = LOOKUP_DEPTH) {
 /* 生图模型能力表                                                       */
 /* ------------------------------------------------------------------ */
 /*
- * 能力表来自历史采集。外部 ly-image / ly-video 的 models --model 提供当前
- * input_schema 原样打出来，所以这两张表**有本机可查的确凿依据**，
- * 不是凭记忆编的——每条都注明了取数命令，过期了重新跑一次就能对账。
+ * Historical capability snapshots retain their original collection provenance.
+ * Discover current models through canvas_cli models, then inspect an observed
+ * catalog ID with models --model-id before generation.
  *
  * 关键差别（相对旧的按像素下单）：网关 的 resolution 就是**档位本身**
  * （1K / 2K / 4K），aspect_ratio 是**枚举**，两者都是结构化字段。
@@ -226,7 +226,7 @@ export const mentionsTerm = (haystack, term) =>
 export const autopilotOf = (doc) => doc?.autopilot === true;
 
 /** 出图与生视频统一走这个 CLI；skill 只认名字，装在哪由使用方决定。 */
-export const GENERATION_SKILLS = { image: 'ly-image', video: 'ly-video' };
+export const GENERATION_SKILLS = { image: 'scenemint-canvas', video: 'scenemint-canvas' };
 
 /* ------------------------------------------------------------------ */
 /* 比例与档位                                                           */
@@ -604,7 +604,7 @@ export function validateProduction(doc) {
  * 出图前 shell 一句就知道这次该用哪个模型、哪个档位、哪个比例。
  *
  * inputData 保留制作参数接口；执行方将其作为 params 候选，按实时 schema 核对。
- * 提示词与素材交接给 ly-image / ly-video，不在本仓库提交。
+ * 提示词与素材交接给 canvas_cli，不在本仓库提交。
  * 省得各拼各的——拼法一漂就又是一处不一致。
  */
 
@@ -657,7 +657,7 @@ export function resolveStage(doc, stage) {
       // duration 逐段不同，下单时用 clampDuration 折算后补进去
       inputData,
       durationRange: caps?.duration ?? null,
-      command: 'node <ly-video-dir>/scripts/video.mjs models --model ' + JSON.stringify(model),
+      command: { tool: 'canvas_cli', args: ['models', model, '--model-type', 'video'] },
     };
   }
 
@@ -676,7 +676,7 @@ export function resolveStage(doc, stage) {
       aspect_ratio: aspectRatio,
       resolution: matchTier(resolution, IMAGE_MODELS[model]?.resolutions ?? []) ?? resolution,
     },
-    command: 'node <ly-image-dir>/scripts/image.mjs models --model ' + JSON.stringify(model),
+    command: { tool: 'canvas_cli', args: ['models', model, '--model-type', 'image'] },
   };
 }
 
@@ -710,7 +710,7 @@ export function renderMarkdown(doc) {
   out.push(`| 提示词语言 | ${dash(doc?.promptLang)} |`);
   out.push(`| 自动驾驶 | ${autopilotOf(doc) ? '开启（下游跑完整段不打断）' : '关闭（该问就问）'} |`);
   out.push('');
-  out.push('> 实际生图使用 ly-image，生视频使用 ly-video。此处只提供制作参数；档位与比例需按实时 schema 核对，不折算像素。', '');
+  out.push('> 实际生图使用 canvas_cli，生视频使用 canvas_cli。此处只提供制作参数；档位与比例需按实时 schema 核对，不折算像素。', '');
   out.push('## 质量门', '');
   for (const g of gates) {
     out.push(`- ${mark(g)} ${g.label}${g.detail ? ` — ${g.detail}` : ''}`);
@@ -733,7 +733,7 @@ const USAGE = `mint-setup.mjs — mint-setup skill 的确定性工具（生产�
        [--asset-resolution <档位>]        资产图分辨率档位，默认 2K
        [--asset-aspect <W:H>]            资产图比例（默认 16:9——设定图版面要横构图）
        [--image-model <名>]              默认 nanobanana2
-       [--video-model <名>]              视频模型，取 ly-video 实时 models 返回的 id
+       [--video-model <名>]              视频模型，取 canvas_cli 实时 models 返回的 id
        [--video-resolution <档位>]        视频分辨率档位（如 768p）
        [--creative-brief <正文>]          可选自然语言创作要求，不推导规则
        [--style <style.json>]            画风正文；不给就留一份空骨架待填
@@ -753,8 +753,8 @@ const USAGE = `mint-setup.mjs — mint-setup skill 的确定性工具（生产�
   find [--from <目录>]                    只打印找到的 production.json 路径
   models                                 打印内置的生图与生视频模型能力表
 
-实际生成使用 ly-image / ly-video，本命令只管理制作参数。
-能力表是历史快照；提交前通过外部 skill 的 models --model 查询实时 schema，
+实际生成使用 canvas_cli，本命令只管理制作参数。
+能力表是历史快照；提交前通过 canvas_cli models 发现模型，再用 models --model-id 查询实时 schema，
 每条都注明取数命令；表里没有的模型不是错误，相关的门明说跳过。
 
 production.json 住在**工作目录根**，下游从自己的输出目录向上找（最多 ${LOOKUP_DEPTH} 层）。`;
@@ -935,7 +935,7 @@ function main(argv) {
   if (cmd === 'caps') {
     const model = flag(rest, '--model');
     if (!model) {
-      console.log('历史能力快照（每条保留来源；实时约束请通过 ly-image / ly-video 查询）\n');
+      console.log('历史能力快照（每条保留来源；实时约束请通过 canvas_cli 查询）\n');
       console.log('生图：');
       for (const [name, m] of Object.entries(IMAGE_MODELS)) {
         console.log(`  ${name.padEnd(14)} 档位 ${m.resolutions.join(' / ')}　比例 ${m.aspectRatios.join(' / ')}`);
@@ -956,7 +956,7 @@ function main(argv) {
     if (!entry) {
       throw new Error(
         `能力表里没有 ${model}（生图：${Object.keys(IMAGE_MODELS).join(' / ')}；生视频：${Object.keys(VIDEO_MODELS).join(' / ')}）\n` +
-          '请使用 ly-image / ly-video 的 models 发现当前模型，再读取 models --model 的实时 schema。',
+          '请使用 canvas_cli 的 models 发现当前模型，再用返回的模型 ID 读取 models --model-id 的实时 schema。',
       );
     }
     console.log(JSON.stringify({ model, ...entry }, null, 2));
@@ -992,7 +992,7 @@ function main(argv) {
       JSON.stringify(
         {
           skills: GENERATION_SKILLS,
-          note: '历史能力快照，非实时发现；实际生成前使用 ly-image / ly-video 核对 schema。表外模型的能力检查明确跳过。',
+          note: '历史能力快照，非实时发现；实际生成前使用 canvas_cli 核对 schema。表外模型的能力检查明确跳过。',
           image: IMAGE_MODELS,
           video: VIDEO_MODELS,
         },

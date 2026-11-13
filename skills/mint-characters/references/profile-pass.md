@@ -45,7 +45,7 @@
 
 5. `image.prompt` 是**单张表现性插画**（不是技术图，可以放开打光）：四分之三视角半身、纯中性背景、柔和方向主光 + 冷调补光、浅景深、面部最实。
 
-   **画风不要自己想，也不要写「扁平矢量卡通」这类含糊的话。** 实测含糊的画风描述会让模型跟自己拧巴——同一批角色出来有的偏动画、有的偏写实。画风是 `mint-setup` 那一段定死的，跑 `node scripts/mint-characters.mjs style` 取出来，把 `render` 那句**原样**放进 `image.prompt` 与 `image.sheet`，`surface` 那段跟着进去。
+   **画风不要自己想，也不要写「扁平矢量卡通」这类含糊的话。** 实测含糊的画风描述会让模型跟自己拧巴——同一批角色出来有的偏动画、有的偏写实。画风是 `mint-setup` 那一段定死的，跑 `mint_skill({skill:"mint-characters",args:["style"]})` 取出来，把 `render` 那句**原样**放进 `image.prompt` 与 `image.sheet`，`surface` 那段跟着进去。
 
    `negativePrompt` 同理：把画风那一块的 `negative` **一条不落**地带上，再补这个角色自己要禁的（戴眼镜、叼烟之类）。少一条 `validate` 会点名。
 

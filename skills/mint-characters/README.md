@@ -14,7 +14,7 @@ seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schem
 - **人物画像** — 性别、年龄、身份、外貌、性情、动机、人物弧光、关系网，每条附**原文逐字引文**
 - **形象提示词** — 真人实拍路线，双语出图 prompt + negative prompt + 风格标签，反向词原样保留到计划，提交前按模型实时 schema 核对
 - **音色提示词** — 音色、音高、语速、口音、情绪，双语 voice-design prompt，直接喂 Qwen3-TTS / ElevenLabs Voice Design
-- **角色设定图** — **每个角色一张**：按 `production.image.asset.aspectRatio` 分三区，左侧约 34% 证件照式半身像（面部基准）、右上全身三视图、右下关键细节特写条。**画风由 `production.json` 定**，本 skill 不内置任何一档。白底方便抠图，`images` 导出计划，实际生成交给 ly-image
+- **角色设定图** — **每个角色一张**：按 `production.image.asset.aspectRatio` 分三区，左侧约 34% 证件照式半身像（面部基准）、右上全身三视图、右下关键细节特写条。**画风由 `production.json` 定**，本 skill 不内置任何一档。白底方便抠图，`images` 导出计划，实际生成交给 host canvas_cli
 - **关系图谱** — 报告里的一个全景视图：谁跟谁有关系、是什么关系，一眼看完。悬停一个人亮出他的全部关系，点一下跳到那个人的详情
 
 产出 `cast.json` + Markdown + 一个双击就能开的 `report.html`。
@@ -30,8 +30,8 @@ seed 只接受显式 `outline.schemaVersion: 3`；production 同样要求 `schem
 
 想自己准备翻译：
 
-```bash
-node scripts/mint-characters.mjs ui-template fr   # 打印待翻译的骨架
+```text
+mint_skill({skill:"mint-characters",args:["ui-template","fr"]})
 ```
 
 ![report.html](assets/report.webp)
@@ -52,9 +52,11 @@ mint-characters → cast.json    （谁：角色资产）
 
 有 `outline.json` 就走 `seed`——它的 `characters` 块已经定死了角色清单：
 
-```bash
-node scripts/mint-characters.mjs seed outline.json > seed.json
+```text
+mint_skill({skill:"mint-characters",args:["seed","outline/作品-outline.json"]})
 ```
+
+Save successful stdout with write to characters/.work/seed.json. All tool paths are workspace-relative; seed has no --out.
 
 搬过来的是大纲拍板过的事实（角色码、名字、分档、人物线、由原著的谁合并而来），留空的是这一层才该做的设计（别名、画像、形象提示词、音色提示词）。`tier` 映射成 `importance`：`lead` → protagonist、`support` → supporting、`functional` → minor。
 
@@ -64,16 +66,7 @@ node scripts/mint-characters.mjs seed outline.json > seed.json
 
 ## 使用
 
-将本目录完整复制到 agent 的 skills 目录，例如 `~/.pi/agent/skills/mint-characters`、`~/.claude/skills/mint-characters` 或 `~/.codex/skills/mint-characters`。也可以从这些位置建立指向本目录的软链接。脚本只需要 Node 18+，无需安装第三方依赖。安装后：
-
-```
-/mint-characters ./你的小说.txt          # Claude Code、codex
-/skill:mint-characters ./你的小说.txt    # pi（skill 命令带 skill: 前缀，参数写法一样）
-```
-
-或者直接说「帮我拆一下这本书的角色」并给出路径，三家都一样。
-
-**pi 没有子代理**：两趟扫描（分块抽角色、逐角色出卡）在 pi 里是当前会话串行做，慢几倍，产出一个字不差。
+The Mint cloud product packages this skill under products/mint-drama. Ask for character extraction with the workspace-relative novel path. The main session scans chunks and develops cards sequentially; deterministic operations use mint_skill and workspace files use read/write/edit/find/grep/ls. Scripts remain self-contained and standard-library-only. The model does not install skills or execute a shell.
 
 ### 报告语言
 
@@ -94,8 +87,8 @@ node scripts/mint-characters.mjs seed outline.json > seed.json
 
 **本 skill 不内置任何画风，也没有默认画风。**画风住在工作目录根的 `production.json` 顶层，由用户在 `/mint-setup` 那一段填——真人实拍、吉卜力手绘、水墨、黏土定格、80 年代胶片颗粒都行，**不用改任何代码**。
 
-```bash
-node scripts/mint-characters.mjs style     # 打印这部剧的 style.character 那一块
+```text
+mint_skill({skill:"mint-characters",args:["style"]})
 ```
 
 那一块有五样东西，出角色卡时**原样抄进去**：
@@ -142,8 +135,8 @@ node scripts/mint-characters.mjs style     # 打印这部剧的 style.character 
 
 长文本一次性塞进上下文会丢角色，所以拆成两趟：
 
-**第一趟 · 扫描**（便宜）
-按段落切成 4 万字符的重叠块，每块并发抽「角色名 + 别名 + 该块里的具体描写 + 逐字引文」。重叠是为了让卡在切口上的角色两边都能看见。
+**Pass 1 — scan**
+Split the text on paragraph boundaries into overlapping 40k-character chunks. The main session scans them sequentially for character names, aliases, concrete descriptions and verbatim quotes. Overlap keeps characters introduced at a chunk boundary visible to both chunks.
 
 **归并**
 按名字和别名建索引，`陆行远` / `陆` / `姑娘` 这类跨块的不同叫法收敛成同一个人。精确匹配管不到的（「陆」和「陆行远」没有共同键），脚本会按名字包含关系列成 `mergeCandidates` 疑似同人候选，由模型复核后写成 merges.json 确定性落地合并。按出现块数当戏份权重排序。
@@ -164,38 +157,40 @@ node scripts/mint-characters.mjs style     # 打印这部剧的 style.character 
 
 这四条不是拍脑袋定的——是模型输出真的违反过、被校验脚本当场抓住才立起来的。
 
-## 命令行直接用
+## Cloud tool operations
 
-脚本本身不需要 agent 也能跑，只有两趟模型调用需要：
+Cloud tool operations (workspace-relative paths):
 
-```bash
-node scripts/mint-characters.mjs seed outline.json              # 有大纲就从它预填角色表骨架
-node scripts/mint-characters.mjs chunk book.txt /tmp/wk        # 切块
-node scripts/mint-characters.mjs merge /tmp/wk                 # 归并 roster-*.json，附疑似同人候选
-node scripts/mint-characters.mjs merge /tmp/wk --apply m.json   # 落地复核后的合并
-node scripts/mint-characters.mjs assemble /tmp/wk --source 书名 # card-*.json 合成 cast.json，同档按戏份排序
-node scripts/mint-characters.mjs validate cast.json book.txt   # 校验
-node scripts/mint-characters.mjs images cast.json               # 仅导出离线计划
-node scripts/mint-characters.mjs images cast.json --dry-run     # 只看要提交什么
-node scripts/mint-characters.mjs images cast.json --style-ref auto  # 拿第一张压画风
-node scripts/mint-characters.mjs render cast.json --html       # 出 report.html
-node scripts/mint-characters.mjs slug "胡二爷"                  # 安全文件名
+```text
+mint_skill({skill:"mint-characters",args:["seed","outline/作品-outline.json"]})
+mint_skill({skill:"mint-characters",args:["chunk","book.txt","characters/.work"]})
+mint_skill({skill:"mint-characters",args:["merge","characters/.work"]})
+mint_skill({skill:"mint-characters",args:["merge","characters/.work","--apply","characters/.work/merges.json"]})
+mint_skill({skill:"mint-characters",args:["assemble","characters/.work","--source","作品","--out","characters/作品-cast.json"]})
+mint_skill({skill:"mint-characters",args:["validate","characters/作品-cast.json","book.txt"]})
+mint_skill({skill:"mint-characters",args:["images","characters/作品-cast.json","--out","characters/image-plan.json"]})
+mint_skill({skill:"mint-characters",args:["images","characters/作品-cast.json","--dry-run"]})
+mint_skill({skill:"mint-characters",args:["images","characters/作品-cast.json","--style-ref","auto"]})
+mint_skill({skill:"mint-characters",args:["render","characters/作品-cast.json","--html"]})
+mint_skill({skill:"mint-characters",args:["slug","胡二爷"]})
 ```
+
+Use write to save seed stdout to characters/.work/seed.json, merge stdout to characters/.work/merged.json and render stdout to characters/report.html. Those operations have no --out. Read [canvas handoff](references/media-handoff.md) before generation; the model does not invoke a shell.
 
 ## 自动驾驶（autopilot）
 
 工作目录根的 `production.json`（`mint-setup` 的产出）顶层写着 `"autopilot": true` 时，本 skill 的全部流程**一口气跑完**：不问报告语言、不问选角人数，归并候选自己逐条复核（拿不准就不合并），设定图一次出全，做过的决定全部写进最后的汇报。
 
-**转移的是审批权，不是取消检查点**：校验照样要过、出图前照样打印要出多少张、拿到图照样要核对——只是不再等人点头。字段写着 `false`、整个没写、或者根本没有 `production.json`，就是原来的样子（该问就问）。跑 `validate` 时找到生产参数并且开着，会打印一句 `↳ 自动驾驶：开启`。
+Autopilot delegates creative choices within the task. Validation, image-count disclosure and output inspection still apply. Generation requires existing spending authorization; autopilot does not provide it. A false or absent flag keeps the normal creative confirmation points. The validator reports whether autopilot is enabled.
 
 ## 边界
 
 - 单次上限 24 块（净覆盖约 93 万字符）。超了会明确报 `truncated`，**不静默截断**
 - 人类可读字段跟随 `--lang`；出图和 TTS 提示词**永远英文**，那些引擎吃英文最稳，跟报告语言无关
-- 每个选中角色都有交接任务。使用 `--only` 缩小计划；`--style-ref auto` 包含基准依赖。实际生成与费用由 ly-image 处理。
+- 每个选中角色都有交接任务。使用 `--only` 缩小计划；`--style-ref auto` 包含基准依赖。实际生成与费用由 host canvas_cli 处理。
 - **同一批角色的画风可能有差异**——各自独立出图。早期用「扁平矢量卡通」这种含糊写法时漂得很厉害（同批出成动画感／半写实／水墨写实三种），改成把 `production.json` 那一块画风整块原样抄进每张提示词后好了很多，但不能保证完全一致。在意的话加 `--style-ref auto` 拿第一张当参考图压一压，见 `references/sheet.md`
 
-> 实际生成使用独立安装的 [ly-image](https://github.com/Din-Studio/skills)，需要 Node 22.20+，可复用本机私有 `~/.config/ly/config.json`。先阅读 [交接与恢复](references/media-handoff.md)。密钥不进入请求或仓库。缺工具或授权时交付计划，不声称已出图。
+> Authorized generation uses the host canvas_cli. Read [handoff and recovery](references/media-handoff.md); preserve input hashes, dependencies and task/output identities. The host owns connection and credentials. Unsupported parameters block handoff; missing capability or spending authorization means prompts/plans only. Autopilot does not extend spending authority.
 
 ## 文件
 
@@ -210,7 +205,7 @@ references/
   profile-pass.md        第二趟：生成角色卡（8 条硬规则）
   realism.md             真实感怎么落进提示词（写实档全套，其余画风只取通用那半边）
   schema.md              角色卡结构 + 字段语言归属
-  sheet.md               设定图的版面与提示词（生成交给 ly-image）
+  sheet.md               设定图的版面与提示词（生成交给 host canvas_cli）
   report-style.md        report.html 的设计约定
   style.md               画风从哪来（不内置，读 production.json）
 examples/
@@ -223,7 +218,9 @@ examples/
 
 ## 自测
 
-```bash
+Developer-only terminal self-tests from this skill directory; cloud models do not execute these commands:
+
+```sh
 node scripts/selftest.mjs
 node scripts/v3-selftest.mjs
 node scripts/upstream-selftest.mjs

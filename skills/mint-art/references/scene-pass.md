@@ -47,7 +47,7 @@
 
 7. **提示词永远英文，永远空景。**`image.prompt` 里明写 empty scene / no people，`negativePrompt` 必须禁人。**绝不出现角色名、作者名、作品名**——图像模型会把它认识的东西画进去。
 
-8. **画风整套取用。**跑 `node scripts/mint-art.mjs style` 拿这部剧的 `style.scene`（`render` / `surface` / `negative` / `tags`），`image.sheet` 与 `image.prompt` 里整段带上渲染句和表面处理句，`negative` 的每一条进 `negativePrompt`，不要混搭两种画风。
+8. **画风整套取用。**跑 `mint_skill({skill:"mint-art",args:["style"]})` 拿这部剧的 `style.scene`（`render` / `surface` / `negative` / `tags`），`image.sheet` 与 `image.prompt` 里整段带上渲染句和表面处理句，`negative` 的每一条进 `negativePrompt`，不要混搭两种画风。
 
 9. **按实际空间关系决定是否复用。**AI 生成一个新环境很便宜，但**每多一个独立环境就多一份一致性维护**。outline 里带复用方案的场景（seedNote 会提示），用 `variantOf` + `changes` 挂到母场景上：改时段、换天气、换前景、删道具，挂钩、台面等细节可以复用。一次性独立场景没有 reusePlan 合法，不为检查伪造变体。变体的结构骨架跟着母场景走——`changes` 只写改动，别把入口和动线也换了，换了就不是变体是新景。
 

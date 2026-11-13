@@ -9,4 +9,4 @@
 
 Node 18+，仅标准库，可独立复制。支持 skeleton/beats/full、只读资产汇总、Markdown 与离线中英 HTML、下游本地接口检查。明确制作预算仍阻断，工具参考值仅提醒；结构检查不证明内容质量。
 
-自测：通过 node 执行 scripts/selftest.mjs、scripts/fixes-selftest.mjs、scripts/migration-selftest.mjs。主入口包含独立复制验证。不调用付费模型，不提交生成 HTML。
+Developer-only self-tests: run scripts/selftest.mjs, scripts/fixes-selftest.mjs and scripts/migration-selftest.mjs with Node from a developer terminal. The main test includes isolated-copy verification. Cloud models use mint_skill as described in SKILL.md and do not run shell commands. Tests make no paid model calls; generated HTML is not versioned.
