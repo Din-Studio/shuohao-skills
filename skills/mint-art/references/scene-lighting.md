@@ -1,6 +1,6 @@
 # 场景光影（选光、定光影锁）
 
-给每个场景的每个光照状态选**光影锁**，写进 `lighting[].prompt`；出图的那个状态（母场景的 `lighting[0]`，变体场景的 `lighting[0]`）还要写进 `image.sheet`。之后写这个场景的镜头都照它，前后镜头的光才接得上。术语见 [glossary.md](glossary.md)。
+给每个场景的每个光照状态选**光影锁**，写进 `lighting[].prompt`；出图的那个状态（母场景的 `lighting[0]`，变体场景的 `lighting[0]`）还要写进 `image.sheet`；基准场景要原文照抄，validate 的 lighting 门逐字核对（空白规整后比较）。之后写这个场景的镜头都照它，前后镜头的光才接得上。术语见 [glossary.md](glossary.md)。
 
 ## 一、什么时候多一个光照状态
 

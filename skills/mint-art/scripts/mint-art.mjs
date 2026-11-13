@@ -11,6 +11,8 @@ export { creativeBackground } from './lib/contracts.mjs';
 import { ART_VERSION, assetsOf, digest, sourceIdentity, identityDigest, identityCoreDigest, syncLifecycleStamps, seedFromSource, registerAsset, stageErrors, lifecycleErrors, budgetChecks, verifySources, assertStoryOutline, assertCharacters, upstreamCheck } from './lib/stage.mjs';
 export { seedFromSource, registerAsset, identityDigest } from './lib/stage.mjs';
 import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
+import { PURITY_PARAGRAPH, squash, endsWithPurity, styleParagraphBeforePurity, parseSheet, variantProblems, sheetTargets, isMidjourney } from './lib/sheet-text.mjs';
+export { PURITY_PARAGRAPH, parseSheet, sheetTargets } from './lib/sheet-text.mjs';
 
 /* ------------------------------------------------------------------ */
 /* 画风                                                                 */
@@ -195,12 +197,10 @@ export const ACTUAL_SIZE_PHRASE = 'actual size about';
 const PROP_NEG_CONFLICT = /\b(hands?|fingers?|people|persons?|humans?)\b/i;
 
 /*
- * 纯净画质段（固定句）：每一条设定图提示词都在最后原文带上。
- * 设定图是后面所有画面的参考，噪点、颗粒会一路带下去。比较时规整空白。
+ * 纯净画质段（固定句）：每一条设定图提示词都在最后单独一段原文带上，
+ * 而且必须是最后一段——之后再追加的指令会被模型照样执行。比较时规整空白。
+ * 正文解析（主体区、变体结构）在 lib/sheet-text.mjs。
  */
-export const PURITY_PARAGRAPH = "Remove all noise, graininess, film grain and digital noise; shadows and dark areas smooth and clean, color transitions natural, gradients fine and smooth. Surfaces of skin, fabric, wood grain, stone, water and leaves clean and clear, edges crisp but not over-sharpened, with no dirt specks, hazy blur, smearing or artifacts. Keep the original details, do not reduce any characters or scene elements, do not change the characters' faces. High definition, clean low-ISO image quality, commercial-grade finished look.";
-const squash = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
-const hasPurity = (v) => squash(v).includes(PURITY_PARAGRAPH);
 /** 场景设定图版式：左侧四方向宫格 + 右侧正交平面图。 */
 export const SCENE_LAYOUT_PHRASES = ['two-by-two grid', 'orthographic'];
 /** 光影锁要写色温数值，不只写冷暖。 */
@@ -216,7 +216,9 @@ function visualGateReport(doc, castNames = null, production = null) {
   const bad = {
     anchors: [], lighting: [], people: [], english: [], names: [], variant: [], style: [],
     states: [], scale: [], sizeref: [], whitebg: [], aspect: [], layout: [], purity: [], kelvin: [],
+    subject: [], variantText: [], lightLock: [],
   };
+  const midjourney = isMidjourney(production);
   const ids = new Set(scenes.map((s) => s?.id));
   // 画风正文住在生产参数里，没挂载就查不了——那道门会明说跳过，不装查过
   const preset = styleBlockOf(production);
@@ -252,26 +254,28 @@ function visualGateReport(doc, castNames = null, production = null) {
       if (lost.length) bad.layout.push(`${label} 缺「${lost.join('、')}」`);
     }
 
-    // 纯净画质段：场景、道具的 sheet，以及道具的每条状态变体提示词
-    if (!hasPurity(s?.image?.sheet)) bad.purity.push(`${label} 的 sheet`);
-    if (!isScene) {
-      (s?.states ?? []).slice(1).forEach((st, i) => {
-        if (!hasPurity(st?.prompt)) bad.purity.push(`${label} 的状态「${st?.state ?? i + 2}」`);
-      });
-    }
+    // 实际发送的每一条正文：基准 sheet，道具再加每条后续状态（states[1…]）。
+    // 变体会被单独提交，技术段要逐条查全，不能只查基准。
+    const sent = [[`${label} 的 sheet`, s?.image?.sheet]];
+    if (!isScene) (s?.states ?? []).slice(1).forEach((st, i) => sent.push([`${label} 的状态「${st?.state ?? i + 2}」`, st?.prompt]));
+
+    // 纯净画质段必须是最后一段，不是「包含」
+    for (const [where, text] of sent) if (!endsWithPurity(text)) bad.purity.push(where);
 
     // 设定图版面的画幅：一条只报一次，整批错的时候不刷屏
     if (assetAspect) {
-      const sheet = String(s?.image?.sheet ?? '');
-      const strays = KNOWN_ASPECTS.filter((a) => a !== assetAspect && sheet.includes(a));
-      if (!sheet.includes(assetAspect)) {
-        bad.aspect.push(
-          strays.length
-            ? `${label} 写着「${strays.join('、')}」，生产参数是 ${assetAspect}`
-            : `${label} 缺画幅「${assetAspect}」`,
-        );
-      } else if (strays.length) {
-        bad.aspect.push(`${label} 同时写着「${strays.join('、')}」和 ${assetAspect}`);
+      for (const [where, text] of sent) {
+        const sheet = String(text ?? '');
+        const strays = KNOWN_ASPECTS.filter((a) => a !== assetAspect && sheet.includes(a));
+        if (!sheet.includes(assetAspect)) {
+          bad.aspect.push(
+            strays.length
+              ? `${where} 写着「${strays.join('、')}」，生产参数是 ${assetAspect}`
+              : `${where} 缺画幅「${assetAspect}」`,
+          );
+        } else if (strays.length) {
+          bad.aspect.push(`${where} 同时写着「${strays.join('、')}」和 ${assetAspect}`);
+        }
       }
     }
 
@@ -309,7 +313,11 @@ function visualGateReport(doc, castNames = null, production = null) {
     // sheet 与 prompt 分开查——只查 sheet 的话，prompt 里留着上一档画风也照样全绿，
     // 出来就是设定表一个样、单张插画另一个样的两张皮
     if (preset) {
-      if (thText(s?.image?.sheet) && !s.image.sheet.includes(preset.render)) bad.style.push(`${label} 的 sheet 缺渲染句`);
+      for (const [where, text] of sent) {
+        if (!thText(text)) continue;
+        if (!text.includes(preset.render)) bad.style.push(`${where} 缺渲染句`);
+        else if (!styleParagraphBeforePurity(text)) bad.style.push(`${where} 的画风段没有以「Overall style:」单独成段放在纯净段之前`);
+      }
       if (thText(s?.image?.prompt) && !s.image.prompt.includes(preset.render)) bad.style.push(`${label} 的 prompt 缺渲染句`);
       /*
        * 反向词只对场景查全，道具不查。
@@ -332,30 +340,59 @@ function visualGateReport(doc, castNames = null, production = null) {
     if (!Array.isArray(pr?.states) || pr.states.length === 0) bad.states.push(label);
 
     // 尺度参照：scale 枚举 + 设定图右格那一档的英文句
+    // 基准与每条后续状态都要带上同一套版式技术段（变体按文档原样照抄）
+    const sent = [[label, pr?.image?.sheet]];
+    (Array.isArray(pr?.states) ? pr.states : []).slice(1).forEach((st, i) => sent.push([`${label} 的状态「${st?.state ?? i + 2}」`, st?.prompt]));
     const scaleEn = PROP_SCALES[pr?.scale];
     if (!scaleEn) {
       bad.scale.push(`${label}（scale 必须是 ${Object.keys(PROP_SCALES).join('/')}）`);
-    } else if (!String(pr?.image?.sheet ?? '').includes(scaleEn)) {
-      bad.scale.push(`${label}（设定图缺「${scaleEn}」）`);
+    } else {
+      for (const [where, text] of sent) if (!String(text ?? '').includes(scaleEn)) bad.scale.push(`${where}（设定图缺「${scaleEn}」）`);
     }
 
     // 尺寸参照：匿名路人句 + 实际尺寸；反向词不能禁掉右格要画的手和人
-    const sheet = String(pr?.image?.sheet ?? '');
-    const lostRef = [SIZE_REF_PHRASE, ACTUAL_SIZE_PHRASE].filter((t) => !sheet.includes(t));
-    if (lostRef.length) bad.sizeref.push(`${label} 的设定图缺「${lostRef.join('、')}」`);
+    for (const [where, text] of sent) {
+      const lostRef = [SIZE_REF_PHRASE, ACTUAL_SIZE_PHRASE].filter((t) => !String(text ?? '').includes(t));
+      if (lostRef.length) bad.sizeref.push(`${where} 的设定图缺「${lostRef.join('、')}」`);
+    }
     const conflict = String(pr?.image?.negativePrompt ?? '').match(PROP_NEG_CONFLICT);
     if (conflict) bad.sizeref.push(`${label} 的反向词禁了「${conflict[0]}」，和右格的尺寸参照自相矛盾`);
 
     // 白底：道具参考图要被贴进各种镜头，必须纯白背景可抠
-    if (!/white background/i.test(pr?.image?.sheet ?? '')) bad.whitebg.push(label);
+    for (const [where, text] of sent) if (!/white background/i.test(String(text ?? ''))) bad.whitebg.push(where);
+  }
+
+  // 主体区：从实际发送正文里去掉版式、正面光、画风和纯净段，剩下的就是资产自己的描述。
+  // 这里只查结构（非空、不重复、变体写法），描述写得对不对由内容复核负责。
+  const baseSubjects = { scene: new Map(), prop: new Map() };
+  for (const t of sheetTargets({ scenes, props })) {
+    if (!thText(t.text)) continue;
+    const label = t.kind === 'prop-state' ? `${t.asset?.name ?? t.asset?.id} 的状态「${t.state?.state ?? t.id}」` : (t.asset?.name ?? t.id);
+    const { subject } = parseSheet(t.text);
+    if (t.role === 'base') {
+      if (!subject) { bad.subject.push(`${label} 的主体区为空（只剩版式、光线、画风和纯净段）`); continue; }
+      const seenAt = baseSubjects[t.kind].get(subject);
+      if (seenAt) bad.subject.push(`${label} 与 ${seenAt} 的主体区完全相同`);
+      else baseSubjects[t.kind].set(subject, label);
+    } else {
+      const lost = subject ? variantProblems(subject, midjourney) : ['主体区为空'];
+      if (lost.length) bad.variantText.push(`${label}：${lost.join('、')}`);
+    }
+    // 场景基准：光影锁原文写进 sheet（文档要求照抄，空白规整后比较）
+    if (t.kind === 'scene') {
+      const lock = t.asset?.lighting?.[0]?.prompt;
+      if (thText(lock) && !squash(t.text).includes(squash(lock))) bad.lightLock.push(`${label} 的 sheet 没有原文写入 lighting[0].prompt`);
+    }
   }
 
   add('anchors', `一致性锚点 ${ANCHOR_RANGE[0]}–${ANCHOR_RANGE[1]} 个`, scenes.length + props.length > 0 && bad.anchors.length === 0, bad.anchors.join('；'));
-  add('lighting', '光照状态至少 1 个且落成提示词', scenes.length > 0 && bad.lighting.length === 0, bad.lighting.join('；'));
+  add('lighting', '光照状态至少 1 个且落成提示词，基准光影锁原文写进设定图', scenes.length > 0 && bad.lighting.length + bad.lightLock.length === 0, [...bad.lighting, ...bad.lightLock].join('；'));
   add('no-people', '场景参考图无人：反向提示词禁人', scenes.length > 0 && bad.people.length === 0, bad.people.join('；'));
   add('scene-layout', '场景设定图为四方向宫格加正交平面图', scenes.length > 0 && bad.layout.length === 0, bad.layout.join('；'));
   add('lighting-kelvin', '光影锁写出色温数值', scenes.length > 0 && bad.kelvin.length === 0, bad.kelvin.join('；'));
   add('sheet-purity', '设定图提示词以纯净画质段收尾', scenes.length + props.length > 0 && bad.purity.length === 0, brief(bad.purity));
+  add('sheet-subject', '设定图正文有资产自己的主体描述，同类不重复（内容是否正确另行复核）', scenes.length + props.length > 0 && bad.subject.length === 0, brief(bad.subject));
+  add('sheet-variant', '变体正文指向参考并写明改动', bad.variantText.length === 0, brief(bad.variantText));
   add('english', '出图提示词全部英文', scenes.length + props.length > 0 && bad.english.length === 0, bad.english.join('；'));
   add(
     'no-names',
@@ -392,7 +429,7 @@ function visualGateReport(doc, castNames = null, production = null) {
     if (['style-match','sheet-aspect'].includes(g.id) && production === null) { g.status = 'skipped'; g.reason = 'missing-upstream'; }
     if (g.id === 'style-match' && production !== null && !preset) { g.status = 'fail'; g.detail = '提供的 production 缺少 style.scene 正文，回 mint-setup 填写'; }
     if (['lighting','no-people','scene-layout','lighting-kelvin'].includes(g.id) && !scenes.length) { g.status = 'skipped'; g.reason = 'not-applicable'; g.detail = '没有场景设计，不适用'; }
-    if (['anchors','english','sheet-purity'].includes(g.id) && !scenes.length && !props.length) { g.status = 'skipped'; g.reason = 'not-applicable'; g.detail = '仅登记身份，不要求设计或出图'; }
+    if (['anchors','english','sheet-purity','sheet-subject'].includes(g.id) && !scenes.length && !props.length) { g.status = 'skipped'; g.reason = 'not-applicable'; g.detail = '仅登记身份，不要求设计或出图'; }
     if (g.id.startsWith('prop-') && !props.length) { g.status = 'skipped'; g.reason = 'not-applicable'; g.detail = '没有道具，不适用'; }
   }
   return gates;
@@ -572,11 +609,13 @@ const GATE_LABELS_EN = {
   'asset-contract': 'Asset fields, IDs and references',
   'production-contract': 'Complete visual text and image production parameters',
   'anchors': 'Consistency anchors, {0}–{1} per asset',
-  'lighting': 'At least one lighting state, written out as a prompt',
+  'lighting': 'At least one lighting state, written out as a prompt; base lighting lock copied into the sheet',
   'no-people': 'No people in scene plates: negatives ban people',
   'scene-layout': 'Scene sheets are a four-direction grid plus an orthographic plan',
   'lighting-kelvin': 'Lighting locks state a colour temperature in kelvin',
   'sheet-purity': 'Sheet prompts end with the clean-image-quality paragraph',
+  'sheet-subject': "Sheet prompts carry the asset's own subject description, not repeated within a kind (content reviewed separately)",
+  'sheet-variant': 'Variant prompts point at the reference and state the change',
   'english': 'All image prompts in English',
   'no-names': 'Prompts carry no character names',
   'variants': 'Variant references complete (variantOf exists and carries changes)',
@@ -646,9 +685,9 @@ const I18N = {
     variantTitle: '变体来源',
     variantChanges: '改动',
     promptsTitle: '出图提示词包',
-    promptMaster: '单张展示 EN',
+    promptMaster: '单张展示图 EN（不进出图计划）',
     promptNegative: '反向提示词',
-    promptSheet: '设定图 EN',
+    promptSheet: '设定图 EN（实际发送正文）',
     copy: '复制', copied: '已复制', copyFailed: '复制失败', copyJson: '复制整个场景 JSON',
     noImage: '尚未出图',
     noImageHint: '使用下方提示词生成',
@@ -698,9 +737,9 @@ const I18N = {
     variantTitle: 'Variant of',
     variantChanges: 'Changes',
     promptsTitle: 'Prompt pack',
-    promptMaster: 'Single view (EN)',
+    promptMaster: 'Single view (EN, not in the image plan)',
     promptNegative: 'Negative prompt',
-    promptSheet: 'Sheet (EN)',
+    promptSheet: 'Sheet (EN, the text actually sent)',
     copy: 'Copy', copied: 'Copied', copyFailed: 'Copy failed', copyJson: 'Copy full JSON',
     noImage: 'no image yet',
     noImageHint: 'generate with the prompts below',
@@ -765,9 +804,9 @@ export function renderMarkdown(doc, lang = null, production = null, castNames = 
     out.push('');
     if (s.variantOf) out.push(`> ${t.variantTitle}${t.colon}${s.variantOf}${t.pairSep}${t.variantChanges}${t.colon}${s.changes}`, '');
     out.push(`### ${t.promptsTitle}`, '');
-    out.push(`**${t.promptMaster}**`, '', '```text', s.image.prompt, '```', '');
-    out.push(`**${t.promptNegative}**`, '', '```text', s.image.negativePrompt, '```', '');
     out.push(`**${t.promptSheet}**`, '', '```text', s.image.sheet, '```', '');
+    out.push(`**${t.promptNegative}**`, '', '```text', s.image.negativePrompt, '```', '');
+    out.push(`**${t.promptMaster}**`, '', '```text', s.image.prompt, '```', '');
     if (s.image.tags.length) out.push(`\`${s.image.tags.join('`, `')}\``, '');
   }
 
@@ -794,9 +833,9 @@ export function renderMarkdown(doc, lang = null, production = null, castNames = 
       }
       out.push('');
       out.push(`### ${t.promptsTitle}`, '');
-      out.push(`**${t.promptMaster}**`, '', '```text', pr.image.prompt, '```', '');
-      out.push(`**${t.promptNegative}**`, '', '```text', pr.image.negativePrompt, '```', '');
       out.push(`**${t.promptSheet}**`, '', '```text', pr.image.sheet, '```', '');
+      out.push(`**${t.promptNegative}**`, '', '```text', pr.image.negativePrompt, '```', '');
+      out.push(`**${t.promptMaster}**`, '', '```text', pr.image.prompt, '```', '');
     }
   }
 
@@ -893,9 +932,9 @@ export function renderHtml(doc, lang = null, production = null, castNames = null
     <div class="lights">${pr.states.map((st) => `<div class="light"><i>${esc(st.state)}</i><span class="mono">${esc(st.prompt)}</span><button class="copy mini" data-copy="${esc(st.prompt)}">${esc(t.copy)}</button></div>${st.sheetImage ? `<figure class="plate"><button class="zoom" data-src="${esc(st.sheetImage)}" aria-label="${esc(t.zoomImage)}"><img src="${esc(st.sheetImage)}" alt="${esc(pr.name)} ${esc(st.state)}" loading="lazy"></button><figcaption>${esc(st.state)}</figcaption></figure>` : ''}`).join('')}</div>
   </section>
   <div class="pgroup">
-    ${promptRow(t.promptMaster, pr.image.prompt)}
     ${promptRow(t.promptSheet, pr.image.sheet)}
     ${promptRow(t.promptNegative, pr.image.negativePrompt)}
+    ${promptRow(t.promptMaster, pr.image.prompt)}
     <div class="pgroup-f"><button class="copy wide" data-copy="${esc(JSON.stringify(pr, null, 2))}">${esc(t.copyJson)}</button></div>
   </div>
 </article>`;
@@ -931,9 +970,9 @@ export function renderHtml(doc, lang = null, production = null, castNames = null
     <div class="lights">${s.lighting.map((l) => `<div class="light"><i>${esc(l.state)}</i><span class="mono">${esc(l.prompt)}</span><button class="copy mini" data-copy="${esc(l.prompt)}">${esc(t.copy)}</button></div>`).join('')}</div>
   </section>
   <div class="pgroup">
-    ${promptRow(t.promptMaster, s.image.prompt)}
     ${promptRow(t.promptSheet, s.image.sheet)}
     ${promptRow(t.promptNegative, s.image.negativePrompt)}
+    ${promptRow(t.promptMaster, s.image.prompt)}
     <div class="pgroup-f"><button class="copy wide" data-copy="${esc(JSON.stringify(s, null, 2))}">${esc(t.copyJson)}</button></div>
   </div>
 </article>`;
@@ -1241,9 +1280,11 @@ export function imageJobsFrom(doc, production = null) {
   const scenes = Array.isArray(doc?.scenes) ? doc.scenes : [];
   const props = Array.isArray(doc?.props) ? doc.props : [];
   const sceneIds = new Set(scenes.map((s) => s?.id));
+  // 正文只从 sheetTargets 取——validate 检查的就是这里发出去的那一份
+  const sent = new Map(sheetTargets({ scenes, props }, { readyOnly: true }).map((t) => [t.id, t.text]));
 
   const take = (item, kind) => {
-    const prompt = item?.image?.sheet;
+    const prompt = sent.get(item?.id);
     if (!thText(prompt)) {
       problems.push(`${item?.id ?? '?'}「${item?.name ?? ''}」的 image.sheet 是空的——提示词是模型的活，先填上再出图`);
       return null;
@@ -1277,7 +1318,8 @@ export function imageJobsFrom(doc, production = null) {
     // states[0] 是基准设定图画的状态；之后每个状态是一张以基准图为参考的变体
     (Array.isArray(pr.states) ? pr.states : []).slice(1).forEach((st, i) => {
       const n = i + 2;
-      if (!thText(st?.prompt)) {
+      const statePrompt = sent.get(stateJobKey(pr.id, n));
+      if (!thText(statePrompt)) {
         problems.push(`${pr.id}「${pr.name ?? ''}」的状态「${st?.state ?? n}」prompt 是空的——变体提示词是模型的活，先填上再出图`);
         return;
       }
@@ -1287,7 +1329,7 @@ export function imageJobsFrom(doc, production = null) {
         name: `${pr.name} · ${st.state}`,
         file: stateSheetFile(assetImageStem(pr, doc), n),
         inputDigest: digest({asset:pr,state:n,identityInputDigest:identityDigest(doc,pr)}),
-        prompt: String(st.prompt),
+        prompt: String(statePrompt),
         negativePrompt: String(pr?.image?.negativePrompt ?? ''),
         refFrom: pr.id,
       });
@@ -1446,7 +1488,14 @@ async function main(argv) {
   if(['register','identity-inputs','verify-sources','reconcile'].includes(cmd)) {
     const path=rest[0];if(!path||path.startsWith('--'))throw Error(cmd+' 需要 art.json');
     const doc=readJson(path);if(doc.schemaVersion!==ART_VERSION||doc.kind!=='mint-art')throw Error('art 需要 schemaVersion:1, kind:mint-art 才能登记和核验');
-    if(cmd==='identity-inputs') {console.log(JSON.stringify(assetsOf(doc).map(a=>({id:a.id,inputDigest:identityDigest(doc,a)})),null,2));return;}
+    if(cmd==='identity-inputs') {
+      // contentReview：内容复核用的对照材料——实际发送正文的主体区与资产依据并排，代码不判定对错
+      const targets=sheetTargets(doc);
+      console.log(JSON.stringify(assetsOf(doc).map(a=>({id:a.id,inputDigest:identityDigest(doc,a),
+        ...(targets.some(t=>t.asset===a)?{contentReview:{anchors:a.anchors,facts:a.facts,sourceRefs:a.sourceRefs,standaloneImagePrompt:a.image?.prompt,baseState:a.states?.[0]?.prompt,baseLighting:a.lighting?.[0]?.prompt,
+          sheetSubjects:targets.filter(t=>t.asset===a).map(t=>({job:t.id,role:t.role,subject:thText(t.text)?parseSheet(t.text).subject:''}))}}:{})})),null,2));
+      return;
+    }
     if(cmd==='verify-sources') {const result=verifySources(doc,path);console.log(JSON.stringify(result,null,2));if(result.errors.length)process.exitCode=1;return;}
     if(cmd==='register')registerAsset(doc,flag(rest,'--kind'),flag(rest,'--key'),flag(rest,'--name'));
     if(cmd==='reconcile') {

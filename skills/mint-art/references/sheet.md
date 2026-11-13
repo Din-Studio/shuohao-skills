@@ -1,6 +1,6 @@
 # 设定图出图（场景 + 道具）· 版面与提示词
 
-身份登记不要求图片。只有 designStatus: ready 且任务需要生成时，本页才适用。本 skill 只导出出图计划；实际生成使用独立安装的 **ly-image**。先阅读 [交接与恢复流程](media-handoff.md)。提示词的通用组成（版式段 → 身份锁 → 细节 → 画风段 → 纯净画质段）和基准、变体的写法见 [sheet-prompt.md](sheet-prompt.md)。
+身份登记不要求图片。只有 designStatus: ready 且任务需要生成时，本页才适用。本 skill 只导出出图计划；实际生成使用独立安装的 **ly-image**。先阅读 [交接与恢复流程](media-handoff.md)。提示词的通用组成（版式段 → 身份锁 → 细节 → 画风段 → 纯净画质段）、validate 从实际发送正文切出的主体区，以及基准、变体的写法见 [sheet-prompt.md](sheet-prompt.md)。
 
 ```bash
 node <baseDir>/scripts/mint-art.mjs images <剧名>-art.json --out image-plan.json

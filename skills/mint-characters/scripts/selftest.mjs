@@ -34,6 +34,7 @@ import {
   STYLE_REF_LINE,
   AUTOPILOT_NOTE,
   autopilotOf,
+  parseSheet,
 } from './mint-characters.mjs';
 import './media-plan-selftest.mjs';
 
@@ -203,7 +204,7 @@ ok(/pore|subsurface/i.test(CHARACTER_STYLE.surface), '角色那一块管的是�
 // 画风整块用上：渲染句原样进两条提示词
 {
   const cast = JSON.parse(JSON.stringify(CAST));
-  cast[0].image.sheet = 'ONE 16:9 landscape canvas, three zones, no text';
+  cast[0].image.sheet = cast[0].image.sheet.replace(PRODUCTION.style.character.render, 'Watercolour illustration.');
   const probs = productionProblems(cast, PRODUCTION);
   eq(probs.length, 1, '设定图提示词缺渲染句必须报出来');
   ok(probs[0].includes('真人实拍'), '点名生产参数定的是哪一档画风');
@@ -340,9 +341,13 @@ ok(CAST.every((c) => !/depth of field|subtle film grain|three-quarter/i.test(c.i
   eq(sheetLayoutProblems(rewrapped).length, 0, '纯净画质段只差换行与空白不算缺');
   const creature = { ...CAST[0], entityType: 'nonhuman' };
   eq(sheetLayoutProblems(creature).length, 0, '生物套用同一版式');
-  const crowdSheet = `Layout requirements: one 16:9 landscape canvas on a plain pure white background; 6 people in 2 rows, full body, front view, ${CROWD_FIXED_PHRASE}.\n\n${PURITY_PARAGRAPH}`;
+  const crowdLayout = `Layout requirements: one 16:9 landscape canvas on a plain pure white background; 6 people in 2 rows, full body, front view, ${CROWD_FIXED_PHRASE}. The image contains no text and no logos.`;
+  const crowdBody = 'Six 1930s river-town dock porters, men in their twenties to fifties, in faded indigo cotton jackets and rolled trousers, straw sandals, two with carrying poles across the shoulders.';
+  const crowdSheet = `${crowdLayout}\n\n${crowdBody}\n\n${PURITY_PARAGRAPH}`;
   const crowd = { ...CAST[0], entityType: 'group', image: { ...CAST[0].image, sheet: crowdSheet } };
-  eq(sheetLayoutProblems(crowd).length, 0, '群像图带固定句与纯净画质段即可，不要求脸部特写');
+  eq(sheetLayoutProblems(crowd).length, 0, '群像图带固定句、人员构成与纯净画质段即可，不要求脸部特写');
+  const crowdNoBody = { ...crowd, image: { ...crowd.image, sheet: `${crowdLayout}\n\n${PURITY_PARAGRAPH}` } };
+  ok(sheetLayoutProblems(crowdNoBody).some((x) => x.includes('主体区为空')), '群像删除人员构成段被拦');
   const crowdNoFixed = { ...crowd, image: { ...crowd.image, sheet: crowdSheet.replace(CROWD_FIXED_PHRASE, 'similar people') } };
   ok(sheetLayoutProblems(crowdNoFixed).some((x) => x.includes(CROWD_FIXED_PHRASE)), '群像图缺「高矮胖瘦各不相同」被拦');
   const bad = clone();
@@ -378,7 +383,7 @@ eq(validateCast(CAST, SOURCE, 'zh').length, 0, '样例四个角色的提示词�
   const dup = clone();
   dup[1].image.prompt = dup[0].image.prompt;
   ok(
-    validateCast(dup, SOURCE, 'zh').some((x) => x.includes('出图提示词雷同')),
+    validateCast(dup, SOURCE, 'zh').some((x) => x.includes('独立插画提示词雷同')),
     '两个角色的出图提示词完全相同会报错',
   );
 }
@@ -389,7 +394,7 @@ eq(validateCast(CAST, SOURCE, 'zh').length, 0, '样例四个角色的提示词�
     .replace(/nineteen-year-old/g, 'twenty-two-year-old')
     .replace(/navy-blue/g, 'dark green');
   ok(
-    validateCast(near, SOURCE, 'zh').some((x) => x.includes('出图提示词雷同')),
+    validateCast(near, SOURCE, 'zh').some((x) => x.includes('独立插画提示词雷同')),
     '只改几个词的出图提示词照样被拦',
   );
 }
@@ -402,12 +407,20 @@ eq(validateCast(CAST, SOURCE, 'zh').length, 0, '样例四个角色的提示词�
   );
 }
 {
-  // image.sheet 刻意不查：版式要求与纯净画质段是大段固定文本，真实角色之间本来就高度重合
+  // image.sheet 只比主体区：固定文本剥掉之后，完全相同就是同一个人
   const dupSheet = clone();
   dupSheet[1].image.sheet = dupSheet[0].image.sheet;
   ok(
-    !validateCast(dupSheet, SOURCE, 'zh').some((x) => x.includes('雷同')),
-    'image.sheet 相同不报错——它的固定排版文本占比太高，设门必然误拦',
+    validateCast(dupSheet, SOURCE, 'zh').some((x) => x.includes('设定图主体区完全相同')),
+    '两个角色的 sheet 完全相同会报错——实际发送的就是这份',
+  );
+  const nearSheet = clone();
+  nearSheet[1].image.sheet = nearSheet[0].image.sheet
+    .replace('in her late teens', 'in her early twenties')
+    .replace('dark navy-blue', 'dark green');
+  ok(
+    validateCast(nearSheet, SOURCE, 'zh').some((x) => x.includes('设定图主体区雷同') && x.includes('启发式')),
+    '只改年龄和衣服颜色：给出区分度提示，并说明只是启发式',
   );
 }
 {
@@ -416,7 +429,7 @@ eq(validateCast(CAST, SOURCE, 'zh').length, 0, '样例四个角色的提示词�
   tiny[0].image.prompt = 'a man';
   tiny[1].image.prompt = 'a man';
   ok(
-    !validateCast(tiny, SOURCE, 'zh').some((x) => x.includes('出图提示词雷同')),
+    !validateCast(tiny, SOURCE, 'zh').some((x) => x.includes('独立插画提示词雷同')),
     '词数太少的提示词不参与雷同判定',
   );
 }
@@ -510,7 +523,12 @@ eq(STAGE_DIR, 'characters', '段目录名与端到端工作目录约定一致');
   eq(jobs[0].refFrom, null, 'auto 拿第一个角色当基准，它自己不挂参考');
   eq(jobs.slice(1).every((j) => j.refFrom === jobs[0].key), true, '其余角色都挂基准的成图');
   ok(jobs[1].prompt.includes(STYLE_REF_LINE), '挂了参考图就要补一句风格匹配，否则模型不知道拿它做什么');
-  ok(!jobs[0].prompt.includes(STYLE_REF_LINE), '基准角色的提示词不动');
+  eq(jobs[0].prompt, CAST[0].image.sheet, '基准角色的提示词不动');
+  ok(jobs[1].prompt.trim().endsWith(PURITY_PARAGRAPH), '插入风格匹配句后纯净段仍然收尾');
+  ok(jobs[1].prompt.indexOf(STYLE_REF_LINE) < jobs[1].prompt.indexOf('Overall style:'), '风格匹配句位于 Overall style 段之前');
+  eq(parseSheet(jobs[1].prompt).subject, parseSheet(CAST[1].image.sheet).subject, '风格匹配句不计入主体区');
+  eq(sheetLayoutProblems({ ...CAST[1], image: { ...CAST[1].image, sheet: jobs[1].prompt } }).length, 0, '最终正文通过结构解析');
+  eq(productionProblems([{ ...CAST[1], image: { ...CAST[1].image, sheet: jobs[1].prompt } }], PRODUCTION).length, 0, '最终正文的画风段位置仍然合规');
 
   const named = imageJobsFrom(CAST, PRODUCTION, { styleRef: CAST[1].name });
   eq(named.jobs[1].refFrom, null, '指名谁谁就是基准');
@@ -518,6 +536,35 @@ eq(STAGE_DIR, 'characters', '段目录名与端到端工作目录约定一致');
 
   const bad = imageJobsFrom(CAST, null, { styleRef: '不存在的人' });
   ok(bad.problems.some((x) => x.includes('不存在的人')), '--style-ref 指错了提交之前就报');
+}
+
+// 出图计划检查的是最终发送正文：直接调用 imageJobsFrom 也绕不过结构检查
+{
+  const cs = JSON.parse(JSON.stringify(CAST));
+  cs[0].image.sheet = cs[0].image.sheet.split('\n\n').filter((p, i, all) => i === 0 || /^Overall style:/.test(p) || i === all.length - 1).join('\n\n');
+  ok(imageJobsFrom(cs, PRODUCTION).problems.some((x) => x.includes('主体区为空')), '删掉脸、体型、服装两段后拒绝导出');
+  ok(validateCast(cs, SOURCE, 'zh').some((x) => x.includes('主体区为空')), 'validate 同样拦下');
+  const tail = JSON.parse(JSON.stringify(CAST));
+  tail[0].image.sheet += '\n\nA red vintage sports car.';
+  ok(imageJobsFrom(tail, PRODUCTION).problems.some((x) => x.includes('纯净画质段收尾')), '纯净段之后还有正文被拦');
+  ok(validateCast(tail, SOURCE, 'zh').some((x) => x.includes('纯净画质段收尾')), 'validate 同样拦下');
+  const dup = JSON.parse(JSON.stringify(CAST));
+  dup[1].image.sheet = dup[0].image.sheet;
+  ok(imageJobsFrom(dup, PRODUCTION).problems.some((x) => x.includes('主体区完全相同')), '两个角色主体区相同，出图计划也拒绝');
+  const creature = JSON.parse(JSON.stringify(CAST));
+  creature[0].entityType = 'nonhuman';
+  creature[0].image.sheet = creature[0].image.sheet.replace(/A Chinese woman in her late teens[^\n]*/, 'A large grey river otter with a white throat patch, a notch in the left ear and a thick tapering tail.');
+  eq(sheetLayoutProblems(creature[0]).length, 0, '生物主体通过');
+}
+{
+  // Midjourney 写法：主体放最前，版式短语同段，没有 Layout requirements:
+  const mjLayout = 'one 16:9 landscape canvas, plain white background; left part a strictly frontal close-up of the face, facial midline vertical and centered, both eyes level, looking straight into the camera; right part three full-body views of the same person from the neck down to the feet, front, side and back from left to right, same scale, standing on one shared ground line, separated by clear white gaps';
+  const mj = `Costume test photo board of one real late-teens Chinese woman, shot on a full-frame camera with an 85mm lens, natural skin with visible pores, real fabric texture, ${mjLayout}, oval face, two long braids, navy student tunic, soft even frontal studio lighting.\n\n${PURITY_PARAGRAPH}`;
+  const subject = parseSheet(mj).subject;
+  ok(subject.startsWith('Costume test photo board') && subject.includes('two long braids'), 'Midjourney 写法主体在版式前后都保留');
+  ok(!subject.includes('shared ground line'), '同段的版式短语被剥掉');
+  const mjProd = { ...PRODUCTION, image: { ...PRODUCTION.image, model: 'midjourney-v7' } };
+  ok(!productionProblems([{ ...CAST[0], image: { ...CAST[0].image, sheet: mj.replace('soft even', `${PRODUCTION.style.character.render} soft even`) } }], mjProd).some((x) => x.includes('Overall style')), 'Midjourney 不强求单独的画风段');
 }
 
 // 提交之前就要拦下的两类问题

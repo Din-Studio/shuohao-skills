@@ -75,7 +75,7 @@ planned / ready 设计遵循以下视觉规则，none 不适用：
 | summary | 非空设计意图；结构、动线及主光方向由人工/模型复核 |
 | anchors | 3–5 个 {name,desc}；明确可画特征及方位 |
 | lighting | 至少一个 {state,prompt}，prompt 英文并写色温数值（如 5500K）；`lighting[0]` 是基准设定图画的光影锁 |
-| image | prompt、negativePrompt、sheet 非空；tags 英文数组；sheet 为四方向宫格加正交平面图（含 two-by-two grid、orthographic）并以纯净画质段收尾 |
+| image | prompt、negativePrompt、sheet 非空；tags 英文数组；sheet 为四方向宫格加正交平面图（含 two-by-two grid、orthographic），主体区非空且原文包含 `lighting[0].prompt`，纯净画质段是最后一段；变体场景 sheet 按变体写法 |
 | 画风、画幅 | production 提供时按 style.scene 和 image.asset 核验 |
 
 | 道具字段 | 规则 |
@@ -84,7 +84,7 @@ planned / ready 设计遵循以下视觉规则，none 不适用：
 | anchors | 3–5 个 {name,desc} |
 | states | 至少一个 {state,prompt}，prompt 英文；`states[0]` 是基准状态，`states[1]` 起每条是完整变体提示词（含纯净画质段），各自进入出图计划 |
 | scale | 手持级（长边 30 厘米以内）/ 桌面级（30–60 厘米）/ 家具级（60 厘米以上）；sheet 含对应的尺寸参照英文句（见 PROP_SCALES） |
-| image | 提示词英文；sheet 三格版式，明确 white background，含匿名尺寸参照句与 actual size about，以纯净画质段收尾；反向词不禁手、不禁人 |
+| image | 提示词英文；sheet 三格版式，明确 white background，含匿名尺寸参照句与 actual size about，主体区非空，纯净画质段是最后一段；`states[1…]` 逐条检查同一套技术段和变体写法；反向词不禁手、不禁人 |
 
 场景反向词禁人并完整带入 style.scene.negative；道具白底不强加与之矛盾的环境反向词，也不禁右格尺寸参照要画的手和人。提示词不含角色名（提供 cast 时核验）。production 缺失为 skipped，不提供出图默认值。ready 设计不等于媒体生成或批准。
 

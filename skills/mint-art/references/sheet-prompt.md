@@ -9,10 +9,10 @@
 按这个顺序写（多数图片模型对靠前的信息更敏感）：
 
 1. **版式段**：放最前，单独成段，照 [sheet.md](sheet.md) 里该类型的版式固定句写，画幅写成 production 的 `image.asset.aspectRatio` 实际值。
-2. **身份锁**：认出这个资产靠的那几样。场景：地点类型、年代与地域文化、空间结构、功能性元素、光影锁；道具：类别、形状与实际尺寸、材质、颜色、标记。锁要写到能画出来（`a pale square wooden patch at the right end of the counter`，不是 `an old counter`）。剧本没写、设定图又一定要画的值，按 [principles.md](principles.md) 第一节估或设计好再写。年代、地域的建筑和器物拿不准时可以查资料，要点和来源记在 `facts` 或交付汇报，不写进提示词。
+2. **身份锁**（主体区，validate 要求非空，见第六节）：认出这个资产靠的那几样。场景：地点类型、年代与地域文化、空间结构、功能性元素、光影锁；道具：类别、形状与实际尺寸、材质、颜色、标记。锁要写到能画出来（`a pale square wooden patch at the right end of the counter`，不是 `an old counter`）。剧本没写、设定图又一定要画的值，按 [principles.md](principles.md) 第一节估或设计好再写。年代、地域的建筑和器物拿不准时可以查资料，要点和来源记在 `facts` 或交付汇报，不写进提示词。
 3. **细节**：颜色材质、新旧状态、生活痕迹、氛围（以可见细节表达，不写抽象形容词）。道具写柔和均匀的正面光（`soft even frontal studio lighting`），物件上没有明显的阴影和色光：参考图上的光会被视频模型当成物件本身的颜色带进每一段视频，戏里的光由视频去写。场景照自己的光影锁写。
 4. **画风段**：单独一段，以 `Overall style:` 开头，接 production `style.scene.render` 原句（style-match 门逐字查），再接质感短语：场景 `cinematic composition`，道具 `still-life studio texture`。`style.scene.surface` 那段按需要接在后面。
-5. **纯净画质段（固定句）**：每一条设定图提示词，基准和每个变体，都在最后单独一段带上下面这段话，原文照用、一字不改（sheet-purity 门查，空白规整后比较）：
+5. **纯净画质段（固定句）**：每一条设定图提示词，基准和每个变体，都在最后单独一段带上下面这段话，原文照用、一字不改；它必须是最后一段，之后不再追加任何内容（sheet-purity 门查，空白规整后比较）：
 
 > Remove all noise, graininess, film grain and digital noise; shadows and dark areas smooth and clean, color transitions natural, gradients fine and smooth. Surfaces of skin, fabric, wood grain, stone, water and leaves clean and clear, edges crisp but not over-sharpened, with no dirt specks, hazy blur, smearing or artifacts. Keep the original details, do not reduce any characters or scene elements, do not change the characters' faces. High definition, clean low-ISO image quality, commercial-grade finished look.
 
@@ -69,6 +69,30 @@ Overall style: <照抄基准>
 - 每类版式的末尾都有 `no text, no lettering and no logos anywhere in the image` 一句。本来就带字的东西（文件、招牌、屏幕、包装、证件），写明文字的**语言**和**内容**——这句放在版式段末尾，替换「无文字」那半句（`the only text is the body of a property transfer agreement in Chinese with a signature line`）；剧情不需要看清的写 `the only text is illegible small print`。只写语言不写内容，模型会填乱码。
 - 文字使用什么语言，按 [principles.md](principles.md) 第四节定。
 - 平面图、俯瞰图上永远不写字和数字。
+
+## 六、主体区：validate 查什么，不查什么
+
+validate 和出图计划检查的是**实际发送正文**：基准取 `image.sheet`，道具后续状态取 `states[n].prompt`（n ≥ 1）。`image.prompt` 是单张展示图，不进出图计划，写得再完整也不能代替 sheet 里的主体描述。
+
+从正文里去掉版式句（从 `One <画幅> … canvas` 到 `anywhere in the image.`，带字物品的 `the only text is …` 也在其中）、道具的正面光那一句、`Overall style:` 画风段和纯净画质段，剩下的就是**主体区**。不需要任何标签，Midjourney 写法把主体放在开头、和版式同段也能切出来。
+
+代码确定性检查（不通过就阻断）：
+
+- **纯净段收尾**：最后一段在空白规整后等于纯净画质段，之后不再追加任何内容（sheet-purity 门）。
+- **画风段位置**：`Overall style:` 单独成段，紧挨在纯净段之前，含 production 的渲染句（style-match 门）。
+- **基准主体区非空**；同类基准（场景之间、道具之间）的主体区不能完全相同（sheet-subject 门）。不设字数门槛。
+- **变体写法**：通用模型以 `Based on the reference image` 开头，带 `Change only the following:` 且后面至少有一项；Midjourney 变体只要求主体锚点句含 `as in the reference image`（sheet-variant 门）。正文里的 reference 字样不能代替任务依赖，参考依赖仍来自 `variantOf` 或道具基准任务。
+- **场景光影锁原文写进 sheet**：基准场景 sheet 必须原文包含 `lighting[0].prompt`（lighting 门）。道具**不**要求 sheet 原文包含 `states[0].prompt`：基准状态说明可能带现场摆放，不能机械抄进单件白底设定图。
+- **道具后续状态逐条查全**：画幅、渲染句、白底、尺度那一档、匿名尺寸参照和纯净段，每条 `states[n].prompt` 都单独检查。
+
+代码不判断主体写得对不对。写完之后另行发起一次内容复核（同一模型也可以，或人工），把主体区和 anchors、`facts` / `sourceRefs`、`image.prompt`、`states[0]`（场景为 `lighting[0]`）并排对照（`identity-inputs` 输出的 `contentReview` 已经把这些并排列好）：
+
+- 类别、颜色、材质、标记、状态是否一致；
+- 每个锚点在主体区里能不能画出来；
+- 同批资产依靠什么区分（黑伞和红伞的主体区都要写出颜色）；
+- 适配目标模型时，最终请求有没有丢弃、改写或新增未经复核的约束。
+
+复核结论为需返修或待确认时不提交生成。生成之后的看图审核见 [media-handoff.md](media-handoff.md)。
 
 ---
 

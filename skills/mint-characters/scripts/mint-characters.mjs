@@ -10,6 +10,8 @@ import { assetProductionProblems, creativeBackground } from './lib/contracts.mjs
 export { creativeBackground } from './lib/contracts.mjs';
 import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
 import { identityCommand } from './lib/identity-cli.mjs';
+import { PURITY_PARAGRAPH, STYLE_REF_LINE, parseSheet, sheetTextProblems, styleParagraphBeforePurity, withStyleRef, isMidjourney } from './lib/sheet-text.mjs';
+export { PURITY_PARAGRAPH, STYLE_REF_LINE, parseSheet, sheetTargets } from './lib/sheet-text.mjs';
 import { hash } from './lib/identity.mjs';
 export { seedSource, reconcile, identityErrors, identityHash } from './lib/identity.mjs';
 
@@ -255,6 +257,12 @@ export function productionProblems(characters, production) {
       const lost = terms.filter((t) => !neg.includes(t));
       if (lost.length) missNeg.push(`${name} 少了「${brief(lost, 3)}」`);
     }
+    if (!isMidjourney(production)) {
+      const misplaced = (characters ?? [])
+        .filter((c) => typeof c?.image?.sheet === 'string' && c.image.sheet.trim() && !styleParagraphBeforePurity(c.image.sheet))
+        .map((c) => c?.name ?? '(无名)');
+      if (misplaced.length) problems.push(`设定图的画风段要以「Overall style:」单独成段，放在纯净段之前：${brief(misplaced)}`);
+    }
     if (missRender.length) {
       problems.push(`画风的渲染句没进提示词（生产参数定的是「${styleLabelOf(production)}」）：${brief(missRender)}`);
     }
@@ -308,10 +316,9 @@ const normalise = (s) => String(s).replace(/\s+/g, '');
 export const FACE_CLOSEUP_PHRASE = 'strictly frontal close-up of the face';
 export const NECK_DOWN_PHRASE = 'from the neck down';
 export const CROWD_FIXED_PHRASE = 'all different heights and builds';
-export const PURITY_PARAGRAPH = "Remove all noise, graininess, film grain and digital noise; shadows and dark areas smooth and clean, color transitions natural, gradients fine and smooth. Surfaces of skin, fabric, wood grain, stone, water and leaves clean and clear, edges crisp but not over-sharpened, with no dirt specks, hazy blur, smearing or artifacts. Keep the original details, do not reduce any characters or scene elements, do not change the characters' faces. High definition, clean low-ISO image quality, commercial-grade finished look.";
 const squash = (s) => String(s).replace(/\s+/g, ' ').trim().toLowerCase();
 
-/** 按 entityType 检查 image.sheet 的版式固定短语与纯净画质段，返回缺失说明。 */
+/** 按 entityType 检查 image.sheet 的版式固定短语、纯净段收尾与主体区，返回缺失说明。 */
 export function sheetLayoutProblems(character) {
   const sheet = character?.image?.sheet;
   if (typeof sheet !== 'string' || !sheet.trim()) return [];
@@ -320,8 +327,7 @@ export function sheetLayoutProblems(character) {
     ? [[CROWD_FIXED_PHRASE, '群像图固定句']]
     : [[FACE_CLOSEUP_PHRASE, '左边严格正面的脸部特写'], [NECK_DOWN_PHRASE, '右边三格脖子以下的正面、侧面、背面']];
   const problems = need.filter(([phrase]) => !text.includes(phrase)).map(([phrase, label]) => `image.sheet 缺版式短语「${phrase}」（${label}）`);
-  if (!text.includes(squash(PURITY_PARAGRAPH))) problems.push('image.sheet 缺纯净画质段（固定句，原文照用）');
-  return problems;
+  return [...problems, ...sheetTextProblems(sheet)];
 }
 
 /**
@@ -383,8 +389,10 @@ export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
    * 阈值取 0.75，是量出来的不是拍的——自带样例四个角色两两最高 39%，
    * 而「只改年龄与衣服颜色」的雷同用例是 98%，中间余量极大。
    *
-   * image.sheet 刻意不查：版式要求与纯净画质段是大段固定文本，真实角色之间本来就
-   * 高度重合，设门必然误拦——误拦的门比没有门更糟。
+   * image.sheet 只比主体区：版式、正面光、画风和纯净段是大段固定文本，整条比较必然
+   * 误拦；剥掉之后剩下的才是角色自己的描述，自带样例两两最高 29%。
+   * 主体区完全相同是结构事实，直接报错；相似度只是启发式提示，不代表语义审核——
+   * 两人到底分不分得开，仍由内容复核对照画像判断。
    */
   const promptSim = (a, b) => {
     const words = (s) => new Set(String(s ?? '').toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 2));
@@ -394,16 +402,26 @@ export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
     return inter / new Set([...A, ...B]).size;
   };
   const SIM_MAX = 0.75;
-  for (const [field, label] of [['prompt', '出图提示词'], ['voice', '音色提示词']]) {
-    const get = (c) => (field === 'prompt' ? c?.image?.prompt : c?.voice?.prompt);
+  const sheetSubject = (c) => (typeof c?.image?.sheet === 'string' ? parseSheet(c.image.sheet).subject : '');
+  for (let i = 0; i < characters.length; i += 1) {
+    for (let j = i + 1; j < characters.length; j += 1) {
+      const a = sheetSubject(characters[i]);
+      if (a && a === sheetSubject(characters[j])) {
+        problems.push(`${characters[i]?.name ?? '(无名)'} 与 ${characters[j]?.name ?? '(无名)'} 的设定图主体区完全相同——实际发送的正文画出来会是同一个人`);
+      }
+    }
+  }
+  for (const [field, label] of [['sheet', '设定图主体区'], ['prompt', '独立插画提示词'], ['voice', '音色提示词']]) {
+    const get = (c) => (field === 'sheet' ? sheetSubject(c) : field === 'prompt' ? c?.image?.prompt : c?.voice?.prompt);
     for (let i = 0; i < characters.length; i += 1) {
       for (let j = i + 1; j < characters.length; j += 1) {
         const sim = promptSim(get(characters[i]), get(characters[j]));
+        if (field === 'sheet' && sim === 1 && get(characters[i]) === get(characters[j])) continue; // 完全相同已在上面报过
         if (sim >= SIM_MAX) {
           const pct = Math.round(sim * 100);
           problems.push(
             `${characters[i]?.name ?? '(无名)'} 与 ${characters[j]?.name ?? '(无名)'} 的${label}雷同 ${pct}%`
-            + `（上限 ${Math.round(SIM_MAX * 100)}%）——同一批角色要能区分开，别套同一个模板`,
+            + `（上限 ${Math.round(SIM_MAX * 100)}%，启发式提示，不代表语义审核）——同一批角色要能区分开，别套同一个模板`,
           );
         }
       }
@@ -560,8 +578,6 @@ export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
  * 压住的办法是拿第一个角色的成图当风格参考喂给后面几个，代价是第一张定全片
  * 基调。默认不开——只要几张草图的场合不该被这条绑住；`--style-ref` 才开。
  */
-export const STYLE_REF_LINE =
-  'Match the art style, line weight, shading and colour treatment of the reference image exactly — these characters must belong to the same production.';
 
 /** 产物路径与 render 找图的路径必须是同一个算法，不许两边各写一遍。 */
 export const sheetFile = (name, dir = 'images') => `${dir}/${slug(name)}-sheet.png`;
@@ -603,9 +619,20 @@ export function imageJobsFrom(characters, production = null, { imagesDir = 'imag
       for (const j of jobs) {
         if (j === anchor) continue;
         j.refFrom = anchor.key;
-        j.prompt = `${j.prompt} ${STYLE_REF_LINE}`;
+        // 插在画风段之前单独成段，纯净段仍然收尾；最终正文下面照样过结构检查
+        j.prompt = withStyleRef(j.prompt);
       }
     }
+  }
+
+  // 检查的是最终发送正文，不是改写前的源字段；直接调用本函数也绕不过去
+  const subjects = new Map();
+  for (const j of jobs) {
+    for (const msg of sheetTextProblems(j.prompt)) problems.push(`「${j.key}」${msg}`);
+    const { subject } = parseSheet(j.prompt);
+    if (!subject) continue;
+    if (subjects.has(subject)) problems.push(`「${subjects.get(subject)}」与「${j.key}」的设定图主体区完全相同`);
+    else subjects.set(subject, j.key);
   }
 
   // 重名会让两张图抢同一个文件名，后出的把先出的盖掉，而且 render 只看得见一张

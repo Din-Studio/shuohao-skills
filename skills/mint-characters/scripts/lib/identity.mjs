@@ -283,20 +283,25 @@ export function renderIdentity(doc, html=false, {lang=doc.lang, images={}}={}) {
   const sections=doc.characters.map(c=>({c,parts:[
     [label('来源身份','Source identity'),{identityKey:c.identityKey,tier:c.tier,aliases:c.aliases,entityType:c.entityType,presence:c.presence,speech:c.speech,unknowns:c.unknowns,sourceRefs:c.sourceRefs,notes:c.notes}],
     ...(c.persona?[[label('人物画像（含制作补定）','Profile (includes design decisions)'),c.persona]]:[]),
-    ...(c.image?[[label('图片提示词（制作设计）','Image prompts (design)'),c.image]]:[]),
+    // 先给实际发送的设定图正文，再给反向词；独立插画提示词单独标明不进出图计划
+    ...(c.image?[
+      [label('设定图正文（实际发送）','Sheet prompt (the text actually sent)'),c.image.sheet??''],
+      [label('反向提示词','Negative prompt'),c.image.negativePrompt??''],
+      [label('独立插画提示词（不进出图计划）','Standalone illustration prompt (not in the image plan)'),{style:c.image.style,prompt:c.image.prompt,promptLocal:c.image.promptLocal,tags:c.image.tags}],
+    ]:[]),
     ...(c.voice?[[label('音色提示词（制作设计）','Voice prompts (design)'),c.voice]]:[])
   ]}));
   const md=[`# ${title}`,'',states,'',notice,'',doc.summary??'','',budget,'',pending,''];
   for(const {c,parts} of sections) {
     md.push(`## [${c.id}] ${c.name}`,'');
     if(images[c.id])md.push(`![${c.id}](${images[c.id]})`,'');
-    for(const [name,value] of parts)md.push(`### ${name}`,'','```json',JSON.stringify(value,null,2),'```','');
+    for(const [name,value] of parts)md.push(`### ${name}`,'',typeof value==='string'?'```text':'```json',typeof value==='string'?value:JSON.stringify(value,null,2),'```','');
   }
   const evidence={provenance:doc.provenance,lifecycle:doc.lifecycle,budgets:doc.budgets,budgetChecks:budgetChecks(doc)};
   md.push(`## ${label('来源与生命周期','Provenance and lifecycle')}`,'','```json',JSON.stringify(evidence,null,2),'```');
   if(!html)return md.join('\n');
   const esc=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-  const pre=value=>`<pre>${esc(JSON.stringify(value,null,2))}</pre>`;
+  const pre=value=>`<pre>${esc(typeof value==='string'?value:JSON.stringify(value,null,2))}</pre>`;
   return `<!doctype html><html lang="${esc(lang)}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
 <style>:root{--paper:#eceded;--panel:#f5f6f5;--ink:#191d21;--seal:#8a3324}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.7 system-ui}header,main{padding:24px}h1,h2{font-family:Georgia,"Songti SC",serif}header{background:var(--panel)}.layout{display:grid;grid-template-columns:240px minmax(0,1fr)}nav{padding:24px;position:sticky;top:0;height:100vh;overflow:auto}nav a{display:block;color:var(--ink);margin:12px 0}article{border-top:2px solid var(--seal);margin-bottom:36px}pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:18px;background:var(--panel);font:13px/1.6 ui-monospace,monospace}img{max-width:100%;max-height:700px}button{padding:7px 16px;cursor:pointer}a:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--seal)}@media(max-width:750px){.layout{display:block}nav{position:static;height:auto}}@media print{nav,button{display:none}.layout{display:block}details{display:block}article{break-inside:avoid}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}</style>
 <header><h1>${esc(title)}</h1><p>${esc(states)}</p><p>${esc(notice)}</p><p>${esc(budget)} · ${esc(pending)}</p><button id="export">${label('导出 JSON','Export JSON')}</button></header>

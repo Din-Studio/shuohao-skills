@@ -65,7 +65,7 @@
 | `image.promptLocal` | string | 本地语言 | 上面那条的译文；`lang=en` 时省略；**同样禁止人名** |
 | `image.negativePrompt` | string | **英文** | 逗号分隔 |
 | `image.tags` | string[] | **英文** | 4–8 个风格标签 |
-| `image.sheet` | string | **英文** | **角色设定图**，画幅读取 `production.image.asset.aspectRatio`；白底，左边严格正面的脸部特写，右边三格脖子以下的正面／侧面／背面；群演（`entityType: group`）改为群像图；最后一段是纯净画质段；**禁止出现人名**；**必须写明人种标签／年代／地域** |
+| `image.sheet` | string | **英文** | **角色设定图**，画幅读取 `production.image.asset.aspectRatio`；白底，左边严格正面的脸部特写，右边三格脖子以下的正面／侧面／背面；群演（`entityType: group`）改为群像图；版式之外必须有身份锁与服装段（主体区）；最后一段是纯净画质段，之后不追加任何内容；**禁止出现人名**；**必须写明人种标签／年代／地域** |
 | `voice.timbre/pitch/pace/accent/emotion/referenceHint` | string | **本地语言** | 最容易写漂的地方，注意 |
 | `voice.prompt` | string | **英文** | 给 TTS 音色设计引擎。**没有 `promptLocal` 对照版，这是有意的**——上面六项已经是本地语言，再给一段中文散文只会让人复制错，把它喂进 TTS（生产里踩过） |
 

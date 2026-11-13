@@ -12,7 +12,7 @@
 2. **身份锁**：认出这个人靠的那几样——年龄段、人种标签、脸型、眉眼（含瞳色）、鼻、唇、肤色、可见的永久特征、发色发型、身高档与体型、体态。锁要写到能画出来（`deep brown almond eyes`，不是 `beautiful eyes`）。外观照身份卡写：设定图会画出来的外观是一定要有值的项，剧本没写的要先在 `persona` 里定好——空着的地方模型会用它的默认值补（常见是欧美面孔、影棚灰背景）。年代、地域的服装拿不准时可以查资料，要点和来源写进 `persona`，不写进提示词。
 3. **服装与细节**：服装逐件写颜色、材质、款式，以及廓形、层次和看得见的工艺（缝线、刺绣、做旧）；鞋；一直戴着的配饰；整体气质一句。本段最后接固定句 `Soft even frontal studio lighting, with no visible shadows or colored light on the face or the clothes.`——参考图上的光会被视频模型当成长相、颜色带进每一段视频，戏里的光由视频去写。
 4. **画风句**：以 `Overall style:` 开头单独一段，**原样**放 production `style.character.render` 那句（validate 查），`surface` 那段的皮肤、头发、布料处理写进身份锁和服装段；可在画风句后补本剧统一的色板和年代一句，全剧逐字一致。`style.character.lighting` 不进设定图，见 [style.md](style.md)。
-5. **纯净画质段（固定句）**：最后单独一段，原文照用、一字不改（validate 查，只容许换行和空白差异）：
+5. **纯净画质段（固定句）**：最后单独一段，原文照用、一字不改；它必须是最后一段，之后不再追加任何内容（validate 查，只容许换行和空白差异）：
 
 > Remove all noise, graininess, film grain and digital noise; shadows and dark areas smooth and clean, color transitions natural, gradients fine and smooth. Surfaces of skin, fabric, wood grain, stone, water and leaves clean and clear, edges crisp but not over-sharpened, with no dirt specks, hazy blur, smearing or artifacts. Keep the original details, do not reduce any characters or scene elements, do not change the characters' faces. High definition, clean low-ISO image quality, commercial-grade finished look.
 
@@ -38,7 +38,7 @@
 
 ## 三、辨识度
 
-主要角色之间至少在脸型、眼型、发色、发型、肤色、体型、气质里有四项明显不同，男女主与同性别配角之间尤其要一眼分开。每个人只写自己的特征，正文不提别的角色。validate 的雷同度门查 `image.prompt`；`image.sheet` 的版式和纯净画质段是大段固定文本，不查雷同，区分度要靠身份锁那一段自己保证。
+主要角色之间至少在脸型、眼型、发色、发型、肤色、体型、气质里有四项明显不同，男女主与同性别配角之间尤其要一眼分开。每个人只写自己的特征，正文不提别的角色。validate 对 `image.sheet` 只比较主体区（版式、正面光、画风和纯净段剥掉之后的身份锁与服装段，见第五节）：完全相同直接报错，相似度超过 75% 给出提示；`image.prompt` 另按独立插画提示词比较。
 
 ## 四、基准与变体（变体为备用说明）
 
@@ -51,6 +51,23 @@
 - 变体整张重出：脸部特写和右边三格一起换成这个状态。
 - 所用模型完全不收参考图时，变体写成完整的独立提示词：照基准全文写，只把变了的几项换成新值。
 - 身份参考（这个人）和风格参考（全剧画风）是两回事：模型把两者分成不同通道时各走各的。`images --style-ref` 只借画风，不拿它保角色。
+
+## 五、主体区与风格参考：validate 查什么，不查什么
+
+validate 和出图计划检查的是**实际发送正文**，也就是 `image.sheet`（开启 `--style-ref` 时再加上风格匹配句）。`image.prompt`、`image.promptLocal` 是独立插画，不进出图计划，写得再完整也不能代替 sheet 里的身份锁和服装段。
+
+从正文里去掉版式句（通用写法从 `Layout requirements:` 到 `The image contains no text and no logos.`；Midjourney 写法从 `one <画幅> … canvas` 到版式短语结尾）、正面光固定句、`Overall style:` 画风段、风格匹配句和纯净画质段，剩下的就是**主体区**：人物是身份锁和服装两段，群像是人员构成段。不需要任何标签。
+
+代码确定性检查（不通过就阻断）：
+
+- **纯净段收尾**：最后一段在空白规整后等于纯净画质段，之后不再追加任何内容。
+- **画风段位置**（通用模型）：`Overall style:` 单独成段，在纯净段之前；Midjourney 不强求单独的画风段，渲染句仍要在正文里。
+- **主体区非空**；两个角色的主体区不能完全相同。
+- **区分度提示**：主体区之间的词级相似度超过 75% 时报出那一对。这是启发式提示，不代表语义审核。
+
+**风格参考**：`images --style-ref` 在出图时才决定挂不挂参考图、谁是基准，所以风格匹配句由出图计划插入，写 sheet 时不要自己加。它单独成段，插在 `Overall style:` 段之前，纯净段仍然收尾；不计入主体区，插入之后的最终正文照样过上面的检查。风格参考只借画风，不借基准角色的身份。
+
+代码不判断主体写得对不对。写完之后另行发起一次内容复核（同一模型也可以，或人工），把主体区和人物画像、`sourceRefs`、`image.prompt` 并排对照：年龄段、人种标签、脸型、发型、体型、服装颜色材质是否一致；每个辨识特征在主体区里能不能画出来；同批角色依靠什么区分；适配目标模型时最终请求有没有丢弃或改写约束。复核结论为需返修或待确认时不提交生成。生成之后的看图审核见 [media-handoff.md](media-handoff.md)。
 
 ---
 

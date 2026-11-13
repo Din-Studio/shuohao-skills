@@ -32,7 +32,9 @@
 
 画幅写进版式短语开头（`one 16:9 landscape canvas, plain white background; …`），validate 核对画幅与 production 一致。光线一律写 `soft even frontal studio lighting`。
 
-纯净画质段照 [sheet-prompt.md](sheet-prompt.md) 的英文固定句，放在正文之后单独一段。
+纯净画质段照 [sheet-prompt.md](sheet-prompt.md) 的英文固定句，放在正文之后单独一段，而且必须是最后一段。
+
+validate 按 `one <画幅> … canvas` 识别版式短语，以 `separated by clear white gaps`（人物）或 `all different heights and builds`（群演）为结尾剥掉；开头里的主体和版式之后的身份锁都算主体区，必须非空。Midjourney 不强求单独的 `Overall style:` 段。
 
 ## 四、负向词
 

@@ -42,6 +42,8 @@ production 的 `image.model` 是 Midjourney 时，在 [sheet-prompt.md](sheet-pr
 2. 主体锚点一句，在句中写一次对基准图的引用：`… of the same <主体一句> as in the reference image, …`（只写一次，不放句首）；
 3. 只写变了的槽位（新光线、新状态）；没变的不写，不重描陈设。
 
+validate 对 Midjourney 变体只要求主体锚点句含 `as in the reference image`，不套通用写法的 `Based on the reference image` / `Change only the following:`。基准同样要有主体区：开头里的主体和版式之后的身份锁都算，版式句按 `One <画幅> … canvas` 识别后剥掉（见 [sheet-prompt.md](sheet-prompt.md) 第六节）。
+
 ## 五、负向词（`image.negativePrompt`）
 
 只写名词，逗号分隔；正文里要的东西不放进来（本来带字的道具不加 `text`）。

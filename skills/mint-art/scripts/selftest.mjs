@@ -35,6 +35,7 @@ import {
   imageJobsFrom,
   AUTOPILOT_NOTE,
   autopilotOf,
+  SIZE_REF_PHRASE as SIZE_REF_PHRASE_T,
 } from './mint-art.mjs';
 import './media-plan-selftest.mjs';
 
@@ -112,7 +113,7 @@ ok(castNamesOf({ characters: [] }).length === 0, '空 cast 不炸');
 
 eq(validateArt(FIXTURE, NAMES).length, 0, '自带样例通过校验（含角色名检查）');
 ok(gateReport(FIXTURE, NAMES).every((g) => g.status !== 'fail'), '样例无阻断失败，缺少上游检查独立跳过');
-eq(gateReport(FIXTURE).length, 17, '质量门共 15 道（共用 4 + 场景 5 + 道具 4 + 生产参数 2）加契约与预算');
+eq(gateReport(FIXTURE).length, 19, '质量门共 17 道（共用 6 + 场景 5 + 道具 4 + 生产参数 2）加契约与预算');
 
 /* ---------------- 生产参数（production.json） ---------------- */
 
@@ -269,8 +270,8 @@ eq(ANCHOR_RANGE.join('-'), '3-5', '锚点范围 3–5');
 }
 {
   const d = clone();
-  d.props[0].image.sheet = d.props[0].image.sheet.replace(/\n\nRemove all noise/, '\n  Remove   all noise');
-  ok((gate(d, 'sheet-purity').status === 'pass'), '空白规整后比较——换行和多空格不算改动');
+  d.props[0].image.sheet = d.props[0].image.sheet.replace('smooth. Surfaces', 'smooth.\n  Surfaces').replace('Remove all noise', 'Remove   all noise');
+  ok((gate(d, 'sheet-purity').status === 'pass'), '空白规整后比较——段内换行和多空格不算改动');
   d.props[0].image.sheet = d.props[0].image.sheet.replace('low-ISO', 'low ISO');
   ok((gate(d, 'sheet-purity').status === 'fail'), '固定句改一个字也被拦');
 }
@@ -284,6 +285,115 @@ eq(ANCHOR_RANGE.join('-'), '3-5', '锚点范围 3–5');
   const d = clone();
   d.props[1].states[0].prompt = 'Closed blue tin box.';
   ok((gate(d, 'sheet-purity').status === 'pass'), '基准状态只是一句描述，不要求纯净画质段');
+}
+
+// 纯净段必须收尾：之后追加的指令会被模型照样执行
+{
+  const d = clone();
+  d.scenes[0].image.sheet += '\n\nA red vintage sports car parked in the middle.';
+  ok(gate(d, 'sheet-purity').status === 'fail', '纯净段之后还有正文被拦——包含不等于收尾');
+  const d2 = clone();
+  d2.props[0].states[1].prompt += ' A red vintage sports car.';
+  ok(gate(d2, 'sheet-purity').status === 'fail', '状态变体在纯净段同段之后追加也被拦');
+}
+
+// 主体区：去掉版式、正面光、画风和纯净段之后剩下的资产自己的描述
+{
+  const strip = (sheet) => sheet.split(/\n\n/).filter((p, i, all) => i === 0 || /^Soft even frontal|^Overall style:/.test(p) || i === all.length - 1).join('\n\n');
+  const d = clone();
+  d.scenes[0].image.sheet = strip(d.scenes[0].image.sheet);
+  d.scenes[0].lighting[0].prompt = d.scenes[0].lighting[0].prompt; // 光影锁另一道门管
+  ok(gate(d, 'sheet-subject').status === 'fail', '场景 sheet 删到只剩版式、画风、纯净段被拦');
+  ok(gate(d, 'sheet-subject').detail.includes('主体区为空'), '报错说明是主体区为空');
+  const d2 = clone();
+  d2.props[0].image.sheet = strip(d2.props[0].image.sheet);
+  ok(gate(d2, 'sheet-subject').status === 'fail', '道具 sheet 只剩三格版式、正面光、画风、纯净段被拦');
+  ok(validateArt(d2).some((x) => x.includes('主体')), 'validate 带上主体区门');
+  ok(imageJobsFrom(d2, PRODUCTION).problems.some((x) => x.includes('主体区为空')), '直接调用 imageJobsFrom 也拒绝导出');
+}
+{
+  const d = clone();
+  const subjectOf = (sheet) => sheet.split(/\n\n/)[1];
+  d.props[1].image.sheet = d.props[1].image.sheet.replace(subjectOf(d.props[1].image.sheet), subjectOf(d.props[0].image.sheet));
+  ok(gate(d, 'sheet-subject').status === 'fail', '两件道具的主体区完全相同被拦');
+  ok(gate(d, 'sheet-subject').detail.includes('完全相同'), '报错说明是完全相同');
+}
+{
+  const d = clone();
+  d.props[0].image.prompt = d.props[0].image.prompt.replace(/cork message board/g, 'yellow bicycle');
+  d.props[0].states[0].prompt = 'A yellow bicycle leaning on its stand.';
+  ok(gate(d, 'sheet-subject').status === 'pass', '只改独立展示图提示词：结构检查不拦（交给内容复核）');
+  eq(imageJobsFrom(d, PRODUCTION).jobs.find((j) => j.key === 'P01').prompt, FIXTURE.props[0].image.sheet, '实际发送正文不随 image.prompt 改变');
+  ok(renderMarkdown(d).includes('yellow bicycle') && renderMarkdown(d).includes(FIXTURE.props[0].image.sheet.split('\n\n')[1]), '报告里两段文字分开展示');
+}
+{
+  const d = clone();
+  d.props[0].states[0].prompt = 'Two cars on a wet night slope, the board leaning against one of them.';
+  ok(gate(d, 'sheet-subject').status === 'pass', '道具 sheet 不要求原文包含 states[0].prompt');
+}
+{
+  const d = clone();
+  d.props[0].image.sheet = d.props[0].image.sheet.replace('the only text is illegible handwriting on the paper slips; ', '');
+  ok(gate(d, 'sheet-subject').status === 'pass', '带字与不带字的版式结尾都能识别');
+  const { parseSheet } = await import('./lib/sheet-text.mjs');
+  ok(!parseSheet(FIXTURE.props[0].image.sheet).subject.includes('the only text is'), '带字物品的文字说明随版式剥掉，不计入主体区');
+}
+{
+  // Midjourney 写法：媒介和主体放最前，和版式同段
+  const { parseSheet } = await import('./lib/sheet-text.mjs');
+  const sheet = FIXTURE.props[0].image.sheet;
+  const [layout, , light, style, purity] = sheet.split('\n\n');
+  const mj = `Studio product photo board of a small cork message board in a faded green wooden frame, shot on a full-frame camera with a 100mm macro lens, real material surfaces, ${layout} ${light}\n\n${style}\n\n${purity}`;
+  ok(parseSheet(mj).subject.startsWith('Studio product photo board of a small cork'), 'Midjourney 写法主体在版式之前也能切出');
+  ok(!parseSheet(mj).subject.includes('three equal panels'), '同段的版式句被剥掉');
+}
+
+// 场景基准：光影锁原文写进 sheet
+{
+  const d = clone();
+  d.scenes[0].image.sheet = d.scenes[0].image.sheet.replace('at about 6500K', 'at roughly 6500K');
+  ok(gate(d, 'lighting').status === 'fail', 'S01 sheet 不含 lighting[0].prompt 原文被拦');
+  ok(gate(d, 'lighting').detail.includes('lighting[0].prompt'), '报错点名字段');
+}
+
+// 变体正文结构
+{
+  const d = clone();
+  d.scenes[2].image.sheet = d.scenes[2].image.sheet.replace('Based on the reference image, ', '');
+  ok(gate(d, 'sheet-variant').status === 'fail', 'S03 缺「Based on the reference image」被拦');
+  const d2 = clone();
+  d2.props[0].states[1].prompt = d2.props[0].states[1].prompt.replace('Change only the following:', 'Also:');
+  ok(gate(d2, 'sheet-variant').status === 'fail', '状态变体缺「Change only the following:」被拦');
+  const d3 = clone();
+  d3.props[0].states[1].prompt = d3.props[0].states[1].prompt.replace(/Change only the following:[^\n]*/, 'Change only the following:');
+  ok(gate(d3, 'sheet-variant').status === 'fail', '「Change only the following:」后面没有变化项被拦');
+  ok(gate(clone(), 'sheet-variant').status === 'pass', '样例变体写法通过');
+  const mj = { ...PRODUCTION, image: { ...PRODUCTION.image, model: 'midjourney-v7' } };
+  const d4 = clone();
+  d4.props[0].states[1].prompt = d4.props[0].states[1].prompt.replace(/Based on the reference image, [^\n]*/, 'Studio product photo board of the same cork message board as in the reference image, the loose slips removed, bare cork with three pale patches.');
+  eq(gateReport(d4, NAMES, mj).find((g) => g.id === 'sheet-variant').status, 'pass', 'Midjourney 变体不强套 keep/change 句式');
+  eq(gate(d4, 'sheet-variant').status, 'fail', '通用模型仍要求 keep/change 句式');
+}
+
+// 道具后续状态逐条查全技术段
+{
+  const d = clone();
+  d.props[0].states[1].prompt = d.props[0].states[1].prompt.replace('One 16:9', 'One 1:1');
+  ok(pgate(d, 'sheet-aspect').status === 'fail', 'states[1] 画幅错误被拦');
+  ok(pgate(d, 'sheet-aspect').detail.includes('归还整理'), '报错点名是哪个状态');
+  const d2 = clone();
+  d2.props[0].states[1].prompt = d2.props[0].states[1].prompt.replace(STYLE.scene.render, 'Watercolour illustration.');
+  ok(pgate(d2, 'style-match').status === 'fail', 'states[1] 换成别的画风被拦');
+  const d3 = clone();
+  d3.props[0].states[1].prompt = d3.props[0].states[1].prompt.replace('plain white background', 'plain grey backdrop');
+  ok(pgate(d3, 'prop-white').status === 'fail', 'states[1] 丢了白底被拦');
+  const d4 = clone();
+  d4.props[0].states[1].prompt = d4.props[0].states[1].prompt.replace(SIZE_REF_PHRASE_T, 'a person');
+  ok(pgate(d4, 'prop-size-ref').status === 'fail', 'states[1] 丢了匿名尺寸参照被拦');
+  const d5 = clone();
+  const [a, b, c, styleP, purityP] = d5.props[0].states[1].prompt.split('\n\n');
+  d5.props[0].states[1].prompt = [a, b, c, purityP, styleP].join('\n\n');
+  ok(pgate(d5, 'sheet-purity').status === 'fail', '画风段挪到纯净段之后被拦');
 }
 
 // G5 提示词英文
@@ -473,7 +583,7 @@ ok(/e\.key === 'Escape'/.test(html), 'Esc 关闭弹层');
   ok(withImg.includes('class="zoom" data-src="images/x-sheet.png"'), '出图后图片可点，弹层拿到地址');
   ok(withImg.includes('cursor:zoom-in'), '鼠标提示可放大');
 }
-eq((html.match(/<li class="pass">/g) || []).length, 14, '只统计通过，不把三项缺上游计入通过');
+eq((html.match(/<li class="pass">/g) || []).length, 16, '只统计通过，不把三项缺上游计入通过');
 {
   const d = clone();
   d.props[0].states[1].sheetImage = 'images/x-state2-sheet.png';

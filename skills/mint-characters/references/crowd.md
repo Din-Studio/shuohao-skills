@@ -20,7 +20,7 @@ Layout requirements: one <aspectRatio> landscape canvas on a plain pure white ba
 
 ## 内容
 
-- 这批人的人种标签构成、服装、发型、体态；接正面光固定句（见 [sheet-prompt.md](sheet-prompt.md) 第一节）。
+- 这批人的人种标签构成、服装、发型、体态，写在版式段之后单独成段（人员构成段，也就是群像图的主体区，validate 要求非空）；接正面光固定句（见 [sheet-prompt.md](sheet-prompt.md) 第一节）。
 - 中性站姿、中性表情，不写剧情动作；不写名字、剧情。
 - 群演不是剧中重要人物，长相写成普通、可信的路人，和需要设定图的人物在外观上拉开距离，免得视频里被认成某个主要人物；不同群演批次之间也在发型、服装色系上拉开，免得两批人被看成同一批。
 - 画风句、纯净画质段与人物设定图相同，全剧统一。

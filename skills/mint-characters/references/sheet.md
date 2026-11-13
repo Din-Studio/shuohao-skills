@@ -84,7 +84,7 @@ Layout requirements: one <aspectRatio> landscape canvas on a plain pure white ba
 
 同一批角色各自独立出图，画风可能有差异。把 production 里那一块画风整块原样写进每张提示词（见 [style.md](style.md)）后好了很多，但不能保证完全一致。
 
-使用 `--style-ref auto`：计划先列基准角色，再列依赖角色，并补充风格匹配提示词。ly-image 先完成并核验基准图，再将其作为后续任务参考。也可使用 `--style-ref 角色名` 指定基准。第一张决定整体基调；计划排序不是生成成功证明。
+使用 `--style-ref auto`：计划先列基准角色，再列依赖角色，并在依赖角色正文的 `Overall style:` 段之前插入一段风格匹配句（纯净段仍然收尾，见 [sheet-prompt.md](sheet-prompt.md) 第五节）。ly-image 先完成基准图，基准图通过视觉审核之后，才作为后续任务参考。也可使用 `--style-ref 角色名` 指定基准。第一张决定整体基调；计划排序不是生成成功证明。
 
 ## 八、其他约束
 
