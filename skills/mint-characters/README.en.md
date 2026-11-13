@@ -30,7 +30,7 @@ Reordering preserves IDs. Merge/split/delete/correction require explicit mapping
 
 `--outline file` accepts only v5. Missing optional background is skipped; supplied corrupt, incompatible or mismatched background fails. Source paths are relative to the containing artifact; source bytes, SHA256, physical lines and coverage are checked. Missing originals fail.
 
-Profile, voice and image designs live on the matching cast v1 identities and are each optional. `images` exports offline plans only; formal jobs use C IDs and `images/C01-sheet.png`. Generation is optional and requires explicit production configuration plus a separately authorized execution tool. It is not an installation dependency.
+Profile, voice and image designs live on the matching cast v1 identities and are each optional. A character sheet is one white-background landscape image: a strictly frontal close-up of the face on the left, three neck-down panels (front, side, back) on the right, soft even frontal lighting, ending with a fixed clean-image-quality paragraph; crowds (`entityType: group`) get a lineup sheet instead. Only base sheets are produced; cast v1 has no slot for character variants. See [sheet prompts](references/sheet-prompt.md), [layout](references/sheet.md) and [crowds](references/crowd.md); genre guidance lives in `references/genres/`. `images` exports offline plans only; formal jobs use C IDs and `images/C01-sheet.png`. Generation is optional and requires explicit production configuration plus a separately authorized execution tool. It is not an installation dependency.
 
 ```bash
 node scripts/test-all.mjs

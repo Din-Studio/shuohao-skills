@@ -1,6 +1,6 @@
 ---
 name: mint-art
-version: 3.0.0
+version: 4.0.0
 description: |
   独立阅读原剧本，识别地点与物品，判断哪些需要美术资产，维护稳定 S/P 身份与来源。
   按任务需要完成场景、道具、复用与变体设计；场景物品整理完成后立即生图，交付 art v1、图片和报告。
@@ -30,7 +30,7 @@ metadata:
 
 `{baseDir}` 是本文件所在目录。正式接口为 **art v1（kind: mint-art）**、可选 outline v5 故事背景、可选 cast v1 人物身份、可选 production v3 视觉正文和制作参数。其他版本一律报错；outline 不是资产权威。
 
-开工阅读 [schema](references/schema.md)、[来源事实](references/source-facts.md)、[接口与生命周期](references/lifecycle.md)。需要设计时，再阅读 [场景](references/scene-pass.md)、[道具](references/prop-pass.md)、[真实感](references/realism.md)、[版面](references/sheet.md)。
+开工阅读 [schema](references/schema.md)、[来源事实](references/source-facts.md)、[接口与生命周期](references/lifecycle.md)、[全局原则](references/principles.md)、[术语](references/glossary.md)。需要设计时，再阅读 [场景](references/scene-pass.md)、[场景光影](references/scene-lighting.md)、[道具](references/prop-pass.md)、[设定图提示词](references/sheet-prompt.md)、[版面](references/sheet.md)、[真实感](references/realism.md)；production 指定 Midjourney 时另读 [Midjourney 写法](references/model-midjourney.md)；有题材信息时查 `references/genres/` 中适用的文件（`general.md` 总是适用），剧本事实和用户要求优先。
 
 ## 阶段职责与顺序
 
@@ -41,6 +41,8 @@ metadata:
 - 人物归并、别名、同名不同人、匿名声音及非人主体由 characters 判断。本阶段不按名称猜测 C ID。
 - 场次不是地点身份。同一空间的晨晚、闪回、清空状态不自动建立新地点。
 - 提及物品不是建立道具的理由。记录建立或不建立的依据；物件交接、破损和修复通常是同一实物的状态。
+- 车辆算道具；穿在身上的衣服属于人物，不建道具；会被摘下、递出的挂件是道具，使用 `carrierRefs` 关联人物。
+- 场景包含天气和现场效果。场景变体只在光的状态持续变化（开灯、关灯、天色变化）或空间状态变化（清空、破损、布置）时拆；情绪和剧情时刻不改变光。
 - 原文事实写入 `facts/sourceRefs`；主场景、复用、变体、材质和光照补定属于本阶段制作决定，不能伪造原文证据。
 - 身份、设计和媒体是三件事。`designStatus: none` 的已确认身份可以正式交付，不要求锚点、提示词、production 或图片。
 
@@ -85,6 +87,10 @@ node {baseDir}/scripts/mint-art.mjs identity-inputs registered-prop.json
 
 只登记身份时保持 `designStatus: none`。需要设计时标为 `planned`，按本目录指南填写 summary、锚点、光照或状态、尺度、英文提示词。`ready` 表示设计已具备出图条件，不表示图片已经生成。
 
+- 场景设定图：左侧前后左右四宫格加右侧正交平面图，四格无人，光照画 `lighting[0]` 的光影锁（色温写数值）；需要单独出图的光照或空间状态建成 `variantOf` 变体场景。
+- 道具设定图：正面、最容易认错的一面、匿名手或人作尺寸参照三格，纯白背景，写明实际尺寸；`states[0]` 是基准状态，之后每个状态写一条完整的变体提示词。
+- 每条设定图提示词以纯净画质段固定句收尾；变体按照抄块、指向参考、保持什么、只改什么四块写。
+
 画风只从 production v3 的 `style.scene` 读取，不内置风格、不搬入角色皮肤正文：
 ```bash
 node {baseDir}/scripts/mint-art.mjs style --production production.json
@@ -120,7 +126,7 @@ node {baseDir}/scripts/mint-art.mjs render art.json --html > art-report.html
 node {baseDir}/scripts/mint-art.mjs render art.json --md > art-report.md
 ```
 
-images 只导出 `designStatus: ready` 的任务，按变体依赖排序。计划保留逐资产输入摘要；原件、事实和引用变更后重新核验受影响映射、工作单、提示词、素材路径和审核。执行方见 [媒体交接](references/media-handoff.md)。没有执行工具或没有授权时明确“未生成”。
+images 只导出 `designStatus: ready` 的任务，按变体依赖排序；ready 道具的 `states` 第二个起各导出一个以基准图为参考的任务（ID 如 `P01.s2`）。计划保留逐资产输入摘要；原件、事实和引用变更后重新核验受影响映射、工作单、提示词、素材路径和审核。执行方见 [媒体交接](references/media-handoff.md)。没有执行工具或没有授权时明确“未生成”。
 
 报告默认中文，支持 `--lang en`；导出 JSON 保持输入原值，展示默认值和自动挂图不写回。报告包括身份决定、来源、审核状态、预算、生命周期与设计。结构/来源通过不等于语义忠实、图片审核或成片审核通过。
 

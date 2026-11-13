@@ -31,7 +31,7 @@ node scripts/mint-characters.mjs render cast.json --html > cast-report.html
 
 ## 画像、音色与图片
 
-画像、音色和图片设计块直接写在 cast v1 的对应身份上，各自独立可选；详见[设计字段](references/design-schema.md)。`images cast.json` 只对存在 image 的身份导出计划，不提交、不生成；正式任务及路径使用 C ID，例如 `images/C01-sheet.png`。外部生成工具由用户选择，不作为本 skill 安装前提。
+画像、音色和图片设计块直接写在 cast v1 的对应身份上，各自独立可选；详见[设计字段](references/design-schema.md)。人物设定图是一张白底横图：左边严格正面的脸部特写，右边三格脖子以下的正面、侧面、背面，柔和均匀的正面光，最后一段是纯净画质段；成群的群演（`entityType: group`）出群像图。本阶段只出基准图，不出人物变体图。写法见[设定图提示词](references/sheet-prompt.md)、[版式](references/sheet.md)、[群像图](references/crowd.md)，题材取向见 `references/genres/`。`images cast.json` 只对存在 image 的身份导出计划，不提交、不生成；正式任务及路径使用 C ID，例如 `images/C01-sheet.png`。外部生成工具由用户选择，不作为本 skill 安装前提。
 
 [完整工作流](SKILL.md) · [正式契约](references/schema.md) · [来源](references/source-facts.md) · [设计字段](references/design-schema.md)
 

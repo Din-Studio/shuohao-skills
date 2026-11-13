@@ -29,12 +29,12 @@
   },
 
   "image": {
-    "style": "Flat vector cartoon with ink-wash colouring",
-    "prompt": "Character design sheet of an elderly Chinese ferryman ...",
-    "promptLocal": "角色设定图：约七十岁的中国老船夫……",
-    "negativePrompt": "photorealistic, 3d render, young face, ...",
-    "tags": ["flat vector", "character sheet", "ink wash palette"],
-    "sheet": "Single character model sheet on ONE <production.image.asset.aspectRatio> canvas ... LEFT ZONE ... about 34% ... one bust portrait ... RIGHT-TOP ZONE ... three FULL-BODY views ... PROPORTIONS ARE CRITICAL ... RIGHT-BOTTOM ZONE ... four to five small isolated close-up studies ..."
+    "style": "真人实拍，冷调低饱和民国配色",
+    "prompt": "Photorealistic live-action portrait of an elderly Chinese ferryman ...",
+    "promptLocal": "真人实拍人像：约七十岁的中国老船夫……",
+    "negativePrompt": "<style.character.negative 全部词条>, cast shadow, letters, labels, logo, ...",
+    "tags": ["photorealistic", "live-action", "character sheet"],
+    "sheet": "Layout requirements: one <production.image.asset.aspectRatio> landscape canvas on a plain pure white background ... Left part: a strictly frontal close-up of the face ... Right part: three equal vertical panels of the same person seen from the neck down to the feet, front, side and back ... \n\n<身份锁>\n\n<服装与正面光固定句>\n\nOverall style: <style.character.render 原句> ...\n\nRemove all noise, graininess, film grain ...（纯净画质段，原文照用）"
   },
 
   "voice": {
@@ -61,26 +61,27 @@
 | `persona.*` | — | **本地语言** | `personality` 3–5 个词 |
 | `persona.evidence` | string[] | **原文语言** | **逐字引用**，永远不翻译——翻了就不是证据了。没有就空数组 |
 | `image.style` | string | 本地语言 | 画风一句话 |
-| `image.prompt` | string | **英文** | 单张卡通设定图；**禁止出现人名**；**必须写明族裔／年代／地域** |
+| `image.prompt` | string | **英文** | 单张表现性插画（不是设定图）；**禁止出现人名**；**必须写明族裔／年代／地域** |
 | `image.promptLocal` | string | 本地语言 | 上面那条的译文；`lang=en` 时省略；**同样禁止人名** |
 | `image.negativePrompt` | string | **英文** | 逗号分隔 |
 | `image.tags` | string[] | **英文** | 4–8 个风格标签 |
-| `image.sheet` | string | **英文** | **角色设定图**，画幅读取 `production.image.asset.aspectRatio`，三区版面：左约 34% 半身像（面部基准）／右上全身三视图／右下细节条，细线分隔；**禁止出现人名**；**必须写明族裔／年代／地域** |
+| `image.sheet` | string | **英文** | **角色设定图**，画幅读取 `production.image.asset.aspectRatio`；白底，左边严格正面的脸部特写，右边三格脖子以下的正面／侧面／背面；群演（`entityType: group`）改为群像图；最后一段是纯净画质段；**禁止出现人名**；**必须写明人种标签／年代／地域** |
 | `voice.timbre/pitch/pace/accent/emotion/referenceHint` | string | **本地语言** | 最容易写漂的地方，注意 |
 | `voice.prompt` | string | **英文** | 给 TTS 音色设计引擎。**没有 `promptLocal` 对照版，这是有意的**——上面六项已经是本地语言，再给一段中文散文只会让人复制错，把它喂进 TTS（生产里踩过） |
 
 **英文字段不跟随 `lang`。** 图像模型和 TTS 引擎吃英文最稳，跟报告用什么语言无关。
 
-## 设定图的三区版面
+## 设定图的版式
 
-画幅读取 `production.image.asset.aspectRatio`，允许合法横向或方形比例，细线分成三块：
+画幅读取 `production.image.asset.aspectRatio`，允许合法横向或方形比例，白底，分左右两块：
 
-- **左侧（约 34%）** 半身像当**面部设计基准**，尺寸大、五官画得细，可以直接拿去做表情设计
-- **右上** 三视图管剪影、比例、服装，脸照左栏画
-- **右下** 细节条，4–5 个关键细节的小特写（配饰、道具、疤痕、鞋履……）
+- **左边** 一张严格正面的脸部特写，是视频模型认人的依据，整张图只有这一张脸
+- **右边** 三个等宽竖格，画脖子以下的正面、侧面、背面，同一比例、同一条地线、脚下无投影；有单侧特征时写明侧面画这个人自己的哪一侧
 
-两个最容易崩的点：**一张图里出现两个长相**，以及**为了塞下细节把人物压扁**。提示词里都要写死——细节放不下就往右缘延伸，**永远是细节让位，不是人物让位**。
+设定图是身份档案：中性站姿、中性表情，柔和均匀的正面光，摘得下的物件不画。版式、生物与未成年人物见 [sheet.md](sheet.md)，群像图见 [crowd.md](crowd.md)，段落顺序与纯净画质段见 [sheet-prompt.md](sheet-prompt.md)。
+
+cast v1 每个身份只有一个 `image` 块，本阶段只出基准图，没有人物变体槽位。
 
 ## 校验
 
-`scripts/mint-characters.mjs validate <cast.json>` 在 `optional-design` 检查中核对已提供的设计块：字段完整性、`importance` 枚举、**引文逐字**（对照 provenance 记录的原剧本）、**出图提示词不含人名**、**语言分工**、关系必须引用已有 C ID。违规时该项为 fail 并 exit 1。
+`scripts/mint-characters.mjs validate <cast.json>` 在 `optional-design` 检查中核对已提供的设计块：字段完整性、`importance` 枚举、**引文逐字**（对照 provenance 记录的原剧本）、**出图提示词不含人名**、**语言分工**、**设定图版式短语与纯净画质段**（按 `entityType` 区分人物版式和群像图）、关系必须引用已有 C ID。违规时该项为 fail 并 exit 1。

@@ -148,12 +148,14 @@ try {
     if (withImage) {
       mkdirSync(images);
       for (const item of [...input.scenes, ...input.props]) writeFileSync(join(images, `${slug(item.name)}-sheet.png`), pixel);
+      for (const pr of input.props) pr.states.slice(1).forEach((_, i) => writeFileSync(join(images, `${slug(pr.name)}-state${i + 2}-sheet.png`), pixel));
     }
     writeFileSync(asset, JSON.stringify(input));
     for (const lang of ['zh', 'en']) for (const format of ['--html', '--md']) {
       const r = cli('render', asset, format, '--lang', lang, '--cast', cast, '--production', prod);
       assert.equal(r.status, 0, r.stderr);
       if (withImage && !existingImage) assert.ok(r.stdout.includes(`images/${slug(input.scenes[0].name)}-sheet.png`));
+      if (withImage) assert.ok(r.stdout.includes(`images/${slug(input.props[0].name)}-state2-sheet.png`), 'render finds prop state images with the plan algorithm');
       if (format === '--html') {
         const raw = r.stdout.match(/<script type="application\/json" id="art-data">([\s\S]*?)<\/script>/)[1];
         assert.deepEqual(JSON.parse(raw), input, 'display attachments must never alter export');

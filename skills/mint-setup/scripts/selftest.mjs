@@ -314,7 +314,7 @@ passed++;
 {
   const d = clone(); d.image.asset.aspectRatio = '9:16';
   ok(fails(d, 'asset-landscape'), '资产图竖构图击穿 asset-landscape');
-  ok(/三视图/.test(gate(d, 'asset-landscape').detail), '这道门解释了为什么设定图要横构图');
+  ok(/横向铺开/.test(gate(d, 'asset-landscape').detail), '这道门解释了为什么设定图要横构图');
 }
 {
   const d = clone(); d.image.asset.aspectRatio = '1:1';
@@ -406,7 +406,7 @@ ok(gate(LANDSCAPE, 'model-caps').detail.includes('4K 下只收'), '过了的时�
   ok((gate(d, 'style-blocks').status !== 'fail'), '正文写成中文不拦——画风正文的语言由下游出图 skill 的英文门去查，这里只查填没填');
 }
 eq(Object.keys(STYLE_BLOCKS).join(','), 'character,scene', '画风分两块：人一套、环境一套');
-ok(STYLE_BLOCKS.character.includes('lighting'), '角色那块多一个光照——设定表要能抠图能量比例');
+ok(STYLE_BLOCKS.character.includes('lighting'), '角色那块多一个光照——给单张角色插画使用');
 ok(!STYLE_BLOCKS.scene.includes('lighting'), '场景那块没有光照——光照状态是 mint-art 逐个场景自己定的');
 
 {

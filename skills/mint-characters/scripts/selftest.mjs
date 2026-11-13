@@ -17,6 +17,11 @@ import {
   styleBlockOf,
   styleLabelOf,
   validateCast,
+  sheetLayoutProblems,
+  FACE_CLOSEUP_PHRASE,
+  NECK_DOWN_PHRASE,
+  CROWD_FIXED_PHRASE,
+  PURITY_PARAGRAPH,
   KNOWN_ASPECTS,
   PRODUCTION_DEPTH,
   PRODUCTION_FILE,
@@ -148,10 +153,10 @@ const CHARACTER_STYLE = {
   surface:
     'Skin with visible pores and uneven tone, faint capillaries at the nostrils and ear rims, subtle subsurface scattering; eyes with a wet specular highlight, moist lower lid, visible iris fibres and a limbal ring; eyelids and eyebrows slightly asymmetric — no two sides identical; individual flyaway hair strands breaking the silhouette. Fabric with a visible weave, wear and shine at elbows, cuffs and knees, cloth falling with real weight and self-shadowing in the folds',
   lighting:
-    'LIGHTING IN THE LEFT ZONE ONLY: a soft directional key light from the upper left with gentle falloff, subtle ambient occlusion under the chin, in the eye sockets and where the collar meets the neck, giving the head real volume. LIGHTING IN THE RIGHT ZONES: flat even orthographic lighting with no directional key and no cast shadows, so the figures stay measurable and cleanly cut out',
+    'soft directional key light from the upper left with a cool fill, gentle falloff, ambient occlusion under the chin and in the folds of the clothes',
   negative:
     'plastic or waxy skin, over-smoothed airbrushed complexion, poreless doll face, perfectly symmetrical face, dead flat eyes without specular highlight, helmet-like hair with no loose strands, flat untextured fabric with no weave or wear, stiff mannequin posing, extra fingers, malformed hands, text, watermark, signature, busy or patterned background, harsh cast shadows on the backdrop',
-  tags: ['photorealistic', 'live-action', 'character sheet', 'subsurface skin', 'directional key light'],
+  tags: ['photorealistic', 'live-action', 'character sheet', 'subsurface skin'],
 };
 const PRODUCTION = {
   schemaVersion: 3,
@@ -298,32 +303,53 @@ for (const l of ['zh', 'en', 'fr']) {
   );
 }
 
-/* ---------------- 角色设定图（左半身像 + 右三视图，一张） ---------------- */
+/* ---------------- 角色设定图（左边正面脸部特写 + 右边三格脖子以下，一张） ---------------- */
 
 ok(CAST.every((c) => c.image.sheet && c.image.sheet.trim()), '样例每个角色都有设定图提示词');
-// 左右分栏和比例必须写死在提示词里，否则模型会自由发挥
-ok(CAST.every((c) => /LEFT ZONE/.test(c.image.sheet)), '提示词划出左栏');
+// 版式要求放最前，单独成段
+ok(CAST.every((c) => /^Layout requirements:/.test(c.image.sheet)), '版式要求放在最前');
+ok(CAST.every((c) => /16:9/.test(c.image.sheet)), '画布写明生产参数的画幅');
+ok(CAST.every((c) => c.image.sheet.includes(FACE_CLOSEUP_PHRASE)), '左边是严格正面的脸部特写');
+ok(CAST.every((c) => c.image.sheet.includes(NECK_DOWN_PHRASE)), '右边三格只画脖子以下');
+ok(CAST.every((c) => /front, side and back from left to right/.test(c.image.sheet)), '三格依次正面、侧面、背面');
+ok(CAST.every((c) => /one shared ground line/.test(c.image.sheet)), '三格脚踩同一条地线');
+ok(CAST.every((c) => /The only face in the whole image/.test(c.image.sheet)), '整张图只有一张脸');
+ok(CAST.every((c) => /Soft even frontal studio lighting/.test(c.image.sheet)), '设定图用柔和均匀的正面光');
+ok(CAST.every((c) => /plain pure white background/.test(c.image.sheet)), '白色背景');
+ok(CAST.every((c) => c.image.sheet.trim().endsWith(PURITY_PARAGRAPH)), '纯净画质段放在最后，原文照用');
+// 旧三区版式不能残留
+ok(
+  CAST.every((c) => !/LEFT ZONE|RIGHT-TOP ZONE|RIGHT-BOTTOM ZONE|bust portrait|detail studies|34% of the canvas/i.test(c.image.sheet)),
+  '没有残留旧三区版式',
+);
+// 设定图是身份档案：中性站姿和表情，不写剧情动作与笑容；摘得下的物件属于道具
+ok(CAST.every((c) => !/smil|grin|holding|gripping|carrying/i.test(c.image.sheet)), '设定图不写表情、动作和手持物');
+// 设定图不写摄影手法，噪点颗粒由纯净画质段压掉
+ok(CAST.every((c) => !/depth of field|subtle film grain|three-quarter/i.test(c.image.sheet)), '设定图里没有摄影手法');
 
-ok(CAST.every((c) => /about 34% of the canvas width/.test(c.image.sheet)), '左栏比例写死 34%');
-// 16:9 和三区版面
-ok(CAST.every((c) => /16:9/.test(c.image.sheet)), '画布写死 16:9');
-ok(CAST.every((c) => /RIGHT-TOP ZONE/.test(c.image.sheet)), '右上是三视图区');
-ok(CAST.every((c) => /RIGHT-BOTTOM ZONE/.test(c.image.sheet)), '右下是细节区');
-ok(CAST.every((c) => /thin hairline rules/.test(c.image.sheet)), '三区之间有细线分隔');
-// 比例是这个版面最容易崩的地方——为了塞下细节而压扁人物
-ok(CAST.every((c) => /PROPORTIONS ARE CRITICAL/.test(c.image.sheet)), '强调比例');
-ok(
-  CAST.every((c) => /no stretching, squashing or foreshortening/.test(c.image.sheet)),
-  '禁止拉伸压扁人物',
-);
-ok(
-  CAST.every((c) => /the detail studies give way, not the figures/.test(c.image.sheet)),
-  '空间不够时让细节让位，不动人物',
-);
-ok(
-  CAST.every((c) => /continue them in a narrow vertical column down the right-hand edge/.test(c.image.sheet)),
-  '细节放不下可延伸到右侧',
-);
+// 版式门：人物、生物、未知主体查脸部特写与脖子以下；群演查固定句；全部查纯净画质段
+{
+  eq(sheetLayoutProblems(CAST[0]).length, 0, '样例版式完整');
+  const noFace = { ...CAST[0], image: { ...CAST[0].image, sheet: CAST[0].image.sheet.replace(FACE_CLOSEUP_PHRASE, 'portrait') } };
+  ok(sheetLayoutProblems(noFace).some((x) => x.includes(FACE_CLOSEUP_PHRASE)), '缺脸部特写短语被拦');
+  const headOn = { ...CAST[0], image: { ...CAST[0].image, sheet: CAST[0].image.sheet.replace(NECK_DOWN_PHRASE, 'from head to toe') } };
+  ok(sheetLayoutProblems(headOn).some((x) => x.includes(NECK_DOWN_PHRASE)), '右边三格带头被拦');
+  const noPurity = { ...CAST[0], image: { ...CAST[0].image, sheet: CAST[0].image.sheet.replace(PURITY_PARAGRAPH, '') } };
+  ok(sheetLayoutProblems(noPurity).some((x) => x.includes('纯净画质段')), '缺纯净画质段被拦');
+  const rewrapped = { ...CAST[0], image: { ...CAST[0].image, sheet: CAST[0].image.sheet.replace(PURITY_PARAGRAPH, PURITY_PARAGRAPH.replace(/; /g, ';\n  ')) } };
+  eq(sheetLayoutProblems(rewrapped).length, 0, '纯净画质段只差换行与空白不算缺');
+  const creature = { ...CAST[0], entityType: 'nonhuman' };
+  eq(sheetLayoutProblems(creature).length, 0, '生物套用同一版式');
+  const crowdSheet = `Layout requirements: one 16:9 landscape canvas on a plain pure white background; 6 people in 2 rows, full body, front view, ${CROWD_FIXED_PHRASE}.\n\n${PURITY_PARAGRAPH}`;
+  const crowd = { ...CAST[0], entityType: 'group', image: { ...CAST[0].image, sheet: crowdSheet } };
+  eq(sheetLayoutProblems(crowd).length, 0, '群像图带固定句与纯净画质段即可，不要求脸部特写');
+  const crowdNoFixed = { ...crowd, image: { ...crowd.image, sheet: crowdSheet.replace(CROWD_FIXED_PHRASE, 'similar people') } };
+  ok(sheetLayoutProblems(crowdNoFixed).some((x) => x.includes(CROWD_FIXED_PHRASE)), '群像图缺「高矮胖瘦各不相同」被拦');
+  const bad = clone();
+  bad[1].image.sheet = bad[1].image.sheet.replace(NECK_DOWN_PHRASE, 'head to toe');
+  ok(validateCast(bad, SOURCE, 'zh').some((x) => x.includes('版式短语')), 'validate 带上版式门');
+  eq(sheetLayoutProblems({ ...CAST[0], image: {} }).length, 0, '没写 sheet 时由必填检查负责，版式门不重复报');
+}
 
 /* ---------------- 同剧角色画风必须一致 ---------------- */
 /*
@@ -376,7 +402,7 @@ eq(validateCast(CAST, SOURCE, 'zh').length, 0, '样例四个角色的提示词�
   );
 }
 {
-  // image.sheet 刻意不查：三分区排版规范是大段固定文本，真实角色之间本来就 63% 重合
+  // image.sheet 刻意不查：版式要求与纯净画质段是大段固定文本，真实角色之间本来就高度重合
   const dupSheet = clone();
   dupSheet[1].image.sheet = dupSheet[0].image.sheet;
   ok(
@@ -435,41 +461,6 @@ for (const [k, label] of [
 ]) {
   ok(CAST.every((c) => k.test(c.image.sheet)), `设定图提示词含${label}`);
 }
-// 分区光照：左栏要体积，右侧要平光——合并成一句全局光照就废了
-ok(
-  CAST.every((c) => /LIGHTING IN THE LEFT ZONE ONLY/.test(c.image.sheet)),
-  '左栏单独打方向光',
-);
-ok(
-  CAST.every((c) => /LIGHTING IN THE RIGHT ZONES: flat even orthographic/.test(c.image.sheet)),
-  '右侧保持平光正交',
-);
-ok(
-  CAST.every((c) => /ambient occlusion/i.test(c.image.sheet)),
-  '左栏有环境遮蔽',
-);
-ok(CAST.every((c) => /bust portrait/i.test(c.image.sheet)), '左栏是半身像');
-// 模型默认会把肩膀裁掉、底边做成圆角渐隐，必须显式禁掉
-ok(
-  CAST.every((c) => /BOTH SHOULDERS ARE FULLY VISIBLE/.test(c.image.sheet)),
-  '左栏要求肩膀完整',
-);
-ok(
-  CAST.every((c) => /do not fade, vignette or round off the bottom edge/.test(c.image.sheet)),
-  '左栏禁止底边圆角渐隐',
-);
-ok(CAST.every((c) => /three FULL-BODY views/i.test(c.image.sheet)), '右上是三视图');
-// 两栏的脸必须画成同一个人，否则一张图里出现两个长相
-ok(
-  CAST.every((c) => /must match the bust portrait/i.test(c.image.sheet)),
-  '三视图的脸要求与半身像一致',
-);
-// 设定图不要求留空脸——提示词里不该出现这类要求
-ok(
-  CAST.every((c) => !/left completely blank|NO eyes|NO facial features/i.test(c.image.sheet)),
-  '提示词里没有残留的留空脸要求',
-);
-
 /* ---------------- 产物落点 ---------------- */
 
 eq(STAGE_DIR, 'characters', '段目录名与端到端工作目录约定一致');

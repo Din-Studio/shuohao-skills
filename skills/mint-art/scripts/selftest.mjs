@@ -69,7 +69,7 @@ const SCENE_STYLE = {
   render:
     'Photorealistic live-action film environment, cinematic production design reference, real location realism with natural light and authentic materials, grounded architectural perspective, cinematic depth',
   surface:
-    'Weathered, lived-in materials rendered with photorealistic fidelity: chipped paint, water stains, patina on metal, worn wood grain, dust in corners and light shafts; fabric and paper props show creases and age; nothing looks factory-new. Atmospheric depth with haze or volumetric light where the space allows',
+    'Weathered, lived-in materials rendered with photorealistic fidelity: chipped paint, water stains, patina on metal, worn wood grain, dust in corners; fabric and paper props show creases and age; nothing looks factory-new',
   negative:
     'people, human figures, characters, crowds, silhouettes of people, plastic CG look, oversaturated colours, sterile showroom cleanliness, warped perspective, melted geometry, floating objects, text, watermark, signature',
   tags: ['photorealistic', 'live-action film environment', 'cinematic production design', 'weathered materials', 'cinematic'],
@@ -112,7 +112,7 @@ ok(castNamesOf({ characters: [] }).length === 0, '空 cast 不炸');
 
 eq(validateArt(FIXTURE, NAMES).length, 0, '自带样例通过校验（含角色名检查）');
 ok(gateReport(FIXTURE, NAMES).every((g) => g.status !== 'fail'), '样例无阻断失败，缺少上游检查独立跳过');
-eq(gateReport(FIXTURE).length, 14, '质量门共 12 道（场景 6 + 道具 4 + 生产参数 2）');
+eq(gateReport(FIXTURE).length, 17, '质量门共 15 道（共用 4 + 场景 5 + 道具 4 + 生产参数 2）加契约与预算');
 
 /* ---------------- 生产参数（production.json） ---------------- */
 
@@ -229,6 +229,62 @@ eq(ANCHOR_RANGE.join('-'), '3-5', '锚点范围 3–5');
   d.scenes[0].image.negativePrompt = 'plastic CG look, text, watermark';
   ok((gate(d, 'no-people').status === 'fail'), '反向提示词没禁人被拦——环境参考图必须空景');
 }
+{
+  const d = clone();
+  ok(!/people|human/i.test(d.props[0].image.negativePrompt), '样例道具的反向词确实没禁人');
+  ok((gate(d, 'no-people').status === 'pass'), '道具不查禁人——右格要画匿名的手或人作尺寸参照');
+}
+
+// 场景版式：四方向宫格 + 正交平面图
+{
+  const d = clone();
+  d.scenes[0].image.sheet = d.scenes[0].image.sheet.replace('two-by-two grid', 'single wide master view');
+  ok((gate(d, 'scene-layout').status === 'fail'), '场景设定图没有四宫格被拦');
+  ok(gate(d, 'scene-layout').detail.includes('two-by-two grid'), '报错点名缺哪个短语');
+}
+{
+  const d = clone();
+  d.scenes[1].image.sheet = d.scenes[1].image.sheet.replaceAll('orthographic', 'perspective');
+  ok((gate(d, 'scene-layout').status === 'fail'), '平面图不是正交被拦——带透视的平面图对不上位置');
+}
+
+// 光影锁写色温数值
+{
+  const d = clone();
+  d.scenes[0].lighting[1].prompt = 'Warm evening light from the lane behind the stall.';
+  ok((gate(d, 'lighting-kelvin').status === 'fail'), '光影锁只写冷暖不写色温被拦');
+  ok(gate(d, 'lighting-kelvin').detail.includes('傍晚·天光'), '报错点名是哪个状态');
+}
+{
+  const d = clone();
+  d.scenes[0].lighting[0].prompt = d.scenes[0].lighting[0].prompt.replace('about 6500K', 'about 6500 K');
+  ok((gate(d, 'lighting-kelvin').status === 'pass'), '数字和 K 之间带空格也认');
+}
+
+// 纯净画质段
+{
+  const d = clone();
+  d.scenes[0].image.sheet = d.scenes[0].image.sheet.replace(/Remove all noise[\s\S]*$/, '');
+  ok((gate(d, 'sheet-purity').status === 'fail'), '场景设定图缺纯净画质段被拦');
+}
+{
+  const d = clone();
+  d.props[0].image.sheet = d.props[0].image.sheet.replace(/\n\nRemove all noise/, '\n  Remove   all noise');
+  ok((gate(d, 'sheet-purity').status === 'pass'), '空白规整后比较——换行和多空格不算改动');
+  d.props[0].image.sheet = d.props[0].image.sheet.replace('low-ISO', 'low ISO');
+  ok((gate(d, 'sheet-purity').status === 'fail'), '固定句改一个字也被拦');
+}
+{
+  const d = clone();
+  d.props[1].states[1].prompt = 'Open tin box with folded slips inside.';
+  ok((gate(d, 'sheet-purity').status === 'fail'), '道具状态变体提示词缺纯净画质段被拦');
+  ok(gate(d, 'sheet-purity').detail.includes('分类打开'), '报错点名是哪个状态');
+}
+{
+  const d = clone();
+  d.props[1].states[0].prompt = 'Closed blue tin box.';
+  ok((gate(d, 'sheet-purity').status === 'pass'), '基准状态只是一句描述，不要求纯净画质段');
+}
 
 // G5 提示词英文
 {
@@ -277,7 +333,7 @@ eq(ANCHOR_RANGE.join('-'), '3-5', '锚点范围 3–5');
 // G8 画风整块用上（要挂载生产参数才查得动——画风正文住在那里）
 {
   const d = clone();
-  d.scenes[0].image.sheet = 'ONE 16:9 landscape canvas, three zones, no people';
+  d.scenes[0].image.sheet = 'One 16:9 landscape canvas, two-by-two grid, orthographic plan, no people';
   ok((pgate(d, 'style-match').status === 'fail'), 'sheet 缺渲染句被拦——画风会飘');
 }
 {
@@ -301,11 +357,11 @@ eq(ANCHOR_RANGE.join('-'), '3-5', '锚点范围 3–5');
   // 正好和白底自相矛盾。样例里的两件道具本来就没带 sterile showroom cleanliness
   const d = clone();
   ok(!/sterile showroom cleanliness/.test(d.props[0].image.negativePrompt), '样例道具确实没带那一条');
-  ok((pgate(d, 'style-match').status !== 'fail'), '道具不查反向词是否带全——它另有禁人、禁手、纯白背景三道门');
+  ok((pgate(d, 'style-match').status !== 'fail'), '道具不查反向词是否带全——它另有纯白背景与尺寸参照的门');
 }
 {
   const d = clone();
-  d.props[0].image.sheet = 'ONE 16:9 landscape canvas, white background, handheld scale';
+  d.props[0].image.sheet = 'One 16:9 landscape canvas, three panels on a plain white background, a generic adult hand holding it';
   ok((pgate(d, 'style-match').status === 'fail'), '道具的渲染句照样要查——画风漂了道具也白出');
 }
 {
@@ -417,7 +473,14 @@ ok(/e\.key === 'Escape'/.test(html), 'Esc 关闭弹层');
   ok(withImg.includes('class="zoom" data-src="images/x-sheet.png"'), '出图后图片可点，弹层拿到地址');
   ok(withImg.includes('cursor:zoom-in'), '鼠标提示可放大');
 }
-eq((html.match(/<li class="pass">/g) || []).length, 11, '只统计通过，不把三项缺上游计入通过');
+eq((html.match(/<li class="pass">/g) || []).length, 14, '只统计通过，不把三项缺上游计入通过');
+{
+  const d = clone();
+  d.props[0].states[1].sheetImage = 'images/x-state2-sheet.png';
+  const withState = renderHtml(d);
+  ok(withState.includes('data-src="images/x-state2-sheet.png"'), '道具状态变体出图后在状态行里可点开');
+  ok(renderMarkdown(d).includes('](images/x-state2-sheet.png)'), 'MD 也挂上状态变体图');
+}
 eq((html.match(/<li class="skipped">/g) || []).length, 3, '缺少 cast 和 production 的三项检查明确跳过');
 ok(html.includes('gatepill pass'), '页眉徽章通过态');
 ok(html.includes('未提供 cast.json'), '报告如实标注角色名检查被跳过');
@@ -464,7 +527,7 @@ ok(html.includes('revokeObjectURL(url), 10000'), 'blob 延后回收——Safari 
 ok(html.includes('@media print'), '可打印');
 ok(html.includes('prefers-reduced-motion'), '尊重减少动效');
 ok(/@media print\{[\s\S]*\.pr p\{display:block!important/.test(html), '打印时提示词全展开');
-ok(html.includes('参考图一律无人'), '页脚写明无人原则（道具另加无手白底）');
+ok(html.includes('场景参考图一律无人'), '页脚写明无人原则（道具白底，右格只是匿名尺寸参照）');
 
 /* ---------------- 道具（叙事道具层）---------------- */
 
@@ -484,18 +547,39 @@ eq(FIXTURE.props.length, 2, '样例带两件叙事道具');
 }
 {
   const d = clone();
-  d.props[0].image.prompt = d.props[0].image.prompt.replace('handheld scale', 'nice size');
-  ok((gate(d, 'prop-scale').status === 'fail'), '提示词缺尺度短语被拦——AI 会把手持道具画成家具');
-  ok(gate(d, 'prop-scale').detail.includes('handheld scale'), '报错点名缺哪个短语');
+  d.props[0].image.sheet = d.props[0].image.sheet.replace('a generic adult hand holding it', 'the object on a shelf');
+  ok((gate(d, 'prop-scale').status === 'fail'), '设定图缺那一档的尺寸参照被拦——AI 会把手持道具画成家具');
+  ok(gate(d, 'prop-scale').detail.includes('a generic adult hand holding it'), '报错点名缺哪个短语');
 }
 {
   const d = clone();
-  d.props[1].image.negativePrompt = 'people, plastic CG look, text';
-  ok((gate(d, 'prop-hands').status === 'fail'), '反向提示词没禁手被拦——拿着道具的手是最常见污染');
+  d.props[0].scale = '家具级';
+  ok((gate(d, 'prop-scale').status === 'fail'), '尺度档位和右格画法对不上被拦');
 }
 {
   const d = clone();
-  d.props[0].image.sheet = d.props[0].image.sheet.replace(/pure white background/gi, 'soft grey backdrop');
+  d.props[0].image.prompt = d.props[0].image.prompt.replace('about 28 cm long', 'small');
+  ok((gate(d, 'prop-scale').status === 'pass'), '尺度只查设定图，单张展示图不查');
+}
+{
+  const d = clone();
+  d.props[0].image.sheet = d.props[0].image.sheet.replace('anonymous generic bystander used only as a size reference', 'person');
+  ok((gate(d, 'prop-size-ref').status === 'fail'), '没写匿名路人仅作尺寸参照被拦——视频会把这只手当成剧中人');
+}
+{
+  const d = clone();
+  d.props[1].image.sheet = d.props[1].image.sheet.replace('actual size about', 'roughly');
+  ok((gate(d, 'prop-size-ref').status === 'fail'), '没写实际尺寸被拦');
+}
+{
+  const d = clone();
+  d.props[1].image.negativePrompt += ', hands, fingers';
+  ok((gate(d, 'prop-size-ref').status === 'fail'), '反向词禁手被拦——和右格的尺寸参照自相矛盾');
+  ok(gate(d, 'prop-size-ref').detail.includes('自相矛盾'), '报错说清为什么');
+}
+{
+  const d = clone();
+  d.props[0].image.sheet = d.props[0].image.sheet.replace(/plain white background/gi, 'soft grey backdrop');
   ok((gate(d, 'prop-white').status === 'fail'), '设定图不是白底被拦——道具图要能抠');
 }
 // 共用门也覆盖道具
@@ -613,7 +697,8 @@ eq(STAGE_DIR, 'art', '段目录名与端到端工作目录约定一致');
   eq(model, PRODUCTION.image.model, '显式生产参数提供模型');
   eq(inputBase.aspect_ratio, PRODUCTION.image.asset.aspectRatio, '显式生产参数提供画幅');
   eq(inputBase.resolution, PRODUCTION.image.asset.resolution, '显式生产参数提供档位');
-  eq(jobs.length, FIXTURE.scenes.length + FIXTURE.props.length, '场景与道具各一张图');
+  const stateCount = FIXTURE.props.reduce((n, pr) => n + pr.states.length - 1, 0);
+  eq(jobs.length, FIXTURE.scenes.length + FIXTURE.props.length + stateCount, '场景与道具各一张基准图，道具每个后续状态再一张');
   eq(jobs[0].prompt, FIXTURE.scenes[0].image.sheet, '提示词取 image.sheet，不是 image.prompt');
   eq(jobs[0].negativePrompt, FIXTURE.scenes[0].image.negativePrompt, '反向词单独带上');
   eq(jobs[0].file, `images/${slug(FIXTURE.scenes[0].name)}-sheet.png`, '产物路径与 render 找图的路径同一个算法');
@@ -622,6 +707,25 @@ eq(STAGE_DIR, 'art', '段目录名与端到端工作目录约定一致');
   eq(variant.refFrom, 'S01', '变体认出母场景——参考图挂谁不该让模型每次重想');
   const prop = jobs.find((j) => j.kind === 'prop');
   ok(prop.cutoutFile.endsWith('-cutout.png'), '道具带抠图产物路径，跟白底图分开存');
+
+  const state = jobs.find((j) => j.key === 'P01.s2');
+  ok(state, '道具第二个状态有自己的任务 ID');
+  eq(state.refFrom, 'P01', '状态变体参考基准道具的成图');
+  eq(state.prompt, FIXTURE.props[0].states[1].prompt, '状态变体的提示词取 states[1].prompt');
+  eq(state.file, `images/${slug(FIXTURE.props[0].name)}-state2-sheet.png`, '状态变体路径按固定算法');
+  eq(state.negativePrompt, FIXTURE.props[0].image.negativePrompt, '状态变体沿用道具的反向词');
+  ok(!jobs.some((j) => j.key === 'P01.s1'), '基准状态不另出图——它就是设定图本身');
+  eq(jobs.findIndex((j) => j.key === 'P01') < jobs.findIndex((j) => j.key === 'P01.s2'), true, '基准排在变体之前');
+}
+{
+  const d = clone();
+  d.props[0].states[1].prompt = '';
+  ok(imageJobsFrom(d, PRODUCTION).problems.some((x) => x.includes('归还整理')), '状态变体提示词空着不许提交');
+}
+{
+  const d = clone();
+  d.props[0].designStatus = 'planned';
+  ok(!imageJobsFrom(d, PRODUCTION).jobs.some((j) => j.key.startsWith('P01')), '未 ready 的道具连同状态变体都不进计划');
 }
 
 // 生产参数在就以它为准——三个值原样进 input_data，不折算像素

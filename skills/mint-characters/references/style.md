@@ -8,7 +8,7 @@ node scripts/mint-characters.mjs style
 ```
 
 从当前目录向上最多 5 层找 `production.json`，把角色那一块原样打出来。**制作图片设计之前先跑它**——
-那几段英文正文是要原样抄进 `image.sheet` / `image.prompt` / `image.negativePrompt` 的。
+那几段英文正文是要原样抄进 `image.sheet` / `image.prompt` / `image.negativePrompt` 的（各块进哪个字段见下表）。
 
 找不到那份文件，或那一块没填，命令会直接报错。请用户提供明确的视觉正文与制作参数，不要自行编造画风。仅登记身份或制作画像、声音时无需运行本步骤。
 
@@ -24,13 +24,15 @@ node scripts/mint-characters.mjs style
 
 ## 那一块有五样东西
 
-| 块 | 作用 |
-| --- | --- |
-| `render` | 渲染方式那句 |
-| `surface` | 皮肤、眼睛、头发、布料怎么处理 |
-| `lighting` | 光照 |
-| `negative` | 反向提示词 |
-| `tags` | 风格标签 |
+| 块 | 作用 | 进哪里 |
+| --- | --- | --- |
+| `render` | 渲染方式那句 | `image.sheet` 的画风句与 `image.prompt`，都**原样** |
+| `surface` | 皮肤、眼睛、头发、布料怎么处理 | 两个提示词的身份锁、服装段 |
+| `lighting` | 表现性插画的光照 | **只进 `image.prompt`** |
+| `negative` | 反向提示词 | `image.negativePrompt`，一条不落 |
+| `tags` | 风格标签 | `image.tags` |
+
+**设定图的光不取 `lighting`。** 设定图写固定句 `Soft even frontal studio lighting, with no visible shadows or colored light on the face or the clothes.`（见 `sheet-prompt.md`）：参考图上的光会被视频模型当成长相、颜色带进每一段视频，戏里的光由视频去写。`lighting` 里写的方向光、补光只属于 `image.prompt` 那张单张插画。
 
 ## ⚠️ 换风格是整套换，不是只换一句「画风」
 
@@ -46,24 +48,20 @@ node scripts/mint-characters.mjs style
 
 | 查什么 | 为什么 |
 | --- | --- |
-| `image.sheet` 与 `image.prompt` 都含 `render` 原句 | 只查 `sheet` 的话，`prompt` 里留着上一档画风也照样全绿，出来就是设定表一个样、单张人像插画另一个样的两张皮 |
+| `image.sheet` 与 `image.prompt` 都含 `render` 原句 | 只查 `sheet` 的话，`prompt` 里留着上一档画风也照样全绿，出来就是设定图一个样、单张人像插画另一个样的两张皮 |
 | `image.negativePrompt` 带全 `negative` 的每一条 | 换风格是整套换。少一条就是画风漂了半步 |
 
 反向词按逗号拆成词条**逐条**查，所以**角色自己额外加的不受影响**——某个角色要禁「戴眼镜」
 「叼烟」，照加，门查的是有没有带全，不是有没有多写。
 
-## 版面不随画风变
+## 版式不随画风变
 
-按 `production.image.asset.aspectRatio` 分三区、34%/66% 分栏比例、人物比例协调、细节让位不是人物让位——这些是**版面规则**，
+按 `production.image.asset.aspectRatio` 的画布、左边严格正面的脸部特写、右边脖子以下三格、柔和均匀的正面光、纯净画质段——这些是**版式规则**（见 `sheet.md`），
 哪一档画风都一样。变的只有渲染质感。
-
-`lighting` 归在画风里而不是版面里，是因为它两头都沾：设定表要平光才好抠图、好量比例，
-写实又要方向光才有体积。怎么调和是画风自己的事（写实那套分区打光，平涂那套全图平光，
-平光本来就是那个风格的一部分），所以它跟着画风走。
 
 ## 创作背景与视觉边界
 
-参见 [creative-background.md](creative-background.md)。读取 production.creativeBrief 的自然语言要求，不推导策略。保留逐字证据、角色区分度、设定表比例、视觉正文和参考图挂载检查。正式身份入口读取原剧本，outline v5 仅为可选故事背景。画像、音色和图片分别按需设计，不是身份登记的强制条件。完整设计样例《渡口》与身份样例《回声台》均由本 skill 自有。
+参见 [creative-background.md](creative-background.md)。读取 production.creativeBrief 的自然语言要求，不推导策略。保留逐字证据、角色区分度、设定图版式、视觉正文和参考图挂载检查。正式身份入口读取原剧本，outline v5 仅为可选故事背景。画像、音色和图片分别按需设计，不是身份登记的强制条件。完整设计样例《渡口》与身份样例《回声台》均由本 skill 自有。
 
 ## 独立配置示意
 

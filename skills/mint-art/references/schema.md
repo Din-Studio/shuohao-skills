@@ -74,19 +74,19 @@ planned / ready 设计遵循以下视觉规则，none 不适用：
 | --- | --- |
 | summary | 非空设计意图；结构、动线及主光方向由人工/模型复核 |
 | anchors | 3–5 个 {name,desc}；明确可画特征及方位 |
-| lighting | 至少一个 {state,prompt}，prompt 英文 |
-| image | prompt、negativePrompt、sheet 非空；tags 英文数组 |
+| lighting | 至少一个 {state,prompt}，prompt 英文并写色温数值（如 5500K）；`lighting[0]` 是基准设定图画的光影锁 |
+| image | prompt、negativePrompt、sheet 非空；tags 英文数组；sheet 为四方向宫格加正交平面图（含 two-by-two grid、orthographic）并以纯净画质段收尾 |
 | 画风、画幅 | production 提供时按 style.scene 和 image.asset 核验 |
 
 | 道具字段 | 规则 |
 | --- | --- |
 | summary | 戏剧功能与设计意图，不是来源事实的替代品 |
 | anchors | 3–5 个 {name,desc} |
-| states | 至少一个 {state,prompt}，prompt 英文 |
-| scale | 手持级 / 桌面级 / 家具级；两条提示词含 handheld/tabletop/furniture scale |
-| image | 提示词英文，反向禁人禁手；sheet 明确 white background |
+| states | 至少一个 {state,prompt}，prompt 英文；`states[0]` 是基准状态，`states[1]` 起每条是完整变体提示词（含纯净画质段），各自进入出图计划 |
+| scale | 手持级（长边 30 厘米以内）/ 桌面级（30–60 厘米）/ 家具级（60 厘米以上）；sheet 含对应的尺寸参照英文句（见 PROP_SCALES） |
+| image | 提示词英文；sheet 三格版式，明确 white background，含匿名尺寸参照句与 actual size about，以纯净画质段收尾；反向词不禁手、不禁人 |
 
-空景反向词禁人，场景反向词完整带入 style.scene.negative；道具白底不强加与之矛盾的环境反向词。提示词不含角色名（提供 cast 时核验）。production 缺失为 skipped，不提供出图默认值。ready 设计不等于媒体生成或批准。
+场景反向词禁人并完整带入 style.scene.negative；道具白底不强加与之矛盾的环境反向词，也不禁右格尺寸参照要画的手和人。提示词不含角色名（提供 cast 时核验）。production 缺失为 skipped，不提供出图默认值。ready 设计不等于媒体生成或批准。
 
 ## 检查与报告
 
@@ -97,4 +97,4 @@ planned / ready 设计遵循以下视觉规则，none 不适用：
 - `lib/stage.mjs`：stageErrors、evidenceErrors、verifySources、lifecycleErrors、budgetChecks、identityCoreDigest、lifecycleStamp、syncLifecycleStamps、sourceIdentity、digest、assertStoryOutline、assertCharacters、upstreamErrors、upstreamCheck。
 - `seedFromOutline` 拒绝把故事背景当作资产 seed，指向原剧本入口。
 
-媒体计划为 schemaVersion 1，带逐任务 inputDigest，不上传、不生成。变体依赖按参考顺序排列；只有 ready 任务进入计划。报告渲染不写回默认值、来源状态或自动挂图。
+媒体计划为 schemaVersion 1，带逐任务 inputDigest，不上传、不生成。变体依赖按参考顺序排列；只有 ready 任务进入计划。ready 道具的 `states[1]` 起各导出一个任务，ID 为 `<道具 ID>.s<序号>`，参考基准道具成图，产物为 `images/<imageStem>-state<序号>-sheet.png`。报告渲染不写回默认值、来源状态或自动挂图。

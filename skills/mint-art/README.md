@@ -37,7 +37,9 @@ node scripts/mint-art.mjs images art.json --production production.json --only S0
 - 缺少可选 outline/cast/production 时相应对账 skipped。已经提供的损坏、版本错误或不匹配输入失败。
 - 增量读取既有 registry；重排不改 S/P ID。合并、拆分、纠正、删除必须追加显式映射和依据；退休 ID 永不复用。
 - `budgets` 在本产物保存。明确预算超额阻断；参考值仅提醒。增量变更明确预算需要保存原值和用户依据。
-- `designStatus: none` 不要求设计字段；planned/ready 执行锚点、空景、英文提示词、光照/状态、尺度、白底、禁手等检查。只有 ready 进入图片计划。
+- `designStatus: none` 不要求设计字段；planned/ready 执行锚点、场景空景、英文提示词、光照状态与色温、道具状态、尺寸参照、白底、版式与纯净画质段等检查。只有 ready 进入图片计划。
+- 场景设定图是左侧前后左右四宫格加右侧正交平面图；道具设定图是正面、最容易认错的一面、匿名手或人作尺寸参照三格。道具 `states` 第二个起各出一张以基准图为参考的变体图。写法见 [设定图出图](references/sheet.md)、[设定图提示词](references/sheet-prompt.md)。
+- 写场景、道具设定前先读 [全局原则](references/principles.md) 和 [术语](references/glossary.md)；有题材信息时查 `references/genres/`。
 - 图片计划只离线导出，未提交、未生成。production 画风唯一来自 `style.scene`；不依赖任何外部生成 skill 才能完成本阶段交付。
 - JSON 是唯一编辑源。报告保留输入导出值。报告 HTML 不进入版本控制。技术检查不等于内容或媒体审核。
 

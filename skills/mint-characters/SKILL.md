@@ -1,6 +1,6 @@
 ---
 name: mint-characters
-version: 3.0.0
+version: 4.0.0
 description: |
   独立阅读原剧本，建立稳定 C ID、别名、同名人物、无台词人物、匿名声音、非人主体与提及人物的来源身份。
   人物角色整理完成后立即制作图片提示词并生成参考图；人物画像与音色按需制作，用户明确仅登记或仅要提示词时不生图。
@@ -13,7 +13,8 @@ triggers:
   - 小说角色
   - 人物画像
   - 角色卡
-  - 三视图
+  - 人物设定图
+  - 群像图
   - character sheet from novel
 metadata:
   license: Apache-2.0
@@ -86,7 +87,8 @@ reconcile 对新增或变化的身份及范围将语义审核恢复为 pending�
 persona、voice 仍按需制作，不强制三项设计同时存在。用户明确要求仅身份登记、仅提示词或暂不生图时，按其限定范围交付；身份契约仍允许没有设计字段。登记所有身份之后，再决定哪些身份需要视觉呈现，不能只留下画像选角。
 
 - 画像与音色：阅读 [画像指南](references/profile-pass.md)、[设计字段](references/design-schema.md)。设计块直接写在 cast v1 的对应身份上，validate 的 optional-design 检查逐项核对。
-- 图片：另读 [画风](references/style.md)、[真实感](references/realism.md)、[版面](references/sheet.md)。production 为 v3，画风正文不设默认值。独立画像或身份登记不要求 production；已提供但损坏的 production 必须失败。
+- 图片：另读 [全局原则](references/principles.md)、[术语](references/glossary.md)、[设定图提示词](references/sheet-prompt.md)、[版式](references/sheet.md)、[画风](references/style.md)、[真实感](references/realism.md)；群演读 [群像图](references/crowd.md)；production.image.model 是 Midjourney 时另读 [Midjourney 写法](references/model-midjourney.md)；题材明确时查 `references/genres/` 中适用的题材文件（`general.md` 为通用基线），剧本事实与用户要求优先。production 为 v3，画风正文不设默认值。独立画像或身份登记不要求 production；已提供但损坏的 production 必须失败。
+- 设定图版式：白底横图，左边严格正面的脸部特写，右边三格脖子以下的正面、侧面、背面，柔和均匀的正面光，中性站姿和表情，最后一段是纯净画质段；`entityType: group` 改出群像图。validate 按 entityType 核对版式短语和纯净画质段。cast v1 每个身份只有一个 image 块，本阶段只出基准图，不出人物变体图。
 - 生成：`images cast.json` 只产生离线计划。只为存在 image 设计的角色建立任务；`--only C01,C02` 选择稳定 ID。正式路径为 `images/C01-sheet.png`，不会因改名或新增同名人物而漂移。
 - 本地 CLI 保持离线；实际生图由 agent 接续外部生成工具。按 [媒体交接](references/media-handoff.md) 核验 schema、费用授权、回执及下载；已有授权覆盖本次生成时直接执行，不重复确认，不自动重复付费。下载并核验参考图后再生成最终报告。
 

@@ -299,6 +299,31 @@ const HUMAN_VOICE_FIELDS = ['timbre', 'pitch', 'pace', 'accent', 'emotion', 'ref
 
 const normalise = (s) => String(s).replace(/\s+/g, '');
 
+/*
+ * 设定图版式的固定短语（references/sheet.md、sheet-prompt.md）。
+ * 人物、生物和未知主体用「左边正面脸部特写 + 右边三格脖子以下」版式，
+ * 群演用群像图版式，每张都带「高矮胖瘦各不相同」的英文固定句。
+ * 每张设定图最后都带纯净画质段——设定图是后面所有画面的参考，噪点会一路带下去。
+ */
+export const FACE_CLOSEUP_PHRASE = 'strictly frontal close-up of the face';
+export const NECK_DOWN_PHRASE = 'from the neck down';
+export const CROWD_FIXED_PHRASE = 'all different heights and builds';
+export const PURITY_PARAGRAPH = "Remove all noise, graininess, film grain and digital noise; shadows and dark areas smooth and clean, color transitions natural, gradients fine and smooth. Surfaces of skin, fabric, wood grain, stone, water and leaves clean and clear, edges crisp but not over-sharpened, with no dirt specks, hazy blur, smearing or artifacts. Keep the original details, do not reduce any characters or scene elements, do not change the characters' faces. High definition, clean low-ISO image quality, commercial-grade finished look.";
+const squash = (s) => String(s).replace(/\s+/g, ' ').trim().toLowerCase();
+
+/** 按 entityType 检查 image.sheet 的版式固定短语与纯净画质段，返回缺失说明。 */
+export function sheetLayoutProblems(character) {
+  const sheet = character?.image?.sheet;
+  if (typeof sheet !== 'string' || !sheet.trim()) return [];
+  const text = squash(sheet);
+  const need = character?.entityType === 'group'
+    ? [[CROWD_FIXED_PHRASE, '群像图固定句']]
+    : [[FACE_CLOSEUP_PHRASE, '左边严格正面的脸部特写'], [NECK_DOWN_PHRASE, '右边三格脖子以下的正面、侧面、背面']];
+  const problems = need.filter(([phrase]) => !text.includes(phrase)).map(([phrase, label]) => `image.sheet 缺版式短语「${phrase}」（${label}）`);
+  if (!text.includes(squash(PURITY_PARAGRAPH))) problems.push('image.sheet 缺纯净画质段（固定句，原文照用）');
+  return problems;
+}
+
 /**
  * @param characters 角色卡数组
  * @param sourceText 原文；null 则跳过逐字引文校验
@@ -358,8 +383,8 @@ export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
    * 阈值取 0.75，是量出来的不是拍的——自带样例四个角色两两最高 39%，
    * 而「只改年龄与衣服颜色」的雷同用例是 98%，中间余量极大。
    *
-   * image.sheet 刻意不查：三分区排版规范是大段固定文本，真实角色之间本来就有 63%
-   * 重合，设门必然误拦——误拦的门比没有门更糟。
+   * image.sheet 刻意不查：版式要求与纯净画质段是大段固定文本，真实角色之间本来就
+   * 高度重合，设门必然误拦——误拦的门比没有门更糟。
    */
   const promptSim = (a, b) => {
     const words = (s) => new Set(String(s ?? '').toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 2));
@@ -418,6 +443,7 @@ export function validateCast(characters, sourceText, lang = DEFAULT_LANG) {
       if (typeof image.sheet !== 'string' || !image.sheet.trim()) {
         at(name, 'image.sheet 缺失或为空（角色设定图提示词）');
       }
+      for (const msg of sheetLayoutProblems(c)) at(name, msg);
       if (!Array.isArray(image.tags)) at(name, 'image.tags 必须是数组');
     }
 
@@ -746,7 +772,7 @@ async function main(argv) {
       JSON.stringify(
         {
           label: styleLabelOf(doc),
-          note: '整块取用，不要混搭：render / surface / lighting 原样进 image.sheet 与 image.prompt，negative 一条不落地进 image.negativePrompt（角色自己额外加的不受影响）',
+          note: '整块取用，不要混搭：render、surface 原样进 image.sheet 与 image.prompt；lighting 只进 image.prompt，设定图的光由版式固定句定；negative 一条不落地进 image.negativePrompt（角色自己额外加的不受影响）',
           character: block,
         },
         null,

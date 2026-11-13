@@ -179,15 +179,32 @@ export const ANCHOR_RANGE = [3, 5];
 
 /*
  * 道具尺度参照：AI 经常把手持道具画成家具尺寸——实拍不存在的坑。
- * scale 是中文枚举，出图提示词里必须出现对应的英文短语，validate 会对着查。
+ * 设定图右格按长边分三档画一只匿名的手或一个匿名的人作尺寸参照；
+ * scale 是中文枚举，image.sheet 里必须出现对应那一档英文句的关键片段，validate 会对着查。
+ *   手持级：长边 30 厘米以内；桌面级：30–60 厘米；家具级：60 厘米以上。
  */
 export const PROP_SCALES = {
-  手持级: 'handheld scale',
-  桌面级: 'tabletop scale',
-  家具级: 'furniture scale',
+  手持级: 'a generic adult hand holding it',
+  桌面级: 'holding it with both hands, framed from the chest down',
+  家具级: 'standing next to it or using it',
 };
-/** 道具参考图不许有手——拿着道具的手是最常见的污染。 */
-const HANDS_BAN = /hand|finger/i;
+/** 右格的手或人只作尺寸参照、不是剧中角色——这句不写，视频模型会把它当成这一段里的人物。 */
+export const SIZE_REF_PHRASE = 'anonymous generic bystander used only as a size reference';
+export const ACTUAL_SIZE_PHRASE = 'actual size about';
+/** 道具反向词禁手禁人会和右格的尺寸参照自相矛盾。 */
+const PROP_NEG_CONFLICT = /\b(hands?|fingers?|people|persons?|humans?)\b/i;
+
+/*
+ * 纯净画质段（固定句）：每一条设定图提示词都在最后原文带上。
+ * 设定图是后面所有画面的参考，噪点、颗粒会一路带下去。比较时规整空白。
+ */
+export const PURITY_PARAGRAPH = "Remove all noise, graininess, film grain and digital noise; shadows and dark areas smooth and clean, color transitions natural, gradients fine and smooth. Surfaces of skin, fabric, wood grain, stone, water and leaves clean and clear, edges crisp but not over-sharpened, with no dirt specks, hazy blur, smearing or artifacts. Keep the original details, do not reduce any characters or scene elements, do not change the characters' faces. High definition, clean low-ISO image quality, commercial-grade finished look.";
+const squash = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
+const hasPurity = (v) => squash(v).includes(PURITY_PARAGRAPH);
+/** 场景设定图版式：左侧四方向宫格 + 右侧正交平面图。 */
+export const SCENE_LAYOUT_PHRASES = ['two-by-two grid', 'orthographic'];
+/** 光影锁要写色温数值，不只写冷暖。 */
+const KELVIN = /\d{3,5}\s?K\b/;
 
 function visualGateReport(doc, castNames = null, production = null) {
   const structural = validateVisualArt(doc, castNames, production, false);
@@ -198,7 +215,7 @@ function visualGateReport(doc, castNames = null, production = null) {
   if ([...scenes, ...props].some(item => !item || ['lighting','states'].some(k => item[k] !== undefined && !Array.isArray(item[k])) || (item.image?.tags !== undefined && !Array.isArray(item.image.tags)))) return gates;
   const bad = {
     anchors: [], lighting: [], people: [], english: [], names: [], variant: [], style: [],
-    states: [], scale: [], hands: [], whitebg: [], aspect: [],
+    states: [], scale: [], sizeref: [], whitebg: [], aspect: [], layout: [], purity: [], kelvin: [],
   };
   const ids = new Set(scenes.map((s) => s?.id));
   // 画风正文住在生产参数里，没挂载就查不了——那道门会明说跳过，不装查过
@@ -216,12 +233,32 @@ function visualGateReport(doc, castNames = null, production = null) {
     const anchorN = Array.isArray(s?.anchors) ? s.anchors.length : 0;
     if (anchorN < ANCHOR_RANGE[0] || anchorN > ANCHOR_RANGE[1]) bad.anchors.push(`${label}（${anchorN} 个）`);
 
+    const isScene = scenes.includes(s);
     // 光照状态 ≥1（仅场景）：AI 换时段是重新生成，不是重新打灯
-    if (scenes.includes(s) && (!Array.isArray(s?.lighting) || s.lighting.length === 0)) bad.lighting.push(label);
+    if (isScene && (!Array.isArray(s?.lighting) || s.lighting.length === 0)) bad.lighting.push(label);
+    // 光影锁写色温数值（仅场景）
+    if (isScene) {
+      const noK = (s?.lighting ?? []).filter((l) => thText(l?.prompt) && !KELVIN.test(l.prompt)).map((l) => l?.state ?? '?');
+      if (noK.length) bad.kelvin.push(`${label}（${noK.join('、')}）`);
+    }
 
-    // 空景：反向提示词必须禁人
+    // 空景（仅场景）：反向提示词必须禁人。道具右格要画匿名的手或人作尺寸参照，不在此列
     const neg = s?.image?.negativePrompt ?? '';
-    if (!PEOPLE_BAN.test(neg)) bad.people.push(label);
+    if (isScene && !PEOPLE_BAN.test(neg)) bad.people.push(label);
+
+    // 场景版式：四方向宫格 + 正交平面图
+    if (isScene) {
+      const lost = SCENE_LAYOUT_PHRASES.filter((t) => !String(s?.image?.sheet ?? '').includes(t));
+      if (lost.length) bad.layout.push(`${label} 缺「${lost.join('、')}」`);
+    }
+
+    // 纯净画质段：场景、道具的 sheet，以及道具的每条状态变体提示词
+    if (!hasPurity(s?.image?.sheet)) bad.purity.push(`${label} 的 sheet`);
+    if (!isScene) {
+      (s?.states ?? []).slice(1).forEach((st, i) => {
+        if (!hasPurity(st?.prompt)) bad.purity.push(`${label} 的状态「${st?.state ?? i + 2}」`);
+      });
+    }
 
     // 设定图版面的画幅：一条只报一次，整批错的时候不刷屏
     if (assetAspect) {
@@ -278,7 +315,7 @@ function visualGateReport(doc, castNames = null, production = null) {
        * 反向词只对场景查全，道具不查。
        * 道具参考图是纯白背景的抠图素材，画风里那些冲着「环境别太干净」去的反向词
        * （sterile showroom cleanliness 这类）正好和白底自相矛盾——逐条要求道具也带上，
-       * 拦的是对的做法。道具那边的反向词另有三道门管着：禁人、禁手、纯白背景。
+       * 拦的是对的做法。道具那边另有门管着：纯白背景、尺寸参照（反向词不得禁掉右格要画的手和人）。
        */
       if (scenes.includes(s)) {
         const lost = styleNeg.filter((t) => !String(neg).toLowerCase().includes(t));
@@ -291,19 +328,23 @@ function visualGateReport(doc, castNames = null, production = null) {
   for (const pr of props) {
     const label = pr?.name ?? pr?.id ?? '(无名)';
 
-    // 状态 ≥1：合上/打开、藏着/摊开——每个状态都是一张要单独生成的参考
+    // 状态 ≥1：states[0] 是基准状态，之后每个状态是一张依赖基准图的变体
     if (!Array.isArray(pr?.states) || pr.states.length === 0) bad.states.push(label);
 
-    // 尺度参照：scale 枚举 + 提示词里必须出现对应英文短语
+    // 尺度参照：scale 枚举 + 设定图右格那一档的英文句
     const scaleEn = PROP_SCALES[pr?.scale];
     if (!scaleEn) {
       bad.scale.push(`${label}（scale 必须是 ${Object.keys(PROP_SCALES).join('/')}）`);
-    } else if (![pr?.image?.prompt, pr?.image?.sheet].every((v) => typeof v === 'string' && v.includes(scaleEn))) {
-      bad.scale.push(`${label}（提示词缺「${scaleEn}」）`);
+    } else if (!String(pr?.image?.sheet ?? '').includes(scaleEn)) {
+      bad.scale.push(`${label}（设定图缺「${scaleEn}」）`);
     }
 
-    // 无手：拿着道具的手是最常见的污染，反向提示词必须禁
-    if (!HANDS_BAN.test(pr?.image?.negativePrompt ?? '')) bad.hands.push(label);
+    // 尺寸参照：匿名路人句 + 实际尺寸；反向词不能禁掉右格要画的手和人
+    const sheet = String(pr?.image?.sheet ?? '');
+    const lostRef = [SIZE_REF_PHRASE, ACTUAL_SIZE_PHRASE].filter((t) => !sheet.includes(t));
+    if (lostRef.length) bad.sizeref.push(`${label} 的设定图缺「${lostRef.join('、')}」`);
+    const conflict = String(pr?.image?.negativePrompt ?? '').match(PROP_NEG_CONFLICT);
+    if (conflict) bad.sizeref.push(`${label} 的反向词禁了「${conflict[0]}」，和右格的尺寸参照自相矛盾`);
 
     // 白底：道具参考图要被贴进各种镜头，必须纯白背景可抠
     if (!/white background/i.test(pr?.image?.sheet ?? '')) bad.whitebg.push(label);
@@ -311,7 +352,10 @@ function visualGateReport(doc, castNames = null, production = null) {
 
   add('anchors', `一致性锚点 ${ANCHOR_RANGE[0]}–${ANCHOR_RANGE[1]} 个`, scenes.length + props.length > 0 && bad.anchors.length === 0, bad.anchors.join('；'));
   add('lighting', '光照状态至少 1 个且落成提示词', scenes.length > 0 && bad.lighting.length === 0, bad.lighting.join('；'));
-  add('no-people', '参考图无人：反向提示词禁人（场景与道具都查）', scenes.length + props.length > 0 && bad.people.length === 0, bad.people.join('；'));
+  add('no-people', '场景参考图无人：反向提示词禁人', scenes.length > 0 && bad.people.length === 0, bad.people.join('；'));
+  add('scene-layout', '场景设定图为四方向宫格加正交平面图', scenes.length > 0 && bad.layout.length === 0, bad.layout.join('；'));
+  add('lighting-kelvin', '光影锁写出色温数值', scenes.length > 0 && bad.kelvin.length === 0, bad.kelvin.join('；'));
+  add('sheet-purity', '设定图提示词以纯净画质段收尾', scenes.length + props.length > 0 && bad.purity.length === 0, brief(bad.purity));
   add('english', '出图提示词全部英文', scenes.length + props.length > 0 && bad.english.length === 0, bad.english.join('；'));
   add(
     'no-names',
@@ -327,8 +371,8 @@ function visualGateReport(doc, castNames = null, production = null) {
     preset ? brief(bad.style) : (production ? SKIP_STYLE : SKIP_PROD),
   );
   add('prop-states', '道具状态至少 1 个且落成提示词', props.length === 0 || bad.states.length === 0, bad.states.join('；'));
-  add('prop-scale', '道具尺度参照写进提示词', props.length === 0 || bad.scale.length === 0, bad.scale.join('；'));
-  add('prop-hands', '道具参考图无手：反向提示词禁手', props.length === 0 || bad.hands.length === 0, bad.hands.join('；'));
+  add('prop-scale', '道具尺度那一档的尺寸参照写进设定图', props.length === 0 || bad.scale.length === 0, bad.scale.join('；'));
+  add('prop-size-ref', '道具设定图右格是匿名尺寸参照并写明实际尺寸', props.length === 0 || bad.sizeref.length === 0, bad.sizeref.join('；'));
   add('prop-white', '道具设定图纯白背景可抠', props.length === 0 || bad.whitebg.length === 0, bad.whitebg.join('；'));
   // 生产参数的两道门（style-match 与 sheet-aspect）：找得到 production.json 就
   // 自动开，没有开关——画风与画幅改了都要整套重出图，这正是这份参数存在的理由
@@ -347,8 +391,8 @@ function visualGateReport(doc, castNames = null, production = null) {
     if (g.id === 'no-names' && !castNames) { g.status = 'skipped'; g.reason = 'missing-upstream'; }
     if (['style-match','sheet-aspect'].includes(g.id) && production === null) { g.status = 'skipped'; g.reason = 'missing-upstream'; }
     if (g.id === 'style-match' && production !== null && !preset) { g.status = 'fail'; g.detail = '提供的 production 缺少 style.scene 正文，回 mint-setup 填写'; }
-    if (g.id === 'lighting' && !scenes.length) { g.status = 'skipped'; g.reason = 'not-applicable'; g.detail = '没有场景设计，不适用'; }
-    if (['anchors','no-people','english'].includes(g.id) && !scenes.length && !props.length) { g.status = 'skipped'; g.reason = 'not-applicable'; g.detail = '仅登记身份，不要求设计或出图'; }
+    if (['lighting','no-people','scene-layout','lighting-kelvin'].includes(g.id) && !scenes.length) { g.status = 'skipped'; g.reason = 'not-applicable'; g.detail = '没有场景设计，不适用'; }
+    if (['anchors','english','sheet-purity'].includes(g.id) && !scenes.length && !props.length) { g.status = 'skipped'; g.reason = 'not-applicable'; g.detail = '仅登记身份，不要求设计或出图'; }
     if (g.id.startsWith('prop-') && !props.length) { g.status = 'skipped'; g.reason = 'not-applicable'; g.detail = '没有道具，不适用'; }
   }
   return gates;
@@ -529,19 +573,23 @@ const GATE_LABELS_EN = {
   'production-contract': 'Complete visual text and image production parameters',
   'anchors': 'Consistency anchors, {0}–{1} per asset',
   'lighting': 'At least one lighting state, written out as a prompt',
-  'no-people': 'No people in plates: negatives ban people (scenes and props)',
+  'no-people': 'No people in scene plates: negatives ban people',
+  'scene-layout': 'Scene sheets are a four-direction grid plus an orthographic plan',
+  'lighting-kelvin': 'Lighting locks state a colour temperature in kelvin',
+  'sheet-purity': 'Sheet prompts end with the clean-image-quality paragraph',
   'english': 'All image prompts in English',
   'no-names': 'Prompts carry no character names',
   'variants': 'Variant references complete (variantOf exists and carries changes)',
   'style-match': 'Art style used as one whole block (render sentence and negatives)',
   'prop-states': 'At least one prop state, written out as a prompt',
-  'prop-scale': 'Prop scale reference written into the prompt',
-  'prop-hands': 'No hands in prop plates: negatives ban hands',
+  'prop-scale': 'Size-reference tier for the prop scale written into the sheet',
+  'prop-size-ref': 'Prop sheet right panel is an anonymous size reference with actual size',
   'prop-white': 'Prop sheets on pure white background, cut-out ready',
   'sheet-aspect': 'Sheet layout aspect matches the production parameters',
 };
 const GATE_SKIPS_EN = {
     '没有道具，不适用': 'No props — not applicable',
+    '没有场景设计，不适用': 'No scene designs — not applicable',
     '未提供 outline.json，本门跳过': 'outline.json not provided — gate skipped',
     '未提供 art.json，本门跳过': 'art.json not provided — gate skipped',
     '未提供 script.json，本门跳过': 'script.json not provided — gate skipped',
@@ -586,7 +634,7 @@ const I18N = {
     statesTitle: '状态变体',
     scaleLabel: '尺度',
     relatedScenesLabel: '关联场景',
-    propSheetCaption: '主视角＋底部与右侧细节条 · 纯白背景',
+    propSheetCaption: '正面＋最易认错的一面＋尺寸参照 · 纯白背景',
     listCols: ['ID', '场景', '类型', '出现集', '锚点', '光照', '变体'],
     primaryScene: '主场景', onceScene: '一次性', variantScene: '变体',
     anchorsTitle: '一致性锚点',
@@ -598,7 +646,7 @@ const I18N = {
     variantTitle: '变体来源',
     variantChanges: '改动',
     promptsTitle: '出图提示词包',
-    promptMaster: '主视角 EN',
+    promptMaster: '单张展示 EN',
     promptNegative: '反向提示词',
     promptSheet: '设定图 EN',
     copy: '复制', copied: '已复制', copyFailed: '复制失败', copyJson: '复制整个场景 JSON',
@@ -606,12 +654,12 @@ const I18N = {
     noImageHint: '使用下方提示词生成',
     zoomImage: '放大查看',
     closeImage: '关闭',
-    sheetCaption: '主视角＋底部与右侧细节条',
+    sheetCaption: '前后左右四宫格＋正交平面图',
     none: '—',
     listSep: '、',
     pairSep: '　',
     colon: '：',
-    colophon: '设定与提示词由模型依据大纲/原文生成，质量门由脚本确定性检查。参考图一律无人——人是另一层资产；道具参考图另加无手、纯白背景。',
+    colophon: '设定与提示词由模型依据大纲/原文生成，质量门由脚本确定性检查。场景参考图一律无人——人是另一层资产；道具参考图纯白背景，右格的手或人只是匿名尺寸参照。',
   },
   en: {
     langCode: 'en',
@@ -638,7 +686,7 @@ const I18N = {
     statesTitle: 'Prop states',
     scaleLabel: 'Scale',
     relatedScenesLabel: 'Related scenes',
-    propSheetCaption: 'Master view + bottom & right detail strips · pure white background',
+    propSheetCaption: 'Front + most-misread view + size reference · pure white background',
     listCols: ['ID', 'Scene', 'Type', 'Episodes', 'Anchors', 'Lighting', 'Variant'],
     primaryScene: 'Primary', onceScene: 'One-off', variantScene: 'Variant',
     anchorsTitle: 'Consistency anchors',
@@ -650,7 +698,7 @@ const I18N = {
     variantTitle: 'Variant of',
     variantChanges: 'Changes',
     promptsTitle: 'Prompt pack',
-    promptMaster: 'Master view (EN)',
+    promptMaster: 'Single view (EN)',
     promptNegative: 'Negative prompt',
     promptSheet: 'Sheet (EN)',
     copy: 'Copy', copied: 'Copied', copyFailed: 'Copy failed', copyJson: 'Copy full JSON',
@@ -658,12 +706,12 @@ const I18N = {
     noImageHint: 'generate with the prompts below',
     zoomImage: 'Click to zoom',
     closeImage: 'Close',
-    sheetCaption: 'Master view + bottom & right detail strips',
+    sheetCaption: 'Four-direction grid + orthographic plan',
     none: '—',
     listSep: ', ',
     pairSep: ' · ',
     colon: ': ',
-    colophon: 'Designs and prompts are model-generated from the outline/source text; quality gates are checked deterministically by the script. Reference images never contain people — characters are a separate asset layer; prop plates additionally ban hands and sit on a pure white background.',
+    colophon: 'Designs and prompts are model-generated from the outline/source text; quality gates are checked deterministically by the script. Scene plates never contain people — characters are a separate asset layer; prop plates sit on a pure white background, and the hand or person in the right panel is only an anonymous size reference.',
   },
 };
 
@@ -740,7 +788,10 @@ export function renderMarkdown(doc, lang = null, production = null, castNames = 
       out.push(`### ${t.anchorsTitle}`, '');
       pr.anchors.forEach((a, i) => out.push(`${i + 1}. **${a.name}** — ${a.desc}`));
       out.push('', `### ${t.statesTitle}`, '');
-      for (const st of pr.states) out.push(`- **${st.state}**${t.colon}\`${st.prompt}\``);
+      for (const st of pr.states) {
+        out.push(`- **${st.state}**${t.colon}\`${st.prompt}\``);
+        if (st.sheetImage) out.push('', `  ![${pr.name} ${st.state}](${st.sheetImage})`, '');
+      }
       out.push('');
       out.push(`### ${t.promptsTitle}`, '');
       out.push(`**${t.promptMaster}**`, '', '```text', pr.image.prompt, '```', '');
@@ -839,7 +890,7 @@ export function renderHtml(doc, lang = null, production = null, castNames = null
   </section>
   <section class="blk">
     <h4>${esc(t.statesTitle)}</h4>
-    <div class="lights">${pr.states.map((st) => `<div class="light"><i>${esc(st.state)}</i><span class="mono">${esc(st.prompt)}</span><button class="copy mini" data-copy="${esc(st.prompt)}">${esc(t.copy)}</button></div>`).join('')}</div>
+    <div class="lights">${pr.states.map((st) => `<div class="light"><i>${esc(st.state)}</i><span class="mono">${esc(st.prompt)}</span><button class="copy mini" data-copy="${esc(st.prompt)}">${esc(t.copy)}</button></div>${st.sheetImage ? `<figure class="plate"><button class="zoom" data-src="${esc(st.sheetImage)}" aria-label="${esc(t.zoomImage)}"><img src="${esc(st.sheetImage)}" alt="${esc(pr.name)} ${esc(st.state)}" loading="lazy"></button><figcaption>${esc(st.state)}</figcaption></figure>` : ''}`).join('')}</div>
   </section>
   <div class="pgroup">
     ${promptRow(t.promptMaster, pr.image.prompt)}
@@ -1170,6 +1221,9 @@ document.querySelector('.expo').addEventListener('click', (e) => {
 /** 产物路径与 render 找图的路径必须是同一个函数算出来的，不许两边各写一遍。 */
 export const sheetFile = (name) => `images/${slug(name)}-sheet.png`;
 export const cutoutFile = (name) => `images/${slug(name)}-sheet-cutout.png`;
+/** 道具状态变体：states[n]（n ≥ 1）落到序号 n+1，任务 ID 为 `<道具 ID>.s<序号>`。 */
+export const stateSheetFile = (stem, n) => `images/${stem}-state${n}-sheet.png`;
+export const stateJobKey = (id, n) => `${id}.s${n}`;
 export function assetImageStem(item, doc) {
   if (item.imageStem) return item.imageStem;
   const stem=slug(item.name), items=[...(doc.scenes ?? []),...(doc.props ?? [])];
@@ -1218,7 +1272,26 @@ export function imageJobsFrom(doc, production = null) {
   }
   for (const pr of props.filter(p=>p?.designStatus==='ready')) {
     const job = take(pr, 'prop');
-    if (job) jobs.push({ ...job, cutoutFile: cutoutFile(assetImageStem(pr,doc)) });
+    if (!job) continue;
+    jobs.push({ ...job, cutoutFile: cutoutFile(assetImageStem(pr,doc)) });
+    // states[0] 是基准设定图画的状态；之后每个状态是一张以基准图为参考的变体
+    (Array.isArray(pr.states) ? pr.states : []).slice(1).forEach((st, i) => {
+      const n = i + 2;
+      if (!thText(st?.prompt)) {
+        problems.push(`${pr.id}「${pr.name ?? ''}」的状态「${st?.state ?? n}」prompt 是空的——变体提示词是模型的活，先填上再出图`);
+        return;
+      }
+      jobs.push({
+        key: stateJobKey(pr.id, n),
+        kind: 'prop-state',
+        name: `${pr.name} · ${st.state}`,
+        file: stateSheetFile(assetImageStem(pr, doc), n),
+        inputDigest: digest({asset:pr,state:n,identityInputDigest:identityDigest(doc,pr)}),
+        prompt: String(st.prompt),
+        negativePrompt: String(pr?.image?.negativePrompt ?? ''),
+        refFrom: pr.id,
+      });
+    });
   }
 
   // 重名会让两张图抢同一个文件名，后出的把先出的盖掉，而且 render 只看得见一张
@@ -1462,6 +1535,14 @@ async function main(argv) {
     for (const item of [...doc.scenes, ...(doc.props ?? [])]) {
       const rel = item.sheetImage ?? sheetFile(assetImageStem(item,doc));
       if (existsSync(resolve(outDir, rel))) item.sheetImage = rel;
+    }
+    // 道具状态变体与出图计划同一个算法找图；只挂在展示副本上，导出 JSON 仍是原输入
+    for (const pr of doc.props ?? []) {
+      (Array.isArray(pr?.states) ? pr.states : []).forEach((st, i) => {
+        if (i === 0 || !st || typeof st !== 'object') return;
+        const rel = stateSheetFile(assetImageStem(pr, doc), i + 1);
+        if (existsSync(resolve(outDir, rel))) st.sheetImage = rel;
+      });
     }
     process.stdout.write((rest.includes('--html') ? renderHtml(doc, lang, prod.doc, names, originalInput) : renderMarkdown(doc, lang, prod.doc, names)) + '\n');
     return;

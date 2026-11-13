@@ -33,6 +33,7 @@ const designs={
     ]
   }
 };
+const PURITY="Remove all noise, graininess, film grain and digital noise; shadows and dark areas smooth and clean, color transitions natural, gradients fine and smooth. Surfaces of skin, fabric, wood grain, stone, water and leaves clean and clear, edges crisp but not over-sharpened, with no dirt specks, hazy blur, smearing or artifacts. Keep the original details, do not reduce any characters or scene elements, do not change the characters' faces. High definition, clean low-ISO image quality, commercial-grade finished look.";
 export function sourceText(story){return `《${story.title}》原创测试文本\n${story.premise}\n`+story.people.map(([name,role,arc])=>`${name}：${role}。${arc}。`).join('\n')+'\n'+story.episodes.flatMap(e=>[e.opening,...e.actions,e.ending.event]).join('\n');}
 export function fillAssets(cast,art,story,style){
   const design=designs[story.key];cast.summary=story.throughline;
@@ -40,16 +41,16 @@ export function fillAssets(cast,art,story,style){
     const person=design.people[i],[name,role,arc]=story.people[i];
     c.oneLiner=`${role}，${arc}。`;
     c.persona={gender:person.gender,ageRange:person.age,identity:role,appearance:person.look+'（原创造型设定）',personality:['认真面对当下处境','随证据或关系调整行动'],temperament:person.pace,motivation:arc,arc,relationships:[],evidence:[`${name}：${role}。${arc}。`]};
-    c.image={style:style.label.zh,prompt:`${style.character.render}. ${person.image} ${style.character.surface}. ${style.character.lighting}.`,promptLocal:person.look+'（原创造型设定）',negativePrompt:style.character.negative,tags:['documentary'],sheet:`16:9 character reference sheet, left portrait and right full-body front side back views. ${style.character.render}. ${person.image} ${style.character.surface}. ${style.character.lighting}.`};
+    c.image={style:style.label.zh,prompt:`${style.character.render}. ${person.image} ${style.character.surface}. ${style.character.lighting}.`,promptLocal:person.look+'（原创造型设定）',negativePrompt:style.character.negative,tags:['documentary'],sheet:`One 16:9 landscape sheet on a plain white background; left part a strictly frontal close-up of the face, facial midline vertical and centered, both eyes level, looking straight into the camera; right part three full-body views of the same person from the neck down to the feet, front, side and back from left to right, same scale, standing on one shared ground line, separated by clear white gaps. ${person.image} Soft even frontal studio lighting. Overall style: ${style.character.render}.\n\n${PURITY}`};
     c.voice={timbre:person.timbre,pitch:i===0?'中音区':'较低音区',pace:person.pace,accent:'普通话',emotion:'遵循人物当下处境，不预演未发生的结果',referenceHint:'原创声音设计，不模仿真实演员',prompt:person.voice};
   }
   const scene=art.scenes[0],prop=art.props[0];
   scene.summary=story.sceneDescription;
   scene.anchors=design.sceneAnchors.map(([name,desc])=>({name,desc}));
-  scene.lighting=[{state:'日常工作照明',prompt:'Soft practical lamps with readable surfaces and stable exposure.'}];
-  scene.image={prompt:`${style.scene.render}. ${design.scene} ${style.scene.surface}.`,negativePrompt:`${style.scene.negative}, people, human figures`,sheet:`16:9 empty environment reference sheet, broad overview with three detail insets. ${style.scene.render}. ${design.scene} ${style.scene.surface}.`,tags:['documentary','empty-room']};
+  scene.lighting=[{state:'日常工作照明',prompt:'Light comes mainly from the ceiling panel lamps above the work counter, soft 4000K neutral white light, evenly lighting the counter and records with readable surfaces and stable exposure.'}];
+  scene.image={prompt:`${style.scene.render}. ${design.scene} ${style.scene.surface}.`,negativePrompt:`${style.scene.negative}, people, human figures`,sheet:`One 16:9 landscape sheet on a plain white background; left part a two-by-two grid of four wide eye-level views taken from the center of the same empty room, looking forward (top left), backward (top right), left (bottom left) and right (bottom right), same moment and same lighting in all four, separated by white gaps; right part an orthographic top-down floor plan of the same room seen straight from above, clean unlabeled plan. ${design.scene} Light comes mainly from the ceiling panel lamps, soft 4000K neutral white. Overall style: ${style.scene.render}.\n\n${PURITY}`,tags:['documentary','empty-room']};
   prop.scale='桌面级';prop.anchors=design.propAnchors.map(([name,desc])=>({name,desc}));
   prop.states=[{state:'可阅读状态',prompt:design.prop}];prop.relatedScenes=['S01'];prop.carriedBy=[];
-  prop.image={prompt:`${style.scene.render}. ${design.prop} tabletop scale, isolated on white background.`,negativePrompt:'people, hands, fingers, cartoon',sheet:`16:9 prop reference sheet, pure white background, tabletop scale. ${style.scene.render}. ${design.prop}`,tags:['documentary','prop']};
+  prop.image={prompt:`${style.scene.render}. ${design.prop} tabletop scale, isolated on white background.`,negativePrompt:'watermark, logo, brand name, signature, cartoon',sheet:`One 16:9 landscape sheet, three equal panels side by side on a pure white background with clear white gaps: left panel the front of the object, centered and complete; middle panel the side view of the same object showing its thickness; right panel an ordinary person in plain clothes holding it with both hands, framed from the chest down; the hand or person is an anonymous generic bystander used only as a size reference, with true-to-scale proportions, actual size about 36 x 28 x 4 cm. ${design.prop} Soft even frontal studio lighting. Overall style: ${style.scene.render}.\n\n${PURITY}`,tags:['documentary','prop']};
   return {cast,art};
 }

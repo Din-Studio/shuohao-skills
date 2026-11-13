@@ -29,7 +29,7 @@ Stable S/P IDs and permanent keys live in the art registry. Incremental processi
 
 All CLI validation, rendering and image-plan paths verify actual originals, SHA256, line counts, coverage and nested references. Missing optional upstreams are skipped. Supplied broken, incompatible or mismatched inputs fail. In-memory APIs only check structure unless `verifySources` is called explicitly.
 
-`designStatus: none` requires no visual fields or production file. Planned/ready designs retain existing visual checks (anchors, English, lighting/states, empty scenes, scale, no hands, white backgrounds). Only ready assets enter offline image plans. Plans do not generate or submit anything; per-job input digests cover the actual asset evidence and references.
+`designStatus: none` requires no visual fields or production file. Planned/ready designs run the visual checks (anchors, English, empty scenes, lighting states with colour temperature, prop states, size reference, white backgrounds, sheet layout and the clean-image-quality paragraph). Scene sheets are a front/back/left/right two-by-two grid plus an orthographic plan; prop sheets are three panels: front, the most-misread view, and an anonymous hand or person as a size reference. Every prop state after the first becomes its own image job referencing the base sheet. Only ready assets enter offline image plans. Plans do not generate or submit anything; per-job input digests cover the actual asset evidence and references.
 
 ```bash
 node scripts/run-selftests.mjs
@@ -41,4 +41,4 @@ Examples belong to this skill. Read the Rain Canopy Messages story proposal befo
 
 Reports support Chinese/English UI and preserve original JSON exports. HTML reports are generated, not version-controlled. Structural/source checks are not semantic fidelity, image approval or finished-film approval.
 
-See [schema](references/schema.md), [interfaces and lifecycle](references/lifecycle.md), [sources](references/source-facts.md), and [SKILL.md](SKILL.md). Node 18+, standard library only; no sibling skill or external generation skill is required.
+Before designing, read [principles](references/principles.md), [glossary](references/glossary.md), [sheet prompts](references/sheet-prompt.md) and [sheets](references/sheet.md); genre references live in `references/genres/`. See [schema](references/schema.md), [interfaces and lifecycle](references/lifecycle.md), [sources](references/source-facts.md), and [SKILL.md](SKILL.md). Node 18+, standard library only; no sibling skill or external generation skill is required.

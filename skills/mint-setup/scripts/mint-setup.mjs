@@ -430,7 +430,7 @@ export function gateReport(doc) {
       'asset-landscape',
       '资产图是横构图或方形',
       ok,
-      ok ? '' : `资产图 ${asset.aspectRatio} 是竖构图——角色设定图的三区版面、场景与道具设定图的 L 形版面都靠横向铺开，竖过来三视图会被压扁。成片竖屏不影响设定图横构图，这两件事不是一回事`,
+      ok ? '' : `资产图 ${asset.aspectRatio} 是竖构图——角色设定图的「左脸右身」版面、场景设定图的四宫格加平面图、道具设定图的三格版面都靠横向铺开，竖过来会被压扁。成片竖屏不影响设定图横构图，这两件事不是一回事`,
     );
   }
 
@@ -823,7 +823,7 @@ function main(argv) {
             phrase: '英文画风短语，如 cinematic film still；视频提示词按模型指南使用，Seedance 收尾段据此描述风格',
             'character.render': '角色设定图的渲染方式那句，英文',
             'character.surface': '皮肤、眼睛、头发、布料怎么处理，英文',
-            'character.lighting': '设定图的光照，英文。设定表要能抠图、要能量比例，这一句得把左右分区交代清楚',
+            'character.lighting': '单张角色插画（cast 的 image.prompt）的光照，英文。角色设定图（image.sheet）的光由版式固定为柔和均匀的正面光，不写在这里',
             'character.negative': '角色设定图的反向提示词，英文逗号分隔',
             'character.tags': '风格标签数组，英文',
             'scene.render': '场景与道具设定图的渲染方式那句，英文',
