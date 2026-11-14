@@ -325,7 +325,7 @@ export function initProduction({
   creativeBrief = undefined,
   selection = undefined,
   lang = 'zh',
-  promptLang = 'en',
+  promptLang = 'zh',
 } = {}) {
   const a = parseAspect(aspect);
   if (!a) {
@@ -736,7 +736,7 @@ const USAGE = `mint-setup.mjs — mint-setup skill 的确定性工具（生产�
        [--creative-brief <正文>]          可选自然语言创作要求，不推导规则
        [--style <style.json>]            画风正文；不给就留一份空骨架待填
        [--lang zh|en]                    报告界面语言，默认 zh
-       [--prompt-lang zh|en]             H3 提示词语言，默认 en
+       [--prompt-lang zh|en]             提示词语言，默认 zh
   style-template                         打印画风骨架与逐字段说明（填好放进顶层 style）
   style <production.json>                打印这部剧的画风
         [--for character|scene]          只打印某一块（下游 skill 抄的就是它）
@@ -802,7 +802,7 @@ function main(argv) {
       creativeBrief: flag(rest, '--creative-brief', undefined),
       style: flag(rest, '--style') ? readJson(flag(rest, '--style')) : null,
       lang: flag(rest, '--lang', 'zh'),
-      promptLang: flag(rest, '--prompt-lang', 'en'),
+      promptLang: flag(rest, '--prompt-lang', 'zh'),
     });
     console.log(JSON.stringify(doc, null, 2));
     // Omitted creativeBrief is valid; do not invent creative requirements.

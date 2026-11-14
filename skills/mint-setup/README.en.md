@@ -30,7 +30,7 @@ node scripts/mint-setup.mjs show <work-dir>/production.json
 - Script asset defaults: `nanobanana2`, `2K`, `16:9`. Confirm the image model interactively and set `--image-model`, `--asset-resolution` and `--asset-aspect` as needed.
 - Art style has no default or built-in types. Fill the empty skeleton or load `--style <style.json>`.
 - Keep `style.phrase` as the English style summary used by the Seedance prompt guide. Write separate `style.character` and `style.scene` blocks. Replace the whole style together; positive and negative requirements must not contradict each other.
-- Set report language with `--lang`, prompt language with `--prompt-lang`. Video creation applies its model-specific prompt rules.
+- Report and prompt languages default to Chinese. Set report language with `--lang`; use `--prompt-lang en` for English prompts. Video creation applies its model-specific prompt rules.
 - Node 18+, standard library only. This skill makes no model calls and produces no HTML report.
 
 ## Nine checks, including the v3 document contract

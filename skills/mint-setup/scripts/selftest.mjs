@@ -156,7 +156,8 @@ eq(clampDuration('大概十秒', 'MiniMax H3').duration, null, '不是数字也�
   eq(typeof d.style.character, 'object', '骨架里角色那一块已经占好位');
   eq(typeof d.style.scene, 'object', '骨架里场景那一块也占好位');
   eq(d.lang, 'zh', '报告界面语言默认中文');
-  eq(d.promptLang, 'en', '提示词语言默认英文——H3 官方口径');
+  eq(d.promptLang, 'zh', '提示词语言默认中文');
+  eq(resolveStage(d, 'video').promptLang, 'zh', '视频阶段继承默认中文提示词语言');
   eq(d.autopilot, false, '自动驾驶默认关——不打断是用户要主动开的口径');
   eq(Object.keys(d.image.asset).join(','), 'resolution,aspectRatio', '资产图只有档位与比例两个字段，没有像素');
   eq(Object.keys(d.video).join(','), 'model,aspectRatio,resolution', '视频三个字段——模型自己特有的配置参数不进这里');
@@ -192,6 +193,19 @@ eq(clampDuration('大概十秒', 'MiniMax H3').duration, null, '不是数字也�
   eq(d.image.asset.resolution, '8K', '未知模型与未知档位都原样落盘——表里没有的不是错误');
   eq(gate(d, 'model-caps').status, 'skipped', '未知模型的档位比例都跳过检查');
   ok(/不在能力表里/.test(gate(d, 'model-caps').detail), '跳过了要明说，不装查过');
+}
+
+{
+  const d = initProduction({ aspect: '9:16', promptLang: 'en' });
+  eq(d.promptLang, 'en', '显式指定英文提示词语言仍然有效');
+  eq(resolveStage(d, 'video').promptLang, 'en', '视频阶段保留显式指定的英文');
+}
+{
+  for (const [args, expected] of [[[], 'zh'], [['--prompt-lang', 'en'], 'en']]) {
+    const result = spawnSync(process.execPath, [join(here, 'mint-setup.mjs'), 'init', '--aspect', '9:16', ...args], { encoding: 'utf8' });
+    eq(result.status, 0, 'CLI 初始化成功');
+    eq(JSON.parse(result.stdout).promptLang, expected, 'CLI 默认中文，显式英文可以覆盖');
+  }
 }
 
 /* ---------------- 自动驾驶 ---------------- */

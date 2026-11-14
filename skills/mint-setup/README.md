@@ -30,7 +30,7 @@ node scripts/mint-setup.mjs show <工作目录>/production.json
 - 脚本的资产图默认值为 `nanobanana2`、`2K`、`16:9`。交互时先确认生图模型，再通过 `--image-model`、`--asset-resolution`、`--asset-aspect` 设置。
 - **画风没有默认值或预设类型**。`init` 留下空骨架；使用 `--style <style.json>` 可以载入已写好的画风。
 - 画风短语 `style.phrase` 供 Seedance 等模型指南使用。角色与环境画风分别存入 `style.character` 和 `style.scene`。更换画风时整套更换，正向要求不能同时写进反向词。
-- 报告语言默认中文，`--lang en` 可设为英文。提示词语言通过 `--prompt-lang` 设置，视频阶段按模型规则处理。
+- 报告语言默认中文，`--lang en` 可设为英文。提示词语言默认中文，`--prompt-lang en` 可设为英文；视频阶段按模型规则处理。
 - 本 skill 不生成 HTML 报告，不调用模型。Node 18+，无 npm 依赖。
 
 ## 参数与质量门

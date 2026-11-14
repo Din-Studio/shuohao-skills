@@ -84,6 +84,8 @@ node {baseDir}/scripts/mint-setup.mjs init --aspect 9:16 \
 
 可选参数：`--creative-brief "正文"`、`--autopilot`、`--asset-resolution`、`--asset-aspect`、`--image-model`、`--lang`、`--prompt-lang`、`--style <style.json>`。
 
+提示词语言默认中文（`promptLang: "zh"`），需要英文时显式传入 `--prompt-lang en`。
+
 `--aspect` 只设置视频画幅。文件必须位于工作目录根，下游从自己的产物目录向上最多 5 层查找。
 
 ### Step 3 — 填写画风

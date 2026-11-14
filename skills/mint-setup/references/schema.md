@@ -21,7 +21,7 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
     "scene": { "render": "…", "surface": "…", "negative": "…", "tags": ["…"] }
   },
   "lang": "zh",
-  "promptLang": "en",
+  "promptLang": "zh",
   "image": {
     "model": "nanobanana2",
     "asset": { "resolution": "2K", "aspectRatio": "16:9" }
@@ -46,7 +46,7 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
 | `autopilot` | bool | **自动驾驶**，默认 `false`。为 `true` 时下游五个 skill 各自把自己那一段一口气跑完：不提问、不等拍板、该做的决定自己做。详见下面一节 |
 | `style` | object | **画风本身**，由用户在这一段填。没有内置类型，没有默认值。下面单开一节 |
 | `lang` | enum | 报告界面语言 `zh` / `en`。五个 skill 的 `render --lang` 缺省时跟它 |
-| `promptLang` | enum | 视频提示词语言 `zh` / `en`。默认 `en`——官方规范口径 |
+| `promptLang` | enum | 视频提示词语言 `zh` / `en`。默认 `zh`（中文）；可通过 `--prompt-lang en` 显式指定英文 |
 | `image.model` | string | 生图模型，取 ly-image 的 `models` 返回的 id。内置能力表里有的查枚举，没有的明说跳过 |
 | `image.asset.resolution` | string | **资产图分辨率档位**：`1K` / `2K` / `4K`。角色设定图、场景设定图、道具设定图共用 |
 | `image.asset.aspectRatio` | string | **资产图比例**：`W:H`。**必须是横构图或方形** |

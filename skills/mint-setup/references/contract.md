@@ -78,7 +78,7 @@
 
 报告语言优先级：`--lang` > 产物 JSON 的 `lang` > `production.json` 的 `lang` > `zh`。
 
-`promptLang` 是提示词语言配置，视频创作阶段按模型规则继承与解析，不等同于报告语言。
+`promptLang` 是提示词语言配置，初始化默认 `zh`（中文），可通过 `--prompt-lang en` 显式指定英文。视频创作阶段按模型规则继承与解析，不等同于报告语言。
 
 ## resolve 参数输出
 
