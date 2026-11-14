@@ -1,5 +1,16 @@
 # Changelog
 
+## outline 分集并行解析 — 2026-11-14
+
+**mint-outline 5.1.0（outline schemaVersion 5 不变）**
+
+- 新增 `source-folder`：登记每集一份 Markdown 的剧本文件夹，集号只从文件名解析（`第N集`、`EP N`、开头数字，支持中文数字），文件名重复、解析不出或与正文集标题不一致时报错，缺集写进 `missingEpisodes`。
+- 新增 `merge`：把各批读取者写的 v5 partial fragment 确定性合并成 `.work/draft.json`。检查每份文档恰好由一批整集负责、批次是连续集号区间、引用不越出本集，全局重新编号 B/Q 并打印对照表。
+- 新增 `publish`：草稿原样独占写到正式位置。`merge --publish-to` 与 `publish` 遇到已有正式文件都报错，并行流程只用于首次生成。
+- `validate`/`checkup` 增加 `--source-base`，草稿可以按正式目录核验来源。
+- **命令语义变更**：`chunk` 增加 `--id`，输出改为 `source-chunks-<文档ID>.json`；分界识别允许 Markdown 标题前缀。
+- 新增 `references/dispatch.md`（读取者、串联者、核验者的派发规则）、分集样例 `examples/旧站时刻-分集/`、并行夹具与 `parallel-selftest.mjs`。
+
 ## 分镜融合进 mint-script 与 mint-creation — 2026-11-14
 
 **mint-script 4.0.0 · mint-creation 3.2.0 · mint-video-prompt 1.1.0 · mint-video-prompt-review 1.1.0（JSON 契约不变）**

@@ -3,8 +3,10 @@
 import {mkdirSync,readFileSync,realpathSync,writeFileSync,lstatSync} from 'node:fs';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {chunkScript,sourceDocument,verifySources} from './lib/source.mjs';
+import {chunkScript,sourceDocument,sourceFolder,verifySources} from './lib/source.mjs';
+import {mergeFragments,publishDraft} from './lib/merge.mjs';
 export * from './lib/source.mjs';
+export {mergeFragments,publishDraft,readSources} from './lib/merge.mjs';
 import {checkup,validateOutline,STAGES,SKILL_ROOT} from './lib/outline-core.mjs';
 import {renderHtml,renderMarkdown} from './lib/outline-report.mjs';
 import {checkKnownDownstream} from './lib/outline-downstream.mjs';
@@ -107,11 +109,14 @@ export function loadProduction(docPath,explicit) {
  catch(error){return {productionError:path+': '+error.message,productionPath:path};}
 }
 const USAGE=`mint-outline v5 (existing scripts only)
-  chunk SCRIPT WORKDIR --kind script [--max-lines N] [--context-lines N]
+  chunk SCRIPT WORKDIR --kind script [--id ID] [--max-lines N] [--context-lines N]
   source-document SCRIPT --artifact DOC [--id ID]
+  source-folder DIR --out SOURCES_JSON
+  merge FRAGMENT... --sources SOURCES_JSON --out DRAFT --publish-to OUTLINE --source TITLE --scope partial|complete [--total-episodes N]
+  publish DRAFT --to OUTLINE
   verify-sources DOC
-  validate DOC [--stage skeleton|beats|full] [--production FILE]
-  checkup DOC [--stage skeleton|beats|full] [--production FILE] [--json] [--downstream]
+  validate DOC [--stage skeleton|beats|full] [--production FILE] [--verify-sources [--source-base DIR]]
+  checkup DOC [--stage skeleton|beats|full] [--production FILE] [--json] [--downstream] [--verify-sources [--source-base DIR]]
   render DOC [--html|--md] [--lang zh|en] [--stage STAGE] [--production FILE]
   slug NAME
 Read references/创作指南.md. Structural validation is not content review.`;
@@ -121,10 +126,11 @@ async function main(argv) {
  if(cmd==='slug'){console.log(slug(args[0]??''));return;}
  if(cmd==='chunk'){
   const [file,workdir]=args;if(!file||!workdir)throw Error('chunk SCRIPT WORKDIR --kind script');
-  validateOptions(args,2,['--kind','--max-lines','--context-lines']);
-  const result=chunkScript(readFileSync(resolve(file)),{kind:flag(args,'--kind'),maxLines:Number(flag(args,'--max-lines',200)),contextLines:Number(flag(args,'--context-lines',2))});
+  validateOptions(args,2,['--kind','--id','--max-lines','--context-lines']);
+  const documentId=flag(args,'--id','D01');if(!/^[A-Za-z0-9_-]+$/.test(documentId))throw Error('--id must be a plain document ID');
+  const result=chunkScript(readFileSync(resolve(file)),{kind:flag(args,'--kind'),documentId,maxLines:Number(flag(args,'--max-lines',200)),contextLines:Number(flag(args,'--context-lines',2))});
   mkdirSync(resolve(workdir),{recursive:true});
-  writeFileSync(join(resolve(workdir),'source-chunks.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx'});
+  writeFileSync(join(resolve(workdir),`source-chunks-${documentId}.json`),JSON.stringify(result,null,2)+'\n',{flag:'wx'});
   console.log(JSON.stringify({...result,chunks:result.chunks.length,workdir:resolve(workdir)},null,2));return;
  }
  if(cmd==='source-document'){
@@ -132,17 +138,40 @@ async function main(argv) {
   validateOptions(args,1,['--artifact','--id']);
   console.log(JSON.stringify(sourceDocument(args[0],{artifactPath:flag(args,'--artifact'),id:flag(args,'--id','D01')}),null,2));return;
  }
+ if(cmd==='source-folder'){
+  if(!args[0]||args[0].startsWith('--'))throw Error('source-folder requires DIR');
+  validateOptions(args,1,['--out']);const out=flag(args,'--out');if(!out)throw Error('source-folder requires --out');
+  const result=sourceFolder(args[0],{out});
+  mkdirSync(dirname(resolve(out)),{recursive:true});
+  writeFileSync(resolve(out),JSON.stringify(result,null,2)+'\n',{flag:'wx'});
+  console.log(JSON.stringify(result,null,2));return;
+ }
+ if(cmd==='merge'){
+  const first=args.findIndex(a=>a.startsWith('--')),files=first<0?args:args.slice(0,first);
+  if(!files.length)throw Error('merge requires FRAGMENT files');
+  validateOptions(args,files.length,['--sources','--out','--publish-to','--source','--scope','--total-episodes']);
+  const total=flag(args,'--total-episodes');if(total!==null&&!/^\d+$/.test(total))throw Error('--total-episodes must be a positive integer');
+  const {summary}=mergeFragments(files,{sources:flag(args,'--sources'),out:flag(args,'--out'),publishTo:flag(args,'--publish-to'),source:flag(args,'--source'),scope:flag(args,'--scope'),totalEpisodes:total===null?undefined:Number(total)});
+  console.log(JSON.stringify(summary,null,2));return;
+ }
+ if(cmd==='publish'){
+  if(!args[0]||args[0].startsWith('--'))throw Error('publish requires DRAFT');
+  validateOptions(args,1,['--to']);
+  console.log(JSON.stringify(publishDraft(args[0],{to:flag(args,'--to')}),null,2));return;
+ }
  if(cmd==='verify-sources'){
   if(!args[0])throw Error('verify-sources requires DOC');validateOptions(args,1);
   const report=checkup(readJson(args[0]),{verifySources:true,artifactPath:args[0]});console.log(JSON.stringify(report,null,2));if(report.stats.fail)process.exitCode=1;return;
  }
  if(!['validate','checkup','render'].includes(cmd))throw Error('Unknown command '+cmd+'\n'+USAGE);
  if(!args[0]||args[0].startsWith('--'))throw Error(cmd+' requires DOC');
- validateOptions(args,1,['--stage','--production',...(cmd==='render'?['--lang']:[])],cmd==='render'?['--html','--md','--verify-sources']:cmd==='checkup'?['--json','--downstream','--verify-sources']:['--verify-sources']);
+ validateOptions(args,1,['--stage','--production',...(cmd==='render'?['--lang']:['--source-base'])],cmd==='render'?['--html','--md','--verify-sources']:cmd==='checkup'?['--json','--downstream','--verify-sources']:['--verify-sources']);
  if(args.includes('--html')&&args.includes('--md'))throw Error('Choose --html or --md, not both');
  const file=args[0],doc=readJson(file),stage=flag(args,'--stage','full');
  if(!STAGES.includes(stage))throw Error('Unknown stage '+stage);
- const context={...loadProduction(file,flag(args,'--production')),stage,artifactPath:resolve(file),verifySources:args.includes('--verify-sources')};
+ const sourceBase=flag(args,'--source-base');
+ if(sourceBase!==null&&!args.includes('--verify-sources'))throw Error('--source-base only applies with --verify-sources');
+ const context={...loadProduction(file,flag(args,'--production')),stage,artifactPath:resolve(file),...(sourceBase===null?{}:{baseDir:resolve(sourceBase)}),verifySources:args.includes('--verify-sources')};
  if(cmd==='render'){
   const lang=flag(args,'--lang',doc?.lang??context.production?.lang??'zh');
   process.stdout.write((args.includes('--html')?renderHtml(doc,lang,context):renderMarkdown(doc,lang,context))+'\n');

@@ -1,0 +1,227 @@
+{
+  "schemaVersion": 5,
+  "source": "旧站时刻",
+  "story": {
+    "summary": "许钟交出自己签名的旧归责页，承认当年没有核对就把漏报归给程安。程安的旧回执与原始签名互证，旧归责不成立；许钟要求把自己的旧错写入同一份更正说明。原簿与更正说明一并交存，程安确认收到更正副本后独自离开，是否恢复来往仍未知。",
+    "sourceRefs": [
+      {
+        "documentId": "D04",
+        "startLine": 1,
+        "endLine": 7
+      },
+      {
+        "documentId": "D05",
+        "startLine": 1,
+        "endLine": 7
+      },
+      {
+        "documentId": "D06",
+        "startLine": 1,
+        "endLine": 7
+      }
+    ]
+  },
+  "beats": [
+    {
+      "id": "B01",
+      "episode": 4,
+      "setup": "许钟试图只更正当下漏报",
+      "outcome": "他找出自己签名的旧归责页，承认曾把同类漏报归给程安",
+      "sourceRefs": [
+        {
+          "documentId": "D04",
+          "startLine": 2,
+          "endLine": 7
+        }
+      ]
+    },
+    {
+      "id": "B02",
+      "episode": 5,
+      "setup": "只有许钟自述不足以改档",
+      "outcome": "程安旧回执与原始签名互证，旧归责所据的迟报时间被推翻，林蔚将核验结论写入更正说明",
+      "sourceRefs": [
+        {
+          "documentId": "D05",
+          "startLine": 2,
+          "endLine": 3
+        }
+      ]
+    },
+    {
+      "id": "B03",
+      "episode": 5,
+      "setup": "新漏报可按系统故障单独结案",
+      "outcome": "许钟要求把自己的旧错写入同一份更正说明，林蔚核对后共同签署",
+      "sourceRefs": [
+        {
+          "documentId": "D05",
+          "startLine": 4,
+          "endLine": 7
+        }
+      ]
+    },
+    {
+      "id": "B04",
+      "episode": 6,
+      "setup": "更正说明不能替代原始记录",
+      "outcome": "两人将原簿与更正说明一并交存，程安确认收件后独自离开",
+      "sourceRefs": [
+        {
+          "documentId": "D06",
+          "startLine": 2,
+          "endLine": 7
+        }
+      ]
+    }
+  ],
+  "episodes": [
+    {
+      "ep": 4,
+      "opening": "许钟带来由自己签名的旧归责页。",
+      "synopsis": "许钟解释当年为了按时结案，把未核对的漏报写成司机责任。他愿意承认，却希望不再通知程安。林蔚说明自述只能作为线索，必须让受影响的人提交留底。许钟同意联系程安。",
+      "ending": {
+        "mode": "open",
+        "event": "许钟留下原页，不再要求林蔚只处理新系统。"
+      },
+      "warnings": [],
+      "sourceRefs": [
+        {
+          "documentId": "D04",
+          "startLine": 1,
+          "endLine": 7
+        }
+      ],
+      "notes": [
+        {
+          "kind": "performance",
+          "text": "许钟担心退休荣誉受损，仅供表演，不增加内心独白；林蔚尚不知情。",
+          "sourceRefs": [
+            {
+              "documentId": "D04",
+              "startLine": 4,
+              "endLine": 4
+            }
+          ],
+          "epistemic": "fact"
+        },
+        {
+          "kind": "continuity",
+          "text": "归责页回到同一本交接簿，许钟随后将原页交给林蔚，原文没有另一本簿。",
+          "sourceRefs": [
+            {
+              "documentId": "D04",
+              "startLine": 2,
+              "endLine": 2
+            },
+            {
+              "documentId": "D04",
+              "startLine": 7,
+              "endLine": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "ep": 5,
+      "opening": "程安带来旧回执，要求与原页当面核对。",
+      "synopsis": "旧回执与原始签名互证，司机归责并无事实支持。林蔚写出更正，许钟要求把自己未经核对便签字的责任一并记明。程安确认事实，不接受以道歉代替正式更正。两人将说明共同签署。",
+      "ending": {
+        "mode": "closure",
+        "event": "更正说明签署完成，原件与说明分别编号待交。"
+      },
+      "warnings": [],
+      "sourceRefs": [
+        {
+          "documentId": "D05",
+          "startLine": 1,
+          "endLine": 7
+        }
+      ]
+    },
+    {
+      "ep": 6,
+      "opening": "无台词的档案接收员指明原件编号，将原件与更正说明并排放好。",
+      "synopsis": "许钟与林蔚把原簿、更正说明和核验材料同时交存。程安确认自己收到更正副本，不答应恢复旧交情。林蔚在交接清单上注明两份材料的关系，许钟接受旧错误不能从档案中抹去。",
+      "ending": {
+        "mode": "open",
+        "event": "程安独自离开，许钟与林蔚完成撤站资料移交。",
+        "question": {
+          "id": "Q01",
+          "text": "程安以后是否愿意恢复与许钟的来往？",
+          "reason": "本故事交付事实更正，不替受影响者承诺原谅。",
+          "sourceRefs": [
+            {
+              "documentId": "D06",
+              "startLine": 7,
+              "endLine": 7
+            }
+          ]
+        }
+      },
+      "warnings": [],
+      "sourceRefs": [
+        {
+          "documentId": "D06",
+          "startLine": 1,
+          "endLine": 7
+        }
+      ],
+      "notes": [
+        {
+          "kind": "restriction",
+          "text": "程安只确认更正，不承诺恢复来往；不可补成和解。",
+          "sourceRefs": [
+            {
+              "documentId": "D06",
+              "startLine": 5,
+              "endLine": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "kind": "script",
+    "scope": "partial",
+    "documents": [
+      {
+        "id": "D04",
+        "path": "../../../examples/旧站时刻-分集/第四集.md",
+        "sha256": "f972d5c8e49a4a6d92eb22e27db406be05bde5a2ca59e9bd6920f5ca6b6e4599",
+        "lineCount": 7
+      },
+      {
+        "id": "D05",
+        "path": "../../../examples/旧站时刻-分集/第05集.md",
+        "sha256": "53ff5a4f511284e565519e1f65d7036a3032c01abff4731e9d0b4a705a1e6325",
+        "lineCount": 7
+      },
+      {
+        "id": "D06",
+        "path": "../../../examples/旧站时刻-分集/第六集.md",
+        "sha256": "2a7e9990d2ded373e01fa26bcbd1876d3592d9498e0e365d441c367bb7cd1b28",
+        "lineCount": 7
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D04",
+        "startLine": 1,
+        "endLine": 7
+      },
+      {
+        "documentId": "D05",
+        "startLine": 1,
+        "endLine": 7
+      },
+      {
+        "documentId": "D06",
+        "startLine": 1,
+        "endLine": 7
+      }
+    ]
+  }
+}

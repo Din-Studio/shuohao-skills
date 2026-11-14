@@ -1,0 +1,197 @@
+{
+  "schemaVersion": 5,
+  "source": "旧站时刻",
+  "story": {
+    "summary": "旧站撤并前，末班接驳车没有出现在电子到站表上。林蔚与许钟先查车辆，司机程安的回执留底证明车已到站，问题转为漏报；林蔚进一步发现新系统没有导入纸簿补记栏，而旧档同样的空白曾被写成司机迟报，许钟答应次日带来旧归责页。",
+    "sourceRefs": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 7
+      },
+      {
+        "documentId": "D02",
+        "startLine": 1,
+        "endLine": 7
+      },
+      {
+        "documentId": "D03",
+        "startLine": 1,
+        "endLine": 7
+      }
+    ]
+  },
+  "beats": [
+    {
+      "id": "B01",
+      "episode": 1,
+      "setup": "林蔚准备封存撤站资料",
+      "outcome": "电子到站表缺少末班接驳车，封存被暂停",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 2,
+          "endLine": 4
+        }
+      ]
+    },
+    {
+      "id": "B02",
+      "episode": 1,
+      "setup": "许钟认出纸簿上熟悉的补记标记",
+      "outcome": "他要求先查车辆而不要追查签名，林蔚保留了原页",
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 5,
+          "endLine": 7
+        }
+      ]
+    },
+    {
+      "id": "B03",
+      "episode": 2,
+      "setup": "程安不愿再作无凭据的口头证明",
+      "outcome": "他出示留底，车已到站，问题从失踪转为漏报",
+      "sourceRefs": [
+        {
+          "documentId": "D02",
+          "startLine": 2,
+          "endLine": 7
+        }
+      ],
+      "resolves": [
+        "Q01"
+      ]
+    },
+    {
+      "id": "B04",
+      "episode": 3,
+      "setup": "当前到站记录空白，林蔚对照回执、电子导入记录与交接簿",
+      "outcome": "林蔚查到临时接驳沿用纸簿补记，新系统没有导入该栏",
+      "sourceRefs": [
+        {
+          "documentId": "D03",
+          "startLine": 2,
+          "endLine": 7
+        }
+      ]
+    }
+  ],
+  "episodes": [
+    {
+      "ep": 1,
+      "opening": "林蔚在封存前发现最后一班接驳车没有到站记录。",
+      "synopsis": "撤站清点被一行空白打断。林蔚请许钟核对纸簿，他认出补记符号却避谈旧签名，建议先联系司机。林蔚保留原页，不把空白直接归为司机失联。",
+      "ending": {
+        "mode": "suspense",
+        "event": "林蔚带着空白记录去停车场核对车辆。",
+        "question": {
+          "id": "Q01",
+          "text": "末班车是否真的没有到站？",
+          "sourceRefs": [
+            {
+              "documentId": "D01",
+              "startLine": 4,
+              "endLine": 4
+            }
+          ]
+        }
+      },
+      "warnings": [],
+      "sourceRefs": [
+        {
+          "documentId": "D01",
+          "startLine": 1,
+          "endLine": 7
+        }
+      ]
+    },
+    {
+      "ep": 2,
+      "opening": "程安拒绝只凭记忆再作一遍到站说明。",
+      "synopsis": "停车场里，程安取出自己留下的回执。林蔚核对车号和时间，确认车辆已到站。许钟看到留底方式与二十年前相同，提出只修复当下系统记录。程安要求任何更正都附原始材料。",
+      "ending": {
+        "mode": "closure",
+        "event": "林蔚将车辆去向标为已确认，转查记录为何缺失。"
+      },
+      "warnings": [],
+      "sourceRefs": [
+        {
+          "documentId": "D02",
+          "startLine": 1,
+          "endLine": 7
+        }
+      ]
+    },
+    {
+      "ep": 3,
+      "opening": "林蔚将电子导入记录与纸簿补记栏逐项比较。",
+      "synopsis": "临时接驳的补记栏没有进入新系统，当前漏报因此有了可复核的解释。林蔚发现旧档里也有相同空白，却被记为司机迟报。许钟认可系统断点，不愿交出旧归责页。",
+      "ending": {
+        "mode": "suspense",
+        "event": "林蔚请求查看旧归责页原件，许钟同意次日带来。",
+        "question": {
+          "id": "Q02",
+          "text": "旧归责是否有独立证据支持？",
+          "sourceRefs": [
+            {
+              "documentId": "D03",
+              "startLine": 4,
+              "endLine": 4
+            }
+          ]
+        }
+      },
+      "warnings": [],
+      "sourceRefs": [
+        {
+          "documentId": "D03",
+          "startLine": 1,
+          "endLine": 7
+        }
+      ]
+    }
+  ],
+  "provenance": {
+    "kind": "script",
+    "scope": "partial",
+    "documents": [
+      {
+        "id": "D01",
+        "path": "../../../examples/旧站时刻-分集/第01集.md",
+        "sha256": "30a044a489ce8fdb8aba89e92c807fd927b094ce1d9c665a238ba8b50c1e3fc2",
+        "lineCount": 7
+      },
+      {
+        "id": "D02",
+        "path": "../../../examples/旧站时刻-分集/第二集.md",
+        "sha256": "a510f0258b3c8663311c29e5fd406376cc85d58ff054d5127ca542c02a23de08",
+        "lineCount": 7
+      },
+      {
+        "id": "D03",
+        "path": "../../../examples/旧站时刻-分集/第03集.md",
+        "sha256": "3353c788c6472c3e719e39b35d15bc97ad11cf57110c37f63799212740c992ab",
+        "lineCount": 7
+      }
+    ],
+    "coverage": [
+      {
+        "documentId": "D01",
+        "startLine": 1,
+        "endLine": 7
+      },
+      {
+        "documentId": "D02",
+        "startLine": 1,
+        "endLine": 7
+      },
+      {
+        "documentId": "D03",
+        "startLine": 1,
+        "endLine": 7
+      }
+    ]
+  }
+}

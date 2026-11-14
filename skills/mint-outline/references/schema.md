@@ -74,5 +74,9 @@ scripts/mint-outline.mjs 导出：
 - checkup(doc,{stage,verifySources,artifactPath,baseDir,production,productionError})；validateOutline(doc,stage,options)；gateReport(doc,options)。
 - renderHtml/renderMarkdown(doc,lang,options)：只读派生；中英界面，正文不翻译。
 - sourceDocument、sourceLines、unionRanges、coverageOf、provenanceErrors、sourceRefsErrors、verifySources、chunkScript：自包含来源工具。
+- sourceFolder(dir,{out})、episodeFromFilename、parseEpisodeNumber：登记每集一份 Markdown 的文件夹，集号只从文件名解析。
+- mergeFragments(fragments,{sources,out,publishTo,source,scope,totalEpisodes})、publishDraft(draft,{to})、readSources(path)：分集并行解析的确定性合并与发布，见[分集并行派发](dispatch.md)。
+
+fragment、sources.json 和 draft.json 都是 `.work` 中间文件，不是第二种正式格式：fragment 和 draft 本身就是合法的 v5 outline，sources.json 只供 merge 读取。
 
 本地下游接口见[交接说明](handoff.md)。本地检查不代替项目流程状态、资产映射、语义审核、工作单批准或成片审核。

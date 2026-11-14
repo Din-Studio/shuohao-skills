@@ -5,11 +5,13 @@ Each formal delivery contains three files: `xxx.json`, `xxx-report.md`, and `xxx
 Parse existing scripts into story facts only: summary, ordered beats, episodes, questions/answers, provenance and necessary continuity. No character/location/prop identities, asset budgets or dispatch. Never invent missing endings.
 
 - [Workflow and commands](SKILL.md) · [Contract](references/schema.md)
-- [Parsing guide](references/创作指南.md) · [Chunked reading](references/volume-pass.md)
+- [Parsing guide](references/创作指南.md) · [Chunked reading](references/volume-pass.md) · [Parallel episode dispatch](references/dispatch.md)
 - [Consumer/handoff matrix](references/handoff.md)
 - Own [script](examples/旧站时刻-script.txt) and [v5 example](examples/旧站时刻-outline.json)
 
 Node 18+, standard library only, independently portable. All commands accept schemaVersion 5 only; any other version fails. There is no migration or dual reading.
+
+For a folder with one Markdown script per episode, run source-folder → parallel readers → merge → stitching → review → publish. This route is for first-time generation only; the formal delivery is still one outline.
 
 --verify-sources reads actual source bytes; otherwise source verification is skipped. Structural validation, semantic fidelity and production review are separate.
 

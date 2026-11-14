@@ -1,6 +1,6 @@
 // Local, portable source identity and coordinate verification. Never semantic proof.
-import {readFileSync,realpathSync,statSync} from 'node:fs';
-import {resolve,dirname,relative,isAbsolute} from 'node:path';
+import {readFileSync,readdirSync,realpathSync,statSync} from 'node:fs';
+import {resolve,dirname,relative,isAbsolute,join} from 'node:path';
 import {createHash} from 'node:crypto';
 const obj=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
 const arr=x=>Array.isArray(x)?x:[];
@@ -92,6 +92,8 @@ export function verifySources(doc,{artifactPath,baseDir}={}) {
  const walk=(x,path)=>{if(Array.isArray(x))x.forEach((v,i)=>walk(v,`${path}[${i}]`));else if(obj(x))for(const [k,v] of Object.entries(x)){if(k==='sourceRefs')errors.push(...sourceRefsErrors(v,doc?.provenance,`${path}.sourceRefs`));else walk(v,`${path}.${k}`);}};walk(doc,'outline');
  return {status:errors.length?'fail':'pass',errors,documents,coverage:coverageOf(doc?.provenance),contentReview:'not-performed'};
 }
+// Episode/scene boundary, optionally behind a Markdown heading marker.
+const BOUNDARY=/^\s*(?:#{1,6}\s*)?(?:第.+[集场]|(?:EPISODE|SCENE|INT\.|EXT\.)\b)/i;
 // Chunk exact physical lines, never trim/rewrite source. Context is not owned coverage.
 export function chunkScript(bytes,{kind,maxLines=200,contextLines=2,documentId='D01'}={}) {
  if(kind!=='script')throw Error('chunk requires explicit kind=script; novel/outline inputs are unsupported');
@@ -100,9 +102,66 @@ export function chunkScript(bytes,{kind,maxLines=200,contextLines=2,documentId='
  for(let start=1;start<=lines.length;){
   let end=Math.min(start+maxLines-1,lines.length);
   // Prefer an existing episode/scene boundary, without dropping boundary lines.
-  if(end<lines.length)for(let i=end;i>start;i--)if(/^\s*(?:第.+[集场]|(?:EPISODE|SCENE|INT\.|EXT\.)\b)/i.test(lines[i-1])){end=i-1;break;}
+  if(end<lines.length)for(let i=end;i>start;i--)if(BOUNDARY.test(lines[i-1])){end=i-1;break;}
   const a=Math.max(1,start-contextLines),b=Math.min(lines.length,end+contextLines);
   chunks.push({owned:{documentId,startLine:start,endLine:end},context:{documentId,startLine:a,endLine:b},lines:lines.slice(a-1,b)});start=end+1;
  }
  return {kind,sha256:sha256(bytes),lineCount:lines.length,chunks,contentReview:'not-performed'};
+}
+
+// Episode numbers: Arabic digits or Chinese numerals below 1000 (一 … 九百九十九).
+const CN_DIGITS={零:0,〇:0,一:1,二:2,两:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9};
+export function parseEpisodeNumber(text) {
+ const t=String(text??'').trim();
+ if(/^\d+$/.test(t)){const n=Number(t);return int(n)?n:null;}
+ const m=t.match(/^(?:([一二两三四五六七八九])百)?(?:([零〇]))?(?:([一二三四五六七八九])?(十))?([一二三四五六七八九])?$/);
+ if(!m||!t)return null;
+ const [,h,zero,tens,ten,ones]=m;
+ if(zero&&(!h||ten&&!tens||!ones&&!ten))return null; // 零 only fills an empty tens place: 一百零五
+ if(zero&&ten)return null;
+ if(h&&ten&&!tens)return null; // 一百十 is not accepted; write 一百一十
+ const n=(h?CN_DIGITS[h]*100:0)+(ten?(tens?CN_DIGITS[tens]:1)*10:0)+(ones?CN_DIGITS[ones]:0);
+ return int(n)?n:null;
+}
+// Filename only; content is never used to guess an episode number.
+export function episodeFromFilename(name) {
+ const stem=String(name).replace(/\.md$/i,'');
+ const zh=stem.match(/第\s*([0-9零〇一二两三四五六七八九十百]+)\s*集/);
+ if(zh)return parseEpisodeNumber(zh[1]);
+ const ep=stem.match(/(?:^|[^a-z])(?:ep|e)[\s._-]*(\d+)/i);
+ if(ep)return parseEpisodeNumber(ep[1]);
+ const lead=stem.match(/^(\d+)/);
+ return lead?parseEpisodeNumber(lead[1]):null;
+}
+const HEADING=/^\s*(?:#{1,6}\s*)?第(.+?)集/;
+// Register one folder of per-episode Markdown scripts. Paths are relative to `out`.
+export function sourceFolder(dir,{out}={}) {
+ if(!out)throw Error('sourceFolder requires out to resolve relative paths');
+ const root=resolve(dir);
+ if(!statSync(root).isDirectory())throw Error('source folder must be a directory');
+ const entries=readdirSync(root).filter(n=>!n.startsWith('.')&&/\.md$/i.test(n)).sort();
+ const parsed=[],seen=new Map(),errors=[];
+ for(const name of entries){
+  const path=join(root,name);
+  if(!statSync(path).isFile())continue;
+  const ep=episodeFromFilename(name),canonical=realpathSync(path);
+  parsed.push({name,ep});
+  if(seen.has(canonical))errors.push(`${name}: same file as ${seen.get(canonical)}`);else seen.set(canonical,name);
+ }
+ if(!parsed.length)throw Error('source folder contains no .md files');
+ const byEp=new Map();
+ for(const f of parsed){if(f.ep===null)errors.push(`${f.name}: episode number not found in filename`);else if(byEp.has(f.ep))errors.push(`${f.name}: episode ${f.ep} duplicates ${byEp.get(f.ep).name}`);else byEp.set(f.ep,f);}
+ const table=()=>parsed.map(f=>`  ${f.name} -> ${f.ep??'?'}`).join('\n');
+ if(errors.length)throw Error(errors.join('\n')+'\nfiles:\n'+table());
+ const sorted=[...byEp.values()].sort((a,b)=>a.ep-b.ep),width=Math.max(2,String(sorted.at(-1).ep).length);
+ const documents=[];
+ for(const f of sorted){
+  const path=join(root,f.name);let doc;
+  try{doc=sourceDocument(path,{artifactPath:out,id:'D'+String(f.ep).padStart(width,'0')});}catch(e){errors.push(`${f.name}: ${e.message}`);continue;}
+  sourceLines(readFileSync(path)).forEach((line,i)=>{const m=line.match(HEADING),n=m&&parseEpisodeNumber(m[1]);if(n!==null&&n!==undefined&&n!==f.ep)errors.push(`${f.name}:${i+1}: heading says episode ${n}, filename says ${f.ep}`);});
+  documents.push({id:doc.id,ep:f.ep,path:doc.path,sha256:doc.sha256,lineCount:doc.lineCount});
+ }
+ if(errors.length)throw Error(errors.join('\n')+'\nfiles:\n'+table());
+ const missingEpisodes=[];for(let e=1;e<sorted.at(-1).ep;e++)if(!byEp.has(e))missingEpisodes.push(e);
+ return {kind:'script-folder',documents,missingEpisodes};
 }
