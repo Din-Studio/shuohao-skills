@@ -1,5 +1,14 @@
 # Changelog
 
+## 人物与资产分批解析 — 2026-11-14
+
+**mint-characters 4.1.0 · mint-art 4.1.0（cast、art schemaVersion 1 不变）**
+
+- 两个 skill 的 `seed` 新增 `--source-dir`：登记每集一份 Markdown 的剧本文件夹，集号只从文件名解析（`第N集`、`EP N`、开头数字，支持中文数字），文档 ID 为 `D` 加集号，与 outline 对齐；解析不出、集号重复、正文集标题不一致、空文件、符号链接重复时报错，缺集打印为 `missingEpisodes`。mint-art 中它不能与 `--source`、`--design`、`--existing` 同时使用。
+- 两个 skill 新增 `apply-designs`：把 `.work/designs/<ID>.json` 按 ID 写回正式文件。只接受设计字段，执行与 validate 相同的完整检查，全部通过才写回，失败时按 ID 列出问题；设计不进入身份摘要，已记录的审核保持有效。
+- 新增 `references/dispatch.md`：身份识别按批**串行接力**（一次只派一个 subagent，在已有条目上当场判断同人、同地、同物），核验按身份或资产分组并发，设计按 ID 分组并发（mint-art 中基准场景与变体同组）。
+- 新增分集样例 `examples/回声台-分集/`、`examples/雨棚留言-分集/` 与 `batch-selftest.mjs`；两份 `lib/source-dir.mjs` 由仓库级自测核对逐字一致。
+
 ## outline 分集并行解析 — 2026-11-14
 
 **mint-outline 5.1.0（outline schemaVersion 5 不变）**

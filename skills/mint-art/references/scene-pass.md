@@ -103,3 +103,7 @@ Scene: S01 菜摊雨棚（主场景）
 ## 创作背景边界
 
 先读 [creative-background.md](creative-background.md)。creativeBrief 仅作为项目自然语言要求，不推导规则。视觉正文必须来自 production.style.scene。outline v5 只提供故事背景，不提供场景或道具身份；节点无需分类。只保留有依据的 beatIds 引用，不凭同集出现推断精确节点归属。正式样例先确定《雨棚留言》故事提案，再设计资产；没有分镜或真实图片。
+
+## 按组设计
+
+并行设计时（见 [派发指南](dispatch.md)），每个设计者只写 `.work/designs/<ID>.json`，不写身份字段、facts、decision、primary、variantOf，不直接修改 art.json；主会话执行 `apply-designs` 一次写回并整体校验。基准场景与它的全部变体分在同一组，先写基准，再写变体，一轮完成。

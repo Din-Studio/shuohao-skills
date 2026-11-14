@@ -78,3 +78,9 @@ status 为 draft 或 identified。identified 要求 review.status=confirmed，�
 validate 输出 `kind: mint-characters-checks, schemaVersion: 1, reviewInputHash, checks`。每项为 status/category/level/detail，未执行的语义审核及联合交接为 skipped。
 
 正式离线图片计划保持 media-plan v1，任务 ID 使用 C ID，增加 identityFingerprint；路径为 `images/<C ID>-sheet.png`。计划不提交、不生成。正式报告导出原始 JSON，不将自动发现的图片路径写入原始身份数据。
+
+## 分集目录与设计写回
+
+- `seed --source-dir` 与 `seed --source` 输出同一种 cast v1 骨架，区别只在 documents：每集一份，ID 为 `D` 加集号，路径为绝对路径。
+- `apply-designs` 读取的设计文件（`.work/designs/<C ID>.json`）是中间文件，不是第二种正式格式，不设 schemaVersion。它只承载设计块，写回后的 cast 仍是 cast v1。
+- 公开 API：`lib/identity.mjs` 增加 `seedSourceDir`；`lib/source-dir.mjs` 提供 `readSourceDir`、`episodeFromFilename`、`parseEpisodeNumber`；`mint-characters.mjs` 导出 `mergeDesigns` 与 `DESIGN_FIELDS`。

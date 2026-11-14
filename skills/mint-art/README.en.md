@@ -12,6 +12,8 @@ Formal interfaces: **art v1** (`kind: mint-art`), optional **outline v5** story 
 node scripts/mint-art.mjs seed --source script.txt --title Title --out draft.json
 node scripts/mint-art.mjs seed --source script.txt --title Title --existing previous.json --out next.json
 node scripts/mint-art.mjs seed --design --title Original --out design.json
+node scripts/mint-art.mjs seed --source-dir episodes/ --title Title --cast cast.json --out art/.work/draft-00.json
+node scripts/mint-art.mjs apply-designs art.json .work/designs/*.json
 node scripts/mint-art.mjs register draft.json --kind scene --key permanent-key --name Location --out registered.json
 node scripts/mint-art.mjs identity-inputs registered.json
 node scripts/mint-art.mjs validate art.json --outline outline.json --cast cast.json
@@ -22,6 +24,8 @@ node scripts/mint-art.mjs images art.json --production production.json --out pla
 ```
 
 Seed creates empty asset and coverage arrays. It computes source byte hashes and line counts; it does not understand the script or claim it has been read. A human/model supplies semantic identification, evidence, scope, decisions and explicit confirmation.
+
+`--source-dir` registers a folder of per-episode Markdown scripts; document IDs are `D` plus the episode number, matching outline. For long scripts, follow the [dispatch guide](references/dispatch.md): one relay subagent reads one batch at a time, assets are reviewed in parallel groups, and designs are written in parallel per S/P ID (a base scene and its variants in one group), then applied and validated together by `apply-designs`.
 
 Scene headings are not location identities. Mentioned objects are not automatically props. Handover and damage usually describe states of the same object. Outline is story context, never asset authority. Character identity belongs to characters; art does not infer C IDs from names.
 

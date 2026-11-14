@@ -1,13 +1,13 @@
 ---
 name: mint-art
-version: 4.0.0
+version: 4.1.0
 description: |
   独立阅读原剧本，识别地点与物品，判断哪些需要美术资产，维护稳定 S/P 身份与来源。
   按任务需要完成场景、道具、复用与变体设计；场景物品整理完成后立即生图，交付 art v1、图片和报告。
   seed 仅生成骨架；语义识别由模型或人工完成。outline v5 仅提供故事背景，人物身份来自 cast v1。
   支持独立设计；登记身份不要求设计或出图。
   Use when asked to 美术设定、场景设定、道具设定、环境一致性、scene bible、prop sheet。
-allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
+allowed-tools: read write edit bash grep find ls subagent Read Write Edit Bash Glob Grep Task
 triggers:
   - mint-art
   - 美术设定
@@ -56,11 +56,15 @@ node {baseDir}/scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 -
 node {baseDir}/scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 --existing previous-art.json --out next-draft.json
 # 可选背景及人物接口；已经提供但损坏、版本错误或来源不匹配会失败
 node {baseDir}/scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 --outline outline.json --cast cast.json
+# 每集一份 Markdown 的分集目录（首次生成）；文档 ID 为 D 加集号，与 outline 一致
+node {baseDir}/scripts/mint-art.mjs seed --source-dir 剧本目录 --title 剧名 --cast cast.json --out art/.work/draft-00.json
 # 保留独立原创设计入口；不得借此隐瞒已有原件
 node {baseDir}/scripts/mint-art.mjs seed --design --title 原创空间 --out design-draft.json
 ```
 
 seed 只计算文件身份、字节摘要和物理行数。资产数组、已读范围均为空；它不理解剧情、不标记读完。模型或人工必须实际读取原件，填写负责范围、身份、事实引用和取舍依据。路径相对所属 JSON，不相对进程目录；seed 输出绝对原件路径以支持 stdout 重定向。
+
+`--source-dir` 的集号只从文件名解析（`第N集`、`EP N`、开头数字，支持中文数字）；解析不出、集号重复、正文集标题与文件名不一致、空文件都报错，缺集打印为 `missingEpisodes`。它不能与 `--source`、`--design`、`--existing` 同时提供。首次生成且原文体量大（超过约 3 万字或超过 10 集）时，按 [派发指南](references/dispatch.md) 分批串行接力：每批一个 subagent，一次只派一个，在已有资产上判断同地、同物、状态链和变体；核验按资产分组并发。
 
 已有产物增量识别先读取 `registry`。重排资产或新增剧集不能重分 ID。原件改版时只撤回关联身份的确认及该文档已读范围，不删除设计和媒体，不凭名称重新归并。
 
@@ -90,6 +94,14 @@ node {baseDir}/scripts/mint-art.mjs identity-inputs registered-prop.json
 - 场景设定图：左侧前后左右四宫格加右侧正交平面图，四格无人，光照画 `lighting[0]` 的光影锁（色温写数值）；需要单独出图的光照或空间状态建成 `variantOf` 变体场景。
 - 道具设定图：正面、最容易认错的一面、匿名手或人作尺寸参照三格，纯白背景，写明实际尺寸；`states[0]` 是基准状态，之后每个状态写一条完整的变体提示词。
 - 每条设定图提示词以纯净画质段固定句收尾；变体按照抄块、指向参考、保持什么、只改什么四块写。
+
+需要设计的资产较多时，按 [派发指南](references/dispatch.md) 分组并发派发设计者，基准场景与它的变体分在同一组；每人只写 `.work/designs/<ID>.json`，由主会话一次写回：
+
+```bash
+node {baseDir}/scripts/mint-art.mjs apply-designs art.json .work/designs/*.json --cast cast.json --production production.json
+```
+
+apply-designs 只接受 designStatus（planned 或 ready）和 summary、anchors、lighting、image、states、scale、changes，执行与 validate 相同的完整检查，全部通过才写回，失败时按 ID 列出问题。设计不进入身份摘要，逐资产 identityReview 仍然有效。
 
 画风只从 production v3 的 `style.scene` 读取，不内置风格、不搬入角色皮肤正文：
 ```bash
@@ -136,7 +148,7 @@ images 只导出 `designStatus: ready` 的任务，按变体依赖排序；ready
 
 ## 自有样例与测试
 
-先阅读 `examples/雨棚留言-故事提案.md`。本目录包含原剧本、v5 故事消费投影、v1 人物交接夹具、身份登记样例和独立设计样例。不读取兄弟 skill 样例，不包含真实生成图片。
+先阅读 `examples/雨棚留言-故事提案.md`。`examples/雨棚留言-分集/` 把原剧本按集拆成三份 Markdown，正文逐字一致，演示 `seed --source-dir` 与接力判断。本目录包含原剧本、v5 故事消费投影、v1 人物交接夹具、身份登记样例和独立设计样例。不读取兄弟 skill 样例，不包含真实生成图片。
 
 ```bash
 node {baseDir}/scripts/run-selftests.mjs

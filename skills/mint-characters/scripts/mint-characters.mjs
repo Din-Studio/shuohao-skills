@@ -3,13 +3,13 @@
 // Zero dependencies on purpose: the skill must work in any directory
 // without an npm install. Node 18+ (stdlib only).
 
-import { lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assetProductionProblems, creativeBackground } from './lib/contracts.mjs';
 export { creativeBackground } from './lib/contracts.mjs';
 import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
-import { identityCommand } from './lib/identity-cli.mjs';
+import { identityCommand, castChecks } from './lib/identity-cli.mjs';
 import { PURITY_PARAGRAPH, STYLE_REF_LINE, parseSheet, sheetTextProblems, styleParagraphBeforePurity, withStyleRef, isMidjourney } from './lib/sheet-text.mjs';
 export { PURITY_PARAGRAPH, STYLE_REF_LINE, parseSheet, sheetTargets } from './lib/sheet-text.mjs';
 import { hash } from './lib/identity.mjs';
@@ -649,6 +649,10 @@ const USAGE = `mint-characters.mjs — mint-characters skill 的确定性工具
 
   seed --source path --title title [--budget N] [--outline v5.json] [--out draft.json]
                                    建立 cast v1 来源骨架（不做语义识别）
+  seed --source-dir 分集目录 --title title [...]
+                                   分集 md 目录：集号只从文件名解析，文档 ID 为 D 加集号
+  apply-designs <cast.json> <designs/C01.json ...> [--production p | --no-production] [--previous cast.json]
+                                   按 ID 写回设计块；整体校验全部通过才写回
   reconcile candidate.json [--previous cast.json] [--changes changes.json] [--out cast.json]
   chunk <book.txt> <workdir>       段落感知重叠切块，写 chunk-NN.txt，打印块数（阅读辅助）
   checkup|validate <cast.json> [--previous cast.json] [--outline v5.json]
@@ -713,6 +717,75 @@ function announceProduction(p, docPath = null) {
 /** 正式 cast 的设计块按需存在；别名在设计校验里只取名称。 */
 const designCards = (doc) => doc.characters.map(c => ({ ...c, aliases: c.aliases.map(a => a.name) }));
 
+
+/* ------------------------------------------------------------------ */
+/* apply-designs                                                       */
+/* ------------------------------------------------------------------ */
+
+export const DESIGN_FIELDS = ['persona', 'voice', 'image', 'importance', 'oneLiner'];
+
+/**
+ * 把设计文件按 ID 写进 cast 副本。只做形状检查；完整校验由调用方执行。
+ * designs: [{ file, data }]。返回 { doc, errors, replaced }。
+ */
+export function mergeDesigns(cast, designs) {
+  const doc = structuredClone(cast), errors = [], replaced = [], seen = new Set();
+  for (const { file, data } of designs) {
+    const where = basename(file);
+    if (!data || typeof data !== 'object' || Array.isArray(data)) { errors.push(`${where}：设计文件必须是 JSON 对象`); continue; }
+    const id = data.id;
+    if (typeof id !== 'string' || where !== `${id}.json`) { errors.push(`${where}：文件名必须是 <id>.json，且与 id 一致`); continue; }
+    if (seen.has(id)) { errors.push(`${id}：同一 ID 出现两次`); continue; }
+    seen.add(id);
+    const target = doc.characters.find(c => c.id === id);
+    if (!target) { errors.push(`${id}：cast 中没有这个身份`); continue; }
+    const extra = Object.keys(data).filter(k => k !== 'id' && !DESIGN_FIELDS.includes(k));
+    if (extra.length) { errors.push(`${id}：只接受设计字段 ${DESIGN_FIELDS.join('/')}，不接受 ${extra.join('/')}`); continue; }
+    const fields = DESIGN_FIELDS.filter(k => Object.hasOwn(data, k));
+    if (!fields.length) { errors.push(`${id}：至少提供一项设计字段`); continue; }
+    for (const k of fields) { if (Object.hasOwn(target, k)) replaced.push(`${id}.${k}`); target[k] = structuredClone(data[k]); }
+  }
+  return { doc, errors, replaced };
+}
+
+const APPLY_VALUED = ['--production', '--previous', '--outline'];
+function applyDesignsCommand(rest, helpers) {
+  const castPath = rest[0];
+  if (!castPath || castPath.startsWith('--')) throw new Error('用法：apply-designs <cast.json> <designs/C01.json ...>');
+  const files = [];
+  for (let i = 1; i < rest.length; i++) {
+    if (APPLY_VALUED.includes(rest[i])) { i++; continue; }
+    if (rest[i].startsWith('--')) { if (rest[i] !== '--no-production') throw new Error(`apply-designs 不认识 ${rest[i]}`); continue; }
+    files.push(rest[i]);
+  }
+  if (!files.length) throw new Error('apply-designs 需要至少一份设计文件');
+  const cast = readJson(castPath);
+  if (cast?.schemaVersion !== 1 || cast?.kind !== 'mint-characters') throw new Error('cast 需要 schemaVersion: 1, kind: mint-characters');
+  const designs = files.map(file => ({ file, data: readJson(file) }));
+  const { doc, errors, replaced } = mergeDesigns(cast, designs);
+  if (errors.length) throw new Error('设计文件不合格，未写回：\n' + errors.join('\n'));
+  // 问题逐条拆开；原 cast 本身就有的问题不算到任何一份设计头上。
+  const problemsOf = d => [...new Set(castChecks(d, castPath, rest, helpers)
+    .filter(g => g.status === 'fail' && g.level === 'error').flatMap(g => g.detail.split('；').filter(Boolean)))];
+  const problems = problemsOf(doc);
+  if (problems.length) {
+    const baseline = new Set(problemsOf(cast));
+    const perId = designs.map(d => {
+      const own = problemsOf(mergeDesigns(cast, [d]).doc).filter(x => !baseline.has(x));
+      return own.length ? `${d.data.id}：${own.join('；')}` : null;
+    }).filter(Boolean);
+    const inherited = problems.filter(x => baseline.has(x));
+    const combined = problems.filter(x => !baseline.has(x));
+    throw new Error(['校验未通过，未写回：',
+      ...(perId.length ? perId : combined.length ? [`组合问题（单独套用每份设计时不出现）：${combined.join('；')}`] : []),
+      ...(inherited.length ? [`原 cast 本身的问题（与设计文件无关）：${inherited.join('；')}`] : [])].join('\n'));
+  }
+  const tmp = `${resolve(castPath)}.tmp-${process.pid}`;
+  writeFileSync(tmp, JSON.stringify(doc, null, 2) + '\n', 'utf8');
+  renameSync(tmp, resolve(castPath));
+  console.log(JSON.stringify({ applied: designs.map(d => d.data.id), replaced }, null, 2));
+}
+
 async function main(argv) {
   const [cmd, ...rest] = argv;
   if(rest.includes('--full-workflow')) throw Error('本 CLI 只核验 characters 独立阶段；完整流程必须由项目级状态按五阶段顺序交接，不能冒充全流程通过');
@@ -722,7 +795,7 @@ async function main(argv) {
     process.exit(cmd ? 0 : 1);
   }
 
-  if (await identityCommand(cmd, rest, {
+  const castHelpers = {
     designProblems(doc, file, args) {
       const source = doc.provenance.documents.map(d => readFileSync(resolve(dirname(resolve(file)), d.path), 'utf8')).join('\n');
       const cards = designCards(doc);
@@ -754,9 +827,11 @@ async function main(argv) {
       plan.note+=' 身份、来源或设计变化后必须重新核验参考图、工作单与内容审核；ID 相同不代表审核有效。';
       printPlan(plan,flag(args,'--out'));
     }
-  })) return;
+  };
+  if (await identityCommand(cmd, rest, castHelpers)) return;
+  if (cmd === 'apply-designs') { applyDesignsCommand(rest, castHelpers); return; }
 
-  if (cmd === 'seed') throw new Error('用法：seed --source <原剧本.txt> --title <标题> [--budget N] [--outline outline.json] [--out draft.json]');
+  if (cmd === 'seed') throw new Error('用法：seed --source <原剧本.txt> | --source-dir <分集目录> --title <标题> [--budget N] [--outline outline.json] [--out draft.json]');
 
   if (cmd === 'chunk') {
     const [book, workdir] = rest;

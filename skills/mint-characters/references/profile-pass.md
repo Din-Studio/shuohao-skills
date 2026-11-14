@@ -139,3 +139,7 @@ Verbatim quotes — the ONLY strings allowed in `persona.evidence`:
 ## 创作背景与视觉边界
 
 参见 [creative-background.md](creative-background.md)。读取 production.creativeBrief 的自然语言要求，不推导策略。保留逐字证据、角色区分度、设定图版式、视觉正文和参考图挂载检查。正式身份入口读取原剧本，outline v5 仅为可选故事背景。画像、音色和图片分别按需设计，不是身份登记的强制条件。完整设计样例《渡口》与身份样例《回声台》均由本 skill 自有。
+
+## 按组设计
+
+并行设计时（见 [派发指南](dispatch.md)），每个设计者只写 `.work/designs/<C ID>.json`，内容是 `id` 加上 persona、voice、image、importance、oneLiner 中需要的几项，不写身份字段和 tier，不直接修改 cast.json。主会话执行 `apply-designs` 一次写回并整体校验。

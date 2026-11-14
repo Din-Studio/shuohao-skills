@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { sourceLineCount } from './source-facts.mjs';
 import { outlineInputErrors } from './outline-input.mjs';
+import { readSourceDir } from './source-dir.mjs';
 export const ART_VERSION = 1;
 const obj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const text = v => typeof v === 'string' && !!v.trim();
@@ -100,6 +101,14 @@ export function seedFromSource(sourcePath, title, {existing = null} = {}) {
   doc.mode = 'script';
   if (changed) { doc.status='draft'; for (const a of assetsOf(doc)) if (refsIn(a).some(r=>r.documentId===id)) a.identityReview={status:'pending'}; }
   return doc;
+}
+// One folder of per-episode Markdown files; document IDs are D + episode number (first generation only).
+export function seedFromSourceDir(dir, title) {
+  if (!text(title)) throw Error('seed --source-dir 目录 --title title 必须提供标题');
+  const {documents,missingEpisodes} = readSourceDir(dir, sourceLineCount);
+  const doc = seedFromSource(documents[0].path, title);
+  doc.provenance.documents = documents.map(d=>({id:d.id,path:d.path,sha256:fileDigest(d.bytes),lineCount:sourceLineCount(d.bytes)}));
+  return {doc, missingEpisodes};
 }
 export function registerAsset(doc, kind, key, name) {
   if (doc?.schemaVersion !== ART_VERSION || !['scene','prop'].includes(kind) || !text(key) || !text(name)) throw Error('register 需要 art v1、scene/prop、非空 key/name');

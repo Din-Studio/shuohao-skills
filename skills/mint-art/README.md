@@ -14,10 +14,13 @@
 node scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 --out draft.json
 node scripts/mint-art.mjs seed --source 原剧本.txt --title 剧名 --existing previous-art.json --out next.json
 node scripts/mint-art.mjs seed --design --title 原创空间 --out design.json
+node scripts/mint-art.mjs seed --source-dir 剧本目录 --title 剧名 --cast cast.json --out art/.work/draft-00.json
 node scripts/mint-art.mjs register draft.json --kind scene --key permanent-key --name 地点名称 --out registered.json
 ```
 
 seed 只计算原件摘要与行数，资产数组和已读范围为空。模型或人工阅读原件后，填写事实、引用、资产取舍、负责范围及身份确认。场次不等于地点；物件被提及、交接或损坏不自动建立新资产。outline 不再提供资产身份。人物身份由 characters 判断。
+
+`--source-dir` 登记每集一份 Markdown 的分集目录，文档 ID 为 `D` 加集号，与 outline 一致。体量大时按 [派发指南](references/dispatch.md) 分批串行接力识别资产，身份定稿后按 S/P ID 分组并行设计，再由 `apply-designs art.json designs/*.json` 一次写回、整体校验。
 
 `identity-inputs FILE` 打印复核输入摘要，不自动确认；身份可以保持 `designStatus: none`。
 
@@ -54,6 +57,7 @@ node scripts/mint-art.mjs images art.json --production production.json --only S0
 - `雨棚留言-识别-art.json` 只登记两个地点、两件物品，无设计、无图片。
 - `雨棚留言-art.json` 保留独立原创设计样例，包括雨棚视觉变体；它不是从剧本自动提取的已审结论。
 - `雨棚留言-outline.json` 仅为本阶段消费测试的故事投影，不冒充全功能 outline 校验样例。
+- `雨棚留言-分集/` 把原剧本按集拆成三份 Markdown，演示分集目录登记。
 - 人物夹具属于本 skill，不从其他目录读取。所有图片均未实际生成。
 
 ```bash

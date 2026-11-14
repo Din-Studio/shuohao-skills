@@ -96,5 +96,6 @@ planned / ready 设计遵循以下视觉规则，none 不适用：
 - `mint-art.mjs`：seedFromSource、registerAsset、identityDigest、validateArt、gateReport、renderMarkdown、renderHtml、imageJobsFrom。
 - `lib/stage.mjs`：stageErrors、evidenceErrors、verifySources、lifecycleErrors、budgetChecks、identityCoreDigest、lifecycleStamp、syncLifecycleStamps、sourceIdentity、digest、assertStoryOutline、assertCharacters、upstreamErrors、upstreamCheck。
 - `seedFromOutline` 拒绝把故事背景当作资产 seed，指向原剧本入口。
+- 分集目录与设计写回：`lib/stage.mjs` 增加 `seedFromSourceDir`；`lib/source-dir.mjs` 提供 `readSourceDir`、`episodeFromFilename`、`parseEpisodeNumber`；`mint-art.mjs` 导出 `mergeDesigns` 与 `DESIGN_FIELDS`。`apply-designs` 读取的 `.work/designs/<ID>.json` 是中间文件，不是第二种正式格式，不设 schemaVersion。
 
 媒体计划为 schemaVersion 1，带逐任务 inputDigest，不上传、不生成。变体依赖按参考顺序排列；只有 ready 任务进入计划。ready 道具的 `states[1]` 起各导出一个任务，ID 为 `<道具 ID>.s<序号>`，参考基准道具成图，产物为 `images/<imageStem>-state<序号>-sheet.png`。报告渲染不写回默认值、来源状态或自动挂图。

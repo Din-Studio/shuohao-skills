@@ -57,6 +57,14 @@ reconcile 核验而不代作语义决定。基线摘要、既有 registry、身�
 
 正式 JSON 是本阶段权威，需保留项目版本控制及可信基线；脚本不把可编辑 JSON 当作不可篡改数据库，不新增共享身份服务或失败累计日志。
 
+## 首次生成的接力草稿
+
+分集目录按 [派发指南](dispatch.md) 接力识别时，草稿在 `art/.work/` 中依次传递，尚未发布，也没有下游消费过：
+
+- 接力者在共享草稿上执行 register，S/P ID 自然续号，不需要重新编号。
+- 后文揭晓两个已有资产是同一对象时，直接删除被并入的资产及其 registry 条目，改写指向它的 variantOf、relatedScenes、observations[].sceneId，不记录 registry.changes。ID 允许出现空号。
+- 主会话核验通过后把最后一份草稿另存为正式 art。**发布之后**的一切合并、拆分、删除和纠正，仍按上文追加 registry.changes 并退休 ID。
+
 ## 核验
 
 `node scripts/run-selftests.mjs` 运行全部离线测试，包括视觉检查、原件改版/缺失、partial/覆盖缺口、身份合拆删纠正、ID 不复用、预算、独立设计和单独复制运行。`fixes-selftest.mjs` 覆盖四项真实 CLI 回归：既有明确预算生效值、来源文档身份唯一、outline v5 完整消费边界、design 来源对账；逐项在临时独立副本中移除防护，要求对应回归失败，验证消融敏感性。不会调用模型或付费工具。跨阶段语义和实际媒体审核仍须独立完成。

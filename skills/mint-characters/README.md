@@ -21,6 +21,15 @@ node scripts/mint-characters.mjs render cast.json --md > cast-report.md
 node scripts/mint-characters.mjs render cast.json --html > cast-report.html
 ```
 
+分集剧本（每集一份 Markdown）可以直接登记整个目录，文档 ID 为 `D` 加集号，与 outline 一致：
+
+```bash
+node scripts/mint-characters.mjs seed --source-dir 剧本目录 --title 书名 --out characters/.work/draft-00.json
+node scripts/mint-characters.mjs apply-designs cast.json .work/designs/*.json
+```
+
+体量大时按 [派发指南](references/dispatch.md) 分批串行接力识别人物，身份定稿后按 C ID 分组并行设计，再由 `apply-designs` 一次写回、整体校验。
+
 交付放在项目 `characters/` 下。`--outline outline.json` 可选；缺少时背景检查 skipped，提供损坏或错误版本则失败。原件路径相对记载它的 JSON；摘要、行数和覆盖必须核验，原件缺失不可跳过。
 
 - 同名不同人、别名、无台词、匿名声音、未知说话者、非人及提及身份均保留。
@@ -37,7 +46,7 @@ node scripts/mint-characters.mjs render cast.json --html > cast-report.html
 
 ## 自有样例与测试
 
-`examples/回声台.txt` 和 `回声台-cast.json` 展示独立身份登记与全部语义边界。`examples/渡口-cast.json` 是带完整画像、音色和图片提示词设计块的 cast v1 样例。HTML 为可重建产物，不提交版本控制。
+`examples/回声台.txt` 和 `回声台-cast.json` 展示独立身份登记与全部语义边界。`examples/渡口-cast.json` 是带完整画像、音色和图片提示词设计块的 cast v1 样例。`examples/回声台-分集/` 是同一故事的分集文件夹。HTML 为可重建产物，不提交版本控制。
 
 ```bash
 node scripts/test-all.mjs

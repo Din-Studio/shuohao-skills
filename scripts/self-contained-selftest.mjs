@@ -60,6 +60,11 @@ try {
     const read = name => readFileSync(join(root, 'skills', name, 'scripts/lib/storyboard.mjs'), 'utf8');
     assert.equal(read('mint-creation'), read('mint-script'));
   });
+  // 分集目录的文档 ID 必须与 outline 对齐：人物与资产两份登记库必须逐字一致
+  check('两份分集目录登记库一致', () => {
+    const read = name => readFileSync(join(root, 'skills', name, 'scripts/lib/source-dir.mjs'), 'utf8');
+    assert.equal(read('mint-art'), read('mint-characters'));
+  });
   // 工作单是三个 skill 之间唯一的协作格式：解析库各持一份副本，必须逐字一致
   check('三份工作单解析库一致', () => {
     const copies = ['mint-creation', 'mint-video-prompt', 'mint-video-prompt-review'].map(name => readFileSync(join(root, 'skills', name, 'scripts/lib/worksheet.mjs'), 'utf8'));

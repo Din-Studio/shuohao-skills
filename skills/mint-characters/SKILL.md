@@ -1,12 +1,12 @@
 ---
 name: mint-characters
-version: 4.0.0
+version: 4.1.0
 description: |
   独立阅读原剧本，建立稳定 C ID、别名、同名人物、无台词人物、匿名声音、非人主体与提及人物的来源身份。
   人物角色整理完成后立即制作图片提示词并生成参考图；人物画像与音色按需制作，用户明确仅登记或仅要提示词时不生图。
   支持已有 cast 增量核验、预算阻断、来源摘要与覆盖核验。
   outline v5 仅为可选故事背景，不是人物权威。零 npm 依赖，Node 18+。
-allowed-tools: read write edit bash grep find ls Read Write Edit Bash Glob Grep Task
+allowed-tools: read write edit bash grep find ls subagent Read Write Edit Bash Glob Grep Task
 triggers:
   - mint-characters
   - 拆角色
@@ -45,13 +45,23 @@ node {baseDir}/scripts/mint-characters.mjs seed \
   --out <characters/draft.json>
 ```
 
+输入是每集一份 Markdown 的文件夹时，改用 `--source-dir`：
+
+```bash
+node {baseDir}/scripts/mint-characters.mjs seed \
+  --source-dir <剧本目录> --title <标题> --budget 30 \
+  --out <characters/.work/draft-00.json>
+```
+
+集号只从文件名解析（`第N集`、`EP N`、开头数字，支持中文数字），文档 ID 为 `D` 加集号，与 outline 一致；解析不出、集号重复、正文集标题与文件名不一致、空文件都报错，缺集打印为 `missingEpisodes`。`--source-dir` 与 `--source` 只能二选一。
+
 `--budget` 可选。它是明确角色身份数量上限，超额在本阶段阻断。不是出图人数，也不是提醒阈值；不得通过删除无台词或提及身份绕开预算。
 
 可选 `--outline <outline.json>` 只核验和绑定故事背景，其他版本失败。缺省时不要求安装其他 skill。seed **不理解剧本、不抽人物、不标记已读**；它只写文件身份、原始字节 SHA256、行数与空数组。不要把骨架当成正式交接完成。
 
 ## 第二步：阅读和语义识别
 
-阅读原剧本，按 [扫描指南](references/roster-pass.md) 登记所有本次范围内的人物。长文本可先运行 `chunk <原剧本.txt> <characters/.work>`；块边界是阅读辅助，不是身份边界。根据实际阅读填写 `provenance.coverage`，不是根据 seed 或 chunk 生成成功填写。
+阅读原剧本，按 [扫描指南](references/roster-pass.md) 登记所有本次范围内的人物。首次生成且原文体量大（超过约 3 万字或超过 10 集）时，按 [派发指南](references/dispatch.md) 分批串行接力：每批一个 subagent，一次只派一个，在已有条目上判断同人；核验按身份分组并发。长文本可先运行 `chunk <原剧本.txt> <characters/.work>`；块边界是阅读辅助，不是身份边界。根据实际阅读填写 `provenance.coverage`，不是根据 seed 或 chunk 生成成功填写。
 
 每个身份填写永久 `identityKey`，例如 `night-operator`。首次可以省略 `id`，由 reconcile 分配 C01 等。既有身份必须沿用其 identityKey 与 C ID；不按出现次序重编号。
 
@@ -89,6 +99,7 @@ persona、voice 仍按需制作，不强制三项设计同时存在。用户明�
 - 画像与音色：阅读 [画像指南](references/profile-pass.md)、[设计字段](references/design-schema.md)。设计块直接写在 cast v1 的对应身份上，validate 的 optional-design 检查逐项核对。
 - 图片：另读 [全局原则](references/principles.md)、[术语](references/glossary.md)、[设定图提示词](references/sheet-prompt.md)、[版式](references/sheet.md)、[画风](references/style.md)、[真实感](references/realism.md)；群演读 [群像图](references/crowd.md)；production.image.model 是 Midjourney 时另读 [Midjourney 写法](references/model-midjourney.md)；题材明确时查 `references/genres/` 中适用的题材文件（`general.md` 为通用基线），剧本事实与用户要求优先。production 为 v3，画风正文不设默认值。独立画像或身份登记不要求 production；已提供但损坏的 production 必须失败。
 - 设定图版式：白底横图，左边严格正面的脸部特写，右边三格脖子以下的正面、侧面、背面，柔和均匀的正面光，中性站姿和表情，最后一段是纯净画质段；`entityType: group` 改出群像图。validate 按 entityType 核对版式短语和纯净画质段。cast v1 每个身份只有一个 image 块，本阶段只出基准图，不出人物变体图。
+- 并行设计：需要设计的身份较多时，按 [派发指南](references/dispatch.md) 分组并发派发设计者，每人只写 `.work/designs/<C ID>.json`，由主会话执行 `apply-designs cast.json designs/*.json` 一次写回。它只接受 persona、voice、image、importance、oneLiner，执行与 validate 相同的完整检查，全部通过才写回，失败时按 ID 列出问题。设计不进入身份摘要，已记录的审核仍然有效。
 - 生成：`images cast.json` 只产生离线计划。只为存在 image 设计的角色建立任务；`--only C01,C02` 选择稳定 ID。正式路径为 `images/C01-sheet.png`，不会因改名或新增同名人物而漂移。
 - 本地 CLI 保持离线；实际生图由 agent 接续外部生成工具。按 [媒体交接](references/media-handoff.md) 核验 schema、费用授权、回执及下载；已有授权覆盖本次生成时直接执行，不重复确认，不自动重复付费。下载并核验参考图后再生成最终报告。
 
@@ -109,7 +120,7 @@ node {baseDir}/scripts/mint-characters.mjs images cast.json --out image-plan.jso
 
 ## 样例与测试
 
-`examples/回声台.txt` 先定义故事，再提供独立身份登记 `回声台-cast.json`；不含分镜或生成图片。`examples/渡口.txt` 与 `渡口-cast.json` 展示带完整画像、声音和图片提示词设计块的 cast v1。
+`examples/回声台.txt` 先定义故事，再提供独立身份登记 `回声台-cast.json`；不含分镜或生成图片。`examples/渡口.txt` 与 `渡口-cast.json` 展示带完整画像、声音和图片提示词设计块的 cast v1。`examples/回声台-分集/` 把《回声台》按集拆成两份 Markdown，正文逐字一致，演示 `seed --source-dir` 与接力判断。
 
 ```bash
 node {baseDir}/scripts/test-all.mjs

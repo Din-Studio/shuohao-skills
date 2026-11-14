@@ -1,8 +1,8 @@
 import {readFileSync,existsSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
-import {hash,reviewHash,budgetChecks,seedSource,identityErrors,outlineErrors,reconcile,rebaseSources,writeNew,renderIdentity} from './identity.mjs';
+import {hash,reviewHash,budgetChecks,seedSource,seedSourceDir,identityErrors,outlineErrors,reconcile,rebaseSources,writeNew,renderIdentity} from './identity.mjs';
 const read=p=>JSON.parse(readFileSync(resolve(p),'utf8'));
-const valued=['--source','--title','--out','--outline','--previous','--changes','--budget','--lang'];
+const valued=['--source','--source-dir','--title','--out','--outline','--previous','--changes','--budget','--lang'];
 function flag(args,k) {const i=args.indexOf(k);if(i<0)return null;if(!args[i+1]||args[i+1].startsWith('--')||args.indexOf(k,i+1)>=0)throw Error(`${k} 需要唯一参数值`);return args[i+1];}
 function emit(doc,args) {const out=flag(args,'--out');if(out)writeNew(out,doc);else console.log(JSON.stringify(doc,null,2));}
 function background(doc,file,args) {
@@ -13,8 +13,33 @@ function background(doc,file,args) {
   if(doc.background&&hash(readFileSync(path))!==doc.background.sha256)bad.push('outline 背景摘要变化，需回查原文，不能静默覆盖');
   return [{id:'outline-background',status:bad.length?'fail':'pass',category:'base',level:'error',detail:bad.join('；')}];
 }
+/** All validate checks for one cast; shared by validate/checkup/render/images and apply-designs. */
+export function castChecks(doc,file,args,helpers) {
+  const bad=identityErrors(doc,file);
+  const previousPath=flag(args,'--previous');
+  const checks=[{id:'identity-source-lifecycle-budget',status:bad.length?'fail':'pass',category:'base',level:'error',detail:bad.join('；')},...background(doc,file,args),...budgetChecks(doc)];
+  if(previousPath) {
+    const previous=read(previousPath),errors=[];
+    if(doc.lifecycle.previousHash!==hash(previous))errors.push('previousHash 与既有产物不一致');
+    try {
+      const changes=doc.lifecycle.changes.filter(c=>c.revision===doc.lifecycle.revision);
+      // Strip freshly allocated IDs before deterministic replay.
+      const candidate=structuredClone(doc),known=new Set(previous.lifecycle.registry.map(r=>r.identityKey));
+      for(const c of candidate.characters)if(!known.has(c.identityKey))delete c.id;
+      const replay=reconcile(candidate,previous,changes);
+      if(hash(replay.lifecycle)!==hash(doc.lifecycle))errors.push('增量生命周期与既有产物不一致');
+    } catch(e) {errors.push(e.message);}
+    checks.push({id:'incremental-baseline',status:errors.length?'fail':'pass',category:'base',level:'error',detail:errors.join('；')});
+  } else checks.push({id:'incremental-baseline',status:doc.lifecycle.revision>1?'fail':'skipped',category:'base',level:'error',detail:'未提供 --previous，未核验外部基线；registry 仅作本地一致性检查'});
+  checks.push({id:'semantic-review',status:'skipped',category:'content',level:'error',detail:`本命令未执行语义审核；已记录状态 ${doc.review?.status??'pending'}`},
+    {id:'joint-handoff',status:'skipped',category:'base',level:'error',detail:'未执行跨阶段映射与完整流程交接'});
+  // Designs are optional and independently validated when present.
+  const designProblems=helpers.designProblems(doc,file,args);
+  checks.push({id:'optional-design',status:designProblems.length?'fail':doc.characters.some(c=>c.persona||c.image||c.voice)?'pass':'skipped',category:'base',level:'error',detail:designProblems.join('；')});
+  return checks;
+}
 export async function identityCommand(cmd,args,helpers) {
-  const independent=cmd==='seed'&&args.includes('--source');
+  const independent=cmd==='seed'&&(args.includes('--source')||args.includes('--source-dir'));
   const registered=['reconcile'].includes(cmd);
   let doc;
   if(!independent&&!registered) {
@@ -24,7 +49,12 @@ export async function identityCommand(cmd,args,helpers) {
   }
   if(independent||registered) for(const k of valued)if(args.includes(k))flag(args,k);
   if(independent) {
-    doc=seedSource(flag(args,'--source'),flag(args,'--title'));
+    if(args.includes('--source')&&args.includes('--source-dir'))throw Error('--source 与 --source-dir 只能二选一');
+    if(args.includes('--source-dir')) {
+      const seeded=seedSourceDir(flag(args,'--source-dir'),flag(args,'--title'));
+      doc=seeded.doc;
+      if(seeded.missingEpisodes.length)console.error(`missingEpisodes: ${seeded.missingEpisodes.join(', ')}`);
+    } else doc=seedSource(flag(args,'--source'),flag(args,'--title'));
     const budget=flag(args,'--budget');
     if(budget!==null) {if(!/^\d+$/.test(budget)||!Number.isSafeInteger(Number(budget)))throw Error('--budget 需要非负整数');doc.budgets.characters=Number(budget);}
     if(flag(args,'--lang'))doc.lang=flag(args,'--lang');
@@ -50,27 +80,7 @@ export async function identityCommand(cmd,args,helpers) {
     const bg=background(doc,'.',args);if(bg.some(g=>g.status==='fail'))throw Error(bg.map(g=>g.detail).join('；'));
     emit(doc,args);return true;
   }
-  const file=args[0],bad=identityErrors(doc,file);
-  const previousPath=flag(args,'--previous');
-  const checks=[{id:'identity-source-lifecycle-budget',status:bad.length?'fail':'pass',category:'base',level:'error',detail:bad.join('；')},...background(doc,file,args),...budgetChecks(doc)];
-  if(previousPath) {
-    const previous=read(previousPath),errors=[];
-    if(doc.lifecycle.previousHash!==hash(previous))errors.push('previousHash 与既有产物不一致');
-    try {
-      const changes=doc.lifecycle.changes.filter(c=>c.revision===doc.lifecycle.revision);
-      // Strip freshly allocated IDs before deterministic replay.
-      const candidate=structuredClone(doc),known=new Set(previous.lifecycle.registry.map(r=>r.identityKey));
-      for(const c of candidate.characters)if(!known.has(c.identityKey))delete c.id;
-      const replay=reconcile(candidate,previous,changes);
-      if(hash(replay.lifecycle)!==hash(doc.lifecycle))errors.push('增量生命周期与既有产物不一致');
-    } catch(e) {errors.push(e.message);}
-    checks.push({id:'incremental-baseline',status:errors.length?'fail':'pass',category:'base',level:'error',detail:errors.join('；')});
-  } else checks.push({id:'incremental-baseline',status:doc.lifecycle.revision>1?'fail':'skipped',category:'base',level:'error',detail:'未提供 --previous，未核验外部基线；registry 仅作本地一致性检查'});
-  checks.push({id:'semantic-review',status:'skipped',category:'content',level:'error',detail:`本命令未执行语义审核；已记录状态 ${doc.review?.status??'pending'}`},
-    {id:'joint-handoff',status:'skipped',category:'base',level:'error',detail:'未执行跨阶段映射与完整流程交接'});
-  // Designs are optional and independently validated when present.
-  const designProblems=helpers.designProblems(doc,file,args);
-  checks.push({id:'optional-design',status:designProblems.length?'fail':doc.characters.some(c=>c.persona||c.image||c.voice)?'pass':'skipped',category:'base',level:'error',detail:designProblems.join('；')});
+  const file=args[0],checks=castChecks(doc,file,args,helpers);
   if(cmd==='validate'||cmd==='checkup') {
     console.log(JSON.stringify({schemaVersion:1,kind:'mint-characters-checks',reviewInputHash:reviewHash(doc),checks},null,2));
     if(checks.some(g=>g.status==='fail'&&g.level==='error'))throw Error('角色阶段校验失败');return true;

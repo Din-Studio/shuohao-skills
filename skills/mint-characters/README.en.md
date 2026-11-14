@@ -19,6 +19,15 @@ node scripts/mint-characters.mjs render cast.json --html > cast-report.html
 
 Seed creates a skeleton, not semantic extraction or read coverage. Same-name people, aliases, silent characters, anonymous voices, unknown speakers, nonhuman subjects and mentioned people remain distinct when evidence does not establish sameness. Profiles, voice designs and image designs are independently optional. Explicit character budgets block this stage when exceeded.
 
+A folder of per-episode Markdown scripts can be registered directly. Document IDs are `D` plus the episode number, matching outline:
+
+```bash
+node scripts/mint-characters.mjs seed --source-dir episodes/ --title Title --out characters/.work/draft-00.json
+node scripts/mint-characters.mjs apply-designs cast.json .work/designs/*.json
+```
+
+For long scripts, follow the [dispatch guide](references/dispatch.md): batches are read by one relay subagent at a time, identities are reviewed in parallel groups, and designs are written in parallel per C ID, then applied and validated together by `apply-designs`.
+
 Incremental updates use the existing artifact:
 
 ```bash
@@ -36,4 +45,4 @@ Profile, voice and image designs live on the matching cast v1 identities and are
 node scripts/test-all.mjs
 ```
 
-See [workflow](SKILL.md), [formal schema](references/schema.md), [design fields](references/design-schema.md), and [report conventions](references/report-style.md). Owned examples: Echo Station (`回声台`) for identities; Ferry (`渡口`) for a cast v1 with full designs. All stage tests are offline. Generated HTML is not version-controlled. Standalone execution does not claim completion of the ordered five-stage workflow.
+See [workflow](SKILL.md), [formal schema](references/schema.md), [design fields](references/design-schema.md), and [report conventions](references/report-style.md). Owned examples: Echo Station (`回声台`) for identities; Ferry (`渡口`) for a cast v1 with full designs; `examples/回声台-分集/` for the per-episode folder. All stage tests are offline. Generated HTML is not version-controlled. Standalone execution does not claim completion of the ordered five-stage workflow.

@@ -3,12 +3,12 @@
 // Zero dependencies on purpose: the skill must work in any directory
 // without an npm install. Node 18+ (stdlib only).
 
-import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, lstatSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assetProductionProblems, creativeBackground, check, blocking, mark } from './lib/contracts.mjs';
 export { creativeBackground } from './lib/contracts.mjs';
-import { ART_VERSION, assetsOf, digest, sourceIdentity, identityDigest, identityCoreDigest, syncLifecycleStamps, seedFromSource, registerAsset, stageErrors, lifecycleErrors, budgetChecks, verifySources, assertStoryOutline, assertCharacters, upstreamCheck } from './lib/stage.mjs';
+import { ART_VERSION, assetsOf, digest, sourceIdentity, identityDigest, identityCoreDigest, syncLifecycleStamps, seedFromSource, seedFromSourceDir, registerAsset, stageErrors, lifecycleErrors, budgetChecks, verifySources, assertStoryOutline, assertCharacters, upstreamCheck } from './lib/stage.mjs';
 export { seedFromSource, registerAsset, identityDigest } from './lib/stage.mjs';
 import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
 import { PURITY_PARAGRAPH, squash, endsWithPurity, styleParagraphBeforePurity, parseSheet, variantProblems, sheetTargets, isMidjourney } from './lib/sheet-text.mjs';
@@ -1355,6 +1355,10 @@ const USAGE = `mint-art.mjs — mint-art skill 的确定性工具（场景 + 道
   seed --design --title title           独立设计空骨架（不伪造原件来源）
   seed --source path --title title [--existing art.json] [--outline outline.json] [--cast cast.json]
                                          只建 art v1 骨架，不识别地点或道具、不声明已读
+  seed --source-dir 分集目录 --title title [--outline outline.json] [--cast cast.json]
+                                         分集 md 目录：集号只从文件名解析，文档 ID 为 D 加集号
+  apply-designs <art.json> <designs/S01.json ...> [--cast c.json] [--production p | --no-production]
+                                         按 ID 写回设计；整体校验全部通过才写回
   register <art.json> --kind scene|prop --key key --name name [--out new.json]
   identity-inputs <art.json>             打印身份复核摘要，不自动确认
   verify-sources <art.json>              回查实际原件、摘要、引用和范围
@@ -1462,6 +1466,85 @@ function verifyArtBoundary(doc,path,rest) {
   const prev=flag(rest,'--previous');if(prev){const errors=lifecycleErrors(doc,readJson(prev));if(errors.length)throw Error(errors.join('；'));}
 }
 
+
+/* ------------------------------------------------------------------ */
+/* apply-designs                                                       */
+/* ------------------------------------------------------------------ */
+
+export const DESIGN_FIELDS = ['designStatus', 'summary', 'anchors', 'lighting', 'image', 'states', 'scale', 'changes'];
+
+/**
+ * 把设计文件按 ID 写进 art 副本。只做形状检查；完整校验由调用方执行。
+ * designs: [{ file, data }]。返回 { doc, errors, replaced }。
+ */
+export function mergeDesigns(art, designs) {
+  const doc = structuredClone(art), errors = [], replaced = [], seen = new Set();
+  for (const { file, data } of designs) {
+    const where = basename(file);
+    if (!data || typeof data !== 'object' || Array.isArray(data)) { errors.push(`${where}：设计文件必须是 JSON 对象`); continue; }
+    const id = data.id;
+    if (typeof id !== 'string' || where !== `${id}.json`) { errors.push(`${where}：文件名必须是 <id>.json，且与 id 一致`); continue; }
+    if (seen.has(id)) { errors.push(`${id}：同一 ID 出现两次`); continue; }
+    seen.add(id);
+    const target = assetsOf(doc).find(a => a?.id === id);
+    if (!target) { errors.push(`${id}：art 中没有这个资产`); continue; }
+    const extra = Object.keys(data).filter(k => k !== 'id' && !DESIGN_FIELDS.includes(k));
+    if (extra.length) { errors.push(`${id}：只接受设计字段 ${DESIGN_FIELDS.join('/')}，不接受 ${extra.join('/')}`); continue; }
+    if (!['planned', 'ready'].includes(data.designStatus)) { errors.push(`${id}：designStatus 必须是 planned 或 ready`); continue; }
+    if (Object.hasOwn(data, 'changes') && !target.variantOf) { errors.push(`${id}：changes 只用于变体场景（有 variantOf 的资产）`); continue; }
+    for (const k of DESIGN_FIELDS.filter(k => Object.hasOwn(data, k))) {
+      if (k !== 'designStatus' && Object.hasOwn(target, k)) replaced.push(`${id}.${k}`);
+      target[k] = structuredClone(data[k]);
+    }
+  }
+  return { doc, errors, replaced };
+}
+
+/** 与 validate 相同的完整检查；返回问题列表，不抛出。 */
+function artProblems(doc, path, rest) {
+  try { verifyArtBoundary(doc, path, rest); } catch (e) { return [e.message]; }
+  const names = loadCastNames(rest);
+  const prod = loadProduction(rest, resolve(path, '..'));
+  return validateArt(doc, names, prod.doc);
+}
+
+const APPLY_VALUED = ['--production', '--cast', '--outline', '--previous'];
+function applyDesignsCommand(rest) {
+  const path = rest[0];
+  if (!path || path.startsWith('--')) throw new Error('用法：apply-designs <art.json> <designs/S01.json ...>');
+  const files = [];
+  for (let i = 1; i < rest.length; i++) {
+    if (APPLY_VALUED.includes(rest[i])) { i++; continue; }
+    if (rest[i].startsWith('--')) { if (rest[i] !== '--no-production') throw new Error(`apply-designs 不认识 ${rest[i]}`); continue; }
+    files.push(rest[i]);
+  }
+  if (!files.length) throw new Error('apply-designs 需要至少一份设计文件');
+  const art = readJson(path);
+  if (art?.schemaVersion !== ART_VERSION || art?.kind !== 'mint-art') throw new Error('art 需要 schemaVersion:1, kind:mint-art');
+  const designs = files.map(file => ({ file, data: readJson(file) }));
+  const { doc, errors, replaced } = mergeDesigns(art, designs);
+  if (errors.length) throw new Error('设计文件不合格，未写回：\n' + errors.join('\n'));
+  const problems = artProblems(doc, path, rest);
+  if (problems.length) {
+    // 原 art 本身就有的问题不算到任何一份设计头上；变体单独检查时连同同组基准的设计一起套用。
+    const baseline = new Set(artProblems(art, path, rest));
+    const perId = designs.map(d => {
+      const group = designs.filter(x => x === d || x.data.id === assetsOf(art).find(a => a.id === d.data.id)?.variantOf);
+      const own = artProblems(mergeDesigns(art, group).doc, path, rest).filter(x => !baseline.has(x));
+      return own.length ? `${d.data.id}：${own.join('；')}` : null;
+    }).filter(Boolean);
+    const inherited = problems.filter(x => baseline.has(x));
+    const combined = problems.filter(x => !baseline.has(x));
+    throw new Error(['校验未通过，未写回：',
+      ...(perId.length ? perId : combined.length ? [`组合问题（单独套用每份设计时不出现）：${combined.join('；')}`] : []),
+      ...(inherited.length ? [`原 art 本身的问题（与设计文件无关）：${inherited.join('；')}`] : [])].join('\n'));
+  }
+  const tmp = `${resolve(path)}.tmp-${process.pid}`;
+  writeFileSync(tmp, JSON.stringify(doc, null, 2) + '\n', 'utf8');
+  renameSync(tmp, resolve(path));
+  console.log(JSON.stringify({ applied: designs.map(d => d.data.id), replaced }, null, 2));
+}
+
 async function main(argv) {
   const [cmd, ...rest] = argv;
 
@@ -1472,6 +1555,12 @@ async function main(argv) {
 
   if (cmd === 'seed') {
     const path=flag(rest,'--source'),title=flag(rest,'--title');
+    if(rest.includes('--source-dir')) {
+      if(path||rest.includes('--design')||rest.includes('--existing'))throw Error('--source-dir 不能与 --source、--design、--existing 同时提供；分集目录只用于首次生成');
+      const seeded=seedFromSourceDir(flag(rest,'--source-dir'),title);
+      if(seeded.missingEpisodes.length)console.error(`missingEpisodes: ${seeded.missingEpisodes.join(', ')}`);
+      validateUpstreams(seeded.doc,rest);outputNew(seeded.doc,rest);return;
+    }
     if(rest.includes('--design')) {
       if(path||!title||flag(rest,'--existing'))throw Error('seed --design 只接受 --title');
       const doc={schemaVersion:1,kind:'mint-art',mode:'design',source:title,status:'draft',scenes:[],props:[],registry:{entries:[],changes:[]},budgets:{},upstreams:{}};
@@ -1513,6 +1602,8 @@ async function main(argv) {
     }
     rebaseAllSources(doc,path);outputNew(doc,rest);return;
   }
+
+  if (cmd === 'apply-designs') { applyDesignsCommand(rest); return; }
 
   if (cmd === 'validate' || cmd === 'checkup') {
     const [path] = rest;

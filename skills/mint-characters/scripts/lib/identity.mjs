@@ -4,6 +4,7 @@ import {readFileSync, writeFileSync} from 'node:fs';
 import {resolve, dirname} from 'node:path';
 import {sourceLineCount} from './source-facts.mjs';
 import {outlineInputErrors} from './outline-input.mjs';
+import {readSourceDir} from './source-dir.mjs';
 const obj = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 const txt = x => typeof x === 'string' && !!x.trim();
 const arr = x => Array.isArray(x) ? x : [];
@@ -28,6 +29,14 @@ export function seedSource(path, title) {
     provenance:{kind:'script',scope:'partial',documents:[{id:'D01',path:resolve(path),sha256:hash(bytes),lineCount}],coverage:[]},
     characters:[],budgets:{},lifecycle:{revision:0,previousHash:null,registry:[],changes:[],recheckIds:[]},
     review:{status:'pending',note:'骨架不进行语义识别；模型或人工阅读原文后登记身份和已读范围。'}};
+}
+// One folder of per-episode Markdown files; document IDs are D + episode number.
+export function seedSourceDir(dir, title) {
+  if (!txt(title)) throw Error('seed 需要 --title title');
+  const {documents,missingEpisodes}=readSourceDir(dir,sourceLineCount);
+  const doc=seedSource(documents[0].path,title);
+  doc.provenance.documents=documents.map(d=>({id:d.id,path:d.path,sha256:hash(d.bytes),lineCount:sourceLineCount(d.bytes)}));
+  return {doc,missingEpisodes};
 }
 export function sourceErrors(doc, file, {verify=true}={}) {
   const errors=[], p=doc?.provenance, docs=new Map();
