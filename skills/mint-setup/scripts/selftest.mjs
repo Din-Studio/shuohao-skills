@@ -151,7 +151,14 @@ eq(clampDuration('大概十秒', 'MiniMax H3').duration, null, '不是数字也�
   eq(d.image.asset.aspectRatio, '16:9', '资产图默认横构图——设定图版面与成片画幅是两件事');
   eq(d.style.phrase, '', '画风短语仍供视频提示词指南使用，初始为空');
   eq(d.image.asset.resolution, '2K', '资产图档位默认 2K');
-  eq(d.image.model, 'nanobanana2', '生图模型默认 nanobanana2');
+  eq(d.image.model, 'image-2.5-flare', '生图模型默认 image-2.5-flare');
+  eq(gate(d, 'model-caps').status, 'skipped', '默认模型未收录能力快照时明确跳过，不冒充已核验');
+  for (const stage of ['characters', 'art']) {
+    const r = resolveStage(d, stage);
+    eq(r.model, 'image-2.5-flare', `${stage} 继承默认生图模型`);
+    eq(r.inputData.resolution, '2K', `${stage} 继承默认生图档位`);
+    eq(r.inputData.aspect_ratio, '16:9', `${stage} 继承默认资产图比例`);
+  }
   eq(d.style.label.zh, '', '画风没有默认值，正文由用户填');
   eq(typeof d.style.character, 'object', '骨架里角色那一块已经占好位');
   eq(typeof d.style.scene, 'object', '骨架里场景那一块也占好位');

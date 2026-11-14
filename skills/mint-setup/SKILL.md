@@ -59,7 +59,7 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
 
 另收集可选的 **creativeBrief**：请用户直接描述想要的作品与不希望的处理。没有额外要求就省略；不追问策略名称或版本，不自动推导规则。要求变化后明确提示下游内容需要重新评审。
 
-**生图模型**请用户从 `image-2`、NanoBanana 中选择。通过已安装 ly-image 的 `models` 和 `models --model <ID>` 核对实时 ID 与档位；NanoBanana 有多个版本时，确认具体版本，不自行猜测。脚本未指定时仍默认 `nanobanana2`，但交互时应先确认用户选择。资产图默认 `2K`、`16:9`。资产图是设定表，成片竖屏不要求设定图也竖屏。
+**生图参数**默认采用 `image-2.5-flare`、`2K`、`16:9`，交互与脚本保持一致，不重复要求用户选择生图模型。用户明确指定其他参数时，通过 `--image-model`、`--asset-resolution`、`--asset-aspect` 覆盖。生成前通过已安装 ly-image 的 `models` 和 `models --model <ID>` 核对实时 ID 与档位；默认值不代表已核验模型能力，不支持时明确阻断，不静默换模型。资产图是设定表，成片竖屏不要求设定图也竖屏。
 
 自动驾驶默认关闭。用户明确要求全自动时添加 `--autopilot`。它只影响下游五个创作 skill，不免除本阶段的要求确认。
 

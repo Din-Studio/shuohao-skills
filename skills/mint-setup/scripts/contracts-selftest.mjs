@@ -54,7 +54,16 @@ const cli = (...args) => spawnSync(process.execPath, [join(here, 'mint-setup.mjs
 try {
   const good = cli('init', '--aspect', '9:16', '--creative-brief', doc.creativeBrief);
   assert.equal(good.status, 0, good.stderr);
-  assert.equal(JSON.parse(good.stdout).creativeBrief, doc.creativeBrief);
+  const initialized = JSON.parse(good.stdout);
+  assert.equal(initialized.creativeBrief, doc.creativeBrief);
+  assert.deepEqual(initialized.image, { model: 'image-2.5-flare', asset: { resolution: '2K', aspectRatio: '16:9' } });
+  const overridden = cli('init', '--aspect', '9:16', '--image-model', 'image-2', '--asset-resolution', '4K', '--asset-aspect', '1:1');
+  assert.equal(overridden.status, 0, overridden.stderr);
+  assert.deepEqual(JSON.parse(overridden.stdout).image, { model: 'image-2', asset: { resolution: '4K', aspectRatio: '1:1' } });
+  assert.deepEqual(initProduction({ aspect: '9:16', imageModel: 'image-2', assetResolution: '4K', assetAspect: '1:1' }).image, JSON.parse(overridden.stdout).image);
+  const help = cli('--help');
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /默认 image-2\.5-flare/);
   assert.equal(cli('init', '--aspect', '9:16', '--creative-brief').status, 1);
   assert.equal(cli('init', '--aspect', '9:16', '--creative-brief', '--autopilot').status, 1);
   assert.equal(cli('init', '--aspect', '9:16', '--selection', 'old.json').status, 1);

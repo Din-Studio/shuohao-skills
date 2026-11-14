@@ -23,7 +23,7 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
   "lang": "zh",
   "promptLang": "zh",
   "image": {
-    "model": "nanobanana2",
+    "model": "image-2.5-flare",
     "asset": { "resolution": "2K", "aspectRatio": "16:9" }
   },
   "video": {
@@ -47,9 +47,9 @@ production 使用 `schemaVersion: 3`。通过 `init --creative-brief "正文"` �
 | `style` | object | **画风本身**，由用户在这一段填。没有内置类型，没有默认值。下面单开一节 |
 | `lang` | enum | 报告界面语言 `zh` / `en`。五个 skill 的 `render --lang` 缺省时跟它 |
 | `promptLang` | enum | 视频提示词语言 `zh` / `en`。默认 `zh`（中文）；可通过 `--prompt-lang en` 显式指定英文 |
-| `image.model` | string | 生图模型，取 ly-image 的 `models` 返回的 id。内置能力表里有的查枚举，没有的明说跳过 |
-| `image.asset.resolution` | string | **资产图分辨率档位**：`1K` / `2K` / `4K`。角色设定图、场景设定图、道具设定图共用 |
-| `image.asset.aspectRatio` | string | **资产图比例**：`W:H`。**必须是横构图或方形** |
+| `image.model` | string | 生图模型，默认 `image-2.5-flare`，生成前核对 ly-image 的实时 ID。内置能力表里有的查枚举，没有的明说跳过 |
+| `image.asset.resolution` | string | **资产图分辨率档位**：默认 `2K`。具体可选档位按模型实时 schema 核对；角色设定图、场景设定图、道具设定图共用 |
+| `image.asset.aspectRatio` | string | **资产图比例**：`W:H`，默认 `16:9`。**必须是横构图或方形** |
 | `video.model` | string | 生视频模型，取 ly-video 的 `models` 返回的 id |
 | `video.aspectRatio` | string | **视频 aspect_ratio**：`W:H`。这就是成片画幅 |
 | `video.resolution` | string | **视频 resolution 档位**。枚举**逐个模型不同**：`MiniMax H3` 是 `768p` / `2K`，seedance 全系是 `480p` / `720p`（`seedance2.0` 多一档 `1080p`） |

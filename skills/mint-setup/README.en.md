@@ -26,8 +26,8 @@ node scripts/mint-setup.mjs show <work-dir>/production.json
 ```
 
 - The finished-video aspect has no default. `--aspect` sets only the video ratio.
-- Offer Seedance 2.5, Seedance 2.0, and Wan 3.0 for video; offer `image-2` and NanoBanana for images. Check live model IDs and capabilities; confirm the NanoBanana version if there are multiple versions.
-- Script asset defaults: `nanobanana2`, `2K`, `16:9`. Confirm the image model interactively and set `--image-model`, `--asset-resolution` and `--asset-aspect` as needed.
+- Offer Seedance 2.5, Seedance 2.0, and Wan 3.0 for video. Check live model IDs and capabilities.
+- Asset defaults are `image-2.5-flare`, `2K`, `16:9` in both interactive use and the script. Do not ask users to select the image model again. Explicit choices override these defaults via `--image-model`, `--asset-resolution` and `--asset-aspect`. Check the live schema before generation; report unsupported settings without silently switching models.
 - Art style has no default or built-in types. Fill the empty skeleton or load `--style <style.json>`.
 - Keep `style.phrase` as the English style summary used by the Seedance prompt guide. Write separate `style.character` and `style.scene` blocks. Replace the whole style together; positive and negative requirements must not contradict each other.
 - Report and prompt languages default to Chinese. Set report language with `--lang`; use `--prompt-lang en` for English prompts. Video creation applies its model-specific prompt rules.
@@ -47,7 +47,7 @@ node scripts/mint-setup.mjs show <work-dir>/production.json
 | style-blocks | Style label and both style blocks are complete |
 | style-coherent | Positive and negative requirements agree |
 
-Model tables retain historical source metadata and UUIDs for offline checks. Unknown models explicitly skip capability checks. Before generation, use the independently installed ly-image / ly-video skills to discover live schemas. Resolution and aspect are service tiers, not pixel dimensions.
+Model tables retain historical source metadata and UUIDs for offline checks. The default `image-2.5-flare` is not yet in the offline table, so its capability check explicitly skips; this is not verified support. Before generation, use the independently installed ly-image / ly-video skills to discover live schemas. Resolution and aspect are service tiers, not pixel dimensions.
 
 A video ratio does not constrain the asset-image model. For example, `nanobanana2` sheets can remain at `16:9` while a compatible video model produces `4:3`. The `image-2` model at `4K` accepts only `16:9` or `9:16` images.
 

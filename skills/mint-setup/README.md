@@ -26,8 +26,8 @@ node scripts/mint-setup.mjs show <工作目录>/production.json
 ```
 
 - **成片画幅没有默认值**，必须显式传入 `--aspect`。它只设置视频比例。
-- 视频模型可选 Seedance 2.5、Seedance 2.0、Wan 3.0；生图模型可选 `image-2`、NanoBanana。选择后核对实时模型 ID 与档位；NanoBanana 有多个版本时确认具体版本。
-- 脚本的资产图默认值为 `nanobanana2`、`2K`、`16:9`。交互时先确认生图模型，再通过 `--image-model`、`--asset-resolution`、`--asset-aspect` 设置。
+- 视频模型可选 Seedance 2.5、Seedance 2.0、Wan 3.0；选择后核对实时模型 ID 与档位。
+- 资产图默认采用 `image-2.5-flare`、`2K`、`16:9`，交互与脚本一致，不重复询问生图模型。用户可通过 `--image-model`、`--asset-resolution`、`--asset-aspect` 覆盖。生成前核对实时 schema，不支持时明确阻断，不静默换模型。
 - **画风没有默认值或预设类型**。`init` 留下空骨架；使用 `--style <style.json>` 可以载入已写好的画风。
 - 画风短语 `style.phrase` 供 Seedance 等模型指南使用。角色与环境画风分别存入 `style.character` 和 `style.scene`。更换画风时整套更换，正向要求不能同时写进反向词。
 - 报告语言默认中文，`--lang en` 可设为英文。提示词语言默认中文，`--prompt-lang en` 可设为英文；视频阶段按模型规则处理。
@@ -49,7 +49,7 @@ node scripts/mint-setup.mjs show <工作目录>/production.json
 | style-blocks | 画风名称及角色、环境正文完整 |
 | style-coherent | 正反向要求不矛盾 |
 
-模型能力表保留历史采集来源与 UUID，只做离线检查。表外模型明确跳过能力检查。生成前通过已安装 ly-image / ly-video 的 models --model 查询实时 schema，不把快照当成当前能力。
+模型能力表保留历史采集来源与 UUID，只做离线检查。默认模型 `image-2.5-flare` 尚未收录，能力检查明确跳过，不代表已核验支持。生成前通过已安装 ly-image / ly-video 的 models --model 查询实时 schema，不把快照当成当前能力。
 
 **视频画幅不限制资产图模型**：`nanobanana2` 不收 `4:3` 资产图，但仍可搭配支持 `4:3` 的视频模型。`image-2` 的 `4K` 资产图只收 `16:9` / `9:16`。
 

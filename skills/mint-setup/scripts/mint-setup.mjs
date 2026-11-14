@@ -318,7 +318,7 @@ export function initProduction({
   autopilot = false,
   assetResolution = '2K',
   assetAspect = '16:9',
-  imageModel = 'nanobanana2',
+  imageModel = 'image-2.5-flare',
   videoModel = '',
   videoResolution = '',
   style = null,
@@ -730,7 +730,7 @@ const USAGE = `mint-setup.mjs — mint-setup skill 的确定性工具（生产�
                                          一口气跑完，不提问、不等拍板（默认关）
        [--asset-resolution <档位>]        资产图分辨率档位，默认 2K
        [--asset-aspect <W:H>]            资产图比例（默认 16:9——设定图版面要横构图）
-       [--image-model <名>]              默认 nanobanana2
+       [--image-model <名>]              默认 image-2.5-flare
        [--video-model <名>]              视频模型，取 ly-video 实时 models 返回的 id
        [--video-resolution <档位>]        视频分辨率档位（如 768p）
        [--creative-brief <正文>]          可选自然语言创作要求，不推导规则
@@ -796,7 +796,7 @@ function main(argv) {
       autopilot: rest.includes('--autopilot'),
       assetResolution: flag(rest, '--asset-resolution', '2K'),
       assetAspect: flag(rest, '--asset-aspect', '16:9'),
-      imageModel: flag(rest, '--image-model', 'nanobanana2'),
+      imageModel: flag(rest, '--image-model', 'image-2.5-flare'),
       videoModel: flag(rest, '--video-model', ''),
       videoResolution: flag(rest, '--video-resolution', ''),
       creativeBrief: flag(rest, '--creative-brief', undefined),
