@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {sourceFolder,episodeFromFilename,parseEpisodeNumber,chunkScript} from './lib/source.mjs';
 const realpathSync=fs.realpathSync;
-import {mergeFragments,publishDraft,readSources} from './lib/merge.mjs';
+import {mergeFragments,publishDraft,readSources,planBatches,MAX_READER_EPISODES} from './lib/merge.mjs';
 import {checkup,validateOutline} from './lib/outline-core.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),cli=join(root,'scripts/mint-outline.mjs');
 const folder=join(root,'examples/旧站时刻-分集'),fx=join(root,'scripts/fixtures/parallel');
@@ -48,6 +48,27 @@ try{
  ]){const c=mk(files);throws(()=>sourceFolder(c.src,{out:c.out}),re);eq(run('source-folder',c.src,'--out',c.out).status,1);ok(!fs.existsSync(c.out));}
  const linked=mk({'第1集.md':'甲\n'});fs.symlinkSync(join(linked.src,'第1集.md'),join(linked.src,'第2集.md'));throws(()=>sourceFolder(linked.src,{out:linked.out}),/same file/);eq(run('source-folder',linked.src,'--out',linked.out).status,1);ok(!fs.existsSync(linked.out));
  const gap=mk({'第1集.md':'甲\n','第3集.md':'乙\n'});eq(sourceFolder(gap.src,{out:gap.out}).missingEpisodes,[2]);
+ // ---- strict dispatch plan: metadata only, fresh agent per batch ----
+ eq(MAX_READER_EPISODES,4);
+ for(const total of [1,2,3,4,5,6,8,9,60]){
+  const c=fresh(),src=join(c,'scripts');fs.mkdirSync(src);
+  for(let ep=1;ep<=total;ep++)fs.writeFileSync(join(src,`ep-${ep}.md`),`# 第${ep}集\n原文不得进入调度上下文\n`);
+  const sourceFile=join(c,'sources.json');json(sourceFile,sourceFolder(src,{out:sourceFile}));
+  const p=planBatches(sourceFile);
+  eq(p.maxEpisodesPerAgent,4);eq(p.batches.flatMap(b=>b.episodes),Array.from({length:total},(_,i)=>i+1));
+  ok(p.batches.every(b=>b.episodes.length>=1&&b.episodes.length<=4));
+  if(total>=2)ok(p.batches.length>=2,'even small inputs require parallel batches');
+  if(total===60){eq(p.batches.length,15);ok(p.batches.every(b=>b.episodes.length===4));}
+  eq(p.batches.map(b=>b.id),p.batches.map((_,i)=>'batch-'+String(i+1).padStart(2,'0')));
+  ok(p.batches.flatMap(b=>b.documents).every(d=>d.path.startsWith('/')&&d.sha256&&d.lineCount===2));
+  ok(!JSON.stringify(p).includes('原文不得进入调度上下文'),'plan never returns source text');
+  const result=run('plan-batches',sourceFile);eq(result.status,0,result.stderr);eq(JSON.parse(result.stdout),p);
+ }
+ const gapFile=join(gap.dir,'gap-sources.json');json(gapFile,sourceFolder(gap.src,{out:gapFile}));
+ eq(planBatches(gapFile).batches.flatMap(b=>b.episodes),[1,3],'gaps remain gaps, no invented episode');
+ fs.appendFileSync(join(gap.src,'第1集.md'),'changed\n');throws(()=>planBatches(gapFile),/source changed/);
+ eq(run('plan-batches',gapFile).status,1);
+ for(const args of [[],['missing.json'],[regFile,'--max-episodes','5'],[regFile,'extra']])eq(run('plan-batches',...args).status,1);
  // ---- chunk ----
  const work=join(tmp,'chunks'),ep3=join(folder,'第03集.md'),ep4=join(folder,'第四集.md');
  eq(run('chunk',ep3,work,'--kind','script','--id','D03','--max-lines','3').status,0);const ch=read(join(work,'source-chunks-D03.json'));
@@ -104,6 +125,38 @@ try{
   for(const k of ['documents'])d.provenance[k]=d.provenance[k].filter(x=>keep.has(x.id));d.provenance.coverage=d.provenance.coverage.filter(x=>keep.has(x.documentId));d.story.sourceRefs=d.story.sourceRefs.filter(x=>keep.has(x.documentId));return d;};
  fails(()=>{},/contiguous range/,{fragments:(dir,d)=>[place(dir,'odd.json',subset(d[0],[1,3])),place(dir,'even.json',subset(d[0],[2])),place(dir,'batch-02.json',d[1])]});
  {const dir=fresh(),o=plan(dir);const s=mergeFragments([place(dir,'a.json',subset(batch1,[1])),place(dir,'b.json',subset(batch1,[2,3])),place(dir,'c.json',batch2)],o).summary;eq(s.fragments,3);eq(s.unresolvedQuestions,['Q01','Q02','Q03'],'cross-batch answers stay open until stitching');}
+ // Four is a hard fragment limit, not a limit on the formal outline.
+ const combined=structuredClone(draft);combined.provenance.scope='partial';delete combined.provenance.totalEpisodes;
+ for(const d of combined.provenance.documents)d.path=[...batch1.provenance.documents,...batch2.provenance.documents].find(x=>x.id===d.id).path;
+ {const dir=fresh(),o=plan(dir);
+  const four=subset(combined,[1,2,3,4]),two=subset(combined,[5,6]);
+  const result=mergeFragments([place(dir,'four.json',four),place(dir,'two.json',two)],o);
+  eq(result.draft.episodes.length,6,'formal outline may contain more than four episodes');
+  eq(result.summary.fragments,2);
+ }
+ for(const total of [5,6])fails(()=>{},/a fragment may own at most 4 episodes/,{fragments:(dir)=>{
+  const files=[place(dir,'oversized.json',subset(combined,Array.from({length:total},(_,i)=>i+1)))];
+  if(total===5)files.push(place(dir,'last.json',subset(combined,[6])));
+  return files;
+ }});
+ {const dir=fresh(),o=plan(dir),oversized=place(dir,'oversized.json',combined);
+  const result=run('merge',oversized,'--sources',o.sources,'--out',o.out,'--publish-to',o.publishTo,'--source','旧站时刻','--scope','partial');
+  eq(result.status,1);ok(result.stderr.includes('at most 4 episodes'));ok(!fs.existsSync(o.out));
+ }
+ // Documentation is the runtime dispatch contract, not proof of real tool isolation.
+ const skill=fs.readFileSync(join(root,'SKILL.md'),'utf8'),dispatch=fs.readFileSync(join(root,'references/dispatch.md'),'utf8');
+ ok(skill.includes('version: 5.2.0'));ok(skill.includes('主会话')&&skill.includes('不先通读'));
+ ok(dispatch.includes('每个 subagent 在一次调用中累计最多接触 4 个不同集号的原文'));
+ ok(dispatch.includes('至少 2 集时至少划分 2 批'));ok(dispatch.includes('两者都不可用时停止'));
+ const stitching=dispatch.split('### 串联者（')[1].split('### 核验者')[0];
+ ok(stitching.includes('必要时按需求读取特定集数的剧本'));
+ ok(stitching.includes('每次调用累计最多接触 4 集原文'));
+ ok(stitching.includes('读取前明确集号、绝对路径及行范围'));
+ ok(stitching.includes('超出本次累计上限时'));
+ ok(!dispatch.includes('不传原文作为阅读输入'));
+ ok(!dispatch.includes('只读取提取结果，不读取或检索原文'));
+ ok(skill.includes('串联者以提取结果为主，必要时按需求读取特定集数的剧本'));
+ ok(dispatch.includes('不能审计工具历史'));ok(!dispatch.includes('3 万字'));
  // A batch resolve that points at a question in another batch is invalid inside the fragment itself.
  fails(d=>{r2(d).beats[1].resolves=['Q02'];},/batch-02.json: questions/);
  // ---- publish ----

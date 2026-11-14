@@ -10,6 +10,7 @@ const int=x=>Number.isSafeInteger(x)&&x>0;
 const readJson=p=>JSON.parse(readFileSync(resolve(p),'utf8'));
 const id=(prefix,n)=>prefix+String(n).padStart(2,'0');
 const gateErrors=report=>report.gates.filter(g=>g.status==='fail'&&g.level==='error').flatMap(g=>g.messages.length?g.messages.map(m=>`${g.id}: ${m}`):[g.id]);
+export const MAX_READER_EPISODES=4;
 const FORBIDDEN=[['totalEpisodes',d=>d.provenance?.totalEpisodes],['endingBeatId',d=>d.story?.endingBeatId],['lang',d=>d.lang],['params',d=>d.params],['creativeBrief',d=>d.creativeBrief]];
 
 // sources.json is a closed .work record written by source-folder; re-read every listed file.
@@ -27,6 +28,16 @@ export function readSources(path) {
  if(new Set(documents.map(d=>d?.id)).size!==documents.length)errors.push(`${path}: duplicate document id`);
  if(errors.length)throw Error(errors.join('\n'));
  return documents;
+}
+
+// Metadata-only dispatch plan. Small inputs still get independent parallel readers.
+export function planBatches(sources) {
+ const docs=readSources(sources),size=Math.min(MAX_READER_EPISODES,Math.ceil(docs.length/2)),batches=[];
+ for(let i=0;i<docs.length;i+=size){
+  const documents=docs.slice(i,i+size).map(d=>({id:d.id,ep:d.ep,path:d.abs,sha256:d.sha256,lineCount:d.lineCount}));
+  batches.push({id:'batch-'+String(batches.length+1).padStart(2,'0'),episodes:documents.map(d=>d.ep),documents});
+ }
+ return {maxEpisodesPerAgent:MAX_READER_EPISODES,batches};
 }
 
 // Collect every sourceRefs array below a node, including nested notes, ending and question.
@@ -51,6 +62,7 @@ function checkFragment(path,doc,{source,sources}) {
   owned.push(s);
  }
  const eps=arr(doc.episodes).map(e=>e?.ep),want=owned.map(s=>s.ep).sort((a,b)=>a-b);
+ if(docs.length>MAX_READER_EPISODES||eps.length>MAX_READER_EPISODES)errors.push(`${label}: a fragment may own at most ${MAX_READER_EPISODES} episodes`);
  if(JSON.stringify([...eps].sort((a,b)=>a-b))!==JSON.stringify(want))errors.push(`${label}: episodes [${eps}] must equal its documents' episodes [${want}]`);
  const index=owned.map(s=>sources.indexOf(s)).sort((a,b)=>a-b);
  if(index.some((v,i)=>i&&v!==index[i-1]+1))errors.push(`${label}: episodes must be one contiguous range in sources.json`);

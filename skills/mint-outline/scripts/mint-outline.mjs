@@ -4,9 +4,9 @@ import {mkdirSync,readFileSync,realpathSync,writeFileSync,lstatSync} from 'node:
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {chunkScript,sourceDocument,sourceFolder,verifySources} from './lib/source.mjs';
-import {mergeFragments,publishDraft} from './lib/merge.mjs';
+import {mergeFragments,publishDraft,planBatches} from './lib/merge.mjs';
 export * from './lib/source.mjs';
-export {mergeFragments,publishDraft,readSources} from './lib/merge.mjs';
+export {mergeFragments,publishDraft,readSources,planBatches,MAX_READER_EPISODES} from './lib/merge.mjs';
 import {checkup,validateOutline,STAGES,SKILL_ROOT} from './lib/outline-core.mjs';
 import {renderHtml,renderMarkdown} from './lib/outline-report.mjs';
 import {checkKnownDownstream} from './lib/outline-downstream.mjs';
@@ -112,6 +112,7 @@ const USAGE=`mint-outline v5 (existing scripts only)
   chunk SCRIPT WORKDIR --kind script [--id ID] [--max-lines N] [--context-lines N]
   source-document SCRIPT --artifact DOC [--id ID]
   source-folder DIR --out SOURCES_JSON
+  plan-batches SOURCES_JSON
   merge FRAGMENT... --sources SOURCES_JSON --out DRAFT --publish-to OUTLINE --source TITLE --scope partial|complete [--total-episodes N]
   publish DRAFT --to OUTLINE
   verify-sources DOC
@@ -145,6 +146,11 @@ async function main(argv) {
   mkdirSync(dirname(resolve(out)),{recursive:true});
   writeFileSync(resolve(out),JSON.stringify(result,null,2)+'\n',{flag:'wx'});
   console.log(JSON.stringify(result,null,2));return;
+ }
+ if(cmd==='plan-batches'){
+  if(!args[0]||args[0].startsWith('--'))throw Error('plan-batches requires SOURCES_JSON');
+  validateOptions(args,1);
+  console.log(JSON.stringify(planBatches(args[0]),null,2));return;
  }
  if(cmd==='merge'){
   const first=args.findIndex(a=>a.startsWith('--')),files=first<0?args:args.slice(0,first);

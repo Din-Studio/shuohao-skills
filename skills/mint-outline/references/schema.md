@@ -75,7 +75,8 @@ scripts/mint-outline.mjs 导出：
 - renderHtml/renderMarkdown(doc,lang,options)：只读派生；中英界面，正文不翻译。
 - sourceDocument、sourceLines、unionRanges、coverageOf、provenanceErrors、sourceRefsErrors、verifySources、chunkScript：自包含来源工具。
 - sourceFolder(dir,{out})、episodeFromFilename、parseEpisodeNumber：登记每集一份 Markdown 的文件夹，集号只从文件名解析。
-- mergeFragments(fragments,{sources,out,publishTo,source,scope,totalEpisodes})、publishDraft(draft,{to})、readSources(path)：分集并行解析的确定性合并与发布，见[分集并行派发](dispatch.md)。
+- planBatches(sources)、MAX_READER_EPISODES=4：按来源集序生成每批最多 4 集的元数据计划，2 集及以上至少拆成 2 批；不启动代理。
+- mergeFragments(fragments,{sources,out,publishTo,source,scope,totalEpisodes})、publishDraft(draft,{to})、readSources(path)：分集并行解析的确定性合并与发布。merge 拒绝超过 4 集的 fragment；正式 outline 不受 4 集限制。首次合并与已有产物稳定 ID 修订均遵循[严格并行派发](dispatch.md)，不改变正式 schema。
 
 fragment、sources.json 和 draft.json 都是 `.work` 中间文件，不是第二种正式格式：fragment 和 draft 本身就是合法的 v5 outline，sources.json 只供 merge 读取。
 
