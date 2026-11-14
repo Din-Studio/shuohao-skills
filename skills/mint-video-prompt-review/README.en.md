@@ -6,6 +6,7 @@ The **reviewer** for reference-image-to-video prompts. It independently reviews 
 
 - It judges only against script beats, the asset table, the project brief and the video model's conventions. See the [review checklist](references/审核清单.md).
 - Reviews contain a conclusion, revision requests and pending confirmations. 通过 / 需返修 / 待确认 map to approved / changes_requested / blocked. Confirmed errors take precedence; missing evidence is coordinated before another writing round. Only the current round is kept.
+- When the script-stage storyboard is supplied it is the confirmed storyboard: check that the prose realises its start/end states, rewrites, must-show information and sound. Problems in the storyboard itself are pending items sent back to the script stage.
 - Approval is bound to content and inputs: a later change to the cut structure or prompt body, or to the beats, reference images, model parameters or project brief this segment relies on, invalidates it.
 - It reviews only. It never rewrites the cut structure or prompt body and never generates video. See [worksheet](references/worksheet.md) for the format.
 - Usually invoked as a subagent by a dispatcher, but usable on its own. Node 18+, standard library only; the directory is self-contained.

@@ -35,7 +35,7 @@ export function hashOf(structure, body) {
 
 /**
  * 批准绑定的输入：只取这一段实际依据的材料——认领节拍的原文、挂载参考图的内容摘要、
- * 视频模型与参数、提示词语言、单段上限和项目要求。别的段、别的集、上游文件里无关的字段
+ * 视频模型与参数、提示词语言、单段上限、项目要求，以及（提供时）本段的分镜条目。别的段、别的集、上游文件里无关的字段
  * 发生变化，不影响这一段的批准。material 是调度方派发的输入材料（格式见各 skill 的样例）。
  */
 export function inputHashOf(structure, material) {
@@ -90,6 +90,9 @@ export function inputHashOf(structure, material) {
   const compare = (a,b) => a[0]-b[0] || a[1]-b[1];
   const beatClaims = (material?.beatClaims ?? []).filter(c => Array.isArray(c?.start) && Array.isArray(c?.end) && positions.some(p => compare(c.start,p)<=0 && compare(p,c.end)<=0));
   // The full episode is dispatched, but local intent belongs only to its owning segment.
+  // 有 script 分镜时，本段的分镜条目（状态、复写、必须呈现的信息、声音）与单段上限进入绑定。
+  const storyboard = material?.storyboard ? {limit:material.storyboard.limit ?? null,
+    segment:(material.storyboard.segments ?? []).find(s => s?.id === structure?.id) ?? null} : null;
   const owned = [...claimed].map(n => [structure?.sceneIndex,n]);
   const allPositions = scenes.flatMap(s => (s.beats ?? []).map(b => [s.sceneIndex,b.n])).sort(compare);
   const opening = material?.intent?.openingBeat ?? allPositions[0];
@@ -105,6 +108,7 @@ export function inputHashOf(structure, material) {
     maxSegmentSeconds:material?.maxSegmentSeconds ?? null,maxOnScreen:material?.maxOnScreen ?? null,
     targetSeconds:material?.targetSeconds ?? null,creativeBrief:material?.creativeBrief ?? null,
     ...(material?.style ? {style:material.style} : {}),
+    ...(storyboard ? {storyboard} : {}),
     ...dependencies,documents,sourceCoverage,sourceScope:material?.provenance?.scope??null,images,beatClaims,mappings,
   }));
 }

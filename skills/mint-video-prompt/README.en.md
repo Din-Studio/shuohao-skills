@@ -6,6 +6,7 @@ The **writer** for reference-image-to-video prompts. Given script beats, an asse
 
 - Output is one worksheet per segment at `<segment>/prompt.md`: a status header, the cut structure, a review section, a writer-response section, and the prompt body below the last separator. See [worksheet](references/worksheet.md).
 - Use the unified five-part prose format ([creation-prompt](references/creation-prompt.md)). The video model decides camera cuts; JSON cuts retain internal beat coverage and timing only. Technical adaptation follows the [H3](references/h3-prompt.md) or [seedance](references/seedance2-prompt.md) guide.
+- When the script-stage storyboard is supplied, segment IDs, scenes and beat ranges follow it exactly, and the prose realises its start/end states, rewrites and must-show information. Storyboard problems go back to the script stage; the writer never re-segments.
 - It writes only. It never reviews its own work and never generates video.
 - Usually invoked as a subagent by a dispatcher, but usable on its own. Node 18+, standard library only; the directory is self-contained.
 

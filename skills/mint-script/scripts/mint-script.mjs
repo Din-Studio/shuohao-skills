@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Self-contained script v4 consumer. No sibling imports.
-import { lstatSync, realpathSync } from 'node:fs';
-import { dirname, resolve, relative, isAbsolute } from 'node:path';
+import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { basename, dirname, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_PARAMS, effectiveParams, parameterErrors, documentErrors, productionErrors } from './lib/document.mjs';
 import { projectRoot, loadKnownUpstreams, checkKnownCreation, readJsonStrict } from './lib/downstream.mjs';
@@ -11,6 +11,8 @@ import { mappingErrors, mappedAssetId } from './lib/asset-mappings.mjs';
 export { mappingErrors, mappedAssetId, assetDigest } from './lib/asset-mappings.mjs';
 import { outlineInputErrors } from './lib/outline-input.mjs';
 import { evidenceErrors, verifySources, rebaseProvenance } from './lib/source.mjs';
+import { parseStoryboard, storyboardErrors, seedStoryboard, storyboardPathOf } from './lib/storyboard.mjs';
+export { parseStoryboard, storyboardErrors, seedStoryboard, storyboardPathOf } from './lib/storyboard.mjs';
 export { verifySources } from './lib/source.mjs';
 
 export const SKILL_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -225,6 +227,7 @@ function localErrors(doc, stage) {
   return errors;
 }
 const LABELS = {
+  storyboard: ['分镜文件', 'Storyboard document'], 'storyboard-duration': ['分镜单段估时提醒', 'Storyboard segment timing notice'],
   fields: ['基础字段与位置', 'Fields and positions'], 'duration-input': ['估时输入合法性', 'Timing input validity'], duration: ['估算时长提醒', 'Estimated duration notice'],
   'outline-input': ['大纲输入契约', 'Outline input contract'], 'upstream-projection': ['上游计划来源与作品对账', 'Upstream plans and source reconciliation'],
   'upstream-duration': ['上游目标时长', 'Upstream target duration'], 'beats-claimed': ['节点 ID 与顺序对账', 'Beat IDs and order'],
@@ -270,6 +273,17 @@ export function gateReport(doc, ctx = {}) {
   });
   add('duration-input', stats.episodes.filter(e => !Number.isFinite(e.est)).map(e => `E${e.ep}: unavailable/overflowed timing; repair beats or parameters`), 'base', 'error', stage === 'skeleton' ? 'stage-incomplete' : null);
   add('duration', duration, 'base', 'warn', stage === 'skeleton' ? 'stage-incomplete' : null);
+  // 分镜是第四个正式产物：提供时完整检查；正式交付（--production-ready）必须提供。
+  if (stage === 'skeleton') { add('storyboard', [], 'base', 'error', 'stage-incomplete'); add('storyboard-duration', [], 'base', 'warn', 'stage-incomplete'); }
+  else if (typeof ctx.storyboard !== 'string') {
+    const missing = ctx.requireTarget ? [`missing storyboard ${ctx.storyboardPath ?? '<script>-storyboard.md'}; formal delivery has four files`] : [];
+    add('storyboard', missing, 'base', 'error', missing.length ? null : 'not-provided');
+    add('storyboard-duration', [], 'base', 'warn', 'not-provided');
+  } else {
+    const result = storyboardErrors(parseStoryboard(ctx.storyboard), doc, p);
+    add('storyboard', result.errors);
+    add('storyboard-duration', result.warnings, 'base', 'warn');
+  }
   const hasOutline = own(ctx, 'outline') && ctx.outline !== undefined;
   const oe = hasOutline ? outlineInputErrors(ctx.outline) : [];
   add('outline-input', oe, 'base', 'error', hasOutline ? null : 'missing-upstream');
@@ -347,8 +361,8 @@ export function seedFromOutline(outline, epRange = null) {
 }
 
 const I18N = {
-  zh: { title: '剧本', effective: '估时有效参数', brief: '创作要求', script: '分集剧本', episode: '分集', scene: '场次', opening: '开场计划', ending: '集尾', unmarked: '未标注开场落点；未核验开场表达', final: '正文计算的结束位置', claims: '节点计划与内容落点', plan: '上游计划', actual: '实际核心段', setup: '承接', outcome: '结果', questions: '上游问题与回答落点', missing: '缺少上游，未核验', invalid: '无效范围／估时不可用', duration: '估算时长', target: '目标时长', timeline: '分集正文与估算时间轴', timingNote: '估算不是实际表演时间。所有位置共用未舍入累计轴，仅显示值四舍五入。超出估时范围属于提醒，不要求删除有效表演。', scenes: '场次总表', lines: '台词本', voice: '音色提示词', copy: '复制', export: '导出 JSON', checks: '结构检查与内容评审状态', content: '内容评审未执行。位置合法不证明意图已表达；创作要求变化后须重新阅读正文评审。', scope: '独立或批次校验不代表完整联合交付。问题计划完整性由大纲校验负责。', pass: '通过', fail: '失败', warn: '提醒', skipped: '跳过', base: '基础契约', contentCategory: '内容评审', copied: '已复制', copyFailed: '复制失败', blocking: '阻断失败', warnings: '提醒数量', chars: '字数', count: '台词句数', lighting: '光照', characters: '人物', props: '道具', reason: { 'missing-upstream': '缺少上游', 'stage-incomplete': '阶段未完成', 'not-applicable': '不适用', 'no-production-dependencies': '未指定制作身份依赖' } },
-  en: { title: 'Script', effective: 'Effective estimation parameters', brief: 'Creative brief', script: 'Episode scripts', episode: 'Episode', scene: 'Scene', opening: 'Opening plan', ending: 'Ending', unmarked: 'Opening landing not marked; expression not verified', final: 'End position computed from text', claims: 'Beat plans and content locations', plan: 'Upstream plan', actual: 'Actual core range', setup: 'Setup', outcome: 'Outcome', questions: 'Upstream questions and answer locations', missing: 'Missing upstream; not verified', invalid: 'Invalid range / timing unavailable', duration: 'Estimated duration', target: 'Target duration', timeline: 'Episode text and estimated timeline', timingNote: 'Estimates are not performance timings. All positions share one unrounded clock. Duration differences are notices, not instructions to delete valid performances.', scenes: 'Scene table', lines: 'Line book', voice: 'Voice prompt', copy: 'Copy', export: 'Export JSON', checks: 'Structural checks and content review', content: 'Content review not performed. Valid coordinates do not prove intent. Review the actual text again when the creative brief changes.', scope: 'Standalone or batch validation is not full joint delivery. The outline validator owns question-plan completeness.', pass: 'Pass', fail: 'Fail', warn: 'Warning', skipped: 'Skipped', base: 'Base contract', contentCategory: 'Content review', copied: 'Copied', copyFailed: 'Copy failed', blocking: 'Blocking failures', warnings: 'Warnings', chars: 'Characters', count: 'Line count', lighting: 'Lighting', characters: 'Cast', props: 'Props', reason: { 'missing-upstream': 'Missing upstream', 'stage-incomplete': 'Stage incomplete', 'not-applicable': 'Not applicable', 'no-production-dependencies': 'No production identity dependencies requested' } }
+  zh: { title: '剧本', effective: '估时有效参数', brief: '创作要求', script: '分集剧本', episode: '分集', scene: '场次', opening: '开场计划', ending: '集尾', unmarked: '未标注开场落点；未核验开场表达', final: '正文计算的结束位置', claims: '节点计划与内容落点', plan: '上游计划', actual: '实际核心段', setup: '承接', outcome: '结果', questions: '上游问题与回答落点', missing: '缺少上游，未核验', invalid: '无效范围／估时不可用', duration: '估算时长', target: '目标时长', timeline: '分集正文与估算时间轴', timingNote: '估算不是实际表演时间。所有位置共用未舍入累计轴，仅显示值四舍五入。超出估时范围属于提醒，不要求删除有效表演。', scenes: '场次总表', lines: '台词本', voice: '音色提示词', copy: '复制', export: '导出 JSON', checks: '结构检查与内容评审状态', content: '内容评审未执行。位置合法不证明意图已表达；创作要求变化后须重新阅读正文评审。', scope: '独立或批次校验不代表完整联合交付。问题计划完整性由大纲校验负责。', pass: '通过', fail: '失败', warn: '提醒', skipped: '跳过', base: '基础契约', contentCategory: '内容评审', copied: '已复制', copyFailed: '复制失败', blocking: '阻断失败', warnings: '提醒数量', chars: '字数', count: '台词句数', lighting: '光照', characters: '人物', props: '道具', reason: { 'missing-upstream': '缺少上游', 'stage-incomplete': '阶段未完成', 'not-applicable': '不适用', 'no-production-dependencies': '未指定制作身份依赖', 'not-provided': '尚未提供' } },
+  en: { title: 'Script', effective: 'Effective estimation parameters', brief: 'Creative brief', script: 'Episode scripts', episode: 'Episode', scene: 'Scene', opening: 'Opening plan', ending: 'Ending', unmarked: 'Opening landing not marked; expression not verified', final: 'End position computed from text', claims: 'Beat plans and content locations', plan: 'Upstream plan', actual: 'Actual core range', setup: 'Setup', outcome: 'Outcome', questions: 'Upstream questions and answer locations', missing: 'Missing upstream; not verified', invalid: 'Invalid range / timing unavailable', duration: 'Estimated duration', target: 'Target duration', timeline: 'Episode text and estimated timeline', timingNote: 'Estimates are not performance timings. All positions share one unrounded clock. Duration differences are notices, not instructions to delete valid performances.', scenes: 'Scene table', lines: 'Line book', voice: 'Voice prompt', copy: 'Copy', export: 'Export JSON', checks: 'Structural checks and content review', content: 'Content review not performed. Valid coordinates do not prove intent. Review the actual text again when the creative brief changes.', scope: 'Standalone or batch validation is not full joint delivery. The outline validator owns question-plan completeness.', pass: 'Pass', fail: 'Fail', warn: 'Warning', skipped: 'Skipped', base: 'Base contract', contentCategory: 'Content review', copied: 'Copied', copyFailed: 'Copy failed', blocking: 'Blocking failures', warnings: 'Warnings', chars: 'Characters', count: 'Line count', lighting: 'Lighting', characters: 'Cast', props: 'Props', reason: { 'missing-upstream': 'Missing upstream', 'stage-incomplete': 'Stage incomplete', 'not-applicable': 'Not applicable', 'no-production-dependencies': 'No production identity dependencies requested', 'not-provided': 'Not provided yet' } }
 };
 export function tOf(lang = 'zh') { if (!Object.hasOwn(I18N, lang)) throw new Error('Report language must be zh/en'); return I18N[lang]; }
 const langOf = (doc, ctx) => ctx.lang ?? doc?.lang ?? ctx.production?.lang ?? 'zh';
@@ -472,6 +486,8 @@ const USAGE = `mint-script v4 (Node 18+, no dependencies)
   checkup SCRIPT [same options] [--json]
   render SCRIPT [--html|--md] [--lang zh|en] [same options] [--cast FILE]
   verify-sources SCRIPT [--outline FILE] [--no-production]
+  storyboard SCRIPT [--limit 15]   print a storyboard skeleton (one segment per scene) to fill in
+  (validate/checkup/render read SCRIPT-storyboard.md beside the JSON, or --storyboard FILE)
   slug NAME
 Full delivery requires upstream reconciliation and separate content review.`;
 const readJson = path => readJsonStrict(resolve(path));
@@ -485,6 +501,9 @@ function loadCtx(args, path) {
   const ctx = { docPath: resolve(path), stage: flag(args, '--stage', 'full'), verifySources: args.includes('--verify-sources') || args.includes('--production-ready'), requireTarget: args.includes('--production-ready'), requiredMappings: args.includes('--production-ready') ? true : [], fullWorkflow: args.includes('--full-workflow') };
   const requiredFile = flag(args,'--required-mappings');
   if (requiredFile !== undefined) ctx.requiredMappings = readJson(requiredFile);
+  ctx.storyboardPath = resolve(flag(args, '--storyboard') ?? storyboardPathOf(path));
+  try { ctx.storyboard = readFileSync(ctx.storyboardPath, 'utf8'); }
+  catch (error) { if (error.code !== 'ENOENT' || flag(args, '--storyboard') !== undefined) throw error; }
   for (const key of ['outline', 'art', 'cast']) {
     const file = flag(args, `--${key}`);
     if (file !== undefined) { ctx[key] = readJson(file); ctx[`${key}Path`] = resolve(file); } // supplied damaged/unreadable inputs fail; never skipped
@@ -511,6 +530,12 @@ export async function main(argv) {
     const outputPath = flag(args,'--output-path');
     if (outputPath) seeded.provenance = rebaseProvenance(seeded.provenance,path,outputPath);
     console.log(pretty(seeded)); return;
+  }
+  if (command === 'storyboard') {
+    const doc = readJson(path), limit = Number(flag(args, '--limit', '15'));
+    if (doc?.schemaVersion !== 4) throw new Error('schemaVersion must be 4');
+    if (!(limit > 0)) throw new Error('--limit: expected positive seconds');
+    process.stdout.write(seedStoryboard(doc, { scriptName: basename(path), limit })); return;
   }
   const doc = readJson(path), ctx = loadCtx(args, path);
   if (command === 'verify-sources') { ctx.verifySources = true; const result = checkup(doc,ctx); console.log(pretty(result)); if(result.blockingFailures) process.exitCode=1; return; }

@@ -181,12 +181,20 @@ const dir=mkdtempSync(join(tmpdir(),'script-asset-mappings-'));
 try {
   const file=join(dir,'script.json');writeFileSync(file,JSON.stringify(DOC));
   cpSync(join(root,'examples/修伞簿-source.txt'),join(dir,'修伞簿-source.txt'));
+  cpSync(join(root,'examples/修伞簿-mapped-script-storyboard.md'),join(dir,'script-storyboard.md'));
   const flags=[];
   for(const key of ['outline','cast','art']) {const path=join(dir,`${key}.json`);writeFileSync(path,JSON.stringify(ctx[key]));flags.push(`--${key}`,path);}
   const cli=(...args)=>spawnSync(process.execPath,[join(root,'scripts/mint-script.mjs'),...args],{encoding:'utf8'});
   test('CLI production-ready verifies explicit mappings and original bytes',()=>{
     const r=cli('validate',file,'--no-production','--production-ready',...flags);assert.equal(r.status,0,r.stderr+r.stdout);
     assert.equal(cli('validate',file,'--no-production','--production-ready').status,1);
+  });
+  test('formal delivery requires the storyboard as the fourth file',()=>{
+    rmSync(join(dir,'script-storyboard.md'));
+    const r=cli('validate',file,'--no-production','--production-ready',...flags);
+    assert.equal(r.status,1);assert.match(r.stdout,/fail\/base\/error storyboard: missing storyboard/);
+    assert.equal(cli('validate',file,'--no-production',...flags).status,0,'ordinary validation reports the storyboard as not provided');
+    cpSync(join(root,'examples/修伞簿-mapped-script-storyboard.md'),join(dir,'script-storyboard.md'));
   });
   test('supplied asset source files are read relative to their own artifact',()=>{
     const c=clone(ctx.art);c.provenance.documents[0].path='missing-original.txt';

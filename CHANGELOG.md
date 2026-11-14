@@ -1,5 +1,16 @@
 # Changelog
 
+## 分镜融合进 mint-script 与 mint-creation — 2026-11-14
+
+**mint-script 4.0.0 · mint-creation 3.2.0 · mint-video-prompt 1.1.0 · mint-video-prompt-review 1.1.0（JSON 契约不变）**
+
+- 内化 storyboard-video 的「分镜」「分镜审核」规则。视频提示词与提示词审核两部分此前已经内化，本次补齐上游分镜，使审核清单所说的「本段剧本」「必须呈现的信息」「段首复写」有了实际来源。
+- **mint-script 新增第四个正式产物 `xxx-storyboard.md`**：按叙事拆段，逐段写本段推进、本段剧本、段首／段尾状态、动作复写、必须呈现的信息、人物与场景说明、故事理解、环境音、音效、背景音乐和台词对照。新增 `storyboard` 命令生成骨架；validate/checkup 自动读取并检查场次覆盖、段号、节拍归属、本段剧本逐字、字段、复写配对与不含台词、台词估时；`--production-ready` 必须有分镜。新增 `references/分镜.md`、`references/分镜审核.md`，样例《修伞簿》解析版（十八段）与《夜班水尺》（三段）附分镜。
+- 调整：单段上限取有效视频模型，不沿用 30 秒；复写只含动作，台词延续继续使用 audioRefs；参考素材不套用数量上限；段号与制作阶段一一对应。
+- **mint-creation 按分镜分段**：新增 `storyboard` 门，已有的段必须与分镜的段号、场次、节拍范围逐段一致，分镜单段上限不超过制作上限；输入材料带上本集分镜，批准绑定本段分镜条目，只改其他段的分镜不影响本段。分镜问题退回 script 阶段，编写方不自行重新拆段。没有分镜时该门显示缺少上游。
+- 编写方与审核方指南（分镜指南、creation-prompt、审核清单、worksheet）同步更新，三个 skill 的副本保持逐字一致；两份 `lib/storyboard.mjs` 由仓库级自测核对一致。
+- script.json、creation.json、manifest 与生成计划的格式不变。
+
 ## 设定图准则按人物与场景道具拆分 — 2026-11-13
 
 **mint-characters 4.0.0 · mint-art 4.0.0**

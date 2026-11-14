@@ -21,7 +21,7 @@ The full pipeline has one fixed order: **outline → characters → art → scri
 | [**mint-outline**](skills/mint-outline/README.en.md) | Accepts existing screenplays only. Tracks source versions and reading coverage, story structure, ordered events, episodes and pacing facts; no asset inventories or budgets. Partial sources remain partial; missing episodes, endings and answers are not invented |
 | [**mint-characters**](skills/mint-characters/README.en.md) | Reads the original independently and owns character identity, aliases, stable IDs, evidence and character budgets. Profiles, voice and sheets are optional production tasks. Visual style comes from `production.json` |
 | [**mint-art**](skills/mint-art/README.en.md) | Art bibles for AI production (scenes + narrative props): consistency anchors, lighting & state variants, scale references, no-people/no-hands white plates. Reads the original independently and owns stable place/prop identities, evidence and art budgets. Scene boundaries do not define place identities; mentioned objects need not become assets |
-| [**mint-script**](skills/mint-script/README.en.md) | Forms one execution script from the original, retaining event claims and script-local references. Explicit `script.assetMappings` link local references to cast/art identities; matching names or ID strings never establish identity. Separates action, speech, subtitles, sound and non-speaking notes. Per-episode targetSeconds is the sole execution target: optional for parsing, required before production. Independent authoring remains available |
+| [**mint-script**](skills/mint-script/README.en.md) | Forms one execution script from the original, retaining event claims and script-local references. Explicit `script.assetMappings` link local references to cast/art identities; matching names or ID strings never establish identity. Separates action, speech, subtitles, sound and non-speaking notes, and splits each scene into video segments in a storyboard document (start/end states, action rewrites, must-show information, sound and post-production captions). Per-episode targetSeconds is the sole execution target: optional for parsing, required before production. Independent authoring remains available |
 | [**mint-creation**](skills/mint-creation/README.en.md) | Turns the script into segments and cuts, mounts existing character/scene/prop sheets without generating intermediate frames, and writes model-specific video prompts. `export` creates production packs; `videos` exports an offline plan; the separately installed ly-video skill generates and recovers tasks. Shot expression is reviewed against the guide; model limits remain deterministic checks |
 | [**mint-video-prompt**](skills/mint-video-prompt/README.en.md) | The prompt writer: splits an episode into segments and cuts, writes each segment's prompt into a worksheet (`<segment>/prompt.md`) and submits it for review; revises and resubmits when changes are requested. Invoked as a subagent by mint-creation, or used on its own |
 | [**mint-video-prompt-review**](skills/mint-video-prompt-review/README.en.md) | The prompt reviewer: independently checks worksheets against the script, assets, project brief and model conventions, records comments in the same worksheet and registers `approved`, `changes_requested` or `blocked`. It never rewrites the prompt |
@@ -202,7 +202,7 @@ Running an existing screenplay through the five ordered stages produces a pile o
 ├── outline/       ← mint-outline:    <drama>-outline.json / <drama>-outline-report.md / <drama>-outline-report.html
 ├── characters/    ← mint-characters: <drama>-cast.json / <drama>-cast-report.md / <drama>-cast-report.html
 ├── art/           ← mint-art:        <drama>-art.json / <drama>-art-report.md / <drama>-art-report.html
-├── script/        ← mint-script:     <drama>-script.json / <drama>-script-report.md / <drama>-script-report.html
+├── script/        ← mint-script:     <drama>-script.json / <drama>-script-storyboard.md / <drama>-script-report.md / <drama>-script-report.html
 ├── creation/      ← mint-creation: <drama>-creation.json / .md / creation-report.html
 │   ├── manifest.json  ← from `export` (each segment's mounted reference list, no sheet files copied)
 │   └── E01-01/…       ← one folder per segment (prompt.md + video.mp4 once ordered, no frame images)
@@ -210,7 +210,7 @@ Running an existing screenplay through the five ordered stages produces a pile o
 └── scripts/       ← helper scripts for running the pipeline
 ```
 
-For the outline, characters, art, and script stages: Each formal delivery contains three files: `xxx.json`, `xxx-report.md`, and `xxx-report.html`. Use the complete JSON filename without `.json` as the same `xxx` in all three names. Render both reports from that JSON and save them alongside it in the stage directory.
+For the outline, characters, art, and script stages: Each formal delivery contains three files: `xxx.json`, `xxx-report.md`, and `xxx-report.html`; the script stage adds a fourth, the storyboard `xxx-storyboard.md`. Use the complete JSON filename without `.json` as the same `xxx` in all three names. Render both reports from that JSON and save them alongside it in the stage directory.
 
 Key points:
 

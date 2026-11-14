@@ -28,6 +28,7 @@ export function checkup(doc, ctx = {}) {
     skipped: gates.filter(g => g.status === 'skipped').length, contentReview: 'not-performed' };
 }
 import { mediaPlan, checkPlanFlags, printPlan } from './lib/media-plan.mjs';
+import { parseStoryboard, storyboardErrors, storyboardSegments, storyboardPathOf } from './lib/storyboard.mjs';
 import { parseWorksheet, serializeWorksheet, approvalProblem, inputProblem, submitProblems, submittedText, recordVerdict, stable, MAX_ROUNDS, VERDICTS, reviewItems } from './lib/worksheet.mjs';
 
 /* ------------------------------------------------------------------ */
@@ -410,6 +411,8 @@ export function gateReport(doc, ctx = {}) {
     gates.push(gateResult('upstream-intent', '开场／集尾／节点与目标时长对账', issues,
       !issues.length && ctx.script === undefined ? {status:'skipped',reason:'missing-upstream',detail:'未提供剧本，只检查了本地连续认领；上游计划与实际结束坐标未核验'} : {}));
   }
+  try { gates.push(storyboardGate(doc, ctx)); }
+  catch (e) { gates.push(gateResult('storyboard', '按分镜分段', [`分镜无法核对：${e.message}`])); }
   if (!doc || !Array.isArray(doc.episodes) || doc.episodes.some(ep=>!ep || !Array.isArray(ep.segments) || ep.segments.some(seg=>!seg || !Array.isArray(seg.cuts) || !Array.isArray(seg.images)))) return gates;
   let required = [];
   try { required = doc.episodes.flatMap(ep=>{const scenes=ctx.script?.episodes?.find(e=>e.ep===ep.ep)?.scenes??[];return ep.segments.flatMap(seg=>requiredMappings(seg,scenes[seg.sceneIndex-1],scenes));}); }
@@ -418,6 +421,40 @@ export function gateReport(doc, ctx = {}) {
   try { gates.push(...technicalGates(doc, ctx)); }
   catch (e) { gates.push(gateResult('data-shape', '数据形状无法继续检查', [e.message])); }
   return gates;
+}
+
+/**
+ * 分镜由 script 阶段产出（剧本 JSON 旁边的 xxx-storyboard.md）。提供时，分镜本身先对照剧本做确定性检查，
+ * 再要求每集已有的段与分镜的段号、场次、节拍范围逐段一致；分镜单段上限不能超过制作单段上限。
+ * 没有分镜时跳过，不计为通过。
+ */
+export function storyboardGate(doc, ctx = {}) {
+  const label = '按分镜分段（段号、场次与节拍范围对账 script 分镜）';
+  if (ctx.storyboard === undefined) return gateResult('storyboard', label, [], {status:'skipped', reason:'missing-upstream', detail:'没有找到剧本旁边的分镜文件，分段未按分镜核对'});
+  if (ctx.script === undefined) return gateResult('storyboard', label, [], {status:'skipped', reason:'missing-upstream', detail:'没有剧本，无法核对分镜'});
+  const errors = storyboardErrors(ctx.storyboard, ctx.script, scriptParams(ctx.script)).errors.map(e => `分镜：${e}`);
+  const limit = ctx.storyboard.header?.limit, max = paramsOf(doc).maxSegmentSeconds;
+  if (limit > max) errors.push(`分镜单段上限 ${limit} 秒超过制作单段上限 ${max} 秒——回到 script 阶段按 ${max} 秒重新拆段`);
+  const planned = storyboardSegments(ctx.storyboard);
+  const fmt = x => `${x.id}（第 ${x.sceneIndex} 场 ${x.beats ? x.beats.join('–') : '无节拍'}）`;
+  for (const ep of Array.isArray(doc?.episodes) ? doc.episodes : []) {
+    const segments = Array.isArray(ep?.segments) ? ep.segments : [];
+    if (!segments.length) continue;
+    const want = planned.filter(s => s.ep === ep.ep).map(s => ({ id: s.id, sceneIndex: s.sceneIndex, beats: s.beats }));
+    const have = segments.map(seg => {
+      const beats = (Array.isArray(seg?.cuts) ? seg.cuts : []).flatMap(c => Array.isArray(c?.beats) ? c.beats : []).filter(Number.isInteger);
+      return { id: seg?.id, sceneIndex: seg?.sceneIndex, beats: beats.length ? [Math.min(...beats), Math.max(...beats)] : null };
+    });
+    if (stable(want) !== stable(have)) errors.push(`第 ${ep.ep} 集的分段应与分镜一致：分镜为 ${want.map(fmt).join('、') || '无'}；实际为 ${have.map(fmt).join('、')}`);
+  }
+  return gateResult('storyboard', label, errors);
+}
+
+/** 输入材料中本集的分镜：编写方据此分段与写正文，审核方据此审核，批准绑定所在段的条目。 */
+export function storyboardBrief(storyboard, epNo) {
+  return { limit: storyboard.header.limit, pending: storyboard.header.pending,
+    segments: storyboard.scenes.filter(s => s.ep === epNo).flatMap(s => s.segments.map(seg => ({
+      id: seg.id, sceneIndex: seg.sceneIndex, beats: seg.beats, progress: seg.progress, scenePending: s.pending, script: seg.script, fields: seg.fields }))) };
 }
 
 function technicalGates(doc, ctx = {}) {
@@ -1636,6 +1673,7 @@ const USAGE = `mint-creation.mjs — mint-creation skill 的确定性工具（�
   render <creation.json> --script <script.json>
          [--html|--md] [--outline] [--art]      渲染报告到 stdout（默认 --md）
          [--lang zh|en]                         报告界面语言（默认 zh；未指定时读取 JSON 顶层 lang 字段）
+  （所有命令自动读取剧本旁边的 <剧本名>-storyboard.md 分镜；--storyboard <文件> 显式指定，段号、场次与节拍范围须与分镜一致）
   prompts brief <creation.json> --ep <集号>     打印派发给编写方与审核方的输入材料（节拍底稿、资产表、项目要求、模型）
   prompts init <creation.json> [--dir .]        为已有的段生成工作单 <段号>/prompt.md（status: draft；不覆盖已有工作单）
   prompts check <creation.json> [--dir .]       把工作单拼入内存中的 creation 并执行全部结构检查；不要求已批准
@@ -1725,6 +1763,12 @@ function loadCtx(rest, fromDir = '.') {
       ctx[key + 'Path'] = join(dir,candidates[0]);
       ctx[key] = readJson(ctx[key + 'Path']);
     }
+  }
+  // 分镜与剧本 JSON 同目录：xxx.json → xxx-storyboard.md。显式 --storyboard 必须存在。
+  const storyboardFlag = flag(rest, '--storyboard');
+  if (storyboardFlag || ctx.scriptPath) {
+    ctx.storyboardPath = resolve(storyboardFlag ?? storyboardPathOf(ctx.scriptPath));
+    if (storyboardFlag || existsSync(ctx.storyboardPath)) ctx.storyboard = parseStoryboard(readFileSync(ctx.storyboardPath, 'utf8'));
   }
   return ctx;
 }
@@ -1833,6 +1877,10 @@ export function dispatchBrief(doc, ctx = {}, epNo, { exists = () => false, hashF
     return { id:x.id,name:x.name,specification:structuredClone(x),assetDigest:assetDigest(x),sheet:r,sheetExists:exists(r),sheetHash:hashFile(r), ...sourceEvidence(x,ctx[key],ctx[key+'Path']),
       sourceScope:ctx[key]?.provenance?.scope ?? null,sourceCoverage:(ctx[key]?.provenance?.coverage ?? []).filter(c=>assetSourceRefs(x).some(r=>r.documentId===c.documentId && r.startLine<=c.endLine && c.startLine<=r.endLine)) };
   };
+  if (ctx.storyboard !== undefined) {
+    const board = storyboardErrors(ctx.storyboard, ctx.script, scriptParams(ctx.script)).errors;
+    if (board.length) throw new Error(`分镜没有通过检查，先回到 script 阶段修订：${board.join('；')}`);
+  }
   const brief = doc?.creativeBrief ?? ctx.production?.creativeBrief;
   const { planSource, endBeat, openingBeat, ...intent } = episodeIntent(epNo, ctx);
   return {
@@ -1851,6 +1899,7 @@ export function dispatchBrief(doc, ctx = {}, epNo, { exists = () => false, hashF
       props: (ctx.art?.props ?? []).filter(x => x?.id && x?.name).map(x => asset('prop', x)),
     },
     seedScenes: seed.seedScenes,
+    ...(ctx.storyboard !== undefined ? { storyboard: storyboardBrief(ctx.storyboard, epNo) } : {}),
     ...(ctx.script.provenance ? {provenance: {...structuredClone(ctx.script.provenance),documents:ctx.script.provenance.documents.map(d => sourceDocument(d,ctx.scriptPath))}} : {}),
     sourceVerification: ctx.script.provenance ? 'bytes-and-coordinates-only' : 'not-applicable',
     beatClaims: (ctx.script.episodes.find(e => e.ep === epNo)?.beatClaims ?? []).map(claim => {
@@ -1905,7 +1954,7 @@ function statusRows(worksheets, load) {
 
 async function main(argv) {
   if (argv.includes('--production') && argv.includes('--no-production')) throw new Error('--production 与 --no-production 互斥');
-  for (const name of ['--script','--outline','--cast','--art','--shots','--production','--eps','--lang','--out','--dir','--ep','--scene','--only','--timeout','--concurrency']) {
+  for (const name of ['--script','--storyboard','--outline','--cast','--art','--shots','--production','--eps','--lang','--out','--dir','--ep','--scene','--only','--timeout','--concurrency']) {
     if (argv.includes(name)) flag(argv, name);
   }
   const [cmd, ...rest] = argv;

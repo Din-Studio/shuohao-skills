@@ -2,9 +2,9 @@
 
 # mint-script 4.0
 
-正式交付固定包含 `xxx.json`、`xxx-report.md`、`xxx-report.html` 三个文件。`xxx` 是同一份 JSON 去掉 `.json` 后的完整文件名；两份报告由该 JSON 渲染，并与它放在同一阶段目录。
+正式交付固定包含 `xxx.json`、`xxx-storyboard.md`、`xxx-report.md`、`xxx-report.html` 四个文件。`xxx` 是同一份 JSON 去掉 `.json` 后的完整文件名；两份报告由该 JSON 渲染，分镜由作者按 [分镜](references/分镜.md) 编写，四个文件放在同一阶段目录。
 
-解析已有剧本的执行正文，也保留独立创作能力。明确行动、台词、字幕、声音和非发声说明。不分镜、不出图，不强制冷开场、短句、密集动作或悬念集尾。自然语言要求确定方向，本地 [创作指南](references/创作指南.md) 提供方法，不再维护策略配置框架。
+解析已有剧本的执行正文，也保留独立创作能力。明确行动、台词、字幕、声音和非发声说明。按场拆分视频段并编写分镜文档，不出图、不写视频提示词，不强制冷开场、短句、密集动作或悬念集尾。自然语言要求确定方向，本地 [创作指南](references/创作指南.md) 提供方法，不再维护策略配置框架。
 
 ## v4 重点
 
@@ -19,6 +19,7 @@
 - C/S/P 是 script 局部标记。人物资产权威来自 cast，地点和物品来自 art，正式版本仅接受 v1；不从 outline 读取资产，不按同 ID 或同名自动确认。
 - 唯一映射保存在 script.assetMappings：confirmed/pending/conflict、非空依据、来源范围、规范资产摘要和来源版本快照。只有实际制作依赖要求 confirmed；其他待确认可保留。
 - lighting/delivery 可选；无台词人物仍保留在 characters。
+- 分镜 `xxx-storyboard.md` 是第四个产物：按叙事拆段，段与剧本节拍一一对账，写明段首／段尾状态、动作复写（不含台词）、必须呈现的信息、后期标注、环境音、音效、背景音乐与台词对照。本段剧本由 JSON 生成并逐字核对；制作阶段按分镜的段号与节拍范围分段。
 - 项目与本地同时有 creativeBrief 时先人工合并，不能静默选择优先级。
 - 结构检查、提醒、缺上游未检查、内容评审未执行分别报告。
 
@@ -29,6 +30,8 @@ Node 18+，仅标准库。以下命令从本 skill 目录执行。正式产物�
 ```bash
 node scripts/mint-script.mjs seed examples/修伞簿-outline.fixture.json --eps 1-3 --output-path /tmp/script-seed.json > /tmp/script-seed.json
 node scripts/mint-script.mjs verify-sources examples/夜班水尺-script.json --no-production
+# 分镜骨架：每场一段、覆盖整场；拆段并填写后保存为 JSON 旁边的 xxx-storyboard.md
+node scripts/mint-script.mjs storyboard examples/夜班水尺-script.json --limit 15 > /tmp/night-storyboard.md
 # 以下样例未确认制作目标，增加 --production-ready 应失败
 node scripts/mint-script.mjs checkup examples/夜班水尺-script.json --verify-sources --no-production --json
 node scripts/mint-script.mjs validate examples/修伞簿-script.json --no-production \
@@ -75,8 +78,9 @@ node scripts/selftest.mjs
 node scripts/downstream-selftest.mjs
 node scripts/fusion-selftest.mjs
 node scripts/asset-mappings-selftest.mjs
+node scripts/storyboard-selftest.mjs
 ```
 
-四个入口覆盖来源字节与范围、非发声说明、声音延续、制作目标边界、正文、估时统一入口、节点与资产、可选字段、计划单一来源、严格版本、损坏输入、真实 CLI、安全读取和隔离复制。无需付费调用。
+五个入口覆盖来源字节与范围、分镜文件、非发声说明、声音延续、制作目标边界、正文、估时统一入口、节点与资产、可选字段、计划单一来源、严格版本、损坏输入、真实 CLI、安全读取和隔离复制。无需付费调用。
 
 工作流程见 [SKILL.md](SKILL.md)，接口见 [schema.md](references/schema.md)，界面约定见 [report-style.md](references/report-style.md)。

@@ -2,9 +2,9 @@
 
 # mint-script 4.0
 
-Each formal delivery contains three files: `xxx.json`, `xxx-report.md`, and `xxx-report.html`. Use the complete JSON filename without `.json` as the same `xxx` in all three names. Render both reports from that JSON and save them alongside it in the stage directory.
+Each formal delivery contains four files: `xxx.json`, `xxx-storyboard.md`, `xxx-report.md`, and `xxx-report.html`. Use the complete JSON filename without `.json` as the same `xxx` in all four names. Render both reports from that JSON; the author writes the storyboard following [分镜](references/分镜.md). Keep all four in the stage directory.
 
-Parse an existing script into execution text, while retaining independent authoring. Distinguish action, spoken lines, subtitles, sound and non-speaking notes. No shot lists, generation prompts or paid calls. Natural-language requirements and the local [writing guide](references/创作指南.md) replace the profile framework.
+Parse an existing script into execution text, while retaining independent authoring. Distinguish action, spoken lines, subtitles, sound and non-speaking notes. Split each scene into video segments and write the storyboard document. No shot numbers, generation prompts or paid calls. Natural-language requirements and the local [writing guide](references/创作指南.md) replace the profile framework.
 
 ## Contract
 
@@ -19,13 +19,14 @@ Parse an existing script into execution text, while retaining independent author
 - C/S/P strings are script-local references, never project identities. Only cast.characters and art.scenes/props own assets (explicit schemaVersion 1); outline owns story, B/Q nodes and evidence only.
 - script.assetMappings is the sole mapping authority. Each record includes kind/localId/assetId/status/sourceRefs/basis/assetDigest/documentVersions. No same-name or same-ID fallback. Evidence must fit script coverage, target asset evidence and authority coverage; source snapshots must match. Only production dependencies require confirmed mappings. Other pending/conflict records stay visible.
 - lighting and delivery are optional. Preserve silent characters in the scene cast.
+- The storyboard `xxx-storyboard.md` is the fourth artifact: narrative segments reconciled with script beats, start/end states, action-only rewrites (never dialogue), must-show information, post-production captions, ambience, sound effects, music and line translations. Its script blocks are generated from the JSON and checked verbatim; creation segments follow its IDs and beat ranges.
 - A project and local creativeBrief conflict requires manual merging, never implicit precedence.
 
 ## Commands and safety
 
-Node 18+, standard library only. The authoritative command list, examples and all four test entrypoints are maintained in [README.md](README.md#命令入口), avoiding duplicate command documentation.
+Node 18+, standard library only. The authoritative command list, examples and all five test entrypoints are maintained in [README.md](README.md#命令入口), avoiding duplicate command documentation.
 
-CLI commands: seed, validate, checkup, render, verify-sources and slug. --production-ready requires targets, verifies sources and requires explicit confirmed mappings for all current local references. --required-mappings FILE selects actual dependencies as [{kind,localId}]. Missing optional stages are skipped; supplied invalid stages fail. --verify-sources verifies bytes without requiring targets. CLI seed verifies outline sources; use --output-path to rebase provenance when saving stdout in a different directory. Project artifacts belong under script/. Explicit upstream files take precedence; otherwise discover a unique outline/art/cast. Multiple candidates, corrupt files, unsupported versions, invalid UTF-8 and dangling links fail rather than being treated as missing.
+CLI commands: seed, storyboard, validate, checkup, render, verify-sources and slug. validate/checkup read the sibling `xxx-storyboard.md` (or --storyboard FILE); --production-ready requires it. --production-ready requires targets, verifies sources and requires explicit confirmed mappings for all current local references. --required-mappings FILE selects actual dependencies as [{kind,localId}]. Missing optional stages are skipped; supplied invalid stages fail. --verify-sources verifies bytes without requiring targets. CLI seed verifies outline sources; use --output-path to rebase provenance when saving stdout in a different directory. Project artifacts belong under script/. Explicit upstream files take precedence; otherwise discover a unique outline/art/cast. Multiple candidates, corrupt files, unsupported versions, invalid UTF-8 and dangling links fail rather than being treated as missing.
 
 Production requires schemaVersion:3. --no-production disables project configuration discovery, not explicitly supplied or uniquely discovered outlines. It is mutually exclusive with --production.
 
@@ -45,6 +46,6 @@ Missing upstream, warnings, incomplete skeletons and content-review-not-performe
 
 All fixtures are local to this skill. 修伞簿-script.json preserves independent authoring. 修伞簿-mapped-script.json separately extracts our own source with exact lines and mappings to intentionally different asset IDs. The outline fixture is story-only v5; cast/art fixtures are v1, with incompatible versions rejected. The screenshot is illustrative, not verification evidence. The separate [Night-shift Gauge](examples/夜班水尺-story.md) fixture supplies only episodes 7 and 9, silent cast, long non-speaking psychology, repeated actual dialogue, audio, sound and subtitles. It intentionally has no production targets and includes its own verifiable source file.
 
-Four test entrypoints cover contracts, timing, references, reports, real CLI behavior, downstream boundaries and safe I/O. Isolated copying requires no sibling code or examples. No paid calls.
+Five test entrypoints cover contracts, timing, references, reports, real CLI behavior, downstream boundaries and safe I/O. Isolated copying requires no sibling code or examples. No paid calls.
 
 See [workflow](SKILL.md), [schema](references/schema.md), [writing guide](references/创作指南.md) and [report specification](references/report-style.md).

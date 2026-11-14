@@ -55,6 +55,11 @@ try {
       }
     });
   }
+  // 分镜由 mint-script 产出、mint-creation 按它分段：两份解析与检查库必须逐字一致
+  check('两份分镜解析库一致', () => {
+    const read = name => readFileSync(join(root, 'skills', name, 'scripts/lib/storyboard.mjs'), 'utf8');
+    assert.equal(read('mint-creation'), read('mint-script'));
+  });
   // 工作单是三个 skill 之间唯一的协作格式：解析库各持一份副本，必须逐字一致
   check('三份工作单解析库一致', () => {
     const copies = ['mint-creation', 'mint-video-prompt', 'mint-video-prompt-review'].map(name => readFileSync(join(root, 'skills', name, 'scripts/lib/worksheet.mjs'), 'utf8'));

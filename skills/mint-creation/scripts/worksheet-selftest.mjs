@@ -133,9 +133,19 @@ try {
     // 剧本里一句台词被修改：只有认领这一拍的段失效
     const scriptPath = join(temp, 'examples/script/收书人-script.json'), scriptText = readFileSync(scriptPath, 'utf8');
     writeFileSync(scriptPath, scriptText.replace('还开着吗？我想卖一本书。', '还开着吗？我想买一本书。'));
+    // 分镜的本段剧本还是旧台词：分镜没有通过检查，所有段都不能沿用批准
+    assert.equal(staleIds().length, 4);
+    r = cli('prompts', 'status', file); assert.equal(r.status, 1); assert.match(r.stdout + r.stderr, /分镜没有通过检查/);
+    // script 阶段同步更新分镜之后，只有认领这一拍的段失效
+    const boardPath = join(temp, 'examples/script/收书人-script-storyboard.md'), boardText = readFileSync(boardPath, 'utf8');
+    writeFileSync(boardPath, boardText.replace('还开着吗？我想卖一本书。', '还开着吗？我想买一本书。'));
     assert.deepEqual(staleIds(), ['E01-01']);
     r = cli('videos', 'manifest.json', '--dry-run'); assert.equal(r.status, 1); assert.match(r.stderr, /E01-01.*输入发生变化/);
-    writeFileSync(scriptPath, scriptText);
+    writeFileSync(scriptPath, scriptText); writeFileSync(boardPath, boardText);
+    // 只改某一段的分镜说明：只有这一段的批准失效
+    writeFileSync(boardPath, boardText.replace('- 背景音乐：无', '- 背景音乐：极轻的钢琴单音，从周亦追问时进入，持续到段尾。'));
+    assert.deepEqual(staleIds(), ['E01-03']);
+    writeFileSync(boardPath, boardText);
     // 视频参数变化：全部失效
     writeFileSync(prodPath, prod.replace('768p', '2K')); assert.equal(staleIds().length, 4); writeFileSync(prodPath, prod);
     assert.deepEqual(staleIds(), []);

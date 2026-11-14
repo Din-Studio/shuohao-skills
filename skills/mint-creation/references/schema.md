@@ -16,6 +16,13 @@ creation 为 schemaVersion:3。提示词采用五部分散文格式，完整规�
 - 稳定路径由 cast 目标身份 ID、art imageStem/sheetImage 解析，不按名称或同号回退；所有检查、报告、派发和导出使用同一解析规则。
 - 来源、notes、四种 flow 和声音延续规则保持不变，必须完整读取 source-audio-handoff.md。
 
+## 按 script 分镜分段
+
+script 阶段的分镜文件 `<剧本名>-storyboard.md` 与剧本 JSON 同目录，CLI 自动读取，也可以 `--storyboard FILE` 显式指定（显式文件必须存在）。解析与检查使用 `scripts/lib/storyboard.mjs`，与 mint-script 的副本逐字一致。分镜不进入 creation.json，creation.json 的形状不变。
+
+- `storyboard` 门：分镜先对照剧本做确定性检查（场次、段号、节拍归属、本段剧本逐字、字段、复写配对、台词估时），再要求每集已有的段与分镜逐段一致：`id`、`sceneIndex`、cuts 认领的节拍范围。分镜单段上限超过制作 `maxSegmentSeconds` 时失败。还没有段的集（seed 阶段）不比较。没有分镜或没有剧本时 skipped（missing-upstream），不计为通过。
+- 输入材料带有本集分镜，批准绑定本段的分镜条目与单段上限；分镜没有通过检查时材料生成失败。
+
 ## 时长约束链
 
 每次台词秒数（按剧本语速折算）装进拥有镜头及明确 audioRefs 延续镜头的共享 `seconds`，只累计一次，按正文台词顺序分配容量，延续链不得跳过中间镜头；段 Σ分镜 ≤ `maxSegmentSeconds`，并落进有效视频模型的合法时长区间；集 Σ段 落在剧本 `targetSeconds` 的 tolerance 内。targetSeconds 只属于 script；解析阶段可以未知，进入 creation seed/check/export 前必须确认，不能从 outline 推导。所有时间是估算，不是生成结果。估时、段和集的求和、模型边界检查及 manifest 都使用未舍入数值；只有报告显示可以舍入。15.04 秒不能作为 15 秒通过模型上限。

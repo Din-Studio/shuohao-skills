@@ -2,7 +2,7 @@
 name: mint-creation
 version: 3.2.0
 description: |
-  将 v4 剧本转换为参考图直出视频方案。主会话只负责调度：准备材料、运行结构检查、
+  将 v4 剧本按 script 阶段的分镜转换为参考图直出视频方案。主会话只负责调度：准备材料、运行结构检查、
   派发「视频提示词编写」与「视频提示词审核」两个 subagent 并循环到全部批准，再回写、导出、交接生成。
   不生成分镜图。不保存上游计划副本或结束坐标。产出 creation.json、每段工作单、报告与投产包。
   视频生成是需要授权的可选步骤。
@@ -45,6 +45,8 @@ seed ─→ 编写 subagent ─→ prompts check ─→ 审核 subagent ─→ �
 完整读取 `references/schema.md`、`references/dispatch.md` 和 `references/source-audio-handoff.md`。script 要求 `schemaVersion:4`，outline 要求 `schemaVersion:5`，creation/production 要求 `schemaVersion:3`，cast/art 要求 `schemaVersion:1`。只接受这些版本，其他版本直接报错；上游缺少真实来源证据时回到对应阶段补齐。来源字节核验、来源忠实性审核与制作审核分别汇报。
 
 项目的自然语言 `creativeBrief` 是唯一要求，不解释成枚举或生成规则。独立 creation 可以保存 creativeBrief；项目与阶段同时存在要求时停止，请人工合并到 production。
+
+**分段以 script 阶段的分镜为准。** 剧本 JSON 旁边的 `<剧本名>-storyboard.md`（mint-script 的第四个产物）规定每集的段号、所属场次、节拍范围，以及段首／段尾状态、复写、必须呈现的信息、声音与后期标注。命令自动读取它（或 `--storyboard FILE`），`storyboard` 门要求已有的段与分镜逐段一致，输入材料带上本集分镜，批准绑定本段的分镜条目。分镜没有通过检查、某段装不进模型时长，或者编写方、审核方指出分镜本身有误时，退回 script 阶段修订分镜，主会话和编写方都不自行重新拆段。没有分镜时 `storyboard` 门显示缺少上游，编写方按分镜指南的拆段原则自行分段并在回报中说明。
 
 命令自动从产物目录向上最多五层寻找 production.json，再从项目的 script、outline、art、characters 目录发现唯一 JSON。显式路径优先。缺少上游显示跳过；损坏、不可读或多候选输入失败，不能当作缺少上游。独立剧本没有大纲时，不要求伪造计划。
 
@@ -144,7 +146,7 @@ production.autopilot 只有布尔 true 生效。它转移审批权，不取消�
 
 ## 样例与自测
 
-`examples/` 是本 skill 自有《收书人》：一集、四段、九个镜头、十个节拍，目标三十秒、镜头计划三十二秒。样例不附带工作单，因此不能直接导出；自测在临时目录里生成并批准工作单来覆盖完整流程。
+`examples/` 是本 skill 自有《收书人》：一集、四段、九个镜头、十个节拍，目标三十秒、镜头计划三十二秒。`examples/script/收书人-script-storyboard.md` 是对应的 script 分镜，四段与 creation 的四段一一对应。样例不附带工作单，因此不能直接导出；自测在临时目录里生成并批准工作单来覆盖完整流程。
 
 ```bash
 node {baseDir}/scripts/selftest.mjs
@@ -156,6 +158,7 @@ node {baseDir}/scripts/worksheet-selftest.mjs
 node {baseDir}/scripts/prompt-rules-selftest.mjs
 node {baseDir}/scripts/fusion-selftest.mjs
 node {baseDir}/scripts/asset-mapping-selftest.mjs
+node {baseDir}/scripts/storyboard-selftest.mjs
 ```
 
 全部为本地确定性检查，不调用模型，不访问网关。

@@ -6,6 +6,7 @@
 
 - 产物是 `<段号>/prompt.md` 工作单：状态头、分镜结构、审核意见区、编写回应区，以及最后一条分隔线之下的提示词正文。格式见 [worksheet](references/worksheet.md)。
 - 提示词统一采用七栏全局、参考素材、散文正文、画风与固定结尾、负面提示词五部分；实际切镜由视频模型决定。内部 cuts 继续承担节拍认领和估时。完整写法，见 [creation-prompt](references/creation-prompt.md)；技术适配按视频模型读取 [H3](references/h3-prompt.md) 或 [seedance](references/seedance2-prompt.md) 指南。分段与停留的判断见[分镜指南](references/分镜指南.md)。
+- 有 script 阶段的分镜时，段号、场次与节拍范围照分镜建立，正文落实段首／段尾状态、复写与必须呈现的信息；分镜有误退回 script 阶段，不自行重新拆段。见[分镜指南](references/分镜指南.md)。
 - 只编写，不审核自己的产物，不生成视频。审核由独立的审核方完成。
 - 通常由调度方以 subagent 方式调用，也可以单独使用。Node 18+，只有标准库依赖；整个目录可以单独复制。
 

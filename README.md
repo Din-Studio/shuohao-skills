@@ -23,8 +23,8 @@
 | [**mint-outline**](skills/mint-outline) | 只接受已有剧本，记录来源版本与已读范围，只提取故事、剧情节点、分集和节奏事实，不建立资产表。区分部分来源与全剧完整，不补写缺集、结局或问题答案 |
 | [**mint-characters**](skills/mint-characters) | 独立读取原剧本，判定人物身份、别名和归并，维护稳定角色 ID、来源和预算。按需求制作画像、形象提示词、音色与设定图；身份登记不强制出图。画风整块取自 `production.json`。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
 | [**mint-art**](skills/mint-art) | 给 AI 短剧出美术设定集（场景 + 叙事道具）：一致性锚点、光照与状态变体、尺度参照、无人无手白底提示词。独立读取原剧本识别地点和物品，维护稳定资产 ID、来源和美术预算；场次不等于地点，提及物品不自动成为道具资产。**`images` 只导出离线计划**；实际生图使用独立安装的 ly-image，参考依赖与目标路径保留 |
-| [**mint-script**](skills/mint-script) | 对照原文形成唯一执行正文，保留事件认领和正文局部引用，通过 `script.assetMappings` 显式关联人物、美术身份，不按相同名称或 ID 猜测映射，区分行动、发声、字幕、声音和非发声说明。逐集 targetSeconds 是执行目标的唯一编辑源；整理时可缺省，制作前必须确认。独立创作入口保留 |
-| [**mint-creation**](skills/mint-creation) | 参考图直出视频：按剧本分段、切镜，直接挂载已有的角色、场景与道具设定图，不生成中间分镜图。视频提示词按模型选择结构，`export` 输出投产包，`videos` 导出离线计划，独立安装的 ly-video 负责生成与恢复。镜头表达按指南评审，模型技术限制由工具检查 |
+| [**mint-script**](skills/mint-script) | 对照原文形成唯一执行正文，保留事件认领和正文局部引用，通过 `script.assetMappings` 显式关联人物、美术身份，不按相同名称或 ID 猜测映射，区分行动、发声、字幕、声音和非发声说明，并按场拆分视频段、编写分镜文档（段首／段尾状态、动作复写、必须呈现的信息、声音与后期标注）。逐集 targetSeconds 是执行目标的唯一编辑源；整理时可缺省，制作前必须确认。独立创作入口保留 |
+| [**mint-creation**](skills/mint-creation) | 参考图直出视频：按 script 分镜分段、在段内认领节拍，直接挂载已有的角色、场景与道具设定图，不生成中间分镜图。视频提示词按模型选择结构，`export` 输出投产包，`videos` 导出离线计划，独立安装的 ly-video 负责生成与恢复。镜头表达按指南评审，模型技术限制由工具检查 |
 | [**mint-video-prompt**](skills/mint-video-prompt) | 视频提示词编写方：按剧本节拍完成一集的分段、分镜与提示词，写入每段一份的工作单 `<段号>/prompt.md` 并提交审核；被退回后逐条修改再提交。由 mint-creation 以 subagent 方式调用，也可以单独使用 |
 | [**mint-video-prompt-review**](skills/mint-video-prompt-review) | 视频提示词审核方：独立对照剧本、资产、项目要求与模型口径审核工作单，把意见写进同一份工作单并登记 approved、changes_requested 或 blocked。只审核，不改写提示词 |
 
@@ -202,7 +202,7 @@ for f in skills/*/scripts/*selftest.mjs scripts/*-selftest.mjs; do node "$f" || 
 ├── outline/       ← mint-outline 产出：<剧>-outline.json / <剧>-outline-report.md / <剧>-outline-report.html
 ├── characters/    ← mint-characters 产出：<剧>-cast.json / <剧>-cast-report.md / <剧>-cast-report.html
 ├── art/           ← mint-art 产出：<剧>-art.json / <剧>-art-report.md / <剧>-art-report.html
-├── script/        ← mint-script 产出：<剧>-script.json / <剧>-script-report.md / <剧>-script-report.html
+├── script/        ← mint-script 产出：<剧>-script.json / <剧>-script-storyboard.md / <剧>-script-report.md / <剧>-script-report.html
 ├── creation/      ← mint-creation 产出：<剧>-creation.json / .md / -report.html
 │   ├── manifest.json  ← export 产出（每段的参考图挂载清单，不复制设定图文件）
 │   └── E01-01/…       ← 每段一个文件夹（prompt.md 工作单：审核状态、分镜结构、审核意见与提示词正文；下单后的 video.mp4，没有分镜图）
@@ -210,7 +210,7 @@ for f in skills/*/scripts/*selftest.mjs scripts/*-selftest.mjs; do node "$f" || 
 └── scripts/       ← 跑管线的辅助脚本（探索期脚本用 _ 前缀保留溯源）
 ```
 
-outline、characters、art、script 四个阶段：正式交付固定包含 `xxx.json`、`xxx-report.md`、`xxx-report.html` 三个文件。`xxx` 是同一份 JSON 去掉 `.json` 后的完整文件名；两份报告由该 JSON 渲染，并与它放在同一阶段目录。
+outline、characters、art、script 四个阶段：正式交付固定包含 `xxx.json`、`xxx-report.md`、`xxx-report.html` 三个文件；script 阶段另有第四个文件 `xxx-storyboard.md`（分镜）。`xxx` 是同一份 JSON 去掉 `.json` 后的完整文件名；两份报告由该 JSON 渲染，并与它放在同一阶段目录。
 
 约定要点：
 
