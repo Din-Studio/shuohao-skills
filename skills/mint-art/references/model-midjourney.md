@@ -6,11 +6,11 @@ production 的 `image.model` 是 Midjourney 时，在 [sheet-prompt.md](sheet-pr
 
 | 维度 | Midjourney |
 | --- | --- |
-| 语言 | 英文正文（和通用写法相同）。画面里要出现的字保持原语言原字形，放在英文直双引号里并写清在哪里（`a sign above the door reads "…"`），只写短字串；正文级小字写 `small printed lines too small to read`。 |
-| 顺序 | **媒介和主体放最前**：开头 → 摄影短语（写实）→ 版式段 → 身份锁 → 新旧状态 → 光线，非写实结尾接风格短语；开头的词权重最高。 |
-| 否定 | 纯净画质段之前的正文**不写否定句**（no / not / never / without）——它不懂否定，提到的东西反而会画出来。要排除的东西放进 `image.negativePrompt`（名词，逗号分隔）。版式固定句里的 `no text…` 那半句改成负向词 `text, letters`。 |
+| 语言 | 英文正文（和通用写法相同）。场景和道具设定图都无文字、无品牌标识；文件、屏幕、包装、证件和铭文不使用带字例外。 |
+| 顺序 | 场景和道具都将版式段放最前，再接媒介、主体和摄影短语（写实），随后写身份锁、新旧状态与光线；道具还必须写背面结构与细节。非写实结尾接风格短语。 |
+| 否定 | 主体描述尽量用肯定句，要排除的东西放进 `image.negativePrompt`（名词，逗号分隔）。版式固定句仍保留，尤其不能删去道具的非剧中角色、仅右格有人、不露脸及无字约束；负向词同时包含 `text, letters, logo, brand name`。 |
 | 参数 | 正文里不写任何 `--` 参数、`::`、网址；参数由出图设置给。 |
-| 长度 | 纯净画质段之前的正文一般 60–160 个英文词，不超过 160。写不下先删氛围修饰、合并同类修饰，身份锁一个不删。 |
+| 长度 | 正文尽量简洁，60–160 个英文词仅作参考；写不下先删氛围修饰、合并同类修饰。场景和道具的版式及必写内容以 [sheet.md](sheet.md)、[scene-pass.md](scene-pass.md)、[prop-pass.md](prop-pass.md) 为准，不能为压到 160 词而删减。 |
 | 参考图 | 最多 2 张：第 1 张原图参考，第 2 张风格参考。资产变体只使用基准一张。 |
 
 ## 二、开头与摄影短语
@@ -40,22 +40,22 @@ production 的 `image.model` 是 Midjourney 时，在 [sheet-prompt.md](sheet-pr
 
 1. 照抄块：开头的媒介、摄影短语、版式段、道具的光线短语、画风段和纯净画质段逐字照抄基准；开头里的主体部分换成下一条的锚点句；
 2. 主体锚点一句，在句中写一次对基准图的引用：`… of the same <主体一句> as in the reference image, …`（只写一次，不放句首）；
-3. 只写变了的槽位（新光线、新状态）；没变的不写，不重描陈设。
+3. 只写变了的槽位（新光线、新状态）；没变的不写，不重描陈设。道具变体整张重出，三格里的道具都呈现同一个新状态，保持右格尺寸参照的姿态与取景。
 
 validate 对 Midjourney 变体只要求主体锚点句含 `as in the reference image`，不套通用写法的 `Based on the reference image` / `Change only the following:`。基准同样要有主体区：开头里的主体和版式之后的身份锁都算，版式句按 `One <画幅> … canvas` 识别后剥掉（见 [sheet-prompt.md](sheet-prompt.md) 第六节）。
 
 ## 五、负向词（`image.negativePrompt`）
 
-只写名词，逗号分隔；正文里要的东西不放进来（本来带字的道具不加 `text`）。
+只写名词，逗号分隔；正文里要的东西不放进来。场景和道具都加入 `text, letters`。
 
 | 类型 | 负向词 |
 | --- | --- |
 | 场景 | `people, person, crowd, text, letters, numbers, watermark, logo, signature`，再接 `style.scene.negative` 的每一条（style-match 门查） |
-| 道具 | `watermark, logo, brand name, signature`；本来不该有字的再加 `text, letters`。**不禁 hands、people**：右格的尺寸参照要画一只匿名的手或一个匿名的人（prop-size-ref 门查） |
+| 道具 | `text, letters, watermark, logo, brand name, signature`。**不禁 hands、people**：右格的尺寸参照要画一只匿名的手或一个匿名的人（prop-size-ref 门查） |
 
 写实剧再接一组：`3d render, cgi, video game, game art, concept art, illustration, digital painting, anime, cartoon, plastic look`。
 
-**再提醒一次**：英文、媒介和主体放最前、正文不写否定和参数、不超过 160 词；开头、摄影短语、版式段用固定译法全剧照抄；变体引用基准一次，只写变了的；结尾附纯净画质段。
+**再提醒一次**：英文、场景和道具的版式都放最前、主体描述尽量用肯定句、正文不写参数、长度按第一节处理；开头、摄影短语、版式段用固定译法全剧照抄；变体引用基准一次，只写变了的；结尾附纯净画质段。
 
 ---
 

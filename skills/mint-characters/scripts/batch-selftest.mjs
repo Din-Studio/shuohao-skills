@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 分集目录登记、接力草稿与设计写回。只用本 skill 的样例，离线，不调用模型。
+// 分集目录登记、独立提取结果的统一整理与设计写回。离线，不冒充真实并行或语义审核。
 import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync,mkdtempSync,mkdirSync,rmSync,copyFileSync,symlinkSync,existsSync,readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -78,39 +78,49 @@ try {
     assert.notEqual(r.status,0);assert.match(r.stderr,/文档身份不匹配/);
   });
 
-  // 接力：第一位只读第一集，第二位读第二集并在已有条目上补引用。
-  test('relay drafts reconcile at every step and end in a valid cast',()=>{
-    const draft00=join(temp,'draft-00.json');
-    assert.equal(cli('seed','--source-dir',folder,'--title','回声台','--budget','8','--out',draft00).status,0);
+  // 独立批次允许重复，以下显式模拟整理者判断；没有自动按名称归并的生产接口。
+  test('independent batch facts assemble into a valid cast without rewriting inputs',()=>{
     const ref=(documentId,startLine,endLine=startLine)=>[{documentId,startLine,endLine}];
-    const person=(key,name,r,extra={})=>({identityKey:key,name,aliases:[],entityType:'human',presence:['visible'],speech:'silent',unknowns:[],sourceRefs:r,...extra});
-    const d1=read(draft00);
-    d1.provenance.coverage=ref('D01',1,8);d1.summary='第一集：停电中的交接。';
-    d1.characters=[
-      person('night-operator','许禾',ref('D01',1,2),{speech:'speaking',aliases:[{name:'小禾',sourceRefs:ref('D01',2)}]}),
-      person('morning-operator','许禾',ref('D01',1,2)),
-      person('door-girl','陌生女孩',ref('D01',3),{unknowns:['姓名未知']}),
-      person('neighbor-voice','隔壁喊话者',ref('D01',4),{presence:['voice-only'],speech:'speaking',unknowns:['姓名未知']}),
-      person('guard-dog','灰点',ref('D01',5),{entityType:'nonhuman'}),
-      person('mentor-liang','梁师傅',ref('D01',6),{presence:['mentioned'],speech:'unknown'}),
-      person('speaker-voice','扬声器声音',ref('D01',7),{entityType:'unknown',presence:['voice-only'],speech:'speaking',unknowns:['发声主体与录音状态未知']}),
+    const person=(name,r,extra={})=>({name,aliases:[],entityType:'human',presence:['visible'],speech:'silent',unknowns:[],sourceRefs:r,...extra});
+    const batch1=[
+      person('许禾',ref('D01',1,2),{speech:'speaking',aliases:[{name:'小禾',sourceRefs:ref('D01',2)}]}),
+      person('许禾',ref('D01',1,2)),
+      person('陌生女孩',ref('D01',3),{unknowns:['姓名未知']}),
+      person('隔壁喊话者',ref('D01',4),{presence:['voice-only'],speech:'speaking',unknowns:['姓名未知']}),
+      person('灰点',ref('D01',5),{entityType:'nonhuman'}),
+      person('梁师傅',ref('D01',6),{presence:['mentioned'],speech:'unknown'}),
+      person('扬声器声音',ref('D01',7),{entityType:'unknown',presence:['voice-only'],speech:'speaking',unknowns:['发声主体与录音状态未知']}),
     ];
-    write(join(temp,'draft-01.json'),d1);
-    assert.equal(cli('reconcile',join(temp,'draft-01.json')).status,0,'draft-01 self-check');
-    const d2=structuredClone(d1);
-    d2.provenance.coverage.push(...ref('D02',1,2));d2.provenance.scope='complete';d2.summary='停电中的交接；夜班员独自返回确认交接完成。';
-    // 原文「夜班员小禾」：对应已有的夜班员，补引用，不新建身份。
-    d2.characters[0].sourceRefs.push(...ref('D02',1,2));
-    // 窗外喊声：原文明确没有确认与隔壁喊话者同一，新登记并写明疑点。
-    d2.characters.push(person('window-voice','窗外喊话者',ref('D02',1),{presence:['voice-only'],speech:'speaking',unknowns:['不能确认与隔壁喊话者是否同一身份']}));
-    write(join(temp,'draft-02.json'),d2);
-    assert.equal(cli('reconcile',join(temp,'draft-02.json')).status,0,'draft-02 self-check');
-    assert.deepEqual(read(join(temp,'draft-01.json')),d1,'relay never rewrites an earlier draft');
-    const castPath=join(temp,'relay-cast.json');
-    assert.equal(cli('reconcile',join(temp,'draft-02.json'),'--out',castPath).status,0);
+    const batch2=[
+      person('夜班员小禾',ref('D02',1,2),{speech:'speaking'}),
+      person('窗外喊话者',ref('D02',1),{presence:['voice-only'],speech:'speaking',unknowns:['不能确认与隔壁喊话者是否同一身份']}),
+    ];
+    const paths=[join(temp,'batch-01.json'),join(temp,'batch-02.json')];
+    [batch1,batch2].forEach((b,i)=>{assert.ok(b.every(c=>!c.id&&!c.identityKey));write(paths[i],b);});
+    const before=paths.map(p=>readFileSync(p,'utf8'));
+    const d=JSON.parse(cli('seed','--source-dir',folder,'--title','回声台','--budget','8').stdout);
+    const keys=['night-operator','morning-operator','door-girl','neighbor-voice','guard-dog','mentor-liang','speaker-voice'];
+    d.characters=read(paths[0]).map((c,i)=>({...c,identityKey:keys[i]}));
+    const second=read(paths[1]);
+    // 明确依据第一集自称和第二集“夜班员小禾”，而不是同名字符串。
+    d.characters[0].sourceRefs.push(...second[0].sourceRefs);
+    d.characters[0].notes=[{text:'第二集夜班员小禾对应第一集自称小禾的夜班员；不与早班同名者合并',sourceRefs:[...ref('D01',1,2),...ref('D02',1,2)]}];
+    d.characters.push({...second[1],identityKey:'window-voice'});
+    d.provenance.coverage=[...ref('D01',1,8),...ref('D02',1,2)];d.provenance.scope='complete';
+    d.summary='停电中的交接；夜班员独自返回确认交接完成。';
+    const draft=join(temp,'assembled.json'),castPath=join(temp,'assembled-cast.json');write(draft,d);
+    const r=cli('reconcile',draft,'--out',castPath);assert.equal(r.status,0,r.stderr);
     const cast=read(castPath);
     assert.equal(cast.characters.length,8);assert.equal(cast.characters.filter(c=>c.name==='许禾').length,2);
+    assert.ok(cast.characters.find(c=>c.identityKey==='window-voice').unknowns.length);
+    assert.equal(cast.review.status,'pending','assembly never grants semantic review');
     const v=cli('validate',castPath,'--no-production');assert.equal(v.status,0,v.stderr);
+    assert.deepEqual(paths.map(p=>readFileSync(p,'utf8')),before,'assembler does not rewrite batch facts');
+    // 覆盖缺口及错引仍由现有校验阻断，不因工作记录存在就视为读全。
+    const gap=structuredClone(d);gap.provenance.coverage=ref('D01',1,8);write(draft,gap);
+    assert.notEqual(cli('reconcile',draft).status,0);
+    const wrong=structuredClone(d);wrong.characters[0].sourceRefs=[{documentId:'D02',startLine:99,endLine:99}];write(draft,wrong);
+    assert.notEqual(cli('reconcile',draft).status,0);
   });
 
   // 设计写回：拿《渡口》完整样例拆掉设计，再从设计文件写回。

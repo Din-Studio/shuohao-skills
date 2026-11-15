@@ -18,9 +18,9 @@ node scripts/mint-art.mjs seed --source-dir 剧本目录 --title 剧名 --cast c
 node scripts/mint-art.mjs register draft.json --kind scene --key permanent-key --name 地点名称 --out registered.json
 ```
 
-seed 只计算原件摘要与行数，资产数组和已读范围为空。模型或人工阅读原件后，填写事实、引用、资产取舍、负责范围及身份确认。场次不等于地点；物件被提及、交接或损坏不自动建立新资产。outline 不再提供资产身份。人物身份由 characters 判断。
+seed 只计算原件摘要与行数，资产数组和已读范围为空。独立 subagent 按批读取原件，整理者统一事实、引用、资产取舍和负责范围，经独立核验后才确认身份。场次不等于地点；物件被提及、交接或损坏不自动建立新资产。outline 不再提供资产身份。人物身份由 characters 判断。
 
-`--source-dir` 登记每集一份 Markdown 的分集目录，文档 ID 为 `D` 加集号，与 outline 一致。体量大时按 [派发指南](references/dispatch.md) 分批串行接力识别资产，身份定稿后按 S/P ID 分组并行设计，再由 `apply-designs art.json designs/*.json` 一次写回、整体校验。
+`--source-dir` 登记每集一份 Markdown 的分集目录，文档 ID 为 `D` 加集号，与 outline 一致。所有原文识别及增量修订都按 [派发指南](references/dispatch.md) 由独立 subagent 按批并行提取，一个整理者统一草稿，再按批并行独立核验。主会话不读取原文；每次调用累计最多接触 4 集原文，前情、检索和定向回读同样计入。2 集及以上至少分 2 批，单集按地点与物件并行；不能独立派发时停止，不回退到当前会话通读。整理者以提取结果为主，必要时限量回读；归并后才执行 register。身份定稿后按 S/P ID 独立并行设计，再由 `apply-designs art.json designs/*.json` 一次写回、整体校验。CLI 不启动代理或审计工具历史，结构和覆盖通过不代表语义通过。
 
 `identity-inputs FILE` 打印复核输入摘要，不自动确认；身份可以保持 `designStatus: none`。
 

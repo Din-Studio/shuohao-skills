@@ -11,86 +11,87 @@ node <baseDir>/scripts/mint-art.mjs images <剧名>-art.json --out image-plan.js
 
 以下是版面和提示词的创作要求；计划不等于图片。
 
-## 场景：四方向宫格 + 平面图
+## 场景：单张广角大全景 + 正交平面图
 
-**为什么出四个方向**：一个场景如果只有一张全景，视频模型只知道镜头正前方长什么样；正反打、切到人物背后时，背景就要靠它现编，前后镜头对不上。所以场景设定图从空间中央向前、后、左、右各看一眼，再配一张平面图交代东西在哪。
+一整张横版设定图，左侧用单张广角大全景交代当前空场的主要布局，右侧用同一场景的正交平面图明确空间关系，两区之间留白。
 
 ```
-┌─────────┬─────────┬───────────────────┐
-│   前     │   后     │                   │
-│         │         │   正交平面图        │
-├─────────┼─────────┤   （室内：户型图）   │
-│   左     │   右     │   （室外：俯瞰图）   │
-│         │         │                   │
-└─────────┴─────────┴───────────────────┘
-          生产参数画幅 · 白色背景
+┌────────────────────┐   ┌───────────────────┐
+│                    │   │   正交平面图       │
+│  单张广角大全景      │   │ （室内：户型图）   │
+│  当前状态的空场      │   │ （室外：俯瞰图）   │
+│                    │   │  留白供后期标尺寸  │
+└────────────────────┘   └───────────────────┘
+          生产参数横版画幅 · 两区之间留白
 ```
 
-- **左侧四宫格**：站在空间中央、平视高度、广角，朝前、后、左、右各看一格。排列固定：左上「前」、右上「后」、左下「左」、右下「右」，前后左右照《术语》「方位」里场景自己的前后左右。四格是同一个空间、同一时刻、同一套光线（这个场景的光影锁），格与格之间留白底间隔，**四格里都不出现人物**。
-- **右侧平面图**：室内画正交顶视的户型图——从正上方垂直俯视、无透视畸变，画出墙体、门窗洞口和家具摆放；室外画正交俯瞰图，画出场地边界、道路、建筑轮廓、树木和关键物件。和四宫格是同一套陈设、同一个位置。**平面图上不写任何字和数字**——模型画的字和数字常常是错的。
-- 四宫格和平面图必须是同一次生成的一整张图，这样光线、材质、陈设才是一套。
+- **左侧单张广角大全景**：在场景内外选择能交代主要布局的机位，以平视高度、水平广角拍摄当前状态的空场。尽量收进主要出入口、通道、关键设施和前中后景的相对位置。保持自然透视和实际比例，建筑直线平直，避免鱼眼和边缘拉伸。场景铺满左侧图像区。
+- **右侧正交平面图**：室内画从正上方垂直向下看的户型图，呈现墙体、门窗开口、通道和主要陈设；室外画从正上方垂直向下看的正交俯瞰平面图，呈现场地边界、出入口、道路和关键固定设施。图内留白供合成时添加尺寸线，生成时不画尺寸线、文字或数字。
+- 两区是同一场景、同一状态，同一物件的实际位置、朝向和数量一致，按观察角度呈现可见内容；保留物件与出入口、通道、固定结构的相对关系。两区在同一次生成中组成一整张图，画面无人，不含任何文字和品牌标识。
 
-**版式固定句**（版式段照抄，只填尖括号；scene-layout 门查 `two-by-two grid` 与 `orthographic`）：
+**版式固定句**（版式段放最前，只填尖括号；当前脚本的兼容性限制见 [schema.md](schema.md)「可选设计字段」）：
 
 室内：
 
 ```text
-One <画幅> landscape canvas on a plain white background. Left part: a two-by-two grid of four wide eye-level views taken from the center of the same empty room, looking forward (top left), backward (top right), left (bottom left) and right (bottom right), same moment and same lighting in all four, separated by white gaps. Right part: an orthographic top-down floor plan of the same room seen straight from above, walls, door and window openings and furniture in the same positions as the grid, clean unlabeled plan. No people anywhere in the image; no text, no lettering and no logos anywhere in the image.
+One <画幅> landscape canvas on a plain white background, with a white gap between the two parts. Left part: a single wide establishing view of the empty room in its current state, from an eye-level camera position inside or outside it chosen to show the main layout, with a level wide-angle view, natural perspective, true-to-scale proportions and straight architectural lines, free of fisheye distortion and edge stretching; the scene fills the left image area, showing the main entrances, passages, key facilities and foreground, middle-ground and background relationships wherever visible. Right part: an orthographic top-down floor plan of the same room seen straight from above, showing walls, door and window openings, passages and main furnishings, with blank space reserved for dimension lines to be added later in compositing. Both parts show the same current state; corresponding objects have consistent actual positions, orientations and counts, with visible content appropriate to each viewing angle. No people anywhere in the image; no text, no lettering and no logos anywhere in the image.
 ```
 
-室外：把 `the same empty room` 换成 `the same empty site`，右部换成 `Right part: an orthographic top-down aerial view of the same site seen straight from above, site boundary, paths, building outlines, trees and key objects in the same positions as the grid, clean unlabeled plan.`
+室外：把左侧的 `the empty room` 换成 `the empty site`，右部换成 `Right part: an orthographic top-down plan of the same site seen straight from above, showing site boundaries, entrances, roads and key fixed facilities, with blank space reserved for dimension lines to be added later in compositing.`，两区一致性和无人无字要求照抄。
 
-方形画布把 `landscape` 换成 `square`。
+场景设定图使用 production 指定的横版画幅；制作参数不是横版时先协调参数与版式，不静默改成方形。
 
-## 道具：三格
+## 道具：正面、背面、尺寸参照三格
 
 ```
-┌───────────┬───────────┬───────────┐
-│   正面     │ 最容易认错  │  尺寸参照   │
-│           │  的那一面   │（匿名手或人）│
-└───────────┴───────────┴───────────┘
-        生产参数画幅 · 白色背景
+┌───────────┐   ┌───────────┐   ┌───────────┐
+│   正面    │   │   背面    │   │ 尺寸参照  │
+│           │   │ 旋转180度 │   │匿名手或人 │
+└───────────┘   └───────────┘   └───────────┘
+      生产参数横版画幅 · 三格等宽 · 白底间隔
 ```
+
+一整张横图，白色背景，三个等宽的格子，格间留明显的白底间隔，每格内容不越界。
 
 - **左格：正面**，道具主体居中、完整入画。
-- **中格：最容易认错的那一面**，同一件道具换个角度：厚度、轮廓最容易画错的（刀、手机、戒指、铁盒）画侧面或斜上方；其余画背面（水平旋转 180 度），纸张、卡片这类薄片也画背面。看不见的部分按同一件物品的结构合理补全。
+- **中格：背面**，同一件道具沿竖轴旋转 180 度，背面正对镜头，主体居中、完整入画。背面结构与细节必须明确描述，不改成侧面或斜上方。
 - **右格：尺寸参照**，让人一眼看出它多大。按长边分三档，对应 `scale` 枚举：
   - **手持级**（长边 30 厘米以内）：一只通用的成年人的手捧着它的手部特写，手只露到手腕，道具占这一格的主体；
-  - **桌面级**（30–60 厘米）：一个穿素色衣服的普通人胸口以下双手持握它，画面上沿在锁骨以下；
-  - **家具级**（60 厘米以上）：一个穿素色衣服的普通人以背影或侧影站在它旁边或正在使用它（靠着车、坐在椅上、手扶门）。
-- 右格里的手或人**只作尺寸参照，不是剧中任何角色（主角也不是）**：不写角色名，不照任何人物的长相或服装写，不露脸。提示词里写明它是匿名路人、仅作尺寸参照、比例真实，否则视频模型会把这只手、这个人当成这一段里的人物。
-- 三格里是同一件道具、同一比例；除右格那只手或那个人之外不出现人物，没有场景背景，纯白背景可抠图。
+  - **桌面级**（长边超过 30 厘米且不超过 60 厘米）：一个穿素色衣服的普通人胸口以下双手持握它，画面上沿在锁骨以下；
+  - **家具级**（长边超过 60 厘米）：一个穿素色衣服的普通人以背影或侧影站在它旁边或使用它。人物从头到脚完整入画，保持人体与道具的实际比例，不露脸。
+- 右格里的手或人**只作尺寸参照，不是剧中任何角色（主角也不是）**：不写角色名，不照任何人物的长相或服装写，不露脸。提示词里写明「此人 / 这只手仅作尺寸参照，不是剧中角色，人物与道具比例真实」，否则视频模型会把这只手、这个人当成这一段里的人物。
+- 三格里是同一件道具、同一比例；除右格那只手或那个人之外不出现人物，没有场景背景，纯白背景可抠图；画面不含任何文字和品牌标识。
 
-**版式固定句**（prop-white、prop-scale、prop-size-ref 三道门查）：
+**版式固定句**（放最前，只填画幅、右格档位与实际尺寸；prop-white、prop-scale、prop-size-ref 检查其中的白底、尺度短语和匿名尺寸参照，其他视觉要求另行复核）：
 
 ```text
-One <画幅> landscape canvas: three equal panels side by side on a plain white background with clear white gaps, each item kept inside its own panel. Left panel: the front of the object, centered and complete. Middle panel: <中格>. Right panel: <右格那一档>; the hand or person is an anonymous generic bystander used only as a size reference, with true-to-scale proportions; actual size about <长 × 宽 × 高，带单位>. The same object at the same scale in all three panels, no scene background; no text, no lettering and no logos anywhere in the image.
+One <画幅> landscape canvas: three equal panels side by side on a plain white background with clear white gaps, each item kept inside its own panel. Left panel: the front of the object, centered and complete. Middle panel: the back of the same object rotated 180 degrees around its vertical axis, with its back facing the camera, centered and complete. Right panel: <右格那一档>; the hand or person is an anonymous generic bystander used only as a size reference, not a character in the story, with no visible face and true-to-scale proportions between the person and the object; actual size about <长 × 宽 × 高，带单位>. The same object at the same scale in all three panels; no people except the size-reference hand or person in the right panel, no scene background; no text, no lettering and no logos anywhere in the image.
 ```
 
-中格三种角度：背面 `the back of the same object rotated 180 degrees`；侧面 `the side view of the same object showing its thickness`；斜上方 `the same object seen from above at an angle`。
+道具设定图使用 production 指定的横版画幅；制作参数不是横版时先协调参数与版式，不静默改画幅。
 
-右格三档（`scale` 对应的英文，prop-scale 门查加粗部分）：
+右格三档（下列英文可直接填入模板；prop-scale 门分别检查 `a generic adult hand holding it`、`holding it with both hands, framed from the chest down`、`standing next to it or using it`）：
 
 | scale | 长边 | 英文 |
 | --- | --- | --- |
-| 手持级 | 30 厘米以内 | `a close-up of **a generic adult hand holding it**, the hand visible only up to the wrist, the object filling most of the panel` |
-| 桌面级 | 30–60 厘米 | `an ordinary person in plain clothes **holding it with both hands, framed from the chest down**` |
-| 家具级 | 60 厘米以上 | `an ordinary person in plain clothes seen from behind, the back of the head toward the camera, **standing next to it or using it**` |
+| 手持级 | 30 厘米以内 | `a close-up of a generic adult hand holding it, the hand visible only up to the wrist, the object filling most of the panel` |
+| 桌面级 | 超过 30 厘米且不超过 60 厘米 | `an ordinary person in plain clothes holding it with both hands, framed from the chest down, with the upper frame edge below the collarbones` |
+| 家具级 | 超过 60 厘米 | `an ordinary person in plain clothes seen from behind or in a side silhouette with the face hidden, standing next to it or using it, visible in full from head to toe, with true-to-scale proportions between the person and the object` |
 
 道具的光写 `soft even frontal studio lighting`，物件上没有明显的阴影和色光。
 
-**反向词不禁手、不禁人**：右格本来就要画手或人，反向词里写 `hands`、`people` 会和版式自相矛盾（prop-size-ref 门查）。道具的反向词写水印、商标、签名，本来不该有字的再加 `text, letters`。
+**反向词不禁手、不禁人**：右格本来就要画手或人，反向词里写 `hands`、`people` 会和版式自相矛盾（prop-size-ref 门查）。道具的反向词包含 `text, letters, watermark, logo, brand name, signature`，文件、证件、包装、屏幕也不使用带字例外。
 
 ## 三条硬要求
 
 1. **场景空景无人。**版式固定句里的 `No people anywhere in the image` 必须在，场景反向提示词禁人（no-people 门查）。生成图里出现一个人影就重生成——环境资产里的人洗不掉。
-2. **一张图里只能有一个空间、一件东西。**四宫格的四格和平面图要对得上：每个锚点、每个功能性元素在它该在的方向格里，在平面图上位置对得上。道具三格是同一件、同一比例。拿到图先按锚点核对。
+2. **一张图里只能有一个空间、一件东西。**场景的大全景和平面图要对得上：锚点、功能性元素的位置、朝向、数量一致，按各自观察角度呈现可见内容。道具三格是同一件、同一比例。拿到图先按锚点核对。
 3. **透视要稳。**环境图最常见的废图是几何融化、透视歪斜。空间默认方正（见 [scene-pass.md](scene-pass.md)），反向提示词里 `warped perspective, melted geometry` 从 production 的画风正文读取。
 
 ## 变体的提示词
 
-- **场景变体**：`variantOf` 进入计划的参考依赖；ly-image 必须先完成母场景，再绑定其成图作为参考。变体整张重出：四宫格换成新的天色、光影锁或空间状态，平面图不动。按 [sheet-prompt.md](sheet-prompt.md) 第三节四块写：保持建筑结构、空间布局、四个方向的视角、家具与关键物件的位置和数量、平面图；只改光影锁（新的主光源、方位、色温，亮处暗处差多少和阴影）和剧本写了的空间状态（天气、现场效果、破损、陈设）。重写沙发的位置，模型就会把沙发重摆一遍，和基准对不上。
-- **道具变体**：`states[0]` 是基准设定图画的那个状态；`states[1]` 及以后各写一条完整的英文变体提示词（四块写法），计划为它们导出依赖基准图的任务。保持三格版式、主体结构、材质、形状、比例、颜色、右格的手或人的姿态与取景；只写变了的状态：破损、燃烧、浸湿、磨损、碎裂、打开、带血的具体样子。
+- **场景变体**：`variantOf` 进入计划的参考依赖；ly-image 必须先完成母场景，再绑定其成图作为参考。沿用左侧单张广角大全景、右侧正交平面图的版式，整张重出。左侧呈现新的天色、光影锁或空间状态，右侧呈现当前版本的空间布局：布局相同则沿用原平面图的方向和结构，布局变化则同步更新相应位置。按 [sheet-prompt.md](sheet-prompt.md) 第三节四块写，点名保持建筑结构、未变的空间布局、基准图的机位、取景方向和视野，以及当前状态中仍保持的家具与关键物件的位置和数量；不重写未变陈设。只写新的光影锁（主光源、方位、色温、亮处、暗处、明暗差和阴影）与剧本写了的空间状态（天气、现场效果、破损、陈设）。
+- **道具变体**：`states[0]` 是基准设定图画的那个状态；`states[1]` 及以后各写一条完整的英文变体提示词（四块写法），计划为它们导出依赖基准图的任务。整张重出，三格里的道具都换成同一个新状态。点名保持三格版式、主体结构、材质、形状、比例、颜色、右格的手或人的姿态与取景，不重描保持项；只写变了的状态：破损、燃烧、浸湿、磨损、碎裂、打开、带血的具体样子。
 
 ## 文件名
 
@@ -110,4 +111,4 @@ One <画幅> landscape canvas: three equal panels side by side on a plain white 
 
 ---
 
-**学习来源**：场景四宫格加平面图、道具三格与尺寸参照、变体整张重出的版式内化自短剧资产图片提示词 skill（assets）的《场景》《道具》《模型-midjourney》版式短语。
+**学习来源**：场景单张广角大全景加正交平面图、变体按当前布局同步更新的要求内化自短剧资产图片提示词 skill（assets）最新版《场景》；道具三格与尺寸参照内化自《道具》《模型-midjourney》版式短语。

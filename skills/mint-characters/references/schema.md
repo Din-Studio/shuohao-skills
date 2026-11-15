@@ -81,6 +81,8 @@ validate 输出 `kind: mint-characters-checks, schemaVersion: 1, reviewInputHash
 
 ## 分集目录与设计写回
 
+原文工作流见 [派发指南](dispatch.md)。`.work/extract/` 和 `.work/review/` 的普通工作记录不设 schemaVersion，不是正式产物或永久身份协议。提取者不分配正式 C ID 或永久 identityKey，整理者统一候选人物，reconcile 分配或沿用正式身份。读取上限和实际并发由执行纪律落实，CLI 不审计模型工具历史。
+
 - `seed --source-dir` 与 `seed --source` 输出同一种 cast v1 骨架，区别只在 documents：每集一份，ID 为 `D` 加集号，路径为绝对路径。
 - `apply-designs` 读取的设计文件（`.work/designs/<C ID>.json`）是中间文件，不是第二种正式格式，不设 schemaVersion。它只承载设计块，写回后的 cast 仍是 cast v1。
 - 公开 API：`lib/identity.mjs` 增加 `seedSourceDir`；`lib/source-dir.mjs` 提供 `readSourceDir`、`episodeFromFilename`、`parseEpisodeNumber`；`mint-characters.mjs` 导出 `mergeDesigns` 与 `DESIGN_FIELDS`。

@@ -1,6 +1,6 @@
 ---
 name: mint-art
-version: 4.1.0
+version: 4.2.0
 description: |
   独立阅读原剧本，识别地点与物品，判断哪些需要美术资产，维护稳定 S/P 身份与来源。
   按任务需要完成场景、道具、复用与变体设计；场景物品整理完成后立即生图，交付 art v1、图片和报告。
@@ -64,7 +64,7 @@ node {baseDir}/scripts/mint-art.mjs seed --design --title 原创空间 --out des
 
 seed 只计算文件身份、字节摘要和物理行数。资产数组、已读范围均为空；它不理解剧情、不标记读完。模型或人工必须实际读取原件，填写负责范围、身份、事实引用和取舍依据。路径相对所属 JSON，不相对进程目录；seed 输出绝对原件路径以支持 stdout 重定向。
 
-`--source-dir` 的集号只从文件名解析（`第N集`、`EP N`、开头数字，支持中文数字）；解析不出、集号重复、正文集标题与文件名不一致、空文件都报错，缺集打印为 `missingEpisodes`。它不能与 `--source`、`--design`、`--existing` 同时提供。首次生成且原文体量大（超过约 3 万字或超过 10 集）时，按 [派发指南](references/dispatch.md) 分批串行接力：每批一个 subagent，一次只派一个，在已有资产上判断同地、同物、状态链和变体；核验按资产分组并发。
+`--source-dir` 的集号只从文件名解析（`第N集`、`EP N`、开头数字，支持中文数字）；解析不出、集号重复、正文集标题与文件名不一致、空文件都报错，缺集打印为 `missingEpisodes`。它不能与 `--source`、`--design`、`--existing` 同时提供。所有原文识别、修订和增量核验都按 [派发指南](references/dispatch.md) 执行：独立 subagent 按批并行提取 → 一个整理者统一草稿 → 独立 subagent 按批并行核验 → 定向修复。主会话不读取原文正文；每次调用累计最多接触 4 集原文，检索、前情和定向回读同样计入。2 集及以上至少分为 2 批并发，单集按地点与物件等关注点独立并行，不回退到同会话通读。不能派发或启动独立进程时停止。提取者只写本批事实与出处，不读取累计草稿、不执行 register。整理者以提取结果为主，必要时按需求读取特定集数的剧本，仍遵守四集上限；归并后才分配正式 S/P ID。独立原创设计没有原文时不伪造提取任务。
 
 已有产物增量识别先读取 `registry`。重排资产或新增剧集不能重分 ID。原件改版时只撤回关联身份的确认及该文档已读范围，不删除设计和媒体，不凭名称重新归并。
 
@@ -75,7 +75,7 @@ node {baseDir}/scripts/mint-art.mjs register art-draft.json --kind scene --key p
 node {baseDir}/scripts/mint-art.mjs register registered.json --kind prop --key permanent-object-key --name 物件名称 --out registered-prop.json
 ```
 
-登记后仍是待核验骨架。填写 `decision`、`sourceRefs`、`facts`、场景 `primary` 和实际需要的引用。未知身份保持待确认，不为了通过检查编造答案。不建立资产的线索可以写入 `observations`，保留来源及取舍理由。
+上述 register 由整理者在跨批归并后执行，提取者不分配正式 ID。登记后仍是待核验骨架。填写 `decision`、`sourceRefs`、`facts`、场景 `primary` 和实际需要的引用。未知身份保持待确认，不为了通过检查编造答案。不建立资产的线索可以写入 `observations`，保留来源及取舍理由。
 
 涉及人物身份时提供 `carrierRefs: [{characterId,basis,sourceRefs}]` 并在核验、渲染和出图命令提供 `--cast`。自由名称不能冒充确认关系。
 
@@ -83,7 +83,7 @@ node {baseDir}/scripts/mint-art.mjs register registered.json --kind prop --key p
 node {baseDir}/scripts/mint-art.mjs identity-inputs registered-prop.json
 ```
 
-此命令只打印当前身份输入摘要。人工或模型复读原件后，填写 `identityReview: {status:"confirmed", basis:"确认依据", inputDigest:"对应摘要"}`。完成本次负责范围后将顶层 `status` 改为 `ready`。写入摘要本身不是语义审核；脚本不自动批准。
+此命令只打印当前身份输入摘要。独立 subagent 按批复读原件、核验通过后，填写 `identityReview: {status:"confirmed", basis:"确认依据", inputDigest:"对应摘要"}`。完成本次负责范围后将顶层 `status` 改为 `ready`。写入摘要本身不是语义审核；脚本不自动批准。
 
 明确预算保存在本产物 `budgets`。超额阻断；`reference` 参考值仅提醒。不要为了预算删除原文事实或假改主场景标记。
 
@@ -95,7 +95,7 @@ node {baseDir}/scripts/mint-art.mjs identity-inputs registered-prop.json
 - 道具设定图：正面、最容易认错的一面、匿名手或人作尺寸参照三格，纯白背景，写明实际尺寸；`states[0]` 是基准状态，之后每个状态写一条完整的变体提示词。
 - 每条设定图提示词以纯净画质段固定句收尾；变体按照抄块、指向参考、保持什么、只改什么四块写。
 
-需要设计的资产较多时，按 [派发指南](references/dispatch.md) 分组并发派发设计者，基准场景与它的变体分在同一组；每人只写 `.work/designs/<ID>.json`，由主会话一次写回：
+按 [派发指南](references/dispatch.md) 独立分组并发派发设计者，只有一个设计组时也由独立设计者执行，主会话不补写设计；基准场景与它的变体分在同一组；每人只写 `.work/designs/<ID>.json`，由主会话一次写回：
 
 ```bash
 node {baseDir}/scripts/mint-art.mjs apply-designs art.json .work/designs/*.json --cast cast.json --production production.json
@@ -148,7 +148,7 @@ images 只导出 `designStatus: ready` 的任务，按变体依赖排序；ready
 
 ## 自有样例与测试
 
-先阅读 `examples/雨棚留言-故事提案.md`。`examples/雨棚留言-分集/` 把原剧本按集拆成三份 Markdown，正文逐字一致，演示 `seed --source-dir` 与接力判断。本目录包含原剧本、v5 故事消费投影、v1 人物交接夹具、身份登记样例和独立设计样例。不读取兄弟 skill 样例，不包含真实生成图片。
+先阅读 `examples/雨棚留言-故事提案.md`。`examples/雨棚留言-分集/` 把原剧本按集拆成三份 Markdown，正文逐字一致，演示 `seed --source-dir` 与跨批资产整理。本目录包含原剧本、v5 故事消费投影、v1 人物交接夹具、身份登记样例和独立设计样例。不读取兄弟 skill 样例，不包含真实生成图片。
 
 ```bash
 node {baseDir}/scripts/run-selftests.mjs

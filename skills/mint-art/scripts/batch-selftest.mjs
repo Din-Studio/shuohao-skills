@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 分集目录登记、接力草稿与设计写回。只用本 skill 的样例，离线，不调用模型。
+// 分集目录登记、独立提取结果的统一整理与设计写回。离线，不冒充真实并行或语义审核。
 import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync,mkdtempSync,mkdirSync,rmSync,symlinkSync,existsSync,readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -77,51 +77,52 @@ try {
     assert.notEqual(r.status,0);assert.match(r.stderr,/文档身份或版本不匹配 D01/);
   });
 
-  // 接力：第一位读第 1–2 集，第二位读第 3 集，在已有资产上补引用和状态。
-  test('relay drafts pass source checks at every step and end in a valid art',()=>{
-    const d0=join(temp,'draft-00.json');
+  // 独立提取结果不是正式 art；显式模拟整理者跨批判定，不新增自动归并接口。
+  test('independent batch facts consolidate before registration and preserve the state chain',()=>{
+    const facts1={locations:['菜摊雨棚','公共水池'],objects:['旧留言板','夹纸铁盒'],coverage:[...ref('D01',1,3),...ref('D02',1,2)]};
+    const facts2={locations:['菜摊雨棚'],objects:['旧留言板','夹纸铁盒'],state:'铁盒腾空后合上',coverage:ref('D03',1,4)};
+    const paths=[join(temp,'batch-01.json'),join(temp,'batch-02.json')];
+    [facts1,facts2].forEach((b,i)=>write(paths[i],b));
+    const before=paths.map(p=>readFileSync(p,'utf8'));
+    const d0=join(temp,'seed.json');
     assert.equal(cli('seed','--source-dir',folder,'--title','雨棚留言','--out',d0).status,0);
-    // 第一位接力者：在共享草稿上 register，ID 自然续号。
+    assert.deepEqual(read(d0).registry.entries,[],'extraction allocates no S/P IDs');
+    // 整理者依据出处判断雨棚与物件跨批复现后才登记，重复线索不独立 register。
     let prev=d0;
     for(const [i,[kind,key,name]] of [['scene','canopy','菜摊雨棚'],['scene','pool','公共水池'],['prop','board','旧留言板'],['prop','box','夹纸铁盒']].entries()) {
       const next=join(temp,`reg-${i}.json`);
       const r=cli('register',prev,'--kind',kind,'--key',key,'--name',name,'--out',next);assert.equal(r.status,0,r.stderr);prev=next;
     }
-    const a1=read(prev);
-    a1.provenance.coverage=[...ref('D01',1,3),...ref('D02',1,2)];
-    const [canopy,pool]=a1.scenes,[board,box]=a1.props;
-    assert.deepEqual([canopy.id,pool.id,board.id,box.id],['S01','S02','P01','P02']);
-    Object.assign(canopy,{primary:true,decision:'清理旧留言板的主要空间',sourceRefs:ref('D01',1,2),usage:{episodes:[1],beats:[]}});
+    const art=read(prev);
+    art.provenance.coverage=paths.flatMap(p=>read(p).coverage);art.provenance.scope='complete';art.provenance.totalEpisodes=3;
+    const [canopy,pool]=art.scenes,[board,box]=art.props;
+    Object.assign(canopy,{primary:true,decision:'第1、3集同一雨棚；清空为状态，不按场次新增地点',sourceRefs:[...ref('D01',1,2),...ref('D03',1,4)],usage:{episodes:[1,3],beats:[]}});
     Object.assign(pool,{decision:'核对夹纸归属的场所',sourceRefs:ref('D02',1,2),usage:{episodes:[2],beats:[]}});
-    Object.assign(board,{decision:'代存、寻主与交还的核心物件',sourceRefs:ref('D01',2,3),facts:{text:'陶敏交给许桂兰代存的旧留言板',sourceRefs:ref('D01',2)}});
-    Object.assign(box,{decision:'核对夹纸归属的容器，状态需要连续',sourceRefs:ref('D02',1),facts:{text:'第2集：夹纸被放进铁盒逐一核对',sourceRefs:ref('D02',1)}});
-    a1.observations=[{text:'新雨伞仅被口头提及，暂不建立道具资产',disposition:'not-asset',sourceRefs:ref('D01',3)}];
-    write(join(temp,'draft-01.json'),a1);
-    let r=cli('verify-sources',join(temp,'draft-01.json'));assert.equal(r.status,0,r.stdout+r.stderr);
-    // 第二位接力者：第 3 集的雨棚、留言板、铁盒都是已有资产，只补引用与状态。
-    const a2=structuredClone(a1);
-    a2.provenance.coverage.push(...ref('D03',1,4));a2.provenance.scope='complete';a2.provenance.totalEpisodes=3;
-    const [c2]=a2.scenes,[b2,x2]=a2.props;
-    c2.sourceRefs.push(...ref('D03',1,4));c2.usage.episodes.push(3);c2.decision='同一空间在第1、3集及入夜场次复现；清空是状态变化，不按场次新建地点';
-    b2.sourceRefs.push(...ref('D03',2));
-    x2.sourceRefs.push(...ref('D03',2));x2.facts={text:'第2集放入夹纸；第3集腾空后合上',sourceRefs:[...ref('D02',1),...ref('D03',2)]};
-    a2.observations.push({text:'清空后雨棚仍为同一地点；不另建变体',disposition:'same-location',sceneId:'S01',sourceRefs:ref('D03',3,4)});
-    write(join(temp,'draft-02.json'),a2);
-    r=cli('verify-sources',join(temp,'draft-02.json'));assert.equal(r.status,0,r.stdout+r.stderr);
-    assert.deepEqual(read(join(temp,'draft-01.json')),a1,'relay never rewrites an earlier draft');
-    assert.equal(a2.registry.entries.length,4);
-    // 定稿：逐资产写入审核摘要，status: ready，完整 validate 通过。
-    const art=structuredClone(a2);
-    for(const a of assetsOf(art))a.identityReview={status:'confirmed',basis:'接力样例核验',inputDigest:identityDigest(art,a)};
-    art.status='ready';
-    const artPath=join(temp,'art.json');write(artPath,art);
-    r=cli('validate',artPath,'--no-production');assert.equal(r.status,0,r.stdout+r.stderr);
+    Object.assign(board,{decision:'代存、寻主与交还的核心物件',sourceRefs:[...ref('D01',2,3),...ref('D03',2)],facts:{text:'陶敏交给许桂兰代存后取回的同一留言板',sourceRefs:[...ref('D01',2),...ref('D03',2)]}});
+    Object.assign(box,{decision:'跨集状态需要连续的容器',sourceRefs:[...ref('D02',1),...ref('D03',2)],facts:{text:'第2集放入夹纸；第3集腾空后合上',sourceRefs:[...ref('D02',1),...ref('D03',2)]}});
+    art.observations=[
+      {text:'新雨伞仅被口头提及，不建立道具',disposition:'not-asset',sourceRefs:ref('D01',3)},
+      {text:'清空后仍为同一雨棚，不另建变体',disposition:'same-location',sceneId:'S01',sourceRefs:ref('D03',3,4)},
+    ];
+    const draft=join(temp,'assembled.json');write(draft,art);
+    let r=cli('verify-sources',draft);assert.equal(r.status,0,r.stdout+r.stderr);
+    assert.ok(assetsOf(art).every(a=>a.identityReview.status==='pending'),'assembly never grants semantic review');
+    assert.equal(art.registry.entries.length,4);
+    assert.deepEqual(paths.map(p=>readFileSync(p,'utf8')),before,'assembler does not rewrite batch facts');
+    const gap=structuredClone(art);gap.provenance.coverage=facts1.coverage;write(draft,gap);
+    assert.notEqual(cli('verify-sources',draft).status,0);
+    // 测试夹具模拟独立核验后的确认，不代表真实模型审核。
+    for(const a of assetsOf(art))a.identityReview={status:'confirmed',basis:'离线模拟按批来源与归并核验',inputDigest:identityDigest(art,a)};
+    art.status='ready';write(draft,art);
+    r=cli('validate',draft,'--no-production');assert.equal(r.status,0,r.stdout+r.stderr);
+    const wrong=structuredClone(art);wrong.props[0].carrierRefs=[{characterId:'C99',basis:'没有人物权威',sourceRefs:ref('D01',2)}];write(draft,wrong);
+    assert.notEqual(cli('validate',draft,'--no-production').status,0,'carrierRefs cannot bypass character authority');
   });
 
   // 设计写回：拿《雨棚留言》独立设计样例拆掉设计，再从设计文件写回。
   const work=join(temp,'design');mkdirSync(work);
   const full=read(join(root,'examples/雨棚留言-art.json'));
-  // changes 随 variantOf 由接力者登记，留在身份侧；其余设计字段拆掉。
+  // changes 随 variantOf 由整理者登记，留在身份侧；其余设计字段拆掉。
   const stripped=DESIGN_FIELDS.filter(k=>k!=='changes'&&k!=='designStatus');
   const bare=structuredClone(full);for(const a of assetsOf(bare)){for(const k of stripped)delete a[k];a.designStatus='none';}
   const artPath=join(work,'art.json'),designs=join(work,'designs');mkdirSync(designs);
@@ -150,6 +151,7 @@ try {
     const s1=assetsOf(full)[0];
     const cases=[
       ['unknown id',()=>{const p=join(bad,'S99.json');write(p,{id:'S99',designStatus:'planned'});return [p];},/没有这个资产/],
+      ['missing id',()=>{const p=join(bad,`${s1.id}.json`);const data=designOf(s1);delete data.id;write(p,data);return [p];},/文件名必须是/],
       ['name mismatch',()=>{const p=join(bad,'wrong.json');write(p,designOf(s1));return [p];},/文件名必须是/],
       ['duplicate id',()=>{const d=join(bad,'again');mkdirSync(d,{recursive:true});const p=join(d,`${s1.id}.json`);write(p,designOf(s1));return [files[0],p];},/出现两次/],
       ['identity field refused',()=>{const p=join(bad,`${s1.id}.json`);write(p,{...designOf(s1),primary:false});return [p];},/不接受 primary/],

@@ -241,7 +241,7 @@ export function assertStoryOutline(doc) {
 // Local consumption projection of cast v1. No image/persona requirement.
 export function characterIdentityDigest(c,p) {
   const sortedRefs=rs=>rows(rs).map(canonical).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
-  const used=new Set([...rows(c.sourceRefs),...rows(c.aliases).flatMap(a=>rows(a.sourceRefs))].map(r=>r.documentId));
+  const used=new Set([...rows(c.sourceRefs),...rows(c.aliases).flatMap(a=>rows(a.sourceRefs)),...rows(c.notes).flatMap(n=>rows(n.sourceRefs))].map(r=>r.documentId));
   return digest({identityKey:c.identityKey,name:c.name,aliases:rows(c.aliases).map(a=>({...a,sourceRefs:sortedRefs(a.sourceRefs)})).sort((a,b)=>a.name.localeCompare(b.name)),entityType:c.entityType,lifecycleStamp:c.lifecycleStamp,presence:[...rows(c.presence)].sort(),speech:c.speech,unknowns:c.unknowns,notes:c.notes,sourceRefs:sortedRefs(c.sourceRefs),documents:rows(p?.documents).filter(d=>obj(d)&&used.has(d.id)).map(({id,sha256})=>({id,sha256})).sort((a,b)=>a.id.localeCompare(b.id))});
 }
 export function assertCharacters(doc) {

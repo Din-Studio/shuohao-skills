@@ -13,6 +13,8 @@
 
 The full pipeline has one fixed order: **outline → characters → art → script → creation**. Complete each stage and its handoff before starting the next. Do not skip, reverse or parallelize stages. Character identity belongs to characters; place and prop identity belongs to art. Each skill still works independently, without claiming a completed full pipeline.
 
+Within characters and art, independent subagents **extract batches in parallel → one assembler unifies the draft → independent reviewers check batches in parallel**. Designs remain parallel by group. The main session never reads source text; each call may access at most 4 source episodes cumulatively, including targeted rereads. Stop when independent dispatch is unavailable; do not fall back to a shared reading context. Stages remain sequential and cast/art schemaVersion 1 is unchanged.
+
 <img src="assets/pipeline-en.svg" alt="AI short-drama production pipeline" width="680">
 
 | Skill | What it does |

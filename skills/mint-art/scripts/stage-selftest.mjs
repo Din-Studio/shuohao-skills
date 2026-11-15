@@ -38,6 +38,26 @@ try {
   test('identity-only records do not force design or images',()=>{assert.deepEqual(validateArt(good),[]);assert.ok(gateReport(good).find(g=>g.id==='anchors').status==='skipped');assert.deepEqual(imageJobsFrom(good,JSON.parse(readFileSync(join(root,'examples/雨棚留言-production.json')))).jobs,[]);for(const html of [renderHtml(good),renderMarkdown(good)]){assert.ok(html.includes('bridge-under'));assert.ok(html.includes('not-performed'));assert.ok(html.includes('sourceIdentity'));}assert.match(renderHtml(good),/仅登记身份，不要求出图/);});
   test('scene identity and prop decision explicit',()=>{const d=clone(good);d.scenes[0].decision='';assert.ok(validateArt(d).some(x=>x.includes('decision')));d.scenes[0].primary=undefined;assert.ok(validateArt(d).some(x=>x.includes('primary')));});
   test('confirmed characters authority requires no design',()=>{assert.equal(assertCharacters(chars),chars);assert.deepEqual(upstreamErrors(good,chars,'characters'),[]);const d=clone(good);d.props[0].carrierRefs=[{characterId:'C02',basis:'接收者为 characters 明确登记的修桥员，不按名称合并',sourceRefs:[ref]}];confirm(d);save(d);const castFile=join(temp,'cast.json');writeFileSync(castFile,JSON.stringify(chars));assert.equal(cli('validate',file,'--no-production','--cast',castFile).status,0);assert.equal(cli('validate',file,'--no-production').status,1);const bad=clone(chars);bad.review.status='pending';assert.throws(()=>assertCharacters(bad));d.props[0].carrierRefs[0].characterId='C99';assert.ok(upstreamErrors(d,chars,'characters').some(x=>x.includes('未知人物')));});
+  test('character notes-only documents match the producer fingerprint and invalidate on revision',()=>{
+    const c=clone(chars),second=join(temp,'人物限制原件.txt');copyFileSync(source,second);
+    c.provenance.documents.push({...c.provenance.documents[0],id:'D02',path:second});
+    c.provenance.coverage.push({...ref,documentId:'D02'});
+    c.characters[0].notes=[{text:'身份限制另见第二原件；不按名称猜测同人',sourceRefs:[{...ref,documentId:'D02'}]}];
+    // Independent expected basis: this simple fixture already has sorted refs/aliases.
+    // Do not derive the expected registry fingerprint from the consumer under test.
+    const {id,...basis}=c.characters[0];
+    const expected=digest({...basis,documents:c.provenance.documents.map(({id,sha256})=>({id,sha256}))});
+    c.lifecycle.registry[0].fingerprint=expected;
+    assert.equal(characterIdentityDigest(c.characters[0],c.provenance),expected);
+    assert.equal(assertCharacters(c),c);
+    const castFile=join(temp,'notes-cast.json');writeFileSync(castFile,JSON.stringify(c));
+    let r=cli('seed','--source',source,'--title','桥下旗','--cast',castFile);assert.equal(r.status,0,r.stderr);
+    c.provenance.documents[1].sha256='0'.repeat(64);
+    assert.notEqual(characterIdentityDigest(c.characters[0],c.provenance),expected);
+    assert.throws(()=>assertCharacters(c),/摘要/);
+    writeFileSync(castFile,JSON.stringify(c));
+    r=cli('seed','--source',source,'--title','桥下旗','--cast',castFile);assert.notEqual(r.status,0);
+  });
   test('character name equality is not authority',()=>{const d=clone(good);d.props[0].carriedBy=['修桥员'];assert.ok(stageErrors(d).some(x=>x.includes('自由名称')));const f=clone(good);f.props[0].sourceFacts={sourceRefs:[ref]};assert.ok(stageErrors(f).some(x=>x.includes('sourceFacts')));const c=clone(chars);c.characters[1].name=c.characters[0].name;assert.throws(()=>assertCharacters(c),/摘要/);});
   test('reordering and added episodes do not change S/P allocation',()=>{const d=clone(good);d.scenes.reverse();d.props.reverse();d.provenance.totalEpisodes=8;d.props[0].usage={episodes:[4,8],beats:[]};assert.deepEqual(lifecycleErrors(d,good),[]);assert.equal(d.scenes[0].id,'S01');assert.equal(d.props[0].id,'P01');});
   test('incremental seed carries designs, media, IDs and budgets',()=>{const d=clone(good);d.props[0].designStatus='ready';d.props[0].image={sheet:'historical prompt'};d.props[0].sheetImage='images/old.png';d.budgets={props:{kind:'explicit',max:2}};const updated=seedFromSource(source,'桥下旗',{existing:d});assert.deepEqual(updated.props,d.props);assert.deepEqual(updated.registry,d.registry);assert.deepEqual(updated.budgets,d.budgets);assert.equal(updated.incremental.previousDigest,digest(d));});

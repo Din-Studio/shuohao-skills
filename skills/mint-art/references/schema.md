@@ -37,6 +37,8 @@
 
 ## 资产身份与确认
 
+原文工作流见 [派发指南](dispatch.md)。`.work/extract/` 和 `.work/review/` 的普通工作记录不设 schemaVersion，不是正式产物或永久身份协议。提取者不执行 register、不分配正式 S/P ID；整理者跨批归并后统一登记。读取上限和实际并发由执行纪律落实，CLI 不审计模型工具历史。
+
 每个资产必需：`id`、永久 `identityKey`、`name`、`decision`、`identityReview`、`designStatus`。场景另需布尔 `primary`；script 模式另需非空 `sourceRefs`。
 
 - 地点 S 加至少两位数字，物件 P 加至少两位数字。ID、永久 key 唯一，退休后永不复用。
@@ -70,21 +72,25 @@
 
 planned / ready 设计遵循以下视觉规则，none 不适用：
 
+**实现兼容性**：本节和 [sheet.md](sheet.md) 已采用最新版《场景》的单张大全景版式。当前 `SKILL.md`、脚本 `mint-art.mjs` 的 `scene-layout` 检查、报告标题及旧样例仍采用四方向宫格；脚本仍要求 `two-by-two grid`，会拒绝新模板。这些文件不在本次 references 更新范围内，运行新版出图流程前需同步；不要向新提示词添加旧版短语来绕过检查。
+
 | 场景字段 | 规则 |
 | --- | --- |
 | summary | 非空设计意图；结构、动线及主光方向由人工/模型复核 |
 | anchors | 3–5 个 {name,desc}；明确可画特征及方位 |
 | lighting | 至少一个 {state,prompt}，prompt 英文并写色温数值（如 5500K）；`lighting[0]` 是基准设定图画的光影锁 |
-| image | prompt、negativePrompt、sheet 非空；tags 英文数组；sheet 为四方向宫格加正交平面图（含 two-by-two grid、orthographic），主体区非空且原文包含 `lighting[0].prompt`，纯净画质段是最后一段；变体场景 sheet 按变体写法 |
+| image | prompt、negativePrompt、sheet 非空；tags 英文数组；sheet 为横版左侧单张广角大全景、右侧同场景正交平面图，两区留白；位置、朝向、数量一致，平面图留白供后期添加尺寸线，画面无人、无文字和品牌标识，主体区非空且原文包含 `lighting[0].prompt`，纯净画质段是最后一段；变体场景 sheet 按变体写法 |
 | 画风、画幅 | production 提供时按 style.scene 和 image.asset 核验 |
 
 | 道具字段 | 规则 |
 | --- | --- |
-| summary | 戏剧功能与设计意图，不是来源事实的替代品 |
+| summary | 戏剧功能与设计意图，末尾写实际尺寸约长 × 宽 × 高及单位，不是来源事实的替代品 |
 | anchors | 3–5 个 {name,desc} |
-| states | 至少一个 {state,prompt}，prompt 英文；`states[0]` 是基准状态，`states[1]` 起每条是完整变体提示词（含纯净画质段），各自进入出图计划 |
-| scale | 手持级（长边 30 厘米以内）/ 桌面级（30–60 厘米）/ 家具级（60 厘米以上）；sheet 含对应的尺寸参照英文句（见 PROP_SCALES） |
-| image | 提示词英文；sheet 三格版式，明确 white background，含匿名尺寸参照句与 actual size about，主体区非空，纯净画质段是最后一段；`states[1…]` 逐条检查同一套技术段和变体写法；反向词不禁手、不禁人 |
+| states | 至少一个 {state,prompt}，prompt 英文；`states[0]` 是基准状态，`states[1]` 起每条是完整变体提示词（含纯净画质段），各自进入出图计划；变体整张重出，三格同步变成新状态，保持项只点名、不重描 |
+| scale | 手持级（长边 30 厘米以内）/ 桌面级（长边超过 30 厘米且不超过 60 厘米）/ 家具级（长边超过 60 厘米）；sheet 含对应的尺寸参照英文句（见 PROP_SCALES） |
+| image | 提示词英文；sheet 以横版三等宽格版式开头，格间白底间隔、内容不越界，左正面、中格沿竖轴旋转 180 度的背面、右尺寸参照；三格同一物件、同一比例，除参照手或人外无人，无场景背景、无文字和品牌标识；明确 white background，含非剧中角色的匿名尺寸参照句与 actual size about，家具级人物从头到脚完整入画；主体写齐 [prop-pass.md](prop-pass.md) 的必写内容（含背面结构细节），纯净画质段是最后一段；`states[1…]` 逐条检查同一套技术段和变体写法；反向词不禁手、不禁人 |
+
+道具的中格背面、三档尺寸边界、家具级全身入画、无字及三格状态同步须内容复核和看图审核；现有脚本的白底、尺度短语和匿名尺寸参照检查不能证明这些要求已满足。`SKILL.md` 中的旧版「最容易认错的一面」及旧样例尚未同步，本次仅更新 references，道具图以本节与 [sheet.md](sheet.md) 为准。
 
 场景反向词禁人并完整带入 style.scene.negative；道具白底不强加与之矛盾的环境反向词，也不禁右格尺寸参照要画的手和人。提示词不含角色名（提供 cast 时核验）。production 缺失为 skipped，不提供出图默认值。ready 设计不等于媒体生成或批准。
 

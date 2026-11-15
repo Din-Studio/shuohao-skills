@@ -10,7 +10,7 @@ Copy this entire directory into your agent's skills directory. Node 18+, standar
 
 ```bash
 node scripts/mint-characters.mjs seed --source book.txt --title Title --budget 30 --out draft.json
-# Human/model reads the source and fills identities, sourceRefs and actual coverage.
+# Independent subagents extract batches in parallel; one assembler unifies the draft; new reviewers check batches in parallel.
 node scripts/mint-characters.mjs reconcile draft.json --out cast.json
 node scripts/mint-characters.mjs validate cast.json
 node scripts/mint-characters.mjs render cast.json --md > cast-report.md
@@ -26,7 +26,7 @@ node scripts/mint-characters.mjs seed --source-dir episodes/ --title Title --out
 node scripts/mint-characters.mjs apply-designs cast.json .work/designs/*.json
 ```
 
-For long scripts, follow the [dispatch guide](references/dispatch.md): batches are read by one relay subagent at a time, identities are reviewed in parallel groups, and designs are written in parallel per C ID, then applied and validated together by `apply-designs`.
+For all source identification and incremental revisions, follow the [dispatch guide](references/dispatch.md): independent subagents extract batches in parallel, one assembler unifies the draft, and independent reviewers check complete batches in parallel. The main session does not read source text. Each call may access at most 4 source episodes in total, including searches, backstory and targeted rereads. Two or more episodes require at least two batches; a single episode uses parallel focus areas. Stop if independent dispatch is unavailable; never fall back to a shared reading context. The assembler primarily reads extracted results and rereads only specific evidence within the same limit. Design groups run independently in parallel and `apply-designs` validates and writes them together. The CLI neither launches agents nor audits tool history; structural coverage is not semantic approval.
 
 Incremental updates use the existing artifact:
 

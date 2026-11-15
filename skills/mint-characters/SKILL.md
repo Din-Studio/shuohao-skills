@@ -1,6 +1,6 @@
 ---
 name: mint-characters
-version: 4.1.0
+version: 4.2.0
 description: |
   独立阅读原剧本，建立稳定 C ID、别名、同名人物、无台词人物、匿名声音、非人主体与提及人物的来源身份。
   人物角色整理完成后立即制作图片提示词并生成参考图；人物画像与音色按需制作，用户明确仅登记或仅要提示词时不生图。
@@ -61,9 +61,9 @@ node {baseDir}/scripts/mint-characters.mjs seed \
 
 ## 第二步：阅读和语义识别
 
-阅读原剧本，按 [扫描指南](references/roster-pass.md) 登记所有本次范围内的人物。首次生成且原文体量大（超过约 3 万字或超过 10 集）时，按 [派发指南](references/dispatch.md) 分批串行接力：每批一个 subagent，一次只派一个，在已有条目上判断同人；核验按身份分组并发。长文本可先运行 `chunk <原剧本.txt> <characters/.work>`；块边界是阅读辅助，不是身份边界。根据实际阅读填写 `provenance.coverage`，不是根据 seed 或 chunk 生成成功填写。
+所有原文识别、修订和增量核验都按 [派发指南](references/dispatch.md) 执行：独立 subagent 按批并行提取 → 一个整理者统一草稿 → 独立 subagent 按批并行核验 → 定向修复。主会话不读取原文正文；每次调用累计最多接触 4 集原文，检索、前情和定向回读同样计入。2 集及以上至少分为 2 批并发，单集按出场／发声与提及／别名等关注点独立并行，不回退到同会话通读。不能派发或启动独立进程时停止。提取者只写本批事实与出处，不读取累计草稿、不分配正式 ID。整理者以提取结果为主，必要时按需求读取特定集数的剧本，仍遵守四集上限。按 [扫描指南](references/roster-pass.md) 保留所有身份；根据实际阅读填写 provenance.coverage，seed 或 chunk 成功不代表已读。
 
-每个身份填写永久 `identityKey`，例如 `night-operator`。首次可以省略 `id`，由 reconcile 分配 C01 等。既有身份必须沿用其 identityKey 与 C ID；不按出现次序重编号。
+整理者为统一草稿的每个身份填写永久 `identityKey`，例如 `night-operator`。首次可以省略 `id`，由 reconcile 分配 C01 等。既有身份必须沿用其 identityKey 与 C ID；不按出现次序重编号。
 
 - 同名不同人分别登记。别名必须有来源，不按名称或姓氏自动合并。
 - 无台词人物、仅出声主体、仅被提及人物均保留身份及出现方式。
@@ -86,7 +86,7 @@ node {baseDir}/scripts/mint-characters.mjs validate cast-next.json --previous ca
 
 `changes.json` 为数组。没有合拆删纠正时可以省略。身份重排不改变 ID。新身份省略 ID，分配已登记最大编号之后的 ID。退役 ID 和 identityKey 均不复用。合并、拆分、删除、身份事实纠正必须有 from/to 映射及来源或用户决定。详情见[正式契约](references/schema.md)的生命周期一节。
 
-新增剧集后重新阅读相关原件，更新摘要、引用与覆盖。来源改版保留身份 ID，但把实际依赖该来源的身份加入 `lifecycle.recheckIds`。此列表不是失败日志或统计；它只记录受影响引用须重新核验的身份。
+新增剧集后按派发指南并行提取、独立核验相关原件，更新摘要、引用与覆盖。来源改版保留身份 ID，但把实际依赖该来源的身份加入 `lifecycle.recheckIds`。此列表不是失败日志或统计；它只记录受影响引用须重新核验的身份。
 
 reconcile 对新增或变化的身份及范围将语义审核恢复为 pending，纯重排仅沿用摘要仍有效的既有审核，不自动确认人物判定。完成语义复核后，可记录 `review.status: confirmed`、`by`、`note` 及 `inputHash`（validate 输出的 `reviewInputHash`），再将 status 设置为 identified。摘要失效必须重新复核。结构检查不能代替人工或模型语义审核。
 
@@ -99,7 +99,7 @@ persona、voice 仍按需制作，不强制三项设计同时存在。用户明�
 - 画像与音色：阅读 [画像指南](references/profile-pass.md)、[设计字段](references/design-schema.md)。设计块直接写在 cast v1 的对应身份上，validate 的 optional-design 检查逐项核对。
 - 图片：另读 [全局原则](references/principles.md)、[术语](references/glossary.md)、[设定图提示词](references/sheet-prompt.md)、[版式](references/sheet.md)、[画风](references/style.md)、[真实感](references/realism.md)；群演读 [群像图](references/crowd.md)；production.image.model 是 Midjourney 时另读 [Midjourney 写法](references/model-midjourney.md)；题材明确时查 `references/genres/` 中适用的题材文件（`general.md` 为通用基线），剧本事实与用户要求优先。production 为 v3，画风正文不设默认值。独立画像或身份登记不要求 production；已提供但损坏的 production 必须失败。
 - 设定图版式：白底横图，左边严格正面的脸部特写，右边三格脖子以下的正面、侧面、背面，柔和均匀的正面光，中性站姿和表情，最后一段是纯净画质段；`entityType: group` 改出群像图。validate 按 entityType 核对版式短语和纯净画质段。cast v1 每个身份只有一个 image 块，本阶段只出基准图，不出人物变体图。
-- 并行设计：需要设计的身份较多时，按 [派发指南](references/dispatch.md) 分组并发派发设计者，每人只写 `.work/designs/<C ID>.json`，由主会话执行 `apply-designs cast.json designs/*.json` 一次写回。它只接受 persona、voice、image、importance、oneLiner，执行与 validate 相同的完整检查，全部通过才写回，失败时按 ID 列出问题。设计不进入身份摘要，已记录的审核仍然有效。
+- 并行设计：按 [派发指南](references/dispatch.md) 独立分组并发派发设计者，只有一个设计组时也由独立设计者执行，主会话不补写设计；每人只写 `.work/designs/<C ID>.json`，由主会话执行 `apply-designs cast.json designs/*.json` 一次写回。它只接受 persona、voice、image、importance、oneLiner，执行与 validate 相同的完整检查，全部通过才写回，失败时按 ID 列出问题。设计不进入身份摘要，已记录的审核仍然有效。
 - 生成：`images cast.json` 只产生离线计划。只为存在 image 设计的角色建立任务；`--only C01,C02` 选择稳定 ID。正式路径为 `images/C01-sheet.png`，不会因改名或新增同名人物而漂移。
 - 本地 CLI 保持离线；实际生图由 agent 接续外部生成工具。按 [媒体交接](references/media-handoff.md) 核验 schema、费用授权、回执及下载；已有授权覆盖本次生成时直接执行，不重复确认，不自动重复付费。下载并核验参考图后再生成最终报告。
 
@@ -120,7 +120,7 @@ node {baseDir}/scripts/mint-characters.mjs images cast.json --out image-plan.jso
 
 ## 样例与测试
 
-`examples/回声台.txt` 先定义故事，再提供独立身份登记 `回声台-cast.json`；不含分镜或生成图片。`examples/渡口.txt` 与 `渡口-cast.json` 展示带完整画像、声音和图片提示词设计块的 cast v1。`examples/回声台-分集/` 把《回声台》按集拆成两份 Markdown，正文逐字一致，演示 `seed --source-dir` 与接力判断。
+`examples/回声台.txt` 先定义故事，再提供独立身份登记 `回声台-cast.json`；不含分镜或生成图片。`examples/渡口.txt` 与 `渡口-cast.json` 展示带完整画像、声音和图片提示词设计块的 cast v1。`examples/回声台-分集/` 把《回声台》按集拆成两份 Markdown，正文逐字一致，演示 `seed --source-dir` 与跨批身份整理。
 
 ```bash
 node {baseDir}/scripts/test-all.mjs

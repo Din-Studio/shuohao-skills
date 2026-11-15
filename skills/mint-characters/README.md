@@ -14,7 +14,7 @@
 
 ```bash
 node scripts/mint-characters.mjs seed --source book.txt --title 书名 --budget 30 --out draft.json
-# 人工或模型独立阅读，补齐身份、来源引用与实际已读范围；seed 只做骨架
+# 按派发指南由独立 subagent 并行提取，一个整理者统一草稿，再按批并行核验；seed 只做骨架
 node scripts/mint-characters.mjs reconcile draft.json --out cast.json
 node scripts/mint-characters.mjs validate cast.json
 node scripts/mint-characters.mjs render cast.json --md > cast-report.md
@@ -28,7 +28,7 @@ node scripts/mint-characters.mjs seed --source-dir 剧本目录 --title 书名 -
 node scripts/mint-characters.mjs apply-designs cast.json .work/designs/*.json
 ```
 
-体量大时按 [派发指南](references/dispatch.md) 分批串行接力识别人物，身份定稿后按 C ID 分组并行设计，再由 `apply-designs` 一次写回、整体校验。
+所有原文识别及增量修订都按 [派发指南](references/dispatch.md) 由独立 subagent 按批并行提取，一个整理者统一草稿，再按批并行独立核验。主会话不读取原文；每次调用累计最多接触 4 集原文，前情、检索和定向回读同样计入。2 集及以上至少分 2 批，单集按关注点并行；不能独立派发时停止，不回退到当前会话通读。整理者以提取结果为主，必要时限量回读。身份定稿后按 C ID 独立并行设计，再由 `apply-designs` 一次写回、整体校验。CLI 不启动代理或审计工具历史，结构和覆盖通过不代表语义通过。
 
 交付放在项目 `characters/` 下。`--outline outline.json` 可选；缺少时背景检查 skipped，提供损坏或错误版本则失败。原件路径相对记载它的 JSON；摘要、行数和覆盖必须核验，原件缺失不可跳过。
 
